@@ -1,0 +1,14 @@
+node_modules
+.env
+.env.local
+.env.production
+.git
+.gitignore
+logs
+*.log
+deploy
+.magent/artifacts
+.magent/vault/raw
+Dockerfile
+docker-compose.yml
+.dockerignore

@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Privacy Policy — AI OS</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/css/landing.css">
+  <link rel="stylesheet" href="/css/legal.css">
+</head>
+<body>
+  <nav class="landing-nav">
+    <div class="nav-container">
+      <a href="/" class="nav-brand">
+        <span class="nav-logo">&#9678;</span>
+        <span class="nav-name">AI OS</span>
+      </a>
+      <div class="nav-links">
+        <a href="/">Home</a>
+        <a href="/terms">Terms</a>
+        <a href="/privacy" class="active">Privacy</a>
+      </div>
+    </div>
+  </nav>
+
+  <main class="legal-page">
+    <div class="legal-container">
+      <h1>Privacy Policy</h1>
+      <p class="legal-effective">Effective Date: May 25, 2026</p>
+
+      <p>This Privacy Policy describes how AI OS Orchestration Lab ("we", "us", "our") collects, uses, and protects your information when you use the AI OS platform ("Service"). We are committed to protecting your privacy and being transparent about our data practices.</p>
+
+      <h2>1. Information We Collect</h2>
+
+      <h3>1.1 Account Information</h3>
+      <p>When you create an account, we collect:</p>
+      <ul>
+        <li><strong>Email address</strong> — used for account identification, login, and essential communications.</li>
+        <li><strong>Payment information</strong> — processed and stored exclusively by Stripe. We receive only a customer ID, subscription status, and plan type. We never see or store your credit card number.</li>
+      </ul>
+
+      <h3>1.2 Usage Data</h3>
+      <p>We automatically collect:</p>
+      <ul>
+        <li><strong>Server access logs</strong> — IP address, request timestamp, URL path, HTTP method, response status, and user agent. These are retained for 90 days for security and debugging purposes.</li>
+        <li><strong>Feature usage</strong> — which agents you run, skill executions, and general usage patterns. This is used to improve the Service and is not shared with third parties.</li>
+      </ul>
+
+      <h3>1.3 Information We Do NOT Collect</h3>
+      <ul>
+        <li>We do <strong>not</strong> read, store, or log the content of your API calls to third-party providers (Anthropic, xAI, DeepSeek, etc.).</li>
+        <li>We do <strong>not</strong> access the contents of your knowledge vault, agent outputs, or generated artifacts.</li>
+        <li>We do <strong>not</strong> store your third-party API keys. They are held in your server's environment variables and are never transmitted to us.</li>
+        <li>We do <strong>not</strong> use cookies for advertising or third-party tracking.</li>
+      </ul>
+
+      <h2>2. How We Use Your Information</h2>
+      <ul>
+        <li><strong>Account management</strong> — authenticating your login, managing your subscription, processing payments through Stripe.</li>
+        <li><strong>Service delivery</strong> — routing requests, maintaining session state, providing dashboard access.</li>
+        <li><strong>Security</strong> — detecting unauthorized access, rate limiting, abuse prevention.</li>
+        <li><strong>Communication</strong> — subscription confirmations, billing receipts, service announcements, and security alerts. We do not send marketing emails without your explicit opt-in consent.</li>
+        <li><strong>Service improvement</strong> — understanding aggregate usage patterns to prioritize features and fix issues.</li>
+      </ul>
+
+      <h2>3. Cookies</h2>
+      <p>We use a single essential cookie:</p>
+      <ul>
+        <li><strong>ai-os-session</strong> — An HTTP-only session cookie that authenticates your login. It contains a random token (not your email or personal data), expires after 30 days, and is required for dashboard access. No third-party cookies are used.</li>
+      </ul>
+
+      <h2>4. Data Sharing</h2>
+      <p>We do not sell, rent, or trade your personal information. We share data only in these limited circumstances:</p>
+      <ul>
+        <li><strong>Stripe</strong> — Your email and payment details are shared with Stripe to process subscriptions. Stripe's privacy policy governs their handling of this data.</li>
+        <li><strong>Legal requirements</strong> — We may disclose information if required by law, court order, or governmental regulation.</li>
+        <li><strong>Business transfer</strong> — In the event of a merger, acquisition, or sale of assets, your information may be transferred. You will be notified via email before your data is subject to a different privacy policy.</li>
+      </ul>
+
+      <h2>5. Data Storage &amp; Security</h2>
+      <ul>
+        <li>Account data is stored on our server infrastructure with encryption at rest.</li>
+        <li>All connections use TLS (HTTPS) encryption in transit.</li>
+        <li>API endpoints are protected by authentication, rate limiting, and input validation.</li>
+        <li>Access logs are retained for 90 days, then automatically purged.</li>
+        <li>Session tokens are cryptographically random and stored server-side.</li>
+      </ul>
+      <p>While we implement industry-standard security measures, no method of electronic storage is 100% secure. We cannot guarantee absolute security.</p>
+
+      <h2>6. Your Rights</h2>
+      <p>You have the right to:</p>
+      <ul>
+        <li><strong>Access</strong> — Request a copy of the personal data we hold about you.</li>
+        <li><strong>Correction</strong> — Request correction of inaccurate data.</li>
+        <li><strong>Deletion</strong> — Request deletion of your account and all associated data. Upon request, we will delete your data within 30 days, except where retention is required by law.</li>
+        <li><strong>Export</strong> — Export your data (vault contents, agent definitions, configurations) at any time while your subscription is active.</li>
+        <li><strong>Objection</strong> — Object to processing of your data for specific purposes.</li>
+      </ul>
+      <p>To exercise these rights, contact us at the email address below.</p>
+
+      <h2>7. Data Retention</h2>
+      <ul>
+        <li><strong>Account data</strong> — retained while your account is active and for 30 days after deletion request.</li>
+        <li><strong>Access logs</strong> — retained for 90 days.</li>
+        <li><strong>Payment records</strong> — retained by Stripe according to their policies and applicable tax/financial regulations.</li>
+        <li><strong>Vault and agent data</strong> — stored on your server instance. Deleted when you remove it or 30 days after account termination.</li>
+      </ul>
+
+      <h2>8. International Users</h2>
+      <p>The Service is hosted in the United States. If you access the Service from outside the United States, your information will be transferred to and processed in the United States. By using the Service, you consent to this transfer.</p>
+      <p>For users in the European Economic Area (EEA) or United Kingdom, we process data under the legal basis of contract performance (providing the Service you subscribed to) and legitimate interests (security, service improvement).</p>
+
+      <h2>9. Children's Privacy</h2>
+      <p>The Service is not intended for use by anyone under the age of 18. We do not knowingly collect personal information from children. If we learn that we have collected data from a child under 18, we will delete that information promptly.</p>
+
+      <h2>10. Third-Party Links</h2>
+      <p>The Service may contain links to third-party websites or services. We are not responsible for the privacy practices of these third parties. We encourage you to review the privacy policies of any third-party services you access.</p>
+
+      <h2>11. Changes to This Policy</h2>
+      <p>We may update this Privacy Policy from time to time. Material changes will be communicated via email to active subscribers at least 30 days before taking effect. The "Effective Date" at the top of this page indicates when the policy was last revised.</p>
+
+      <h2>12. Contact</h2>
+      <p>For privacy-related questions, data requests, or concerns, contact us at:</p>
+      <p class="legal-contact">privacy@ai-os.dev</p>
+
+      <div class="legal-nav-bottom">
+        <a href="/terms">&larr; Terms of Service</a>
+      </div>
+    </div>
+  </main>
+
+  <footer class="site-footer">
+    <div class="footer-bottom">
+      <p>&copy; 2026 AI OS Orchestration Lab. All rights reserved.</p>
+    </div>
+  </footer>
+</body>
+</html>

@@ -1,0 +1,40 @@
+type: object
+required: [mission, version, roles]
+properties:
+  mission:
+    type: string
+  version:
+    type: string
+  created:
+    type: string
+    format: date
+  roles:
+    type: array
+    items:
+      type: object
+      required: [name, model, description]
+      properties:
+        name:
+          type: string
+          pattern: "^[a-z][a-z0-9-]*$"
+        model:
+          type: string
+          enum: [opus, sonnet, haiku]
+        description:
+          type: string
+        tools:
+          type: array
+          items:
+            type: string
+        skills:
+          type: array
+          items:
+            type: string
+        always_active:
+          type: boolean
+        read_only:
+          type: boolean
+  escalation_path:
+    type: array
+    items:
+      type: string

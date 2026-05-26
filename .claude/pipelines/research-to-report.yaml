@@ -1,0 +1,82 @@
+name: research-to-report
+description: End-to-end research pipeline — from question to polished deliverable
+trigger: manual
+estimated_time: ~45min
+
+stages:
+  - id: research
+    skill: deep-research
+    agent: researcher
+    inputs:
+      topic: "{{topic}}"
+      min_sources: 8
+    outputs:
+      - raw_findings
+      - source_list
+    timeout: 15m
+
+  - id: synthesize
+    skill: deep-research
+    agent: synthesis
+    depends_on: [research]
+    inputs:
+      findings: "{{research.raw_findings}}"
+      sources: "{{research.source_list}}"
+    outputs:
+      - synthesis_map
+      - consensus_items
+      - conflicts
+      - knowledge_gaps
+    timeout: 10m
+
+  - id: outline
+    skill: academic-paper
+    agent: research-architect
+    depends_on: [synthesize]
+    inputs:
+      synthesis: "{{synthesize.synthesis_map}}"
+      gaps: "{{synthesize.knowledge_gaps}}"
+    outputs:
+      - document_outline
+      - methodology_notes
+    timeout: 5m
+
+  - id: compile
+    skill: academic-paper
+    agent: report-compiler
+    depends_on: [outline, synthesize]
+    inputs:
+      outline: "{{outline.document_outline}}"
+      findings: "{{synthesize.consensus_items}}"
+      conflicts: "{{synthesize.conflicts}}"
+      style: "{{citation_style|APA}}"
+    outputs:
+      - final_report
+      - reference_list
+    timeout: 10m
+
+  - id: review
+    skill: academic-reviewer
+    agent: reviewer
+    depends_on: [compile]
+    inputs:
+      document: "{{compile.final_report}}"
+      references: "{{compile.reference_list}}"
+    outputs:
+      - verdict
+      - feedback
+    gate: advisory
+    timeout: 5m
+
+parameters:
+  topic:
+    type: string
+    required: true
+    description: The research question or topic
+  citation_style:
+    type: enum
+    options: [APA, MLA, Chicago, IEEE]
+    default: APA
+
+output_artifact: "report-{{topic|slugify}}-{{date}}.md"
+vault_folder: outputs

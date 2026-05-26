@@ -1,0 +1,1112 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AI OS — Orchestration Lab</title>
+  <link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+  <div class="app">
+    <!-- Sidebar -->
+    <aside class="sidebar">
+      <div class="sidebar-header">
+        <div class="logo">
+          <span class="logo-icon">&#9670;</span>
+          <span class="logo-text">AI OS</span>
+        </div>
+        <span class="version">v2.0</span>
+      </div>
+      <nav class="nav">
+        <a href="#" class="nav-item active" data-view="dashboard">
+          <span class="nav-icon">&#9632;</span> Dashboard
+        </a>
+        <a href="#" class="nav-item" data-view="agents">
+          <span class="nav-icon">&#9786;</span> Agents
+        </a>
+        <a href="#" class="nav-item" data-view="skills">
+          <span class="nav-icon">&#9889;</span> Skills
+        </a>
+        <a href="#" class="nav-item" data-view="workflows">
+          <span class="nav-icon">&#9654;</span> Workflows
+        </a>
+        <a href="#" class="nav-item" data-view="mission">
+          <span class="nav-icon">&#9733;</span> Mission
+        </a>
+        <a href="#" class="nav-item" data-view="inbox">
+          <span class="nav-icon">&#9993;</span> Inbox
+          <span class="nav-badge" id="inboxBadge"></span>
+        </a>
+        <a href="#" class="nav-item" data-view="timeline">
+          <span class="nav-icon">&#8942;</span> Timeline
+        </a>
+        <a href="#" class="nav-item" data-view="schedules">
+          <span class="nav-icon">&#128339;</span> Schedules
+        </a>
+        <a href="#" class="nav-item" data-view="radar">
+          <span class="nav-icon">&#128225;</span> Tech Radar
+          <span class="nav-badge" id="radarBadge"></span>
+        </a>
+        <a href="#" class="nav-item" data-view="vault">
+          <span class="nav-icon">&#128451;</span> Memory Vault
+        </a>
+        <a href="#" class="nav-item" data-view="costs">
+          <span class="nav-icon">&#128176;</span> Cost Tracker
+          <span class="nav-badge" id="costBadge"></span>
+        </a>
+        <a href="#" class="nav-item" data-view="pipelines">
+          <span class="nav-icon">&#9881;</span> Pipelines
+        </a>
+        <a href="#" class="nav-item" data-view="identity">
+          <span class="nav-icon">&#128100;</span> Identity
+        </a>
+        <a href="#" class="nav-item" data-view="verify">
+          <span class="nav-icon">&#9989;</span> Verification
+          <span class="nav-badge" id="verifyBadge"></span>
+        </a>
+        <a href="#" class="nav-item" data-view="automations">
+          <span class="nav-icon">&#9889;</span> Automations
+        </a>
+        <a href="#" class="nav-item" data-view="social">
+          <span class="nav-icon">&#128172;</span> Social Intel
+        </a>
+        <a href="#" class="nav-item" data-view="contexts">
+          <span class="nav-icon">&#128193;</span> Contexts
+        </a>
+        <a href="#" class="nav-item" data-view="browser">
+          <span class="nav-icon">&#127760;</span> Browser
+        </a>
+        <a href="#" class="nav-item" data-view="grok">
+          <span class="nav-icon">&#9889;</span> Grok Live
+        </a>
+        <a href="#" class="nav-item" data-view="knowledge">
+          <span class="nav-icon">&#129504;</span> Knowledge Graph
+        </a>
+        <a href="#" class="nav-item" data-view="design">
+          <span class="nav-icon">&#127912;</span> Design System
+        </a>
+        <a href="#" class="nav-item" data-view="media">
+          <span class="nav-icon">&#127916;</span> Media Pipeline
+        </a>
+        <a href="#" class="nav-item" data-view="routines">
+          <span class="nav-icon">&#128260;</span> Routines
+        </a>
+        <a href="#" class="nav-item" data-view="products">
+          <span class="nav-icon">&#128230;</span> Products
+        </a>
+        <a href="#" class="nav-item" data-view="leads">
+          <span class="nav-icon">&#127919;</span> Lead Gen
+        </a>
+        <a href="#" class="nav-item" data-view="marketing">
+          <span class="nav-icon">&#128227;</span> Marketing
+        </a>
+        <a href="#" class="nav-item" data-view="golden-loop">
+          <span class="nav-icon">&#128311;</span> Golden Loop
+        </a>
+        <a href="#" class="nav-item" data-view="vibe-design">
+          <span class="nav-icon">&#127912;</span> Vibe Design
+        </a>
+        <a href="#" class="nav-item" data-view="3d-studio">
+          <span class="nav-icon">&#127922;</span> 3D Studio
+        </a>
+        <a href="#" class="nav-item" data-view="predictions">
+          <span class="nav-icon">&#128200;</span> Predictions
+        </a>
+        <a href="#" class="nav-item" data-view="batch">
+          <span class="nav-icon">&#9968;</span> Batch Queue
+        </a>
+        <a href="#" class="nav-item" data-view="artifacts">
+          <span class="nav-icon">&#9776;</span> Artifacts
+        </a>
+        <a href="#" class="nav-item" data-view="logs">
+          <span class="nav-icon">&#9881;</span> Logs
+        </a>
+      </nav>
+      <div class="sidebar-footer">
+        <div class="status-indicator">
+          <span class="status-dot online"></span>
+          <span>System Online</span>
+        </div>
+      </div>
+    </aside>
+
+    <!-- Main Content -->
+    <main class="main">
+      <header class="topbar">
+        <h1 class="page-title" id="pageTitle">Dashboard</h1>
+        <div class="topbar-actions">
+          <span class="uptime" id="uptime">--</span>
+          <button class="btn btn-primary" id="newWorkflowBtn">+ New Workflow</button>
+        </div>
+      </header>
+
+      <div class="content" id="content">
+        <!-- Dashboard View -->
+        <div class="view active" id="view-dashboard">
+          <div class="stats-grid">
+            <div class="stat-card">
+              <div class="stat-value" id="statAgents">-</div>
+              <div class="stat-label">Active Agents</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-value" id="statSkills">-</div>
+              <div class="stat-label">Skills Available</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-value" id="statWorkflows">-</div>
+              <div class="stat-label">Workflows Run</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-value" id="statMission">-</div>
+              <div class="stat-label">Mission Status</div>
+            </div>
+          </div>
+
+          <div class="grid-2col">
+            <section class="panel">
+              <h2 class="panel-title">Quick Actions</h2>
+              <div class="quick-actions" id="quickActions">
+                <!-- Populated by JS -->
+              </div>
+            </section>
+            <section class="panel">
+              <h2 class="panel-title">Live Activity</h2>
+              <div class="activity-feed" id="activityFeed">
+                <!-- Populated by JS -->
+              </div>
+            </section>
+          </div>
+
+          <div class="grid-2col">
+            <section class="panel">
+              <h2 class="panel-title">Agent Fleet Status</h2>
+              <div class="fleet-grid" id="fleetGrid">
+                <!-- Populated by JS -->
+              </div>
+            </section>
+            <section class="panel">
+              <h2 class="panel-title">Context Health</h2>
+              <div class="context-health" id="contextHealth">
+                <!-- Populated by JS -->
+              </div>
+            </section>
+          </div>
+
+          <section class="panel">
+            <h2 class="panel-title">Team Overview</h2>
+            <div class="team-grid" id="teamGrid">
+              <!-- Populated by JS -->
+            </div>
+          </section>
+        </div>
+
+        <!-- Agents View -->
+        <div class="view" id="view-agents">
+          <div class="agents-grid" id="agentsGrid">
+            <!-- Populated by JS -->
+          </div>
+        </div>
+
+        <!-- Skills View — One-Click Launchpad -->
+        <div class="view" id="view-skills">
+          <div class="skills-launchpad-header">
+            <div class="vault-header-left">
+              <h2 class="radar-title">Skill Launchpad</h2>
+              <span class="radar-subtitle">One-click execution for all skills — configure parameters and launch</span>
+            </div>
+            <div class="skills-launchpad-actions">
+              <select class="radar-filter" id="skillCategoryFilter">
+                <option value="all">All Categories</option>
+                <option value="research">Research</option>
+                <option value="marketing">Marketing</option>
+                <option value="sales">Sales</option>
+                <option value="security">Security</option>
+                <option value="design">Design</option>
+                <option value="intelligence">Intelligence</option>
+              </select>
+              <input type="text" class="vault-search" id="skillSearch" placeholder="Search skills..." style="width:180px;" />
+            </div>
+          </div>
+
+          <div class="skills-stats" id="skillsStats">
+            <!-- Populated by JS -->
+          </div>
+
+          <div class="skills-grid" id="skillsGrid">
+            <!-- Populated by JS -->
+          </div>
+
+          <section class="panel" style="margin-top: 20px;">
+            <h3 class="panel-title">Recent Executions <span class="skills-exec-badge" id="skillsExecBadge"></span></h3>
+            <div class="skills-executions" id="skillsExecutions">
+              <div class="empty-state">No skills executed yet. Click a skill above to launch.</div>
+            </div>
+          </section>
+        </div>
+
+        <!-- Workflows View -->
+        <div class="view" id="view-workflows">
+          <div class="workflows-list" id="workflowsList">
+            <div class="empty-state">No workflows executed yet. Use Skills to launch one.</div>
+          </div>
+        </div>
+
+        <!-- Mission View -->
+        <div class="view" id="view-mission">
+          <div class="mission-content" id="missionContent">
+            <!-- Populated by JS -->
+          </div>
+        </div>
+
+        <!-- Artifacts View -->
+        <div class="view" id="view-artifacts">
+          <div class="artifacts-list" id="artifactsList">
+            <div class="empty-state">No artifacts generated yet.</div>
+          </div>
+        </div>
+
+        <!-- Inbox View (Human-in-the-Loop) -->
+        <div class="view" id="view-inbox">
+          <div class="inbox-header-bar">
+            <div class="inbox-filters">
+              <button class="filter-btn active" data-filter="all">All</button>
+              <button class="filter-btn" data-filter="blocking">Blocking</button>
+              <button class="filter-btn" data-filter="advisory">Advisory</button>
+            </div>
+          </div>
+          <div class="inbox-list" id="inboxList">
+            <!-- Populated by JS -->
+          </div>
+        </div>
+
+        <!-- Timeline View -->
+        <div class="view" id="view-timeline">
+          <div class="timeline-container" id="timelineContainer">
+            <!-- Populated by JS -->
+          </div>
+        </div>
+
+        <!-- Schedules View -->
+        <div class="view" id="view-schedules">
+          <div class="schedules-header">
+            <h2 class="radar-title">Agent Schedules</h2>
+            <span class="radar-subtitle">Automated daily runs for Scout and Researcher agents</span>
+          </div>
+
+          <div class="schedules-grid" id="schedulesGrid">
+            <!-- Populated by JS -->
+          </div>
+
+          <section class="panel" style="margin-top: 24px;">
+            <h3 class="panel-title">Run History</h3>
+            <div class="schedule-history" id="scheduleHistory">
+              <!-- Populated by JS -->
+            </div>
+          </section>
+        </div>
+
+        <!-- Tech Radar View -->
+        <div class="view" id="view-radar">
+          <div class="radar-header">
+            <div class="radar-header-left">
+              <h2 class="radar-title">Intelligence Feed</h2>
+              <span class="radar-subtitle" id="radarLastSweep">Last sweep: --</span>
+            </div>
+            <div class="radar-actions">
+              <select class="radar-filter" id="radarCategoryFilter">
+                <option value="all">All Categories</option>
+                <option value="models">Models</option>
+                <option value="frameworks">Frameworks</option>
+                <option value="tools">Tools</option>
+                <option value="apis">APIs</option>
+                <option value="security">Security</option>
+                <option value="infrastructure">Infrastructure</option>
+              </select>
+              <button class="btn btn-primary" id="triggerSweepBtn">&#128225; Run Sweep</button>
+            </div>
+          </div>
+
+          <div class="radar-stats" id="radarStats">
+            <!-- Populated by JS -->
+          </div>
+
+          <div class="radar-layout">
+            <section class="panel radar-findings-panel">
+              <h3 class="panel-title">Latest Findings</h3>
+              <div class="radar-findings" id="radarFindings">
+                <!-- Populated by JS -->
+              </div>
+            </section>
+
+            <section class="panel radar-proposals-panel">
+              <h3 class="panel-title">Update Proposals <span class="proposals-badge" id="proposalsBadge"></span></h3>
+              <div class="radar-proposals" id="radarProposals">
+                <!-- Populated by JS -->
+              </div>
+            </section>
+          </div>
+        </div>
+
+        <!-- Memory Vault View -->
+        <div class="view" id="view-vault">
+          <div class="vault-header">
+            <div class="vault-header-left">
+              <h2 class="radar-title">Memory Vault</h2>
+              <span class="radar-subtitle">Persistent knowledge store — raw intake, synthesized wiki, final outputs</span>
+            </div>
+            <div class="vault-actions">
+              <div class="vault-search-wrap">
+                <input type="text" class="vault-search" id="vaultSearch" placeholder="Search vault..." />
+              </div>
+            </div>
+          </div>
+
+          <div class="vault-stats" id="vaultStats">
+            <!-- Populated by JS -->
+          </div>
+
+          <div class="vault-layout">
+            <section class="panel vault-folder-panel" data-folder="raw">
+              <h3 class="panel-title">Raw Intake</h3>
+              <div class="vault-folder-desc">Unprocessed data, meeting notes, web clippings</div>
+              <div class="vault-files" id="vaultRaw"><!-- JS --></div>
+            </section>
+            <section class="panel vault-folder-panel" data-folder="wiki">
+              <h3 class="panel-title">Wiki</h3>
+              <div class="vault-folder-desc">Synthesized knowledge, processed reports</div>
+              <div class="vault-files" id="vaultWiki"><!-- JS --></div>
+            </section>
+            <section class="panel vault-folder-panel" data-folder="outputs">
+              <h3 class="panel-title">Outputs</h3>
+              <div class="vault-folder-desc">Final deliverables, compiled reports</div>
+              <div class="vault-files" id="vaultOutputs"><!-- JS --></div>
+            </section>
+          </div>
+
+          <section class="panel" style="margin-top: 20px;">
+            <h3 class="panel-title">Search Results</h3>
+            <div class="vault-search-results" id="vaultSearchResults">
+              <div class="empty-state">Type a query above to search across all vault files.</div>
+            </div>
+          </section>
+
+          <section class="panel" style="margin-top: 20px;">
+            <h3 class="panel-title">Session Context Hook</h3>
+            <div class="vault-context" id="vaultContext"><!-- JS --></div>
+          </section>
+        </div>
+
+        <!-- Cost Tracker View -->
+        <div class="view" id="view-costs">
+          <div class="costs-header">
+            <div class="vault-header-left">
+              <h2 class="radar-title">Cost Tracker</h2>
+              <span class="radar-subtitle">Token usage, API spend, and budget monitoring across all engines</span>
+            </div>
+          </div>
+
+          <div class="costs-budget-bar" id="costsBudgetBar">
+            <!-- Populated by JS -->
+          </div>
+
+          <div class="costs-stats" id="costsStats">
+            <!-- Populated by JS -->
+          </div>
+
+          <div class="costs-layout">
+            <section class="panel">
+              <h3 class="panel-title">Spend by Engine Tier</h3>
+              <div class="costs-tier-breakdown" id="costsTierBreakdown"><!-- JS --></div>
+            </section>
+            <section class="panel">
+              <h3 class="panel-title">Spend by Agent</h3>
+              <div class="costs-agent-breakdown" id="costsAgentBreakdown"><!-- JS --></div>
+            </section>
+          </div>
+
+          <section class="panel" style="margin-top: 20px;">
+            <h3 class="panel-title">Recent Transactions</h3>
+            <div class="costs-ledger" id="costsLedger"><!-- JS --></div>
+          </section>
+        </div>
+
+        <!-- Pipelines View -->
+        <div class="view" id="view-pipelines">
+          <div class="vault-header">
+            <div class="vault-header-left">
+              <h2 class="radar-title">Skill Pipelines</h2>
+              <span class="radar-subtitle">Multi-step workflows that chain skills and agents together</span>
+            </div>
+          </div>
+
+          <div class="pipelines-available" id="pipelinesAvailable">
+            <!-- Populated by JS -->
+          </div>
+
+          <section class="panel" style="margin-top: 20px;">
+            <h3 class="panel-title">Pipeline Runs</h3>
+            <div class="pipeline-runs" id="pipelineRuns">
+              <div class="empty-state">No pipeline runs yet. Select a pipeline above to execute.</div>
+            </div>
+          </section>
+        </div>
+
+        <!-- Identity View -->
+        <div class="view" id="view-identity">
+          <div class="vault-header">
+            <div class="vault-header-left">
+              <h2 class="radar-title">Identity Layer</h2>
+              <span class="radar-subtitle">Soul, User, and Personality definitions that shape agent behavior</span>
+            </div>
+          </div>
+
+          <div class="identity-cards" id="identityCards">
+            <!-- Populated by JS -->
+          </div>
+        </div>
+
+        <!-- Verification View -->
+        <div class="view" id="view-verify">
+          <div class="radar-header">
+            <div class="radar-header-left">
+              <h2 class="radar-title">Verification Protocols</h2>
+              <span class="radar-subtitle">Plan-Execute-Verify — automated quality gates for all agent outputs</span>
+            </div>
+            <div class="radar-actions">
+              <select class="radar-filter" id="verifyStrictnessFilter">
+                <option value="standard">Standard</option>
+                <option value="lenient">Lenient</option>
+                <option value="strict">Strict</option>
+              </select>
+              <button class="btn btn-primary" id="runManualVerifyBtn">Run Verification</button>
+            </div>
+          </div>
+
+          <div class="verify-stats" id="verifyStats">
+            <!-- Populated by JS -->
+          </div>
+
+          <div class="verify-layout">
+            <section class="panel">
+              <h3 class="panel-title">Rubric Library</h3>
+              <div class="verify-rubrics" id="verifyRubrics">
+                <!-- Populated by JS -->
+              </div>
+            </section>
+            <section class="panel">
+              <h3 class="panel-title">Category Pass Rates</h3>
+              <div class="verify-category-rates" id="verifyCategoryRates">
+                <!-- Populated by JS -->
+              </div>
+            </section>
+          </div>
+
+          <section class="panel" style="margin-top: 20px;">
+            <h3 class="panel-title">Verification History <span class="verify-history-badge" id="verifyHistoryBadge"></span></h3>
+            <div class="verify-history" id="verifyHistory">
+              <div class="empty-state">No verifications run yet.</div>
+            </div>
+          </section>
+        </div>
+
+        <!-- Automations View -->
+        <div class="view" id="view-automations">
+          <div class="vault-header">
+            <div class="vault-header-left">
+              <h2 class="radar-title">Automation Bridge</h2>
+              <span class="radar-subtitle">N8N, Zapier, and webhook integrations for real-world actions</span>
+            </div>
+          </div>
+
+          <div class="automations-registry" id="automationsRegistry">
+            <!-- Populated by JS -->
+          </div>
+
+          <section class="panel" style="margin-top: 20px;">
+            <h3 class="panel-title">Automation History</h3>
+            <div class="automations-history" id="automationsHistory">
+              <!-- Populated by JS -->
+            </div>
+          </section>
+        </div>
+
+        <!-- Social Intel View -->
+        <div class="view" id="view-social">
+          <div class="radar-header">
+            <div class="radar-header-left">
+              <h2 class="radar-title">Social Intelligence</h2>
+              <span class="radar-subtitle" id="socialLastSweep">Real-time trend monitoring across social platforms</span>
+            </div>
+            <div class="radar-actions">
+              <select class="radar-filter" id="socialCategoryFilter">
+                <option value="all">All Categories</option>
+                <option value="models">Models</option>
+                <option value="frameworks">Frameworks</option>
+                <option value="tools">Tools</option>
+                <option value="security">Security</option>
+              </select>
+              <button class="btn btn-primary" id="triggerSocialSweepBtn">&#128172; Run Sweep</button>
+            </div>
+          </div>
+
+          <div class="radar-stats" id="socialStats">
+            <!-- Populated by JS -->
+          </div>
+
+          <div class="social-findings" id="socialFindings">
+            <!-- Populated by JS -->
+          </div>
+        </div>
+
+        <!-- Context Inheritance View -->
+        <div class="view" id="view-contexts">
+          <div class="radar-header">
+            <div class="radar-header-left">
+              <h2 class="radar-title">Project Contexts</h2>
+              <span class="radar-subtitle">Parent-child rule inheritance — project overrides shape agent behavior</span>
+            </div>
+            <div class="radar-actions">
+              <button class="btn btn-primary" id="newContextBtn">+ New Project</button>
+            </div>
+          </div>
+
+          <div class="context-active-bar" id="contextActiveBar">
+            <!-- Populated by JS -->
+          </div>
+
+          <div class="context-projects" id="contextProjects">
+            <!-- Populated by JS -->
+          </div>
+
+          <section class="panel" style="margin-top: 20px;">
+            <h3 class="panel-title">Resolved Context Preview</h3>
+            <div class="context-resolved" id="contextResolved">
+              <div class="empty-state">Select a project above to preview resolved context.</div>
+            </div>
+          </section>
+        </div>
+
+        <!-- Browser Agent View -->
+        <div class="view" id="view-browser">
+          <div class="radar-header">
+            <div class="radar-header-left">
+              <h2 class="radar-title">Browser Agent</h2>
+              <span class="radar-subtitle">Playwright-powered web automation — navigate, extract, screenshot</span>
+            </div>
+            <div class="radar-actions">
+              <button class="btn btn-primary" id="newBrowserTaskBtn">+ New Task</button>
+            </div>
+          </div>
+
+          <div class="browser-stats" id="browserStats">
+            <!-- Populated by JS -->
+          </div>
+
+          <section class="panel">
+            <h3 class="panel-title">Task History</h3>
+            <div class="browser-tasks" id="browserTasks">
+              <div class="empty-state">No browser tasks yet. Click "New Task" to start.</div>
+            </div>
+          </section>
+        </div>
+
+        <!-- Grok Real-Time View -->
+        <div class="view" id="view-grok">
+          <div class="radar-header">
+            <div class="radar-header-left">
+              <h2 class="radar-title">Grok Real-Time Intelligence</h2>
+              <span class="radar-subtitle">xAI Grok-powered live search, trending topics, fact-checking &amp; monitoring</span>
+            </div>
+            <div class="radar-actions">
+              <span class="grok-rate-limit" id="grokRateLimit"></span>
+              <button class="btn btn-secondary btn-sm" id="grokClearCacheBtn">Clear Cache</button>
+            </div>
+          </div>
+
+          <div class="grok-stats" id="grokStats">
+            <!-- Populated by JS -->
+          </div>
+
+          <section class="panel">
+            <h3 class="panel-title">Query Console</h3>
+            <div class="grok-query-console">
+              <div class="grok-input-row">
+                <input type="text" id="grokQueryInput" class="grok-input" placeholder="Ask Grok anything — real-time web search, trending topics, fact-checks..." />
+                <select id="grokQueryType" class="grok-type-select">
+                  <option value="search">&#128269; Search</option>
+                  <option value="trending">&#128200; Trending</option>
+                  <option value="fact-check">&#9989; Fact-Check</option>
+                  <option value="monitor">&#128225; Monitor</option>
+                </select>
+                <select id="grokQueryScope" class="grok-scope-select">
+                  <option value="all">All Sources</option>
+                  <option value="web">Web Only</option>
+                  <option value="social">Social Only</option>
+                  <option value="news">News Only</option>
+                </select>
+                <button class="btn btn-primary" id="grokSendBtn">&#9889; Query</button>
+              </div>
+              <div class="grok-stream-output" id="grokStreamOutput">
+                <div class="empty-state">Results will stream here in real-time...</div>
+              </div>
+            </div>
+          </section>
+
+          <section class="panel" style="margin-top: 20px;">
+            <h3 class="panel-title">Query History</h3>
+            <div class="grok-history" id="grokHistory">
+              <div class="empty-state">No queries yet. Try the console above.</div>
+            </div>
+          </section>
+        </div>
+
+        <!-- Knowledge Graph View -->
+        <div class="view" id="view-knowledge">
+          <div class="radar-header">
+            <div class="radar-header-left">
+              <h2 class="radar-title">Knowledge Graph</h2>
+              <span class="radar-subtitle">Auto-organizing sources, mind maps, and cross-referenced intelligence</span>
+            </div>
+            <div class="radar-actions">
+              <select class="radar-filter" id="knowledgeCategoryFilter">
+                <option value="all">All Types</option>
+                <option value="document">Documents</option>
+                <option value="link">Links</option>
+                <option value="pdf">PDFs</option>
+                <option value="video">Videos</option>
+                <option value="note">Notes</option>
+              </select>
+              <button class="btn btn-primary" id="knowledgeAutoBtn">&#129504; Auto-Categorize</button>
+            </div>
+          </div>
+
+          <div class="knowledge-stats" id="knowledgeStats">
+            <!-- Populated by JS -->
+          </div>
+
+          <div class="knowledge-layout">
+            <section class="panel knowledge-sources-panel">
+              <h3 class="panel-title">Sources <span class="knowledge-badge" id="knowledgeSourcesBadge"></span></h3>
+              <div class="knowledge-sources" id="knowledgeSources">
+                <!-- Populated by JS -->
+              </div>
+            </section>
+            <section class="panel knowledge-graph-panel">
+              <h3 class="panel-title">Graph Connections</h3>
+              <div class="knowledge-graph-viz" id="knowledgeGraphViz">
+                <div class="empty-state">Upload sources to build the knowledge graph.</div>
+              </div>
+            </section>
+          </div>
+        </div>
+
+        <!-- Design System View -->
+        <div class="view" id="view-design">
+          <div class="radar-header">
+            <div class="radar-header-left">
+              <h2 class="radar-title">Design System Protocol</h2>
+              <span class="radar-subtitle">DESIGN.md — dual-structure format with reasoning + tokens, color hierarchies &amp; WCAG linter</span>
+            </div>
+            <div class="radar-actions">
+              <button class="btn btn-secondary btn-sm" id="designLintBtn">&#128270; Run Linter</button>
+              <button class="btn btn-secondary btn-sm" id="designExportBtn">&#128230; Export DESIGN.md</button>
+              <button class="btn btn-primary btn-sm" id="designCloneBtn">&#127912; Clone Brand from URL</button>
+            </div>
+          </div>
+
+          <div class="design-stats" id="designStats">
+            <!-- Populated by JS -->
+          </div>
+
+          <!-- Brand Reasoning Panel (Dual-Structure) -->
+          <section class="panel" style="margin-bottom:20px;">
+            <h3 class="panel-title">&#129504; Brand Reasoning <span class="badge badge-info" style="margin-left:8px;font-size:10px;">Dual-Structure</span></h3>
+            <p class="panel-subtitle" style="color:var(--text-muted);font-size:12px;margin-bottom:12px;">Emotional intent and design philosophy — guides AI creative decisions beyond exact values</p>
+            <div class="design-reasoning" id="designReasoning">
+              <!-- Populated by JS -->
+            </div>
+          </section>
+
+          <div class="design-layout">
+            <section class="panel">
+              <h3 class="panel-title">Design Tokens</h3>
+              <div class="design-tokens" id="designTokens">
+                <!-- Populated by JS -->
+              </div>
+            </section>
+            <section class="panel">
+              <h3 class="panel-title">Linter Results</h3>
+              <div class="design-linter" id="designLinter">
+                <div class="empty-state">Click "Run Linter" to audit your DESIGN.md for accessibility &amp; consistency.</div>
+              </div>
+            </section>
+          </div>
+
+          <!-- Color Hierarchy Visualization -->
+          <section class="panel" style="margin-top:20px;">
+            <h3 class="panel-title">&#127912; Color Hierarchy &amp; Roles</h3>
+            <p class="panel-subtitle" style="color:var(--text-muted);font-size:12px;margin-bottom:12px;">Colors assigned to hierarchical roles with screen coverage percentages</p>
+            <div class="design-palette" id="designPalette">
+              <!-- Populated by JS -->
+            </div>
+          </section>
+
+          <!-- Component References Panel -->
+          <section class="panel" style="margin-top:20px;">
+            <h3 class="panel-title">&#128736; Component References</h3>
+            <p class="panel-subtitle" style="color:var(--text-muted);font-size:12px;margin-bottom:12px;">Components point to roles, not hardcoded hex — update a role and all components follow</p>
+            <div class="design-components" id="designComponents">
+              <!-- Populated by JS -->
+            </div>
+          </section>
+
+          <!-- Brand Clone Modal (hidden by default) -->
+          <div class="modal-overlay" id="brandCloneModal" style="display:none;">
+            <div class="modal">
+              <div class="modal-header">
+                <h3>&#127912; Clone Brand from URL</h3>
+                <button class="modal-close" id="brandCloneClose">&times;</button>
+              </div>
+              <div class="modal-body">
+                <p style="color:var(--text-muted);margin-bottom:16px;">Paste a website URL to extract its color palette, typography, spacing, and overall vibe into a custom DESIGN.md.</p>
+                <div class="form-group">
+                  <label class="form-label">Website URL</label>
+                  <input type="url" class="form-input" id="brandCloneUrl" placeholder="https://example.com" />
+                </div>
+                <div id="brandCloneStatus" style="margin-top:12px;"></div>
+              </div>
+              <div class="modal-footer">
+                <button class="btn btn-secondary btn-sm" id="brandCloneCancelBtn">Cancel</button>
+                <button class="btn btn-primary btn-sm" id="brandCloneSubmitBtn">&#128269; Extract Brand</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Export Modal (hidden by default) -->
+          <div class="modal-overlay" id="designExportModal" style="display:none;">
+            <div class="modal">
+              <div class="modal-header">
+                <h3>&#128230; Export DESIGN.md</h3>
+                <button class="modal-close" id="designExportClose">&times;</button>
+              </div>
+              <div class="modal-body">
+                <p style="color:var(--text-muted);margin-bottom:16px;">Export your design system as a portable DESIGN.md for other coding agents.</p>
+                <div class="form-group">
+                  <label class="form-label">Target Platform</label>
+                  <select class="form-input" id="exportTargetSelect">
+                    <option value="claude-code">Claude Code</option>
+                    <option value="cursor">Cursor</option>
+                    <option value="anti-gravity">Anti-gravity</option>
+                    <option value="codex">Codex</option>
+                  </select>
+                </div>
+                <div id="exportPreview" style="margin-top:12px;"></div>
+              </div>
+              <div class="modal-footer">
+                <button class="btn btn-secondary btn-sm" id="designExportCancelBtn">Cancel</button>
+                <button class="btn btn-primary btn-sm" id="designExportSubmitBtn">&#128190; Generate &amp; Download</button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Media Production View -->
+        <div class="view" id="view-media">
+          <div class="radar-header">
+            <div class="radar-header-left">
+              <h2 class="radar-title">Media Production Pipeline</h2>
+              <span class="radar-subtitle">Remotion video, Google Vids, Blender 3D — prompt-to-production media</span>
+            </div>
+            <div class="radar-actions">
+              <button class="btn btn-primary" id="mediaProduceBtn">+ New Production</button>
+            </div>
+          </div>
+
+          <div class="media-stats" id="mediaStats">
+            <!-- Populated by JS -->
+          </div>
+
+          <div class="media-layout">
+            <section class="panel">
+              <h3 class="panel-title">Active Productions</h3>
+              <div class="media-productions" id="mediaProductions">
+                <div class="empty-state">No active productions. Click "New Production" to start.</div>
+              </div>
+            </section>
+            <section class="panel">
+              <h3 class="panel-title">Templates</h3>
+              <div class="media-templates" id="mediaTemplates">
+                <!-- Populated by JS -->
+              </div>
+            </section>
+          </div>
+        </div>
+
+        <!-- Routines / Continuous Loops View -->
+        <div class="view" id="view-routines">
+          <div class="radar-header">
+            <div class="radar-header-left">
+              <h2 class="radar-title">Continuous Loop Workflows</h2>
+              <span class="radar-subtitle">CRON-scheduled routines, auto-generation loops &amp; rate-limit tripping</span>
+            </div>
+            <div class="radar-actions">
+              <button class="btn btn-primary" id="routineNewBtn">+ New Routine</button>
+            </div>
+          </div>
+
+          <div class="routines-stats" id="routinesStats">
+            <!-- Populated by JS -->
+          </div>
+
+          <section class="panel">
+            <h3 class="panel-title">Active Routines</h3>
+            <div class="routines-list" id="routinesList">
+              <div class="empty-state">No routines configured. Click "New Routine" to create one.</div>
+            </div>
+          </section>
+        </div>
+
+        <!-- Product Factory View -->
+        <div class="view" id="view-products">
+          <div class="radar-header">
+            <div class="radar-header-left">
+              <h2 class="radar-title">Product Factory</h2>
+              <span class="radar-subtitle">AI-generated digital products — spreadsheets, templates, toolkits for Etsy &amp; Gumroad</span>
+            </div>
+            <div class="radar-actions">
+              <button class="btn btn-primary" id="productNewBtn">+ New Product</button>
+            </div>
+          </div>
+
+          <div class="products-stats" id="productsStats"></div>
+
+          <section class="panel">
+            <h3 class="panel-title">Products</h3>
+            <div class="products-list" id="productsList">
+              <div class="empty-state">No products yet. Click "New Product" to generate one.</div>
+            </div>
+          </section>
+        </div>
+
+        <!-- Lead Generation View -->
+        <div class="view" id="view-leads">
+          <div class="radar-header">
+            <div class="radar-header-left">
+              <h2 class="radar-title">Lead Generation Pipeline</h2>
+              <span class="radar-subtitle">Automated scraping, enrichment, achievement discovery &amp; personalized outreach</span>
+            </div>
+            <div class="radar-actions">
+              <button class="btn btn-primary" id="leadScrapeBtn">+ Scrape Leads</button>
+            </div>
+          </div>
+
+          <div class="leads-stats" id="leadsStats"></div>
+
+          <div class="leads-layout">
+            <section class="panel">
+              <h3 class="panel-title">Lead Pipeline</h3>
+              <div class="leads-list" id="leadsList">
+                <div class="empty-state">No leads yet. Click "Scrape Leads" to start.</div>
+              </div>
+            </section>
+            <section class="panel">
+              <h3 class="panel-title">Campaigns</h3>
+              <div class="leads-campaigns" id="leadsCampaigns"></div>
+            </section>
+          </div>
+        </div>
+
+        <!-- Marketing Hub View -->
+        <div class="view" id="view-marketing">
+          <div class="radar-header">
+            <div class="radar-header-left">
+              <h2 class="radar-title">Marketing Hub</h2>
+              <span class="radar-subtitle">End-to-end content pipelines — ideation to cross-platform distribution</span>
+            </div>
+            <div class="radar-actions">
+              <button class="btn btn-primary" id="marketingQueueBtn">+ Queue Content</button>
+            </div>
+          </div>
+
+          <div class="marketing-stats" id="marketingStats"></div>
+
+          <div class="marketing-layout">
+            <section class="panel">
+              <h3 class="panel-title">Content Pipelines</h3>
+              <div class="marketing-pipelines" id="marketingPipelines"></div>
+            </section>
+            <section class="panel">
+              <h3 class="panel-title">Channels</h3>
+              <div class="marketing-channels" id="marketingChannels"></div>
+            </section>
+          </div>
+
+          <section class="panel" style="margin-top:20px;">
+            <h3 class="panel-title">Content Queue</h3>
+            <div class="marketing-queue" id="marketingQueue">
+              <div class="empty-state">No content queued.</div>
+            </div>
+          </section>
+        </div>
+
+        <!-- Golden Loop View -->
+        <div class="view" id="view-golden-loop">
+          <div class="radar-header">
+            <div class="radar-header-left">
+              <h2 class="radar-title">The Golden Loop</h2>
+              <span class="radar-subtitle">Gem &#8596; NotebookLM sync — AI experts connected to live knowledge bases</span>
+            </div>
+            <div class="radar-actions">
+              <button class="btn btn-primary" id="goldenLoopNewBtn">+ New Loop</button>
+            </div>
+          </div>
+
+          <div class="golden-stats" id="goldenStats"></div>
+
+          <section class="panel">
+            <h3 class="panel-title">Active Loops</h3>
+            <div class="golden-loops" id="goldenLoops">
+              <div class="empty-state">No Golden Loops configured.</div>
+            </div>
+          </section>
+        </div>
+
+        <!-- Vibe Design Studio View -->
+        <div class="view" id="view-vibe-design">
+          <div class="radar-header">
+            <div class="radar-header-left">
+              <h2 class="radar-title">Vibe Design Studio</h2>
+              <span class="radar-subtitle">Prompt-driven UI generation — natural language, voice, sketches &amp; URL extraction</span>
+            </div>
+            <div class="radar-actions">
+              <button class="btn btn-primary" id="vibeNewBtn">+ New Design</button>
+            </div>
+          </div>
+
+          <div class="vibe-stats" id="vibeStats"></div>
+
+          <div class="vibe-layout">
+            <section class="panel">
+              <h3 class="panel-title">Design Projects</h3>
+              <div class="vibe-projects" id="vibeProjects">
+                <div class="empty-state">No designs yet. Click "New Design" to start.</div>
+              </div>
+            </section>
+            <section class="panel">
+              <h3 class="panel-title">Style Controls</h3>
+              <div class="vibe-controls" id="vibeControls"></div>
+            </section>
+          </div>
+        </div>
+
+        <!-- 3D Studio View -->
+        <div class="view" id="view-3d-studio">
+          <div class="radar-header">
+            <div class="radar-header-left">
+              <h2 class="radar-title">3D Production Studio</h2>
+              <span class="radar-subtitle">Blender MCP — text-to-3D environments, product renders &amp; scene generation</span>
+            </div>
+            <div class="radar-actions">
+              <button class="btn btn-primary" id="3dNewBtn">+ New Scene</button>
+            </div>
+          </div>
+
+          <div class="studio3d-stats" id="studio3dStats"></div>
+
+          <section class="panel">
+            <h3 class="panel-title">Scenes</h3>
+            <div class="studio3d-scenes" id="studio3dScenes">
+              <div class="empty-state">No 3D scenes yet.</div>
+            </div>
+          </section>
+        </div>
+
+        <!-- Predictive Analytics View -->
+        <div class="view" id="view-predictions">
+          <div class="radar-header">
+            <div class="radar-header-left">
+              <h2 class="radar-title">Predictive Analytics</h2>
+              <span class="radar-subtitle">AI-estimated forecasts — revenue, engagement, costs &amp; churn predictions</span>
+            </div>
+          </div>
+
+          <div class="predict-stats" id="predictStats"></div>
+
+          <div class="predict-layout">
+            <section class="panel">
+              <h3 class="panel-title">Predictions</h3>
+              <div class="predict-list" id="predictList"></div>
+            </section>
+            <section class="panel">
+              <h3 class="panel-title">Models</h3>
+              <div class="predict-models" id="predictModels"></div>
+            </section>
+          </div>
+        </div>
+
+        <!-- Batch Generation Queue View -->
+        <div class="view" id="view-batch">
+          <div class="radar-header">
+            <div class="radar-header-left">
+              <h2 class="radar-title">Batch Generation Queue</h2>
+              <span class="radar-subtitle">Mass content production — rate-limit tripping to build massive testing libraries</span>
+            </div>
+            <div class="radar-actions">
+              <button class="btn btn-primary" id="batchNewBtn">+ New Batch</button>
+            </div>
+          </div>
+
+          <div class="batch-stats" id="batchStats"></div>
+
+          <section class="panel">
+            <h3 class="panel-title">Batches</h3>
+            <div class="batch-list" id="batchList">
+              <div class="empty-state">No batches yet.</div>
+            </div>
+          </section>
+        </div>
+
+        <!-- Logs View -->
+        <div class="view" id="view-logs">
+          <div class="logs-container" id="logsContainer">
+            <!-- Populated by JS -->
+          </div>
+        </div>
+      </div>
+    </main>
+
+    <!-- Command Chat Panel -->
+    <aside class="chat-panel" id="chatPanel">
+      <div class="chat-header">
+        <span class="chat-title">&#9670; Command</span>
+        <button class="chat-toggle" id="chatToggle">&#9660;</button>
+      </div>
+      <div class="chat-body" id="chatBody">
+        <div class="chat-messages" id="chatMessages">
+          <div class="chat-msg system">
+            <span class="chat-msg-text">Orchestrator ready. Type a goal or command.</span>
+          </div>
+        </div>
+        <div class="chat-input-area">
+          <input type="text" class="chat-input" id="chatInput" placeholder="Describe a goal or ask a question..." />
+          <button class="chat-send" id="chatSend">&#9654;</button>
+        </div>
+      </div>
+    </aside>
+  </div>
+
+  <!-- Modal -->
+  <div class="modal-overlay" id="modalOverlay">
+    <div class="modal" id="modal">
+      <div class="modal-header">
+        <h3 class="modal-title" id="modalTitle">Modal</h3>
+        <button class="modal-close" id="modalClose">&times;</button>
+      </div>
+      <div class="modal-body" id="modalBody"></div>
+      <div class="modal-footer" id="modalFooter"></div>
+    </div>
+  </div>
+
+  <script src="js/app.js"></script>
+</body>
+</html>

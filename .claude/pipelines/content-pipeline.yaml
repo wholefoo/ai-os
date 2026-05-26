@@ -1,0 +1,73 @@
+name: content-pipeline
+description: Content creation pipeline — research, write, review, publish-ready
+trigger: manual
+estimated_time: ~30min
+
+stages:
+  - id: brief
+    skill: research-brief
+    agent: researcher
+    inputs:
+      topic: "{{topic}}"
+    outputs:
+      - research_brief
+      - key_points
+    timeout: 10m
+
+  - id: draft
+    skill: content-creation
+    agent: writer
+    depends_on: [brief]
+    inputs:
+      brief: "{{brief.research_brief}}"
+      format: "{{format}}"
+      tone: "{{tone|professional}}"
+    outputs:
+      - draft_content
+      - meta_description
+    timeout: 10m
+
+  - id: seo
+    skill: seo-audit
+    agent: deepseek-worker
+    depends_on: [draft]
+    inputs:
+      content: "{{draft.draft_content}}"
+      keywords: "{{keywords}}"
+    outputs:
+      - seo_score
+      - recommendations
+    timeout: 5m
+
+  - id: review
+    skill: content-creation
+    agent: reviewer
+    depends_on: [draft, seo]
+    inputs:
+      content: "{{draft.draft_content}}"
+      seo_feedback: "{{seo.recommendations}}"
+    outputs:
+      - verdict
+      - final_content
+    gate: advisory
+    timeout: 5m
+
+parameters:
+  topic:
+    type: string
+    required: true
+  format:
+    type: enum
+    options: [blog-post, documentation, newsletter, social-thread]
+    default: blog-post
+  tone:
+    type: enum
+    options: [professional, casual, technical, persuasive]
+    default: professional
+  keywords:
+    type: string
+    required: false
+    description: Comma-separated target keywords
+
+output_artifact: "content-{{format}}-{{date}}.md"
+vault_folder: outputs

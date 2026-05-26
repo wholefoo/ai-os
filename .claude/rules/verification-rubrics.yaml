@@ -1,0 +1,178 @@
+# Verification Rubrics — Plan-Execute-Verify Protocol
+# Each rubric defines pass/fail criteria for a skill category.
+# The verification engine scores outputs against these criteria before delivery.
+
+default:
+  name: General Quality
+  description: Universal quality checks applied to all outputs
+  checks:
+    - id: completeness
+      name: Completeness
+      description: All required sections and deliverables are present
+      weight: 3
+      category: structure
+    - id: accuracy
+      name: Accuracy
+      description: Claims are supported by evidence or labeled as assumptions
+      weight: 3
+      category: content
+    - id: formatting
+      name: Formatting
+      description: Output follows the expected format and structure
+      weight: 2
+      category: structure
+    - id: actionability
+      name: Actionability
+      description: Output contains clear next steps or recommendations
+      weight: 2
+      category: content
+    - id: no_hallucination
+      name: No Hallucination
+      description: No fabricated data, sources, or claims without basis
+      weight: 3
+      category: integrity
+
+research:
+  name: Research Quality
+  description: Verification for research briefs, deep research, and academic outputs
+  inherits: default
+  checks:
+    - id: source_count
+      name: Minimum Sources
+      description: At least 5 distinct, credible sources cited
+      weight: 3
+      category: evidence
+    - id: source_recency
+      name: Source Recency
+      description: Majority of sources are from the last 12 months
+      weight: 2
+      category: evidence
+    - id: balanced_viewpoints
+      name: Balanced Viewpoints
+      description: Multiple perspectives represented, not one-sided
+      weight: 2
+      category: content
+    - id: knowledge_gaps
+      name: Knowledge Gaps Identified
+      description: Areas of uncertainty or insufficient data are explicitly noted
+      weight: 1
+      category: integrity
+    - id: citation_format
+      name: Citation Format
+      description: All citations follow a consistent format
+      weight: 1
+      category: structure
+
+marketing:
+  name: Content Quality
+  description: Verification for blog posts, articles, social media, and marketing content
+  inherits: default
+  checks:
+    - id: tone_consistency
+      name: Tone Consistency
+      description: Writing tone matches the specified style throughout
+      weight: 2
+      category: content
+    - id: seo_optimization
+      name: SEO Optimization
+      description: Target keywords present in title, headings, and body naturally
+      weight: 2
+      category: content
+    - id: cta_present
+      name: Call to Action
+      description: Clear CTA included where appropriate
+      weight: 1
+      category: structure
+    - id: readability
+      name: Readability
+      description: Flesch score appropriate for target audience
+      weight: 2
+      category: content
+    - id: originality
+      name: Originality
+      description: Content provides unique insights, not generic rehashing
+      weight: 2
+      category: integrity
+
+security:
+  name: Security Assessment Quality
+  description: Verification for security audits and vulnerability reports
+  inherits: default
+  checks:
+    - id: severity_classification
+      name: Severity Classification
+      description: All findings classified by CVSS or equivalent severity scale
+      weight: 3
+      category: structure
+    - id: reproduction_steps
+      name: Reproduction Steps
+      description: Each vulnerability includes steps to reproduce
+      weight: 3
+      category: content
+    - id: remediation_provided
+      name: Remediation Guidance
+      description: Every finding has specific fix recommendations
+      weight: 3
+      category: content
+    - id: false_positive_check
+      name: False Positive Check
+      description: Findings have been validated, not just scanner output
+      weight: 2
+      category: integrity
+    - id: scope_coverage
+      name: Scope Coverage
+      description: All specified targets/areas were assessed
+      weight: 2
+      category: structure
+
+sales:
+  name: Sales Output Quality
+  description: Verification for lead enrichment, prospect research, and sales outputs
+  inherits: default
+  checks:
+    - id: data_freshness
+      name: Data Freshness
+      description: Contact and company data is current (verified within 90 days)
+      weight: 3
+      category: evidence
+    - id: icp_alignment
+      name: ICP Alignment
+      description: Leads scored against Ideal Customer Profile criteria
+      weight: 2
+      category: content
+    - id: contact_validity
+      name: Contact Validity
+      description: Email patterns and LinkedIn profiles verified where possible
+      weight: 2
+      category: integrity
+    - id: enrichment_depth
+      name: Enrichment Depth
+      description: Company size, industry, tech stack, and decision-makers identified
+      weight: 2
+      category: content
+
+design:
+  name: Design Output Quality
+  description: Verification for design system, UI/UX, and visual outputs
+  inherits: default
+  checks:
+    - id: consistency
+      name: Design Consistency
+      description: Tokens, spacing, and components follow the defined system
+      weight: 3
+      category: structure
+    - id: accessibility
+      name: Accessibility
+      description: Color contrast, font sizes, and interactive elements meet WCAG 2.1 AA
+      weight: 3
+      category: integrity
+    - id: responsive
+      name: Responsive Design
+      description: Layouts adapt correctly across breakpoints
+      weight: 2
+      category: content
+    - id: documentation
+      name: Documentation
+      description: Components include usage guidelines and examples
+      weight: 2
+      category: structure

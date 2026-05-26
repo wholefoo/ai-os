@@ -1,0 +1,70 @@
+# Project Context: OpenMythos
+# Overrides global identity/rules when agents work in this project scope.
+
+project:
+  name: OpenMythos
+  slug: openmythos
+  description: Open-source storytelling and world-building platform
+  status: active
+  created: 2025-06-15
+
+# Identity overrides — merged on top of global soul/user/personality
+identity:
+  tone: creative-technical
+  audience: open-source contributors and storytellers
+  voice: Warm, imaginative, but technically precise
+  domain_terms:
+    - mythos
+    - narrative arc
+    - world-bible
+    - lore graph
+    - canon
+  prohibited_terms:
+    - proprietary
+    - license violation
+
+# Rule overrides — these take precedence over global rules
+rules:
+  code_style: TypeScript strict, ESM modules, no default exports
+  testing: Vitest with 90% coverage minimum
+  branching: feature/* -> dev -> main, squash merge only
+  documentation: TSDoc on all public APIs, README per package
+  security: No user data in logs, sanitize all story input
+
+# Strategy context — loaded when agents plan for this project
+strategy:
+  icp: "Game masters, fiction writers, indie game developers"
+  competitors:
+    - World Anvil
+    - Campfire
+    - Notion (general purpose)
+  differentiators:
+    - AI-assisted world-building
+    - Graph-based lore relationships
+    - Open-source and self-hostable
+  current_phase: MVP development
+  key_metrics:
+    - GitHub stars
+    - contributor count
+    - user-created worlds
+
+# Stakeholders
+stakeholders:
+  - name: Core Contributors
+    role: Development team
+    communication: GitHub issues and PRs
+  - name: Community
+    role: Users and testers
+    communication: Discord server
+
+# Agent behavior overrides
+agents:
+  writer:
+    style: "Creative but structured. Use world-building terminology naturally."
+  researcher:
+    focus: "Narrative design patterns, game lore systems, knowledge graph tools"
+  reviewer:
+    checklist:
+      - "Does the code handle Unicode story content correctly?"
+      - "Are lore graph relationships bidirectional?"
+      - "Does this maintain canon consistency?"

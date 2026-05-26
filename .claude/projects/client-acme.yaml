@@ -1,0 +1,66 @@
+# Project Context: ACME Corp Client
+# Overrides global identity/rules when agents work on ACME deliverables.
+
+project:
+  name: ACME Corp
+  slug: client-acme
+  description: B2B SaaS client — marketing automation platform
+  status: active
+  created: 2025-09-01
+
+identity:
+  tone: corporate-professional
+  audience: B2B marketing directors and CMOs
+  voice: Authoritative, data-driven, no jargon unless industry-standard
+  domain_terms:
+    - marketing automation
+    - lead scoring
+    - ABM (account-based marketing)
+    - MQL/SQL pipeline
+    - attribution modeling
+  prohibited_terms:
+    - cheap
+    - basic
+    - simple
+
+rules:
+  content_style: AP style, title case headings, Oxford comma required
+  brand_colors: "#2563EB (primary), #1E40AF (dark), #DBEAFE (light)"
+  approval_gate: All external content requires client approval before publish
+  confidentiality: Never reference internal ACME data in public content
+  citations: Industry reports only (Gartner, Forrester, McKinsey preferred)
+
+strategy:
+  icp: "VP/Director of Marketing at B2B SaaS companies, 200-2000 employees"
+  competitors:
+    - HubSpot
+    - Marketo
+    - Pardot
+  differentiators:
+    - AI-powered lead scoring
+    - Native ABM workflows
+    - Real-time attribution
+  current_phase: Growth marketing push
+  key_metrics:
+    - MQL volume
+    - pipeline velocity
+    - content engagement rate
+
+stakeholders:
+  - name: Sarah Chen
+    role: VP Marketing
+    communication: Weekly Slack updates, monthly report
+  - name: James Park
+    role: Content Manager
+    communication: Async review in Google Docs
+
+agents:
+  writer:
+    style: "B2B professional. Data-forward. Every claim needs a stat or source."
+  researcher:
+    focus: "MarTech trends, B2B buyer behavior, competitor feature releases"
+  reviewer:
+    checklist:
+      - "Does this align with ACME brand voice?"
+      - "Are all stats from credible sources?"
+      - "Would a CMO find this valuable?"

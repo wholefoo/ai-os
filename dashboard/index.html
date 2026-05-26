@@ -1,0 +1,508 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AI OS — The Agentic Operating System</title>
+  <meta name="description" content="Orchestrate 25+ AI agents from a single dashboard. Automate research, content, media, leads, and monetization with multi-model intelligence.">
+  <meta name="keywords" content="AI agents, AI operating system, multi-agent orchestration, Claude, automation, AI dashboard">
+  <meta property="og:title" content="AI OS — The Agentic Operating System">
+  <meta property="og:description" content="Orchestrate 25+ AI agents from a single dashboard.">
+  <meta property="og:type" content="website">
+  <meta name="twitter:card" content="summary_large_image">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/css/landing.css">
+</head>
+<body>
+  <!-- Navigation -->
+  <nav class="landing-nav">
+    <div class="nav-container">
+      <div class="nav-brand">
+        <span class="nav-logo">&#9678;</span>
+        <span class="nav-name">AI OS</span>
+      </div>
+      <div class="nav-links">
+        <a href="#features">Features</a>
+        <a href="#architecture">Architecture</a>
+        <a href="#agents">Agents</a>
+        <a href="#pricing">Pricing</a>
+        <a href="#faq">FAQ</a>
+      </div>
+      <div class="nav-cta">
+        <a href="/login" class="btn-ghost">Log In</a>
+        <a href="#pricing" class="btn-primary-cta">Get Started</a>
+      </div>
+      <button class="mobile-menu-btn" id="mobileMenuBtn">&#9776;</button>
+    </div>
+    <div class="mobile-menu" id="mobileMenu">
+      <a href="#features">Features</a>
+      <a href="#architecture">Architecture</a>
+      <a href="#agents">Agents</a>
+      <a href="#pricing">Pricing</a>
+      <a href="#faq">FAQ</a>
+      <a href="/login" class="btn-ghost">Log In</a>
+      <a href="#pricing" class="btn-primary-cta">Get Started</a>
+    </div>
+  </nav>
+
+  <!-- Hero -->
+  <section class="hero">
+    <div class="hero-glow"></div>
+    <div class="hero-content">
+      <div class="hero-badge">Multi-Agent Orchestration Platform</div>
+      <h1 class="hero-title">
+        Your AI <span class="gradient-text">Operating System</span>
+      </h1>
+      <p class="hero-subtitle">
+        Orchestrate 25+ specialized AI agents from a single command center.
+        Research, create, analyze, monetize — all running autonomously while you focus on strategy.
+      </p>
+      <div class="hero-actions">
+        <a href="#pricing" class="btn-primary-cta btn-lg">Start Building <span class="btn-arrow">&rarr;</span></a>
+        <a href="#architecture" class="btn-ghost btn-lg">See How It Works</a>
+      </div>
+      <div class="hero-stats">
+        <div class="hero-stat">
+          <span class="hero-stat-value">25+</span>
+          <span class="hero-stat-label">AI Agents</span>
+        </div>
+        <div class="hero-stat">
+          <span class="hero-stat-value">5</span>
+          <span class="hero-stat-label">AI Models</span>
+        </div>
+        <div class="hero-stat">
+          <span class="hero-stat-value">40+</span>
+          <span class="hero-stat-label">API Endpoints</span>
+        </div>
+        <div class="hero-stat">
+          <span class="hero-stat-value">3</span>
+          <span class="hero-stat-label">Phases</span>
+        </div>
+      </div>
+    </div>
+    <div class="hero-visual">
+      <div class="terminal-window">
+        <div class="terminal-bar">
+          <span class="terminal-dot red"></span>
+          <span class="terminal-dot yellow"></span>
+          <span class="terminal-dot green"></span>
+          <span class="terminal-title">ai-os orchestrator</span>
+        </div>
+        <div class="terminal-body">
+          <div class="terminal-line"><span class="t-prompt">&gt;</span> <span class="t-cmd">deploy</span> research-team <span class="t-flag">--scope</span> "competitive analysis"</div>
+          <div class="terminal-line t-output">&#9881; Spawning 4 agents: researcher, scout, synthesis, report-compiler</div>
+          <div class="terminal-line t-output">&#128269; Scout scanning 12 sources via Firecrawl...</div>
+          <div class="terminal-line t-output">&#129504; Synthesis cross-referencing 47 findings...</div>
+          <div class="terminal-line t-output">&#128196; Report compiled: .magent/vault/outputs/competitive-analysis.md</div>
+          <div class="terminal-line t-success">&#9989; Pipeline complete — 4 agents, 2m 31s, $0.42 total cost</div>
+          <div class="terminal-line"><span class="t-prompt">&gt;</span> <span class="t-cursor"></span></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Logos / Trust Bar -->
+  <section class="trust-bar">
+    <div class="trust-container">
+      <span class="trust-label">Powered by</span>
+      <div class="trust-logos">
+        <span class="trust-logo">Claude Opus</span>
+        <span class="trust-logo">Claude Sonnet</span>
+        <span class="trust-logo">Claude Haiku</span>
+        <span class="trust-logo">DeepSeek V4</span>
+        <span class="trust-logo">Grok-3</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- Features Grid -->
+  <section class="features" id="features">
+    <div class="section-container">
+      <div class="section-header">
+        <div class="section-badge">Capabilities</div>
+        <h2 class="section-title">Everything an AI Team Needs</h2>
+        <p class="section-subtitle">Three phases of intelligence — from core operations to creative production to autonomous monetization.</p>
+      </div>
+
+      <div class="phase-label">Phase 1 — Core Intelligence</div>
+      <div class="features-grid">
+        <div class="feature-card">
+          <div class="feature-icon">&#128752;</div>
+          <h3>Knowledge Graph</h3>
+          <p>Auto-categorizing knowledge base with semantic connections. Sources flow into wiki, outputs, and a visual radial graph.</p>
+        </div>
+        <div class="feature-card">
+          <div class="feature-icon">&#127912;</div>
+          <h3>Design System</h3>
+          <p>DESIGN.md protocol with dual-structure format — reasoning + tokens. WCAG linter, brand cloning from URL, cross-platform export.</p>
+        </div>
+        <div class="feature-card">
+          <div class="feature-icon">&#127909;</div>
+          <h3>Media Production</h3>
+          <p>Remotion video, Google Vids, and Blender 3D — all from natural language prompts with template-driven pipelines.</p>
+        </div>
+        <div class="feature-card">
+          <div class="feature-icon">&#128260;</div>
+          <h3>Continuous Loops</h3>
+          <p>CRON-scheduled autonomous routines: ad generation, competitor monitoring, analytics digests, content repurposing.</p>
+        </div>
+      </div>
+
+      <div class="phase-label">Phase 2 — Monetization</div>
+      <div class="features-grid">
+        <div class="feature-card">
+          <div class="feature-icon">&#128230;</div>
+          <h3>Product Factory</h3>
+          <p>AI-generates digital products — spreadsheets, Notion templates, toolkits. Published to Etsy and Gumroad with SEO listings.</p>
+        </div>
+        <div class="feature-card">
+          <div class="feature-icon">&#127919;</div>
+          <h3>Lead Generation</h3>
+          <p>Automated scraping, enrichment, and achievement discovery. Personalized outreach referencing specific accomplishments.</p>
+        </div>
+        <div class="feature-card">
+          <div class="feature-icon">&#128227;</div>
+          <h3>Marketing Hub</h3>
+          <p>End-to-end content pipelines — source material transforms into multi-platform distribution across 5+ channels.</p>
+        </div>
+        <div class="feature-card">
+          <div class="feature-icon">&#128279;</div>
+          <h3>Golden Loop</h3>
+          <p>Connects Gemini Gems to NotebookLM notebooks. Your AI expert always has the latest research and documentation.</p>
+        </div>
+      </div>
+
+      <div class="phase-label">Phase 3 — Creative Studio</div>
+      <div class="features-grid">
+        <div class="feature-card">
+          <div class="feature-icon">&#10024;</div>
+          <h3>Vibe Design Studio</h3>
+          <p>Prompt-driven UI generation with predictive heat maps and granular style controls. Natural language to screens.</p>
+        </div>
+        <div class="feature-card">
+          <div class="feature-icon">&#127922;</div>
+          <h3>3D Production</h3>
+          <p>Blender MCP text-to-3D — environments, product renders, and abstract visualizations up to 4K resolution.</p>
+        </div>
+        <div class="feature-card">
+          <div class="feature-icon">&#128200;</div>
+          <h3>Predictive Analytics</h3>
+          <p>AI-estimated forecasts for revenue, engagement, costs, and churn with confidence scores and factor analysis.</p>
+        </div>
+        <div class="feature-card">
+          <div class="feature-icon">&#9889;</div>
+          <h3>Batch Queue</h3>
+          <p>Mass content production using economy-tier agents. Build massive A/B testing libraries at a fraction of the cost.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Architecture -->
+  <section class="architecture" id="architecture">
+    <div class="section-container">
+      <div class="section-header">
+        <div class="section-badge">Under the Hood</div>
+        <h2 class="section-title">6-Layer Agentic Architecture</h2>
+        <p class="section-subtitle">Every layer is modular — swap models, add agents, chain skills, all without touching core code.</p>
+      </div>
+      <div class="arch-layers">
+        <div class="arch-layer">
+          <div class="arch-layer-num">01</div>
+          <div class="arch-layer-content">
+            <h3>Knowledge &amp; Memory</h3>
+            <p>Vault system with raw intake, synthesized wiki, and semantic search. Session hooks auto-load context.</p>
+          </div>
+        </div>
+        <div class="arch-layer">
+          <div class="arch-layer-num">02</div>
+          <div class="arch-layer-content">
+            <h3>Protocol &amp; Identity</h3>
+            <p>Three-file soul stack: immutable guardrails, operator preferences, agent personas. Per-project context overrides.</p>
+          </div>
+        </div>
+        <div class="arch-layer">
+          <div class="arch-layer-num">03</div>
+          <div class="arch-layer-content">
+            <h3>UI/UX Generation</h3>
+            <p>DESIGN.md dual-structure tokens, Vibe Design prompt-to-screens, WCAG linter, brand clone from URL.</p>
+          </div>
+        </div>
+        <div class="arch-layer">
+          <div class="arch-layer-num">04</div>
+          <div class="arch-layer-content">
+            <h3>Multimodal Media</h3>
+            <p>Remotion video, Google Vids, Blender 3D, batch generation — all template-driven with cost tracking.</p>
+          </div>
+        </div>
+        <div class="arch-layer">
+          <div class="arch-layer-num">05</div>
+          <div class="arch-layer-content">
+            <h3>Execution &amp; Automation</h3>
+            <p>Multi-model routing (Opus/Sonnet/Haiku/DeepSeek/Grok), skill chaining, CRON loops, Playwright browser agent.</p>
+          </div>
+        </div>
+        <div class="arch-layer">
+          <div class="arch-layer-num">06</div>
+          <div class="arch-layer-content">
+            <h3>Output &amp; Monetization</h3>
+            <p>Product factory, lead pipeline, marketing hub, Golden Loop — autonomous revenue generation.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Agent Roster -->
+  <section class="agents" id="agents">
+    <div class="section-container">
+      <div class="section-header">
+        <div class="section-badge">The Fleet</div>
+        <h2 class="section-title">25+ Specialized Agents</h2>
+        <p class="section-subtitle">Each agent has a defined role, model tier, and skill set. The orchestrator routes work to the cheapest capable engine.</p>
+      </div>
+      <div class="agent-grid">
+        <div class="agent-chip opus"><span class="agent-dot"></span>Orchestrator <span class="agent-model">Opus</span></div>
+        <div class="agent-chip opus"><span class="agent-dot"></span>Architect <span class="agent-model">Opus</span></div>
+        <div class="agent-chip opus"><span class="agent-dot"></span>Reviewer <span class="agent-model">Opus</span></div>
+        <div class="agent-chip opus"><span class="agent-dot"></span>Security Auditor <span class="agent-model">Opus</span></div>
+        <div class="agent-chip sonnet"><span class="agent-dot"></span>Researcher <span class="agent-model">Sonnet</span></div>
+        <div class="agent-chip sonnet"><span class="agent-dot"></span>Coder <span class="agent-model">Sonnet</span></div>
+        <div class="agent-chip sonnet"><span class="agent-dot"></span>Writer <span class="agent-model">Sonnet</span></div>
+        <div class="agent-chip sonnet"><span class="agent-dot"></span>Design System <span class="agent-model">Sonnet</span></div>
+        <div class="agent-chip sonnet"><span class="agent-dot"></span>Media Producer <span class="agent-model">Sonnet</span></div>
+        <div class="agent-chip sonnet"><span class="agent-dot"></span>Lead Gen <span class="agent-model">Sonnet</span></div>
+        <div class="agent-chip sonnet"><span class="agent-dot"></span>Marketing Hub <span class="agent-model">Sonnet</span></div>
+        <div class="agent-chip sonnet"><span class="agent-dot"></span>Product Factory <span class="agent-model">Sonnet</span></div>
+        <div class="agent-chip sonnet"><span class="agent-dot"></span>Vibe Designer <span class="agent-model">Sonnet</span></div>
+        <div class="agent-chip sonnet"><span class="agent-dot"></span>Blender 3D <span class="agent-model">Sonnet</span></div>
+        <div class="agent-chip sonnet"><span class="agent-dot"></span>Knowledge Graph <span class="agent-model">Sonnet</span></div>
+        <div class="agent-chip sonnet"><span class="agent-dot"></span>Golden Loop <span class="agent-model">Sonnet</span></div>
+        <div class="agent-chip sonnet"><span class="agent-dot"></span>Synthesis <span class="agent-model">Sonnet</span></div>
+        <div class="agent-chip sonnet"><span class="agent-dot"></span>Automator <span class="agent-model">Sonnet</span></div>
+        <div class="agent-chip sonnet"><span class="agent-dot"></span>Browser Agent <span class="agent-model">Sonnet</span></div>
+        <div class="agent-chip haiku"><span class="agent-dot"></span>Scout <span class="agent-model">Haiku</span></div>
+        <div class="agent-chip haiku"><span class="agent-dot"></span>Social Intel <span class="agent-model">Haiku</span></div>
+        <div class="agent-chip haiku"><span class="agent-dot"></span>Routine Runner <span class="agent-model">Haiku</span></div>
+        <div class="agent-chip economy"><span class="agent-dot"></span>DeepSeek Worker <span class="agent-model">DeepSeek</span></div>
+        <div class="agent-chip economy"><span class="agent-dot"></span>Batch Runner <span class="agent-model">DeepSeek</span></div>
+        <div class="agent-chip grok"><span class="agent-dot"></span>Grok Realtime <span class="agent-model">Grok-3</span></div>
+      </div>
+      <div class="agent-legend">
+        <span class="legend-item"><span class="legend-dot opus"></span>Strategic (Opus)</span>
+        <span class="legend-item"><span class="legend-dot sonnet"></span>Professional (Sonnet)</span>
+        <span class="legend-item"><span class="legend-dot haiku"></span>Scout (Haiku)</span>
+        <span class="legend-item"><span class="legend-dot economy"></span>Economy (DeepSeek)</span>
+        <span class="legend-item"><span class="legend-dot grok"></span>Realtime (Grok)</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- Pricing -->
+  <section class="pricing" id="pricing">
+    <div class="section-container">
+      <div class="section-header">
+        <div class="section-badge">Pricing</div>
+        <h2 class="section-title">Simple, Transparent Pricing</h2>
+        <p class="section-subtitle">Start free. Upgrade when you're ready to unlock the full fleet.</p>
+      </div>
+      <div class="pricing-grid">
+        <div class="pricing-card">
+          <div class="pricing-tier">Starter</div>
+          <div class="pricing-price">Free</div>
+          <div class="pricing-period">forever</div>
+          <ul class="pricing-features">
+            <li>&#9989; Landing page access</li>
+            <li>&#9989; Architecture overview</li>
+            <li>&#9989; Agent roster (read-only)</li>
+            <li>&#10060; Dashboard access</li>
+            <li>&#10060; Agent orchestration</li>
+            <li>&#10060; Skill execution</li>
+          </ul>
+          <a href="#" class="btn-ghost btn-block">Current Plan</a>
+        </div>
+        <div class="pricing-card featured">
+          <div class="pricing-popular">Most Popular</div>
+          <div class="pricing-tier">Pro</div>
+          <div class="pricing-price">$49<span class="pricing-mo">/mo</span></div>
+          <div class="pricing-period">billed monthly</div>
+          <ul class="pricing-features">
+            <li>&#9989; Full dashboard access</li>
+            <li>&#9989; All 25+ agents</li>
+            <li>&#9989; Skill execution &amp; pipelines</li>
+            <li>&#9989; Knowledge vault</li>
+            <li>&#9989; Cost tracking &amp; budgets</li>
+            <li>&#9989; Telegram &amp; Slack alerts</li>
+          </ul>
+          <a href="/api/stripe/checkout?plan=pro" class="btn-primary-cta btn-block" id="proPlanBtn">Get Pro Access</a>
+        </div>
+        <div class="pricing-card">
+          <div class="pricing-tier">Enterprise</div>
+          <div class="pricing-price">$199<span class="pricing-mo">/mo</span></div>
+          <div class="pricing-period">billed monthly</div>
+          <ul class="pricing-features">
+            <li>&#9989; Everything in Pro</li>
+            <li>&#9989; Priority model routing</li>
+            <li>&#9989; Custom agent definitions</li>
+            <li>&#9989; Pipeline builder</li>
+            <li>&#9989; API access + webhooks</li>
+            <li>&#9989; Dedicated support</li>
+          </ul>
+          <a href="/api/stripe/checkout?plan=enterprise" class="btn-primary-cta btn-block">Get Enterprise</a>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Testimonials -->
+  <section class="testimonials">
+    <div class="section-container">
+      <div class="section-header">
+        <div class="section-badge">What People Say</div>
+        <h2 class="section-title">Built for Builders</h2>
+      </div>
+      <div class="testimonials-grid">
+        <div class="testimonial-card">
+          <div class="testimonial-text">"Replaced three separate SaaS tools with one AI OS dashboard. The cost tracking alone saved us hundreds per month."</div>
+          <div class="testimonial-author">
+            <div class="testimonial-avatar">JM</div>
+            <div>
+              <div class="testimonial-name">James M.</div>
+              <div class="testimonial-role">Solo Founder, SaaS</div>
+            </div>
+          </div>
+        </div>
+        <div class="testimonial-card">
+          <div class="testimonial-text">"The multi-model routing is genius. Opus for architecture decisions, Haiku for monitoring, DeepSeek for bulk work. Costs stayed under $5/day."</div>
+          <div class="testimonial-author">
+            <div class="testimonial-avatar">SK</div>
+            <div>
+              <div class="testimonial-name">Sarah K.</div>
+              <div class="testimonial-role">AI Engineer</div>
+            </div>
+          </div>
+        </div>
+        <div class="testimonial-card">
+          <div class="testimonial-text">"The lead gen pipeline found 200+ qualified prospects in an afternoon. Each outreach message referenced their specific achievements."</div>
+          <div class="testimonial-author">
+            <div class="testimonial-avatar">RP</div>
+            <div>
+              <div class="testimonial-name">Ryan P.</div>
+              <div class="testimonial-role">Growth Lead, Agency</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- FAQ -->
+  <section class="faq" id="faq">
+    <div class="section-container">
+      <div class="section-header">
+        <div class="section-badge">FAQ</div>
+        <h2 class="section-title">Frequently Asked Questions</h2>
+      </div>
+      <div class="faq-list">
+        <div class="faq-item">
+          <button class="faq-question">Do I need my own API keys?<span class="faq-toggle">+</span></button>
+          <div class="faq-answer">Yes. AI OS orchestrates calls to Claude, DeepSeek, Grok, and other APIs using your own keys. This gives you full control over spend and rate limits. The dashboard tracks every token across all models in real time.</div>
+        </div>
+        <div class="faq-item">
+          <button class="faq-question">What AI models does it support?<span class="faq-toggle">+</span></button>
+          <div class="faq-answer">Five model tiers out of the box: Claude Opus (strategic), Claude Sonnet (professional), Claude Haiku (scout), DeepSeek V4 (economy), and Grok-3 (realtime). The orchestrator auto-routes tasks to the cheapest capable model.</div>
+        </div>
+        <div class="faq-item">
+          <button class="faq-question">Can I add custom agents?<span class="faq-toggle">+</span></button>
+          <div class="faq-answer">Absolutely. Agents are Markdown files with YAML frontmatter. Drop a new file in .claude/agents/ and the system picks it up immediately. Enterprise plans include a visual agent builder.</div>
+        </div>
+        <div class="faq-item">
+          <button class="faq-question">Is my data private?<span class="faq-toggle">+</span></button>
+          <div class="faq-answer">AI OS runs on your own VPS. Nothing is shared with third parties beyond the API calls you explicitly configure. The memory vault and all artifacts stay on your server.</div>
+        </div>
+        <div class="faq-item">
+          <button class="faq-question">Can I self-host instead of paying?<span class="faq-toggle">+</span></button>
+          <div class="faq-answer">The platform is designed for self-hosted deployment. The subscription gives you access to the managed dashboard, automatic updates, and support. Self-hosting is always an option.</div>
+        </div>
+        <div class="faq-item">
+          <button class="faq-question">What happens if I cancel?<span class="faq-toggle">+</span></button>
+          <div class="faq-answer">You keep access until the end of your billing period. All your data, agent definitions, and vault contents are exportable at any time. No lock-in.</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- CTA Footer -->
+  <section class="cta-section">
+    <div class="section-container">
+      <h2 class="cta-title">Ready to Deploy Your AI Fleet?</h2>
+      <p class="cta-subtitle">Join builders who are automating research, content, leads, and monetization with multi-agent intelligence.</p>
+      <a href="#pricing" class="btn-primary-cta btn-lg">Get Started Now <span class="btn-arrow">&rarr;</span></a>
+    </div>
+  </section>
+
+  <!-- Footer -->
+  <footer class="site-footer">
+    <div class="footer-container">
+      <div class="footer-brand">
+        <span class="nav-logo">&#9678;</span>
+        <span class="nav-name">AI OS</span>
+        <p class="footer-tagline">The Agentic Operating System</p>
+      </div>
+      <div class="footer-links">
+        <div class="footer-col">
+          <h4>Product</h4>
+          <a href="#features">Features</a>
+          <a href="#architecture">Architecture</a>
+          <a href="#agents">Agents</a>
+          <a href="#pricing">Pricing</a>
+        </div>
+        <div class="footer-col">
+          <h4>Resources</h4>
+          <a href="#faq">FAQ</a>
+          <a href="#">Documentation</a>
+          <a href="#">Changelog</a>
+        </div>
+        <div class="footer-col">
+          <h4>Legal</h4>
+          <a href="/terms">Terms of Service</a>
+          <a href="/privacy">Privacy Policy</a>
+        </div>
+      </div>
+    </div>
+    <div class="footer-bottom">
+      <p>&copy; 2026 AI OS Orchestration Lab. All rights reserved.</p>
+    </div>
+  </footer>
+
+  <!-- Login Modal -->
+  <div class="modal-overlay" id="loginModal">
+    <div class="modal">
+      <div class="modal-header">
+        <h3>&#128274; Log In to AI OS</h3>
+        <button class="modal-close" id="loginModalClose">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="form-group">
+          <label class="form-label">Email</label>
+          <input type="email" class="form-input" id="loginEmail" placeholder="you@example.com">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Password</label>
+          <input type="password" class="form-input" id="loginPassword" placeholder="Enter your password">
+        </div>
+        <div id="loginError" class="login-error"></div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn-primary-cta btn-block" id="loginSubmitBtn">Log In</button>
+      </div>
+      <div class="login-alt">
+        <p>Don't have an account? <a href="#pricing">Choose a plan</a></p>
+      </div>
+    </div>
+  </div>
+
+  <script src="/js/landing.js"></script>
+</body>
+</html>

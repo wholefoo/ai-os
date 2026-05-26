@@ -1,0 +1,62 @@
+# Project Context: AI OS (This Project)
+# Self-referential context for when agents work on the orchestration system itself.
+
+project:
+  name: AI OS Orchestration Lab
+  slug: ai-os
+  description: Multi-agentic AI Operating System with visual dashboard
+  status: active
+  created: 2025-05-01
+
+identity:
+  tone: technical-direct
+  audience: Solo developer building AI infrastructure
+  voice: Terse, precise, systems-thinking. No fluff.
+  domain_terms:
+    - orchestrator
+    - sub-agent
+    - skill chaining
+    - context window
+    - HITL gate
+    - cost routing
+  prohibited_terms:
+    - AI will replace
+    - magic
+    - revolutionary
+
+rules:
+  code_style: Vanilla JS, no frameworks, Express + WebSocket
+  testing: Manual verification via dashboard preview
+  deployment: Hostinger VPS, PM2 process manager
+  memory: File-based only (.magent/), no database
+  cost_focus: Always prefer Haiku/DeepSeek unless Opus quality required
+
+strategy:
+  icp: "Technical solopreneurs building AI-augmented workflows"
+  competitors:
+    - AutoGPT
+    - CrewAI
+    - LangChain
+  differentiators:
+    - Visual dashboard (no terminal required)
+    - Cost-optimized multi-model routing
+    - File-based memory (no infra dependency)
+  current_phase: Feature buildout from blueprint
+  key_metrics:
+    - Agent count
+    - Skill count
+    - Dashboard response time
+
+stakeholders:
+  - name: Mike
+    role: Owner/Developer
+    communication: Direct in Claude Code
+
+agents:
+  coder:
+    style: "Surgical changes only. Match existing patterns. No speculative code."
+  reviewer:
+    checklist:
+      - "Does this touch only what it must?"
+      - "Does the dashboard CSS match existing dark theme?"
+      - "Is the WebSocket event properly handled?"

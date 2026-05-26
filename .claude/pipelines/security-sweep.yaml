@@ -1,0 +1,73 @@
+name: security-sweep
+description: Full security audit pipeline — architecture, deps, code, deployment
+trigger: manual
+estimated_time: ~25min
+
+stages:
+  - id: architecture
+    skill: security-audit
+    agent: security-auditor
+    inputs:
+      target: "{{target}}"
+      scope: architecture
+    outputs:
+      - arch_findings
+      - auth_patterns
+    timeout: 10m
+
+  - id: dependencies
+    skill: security-audit
+    agent: security-auditor
+    inputs:
+      target: "{{target}}"
+      scope: dependencies
+    outputs:
+      - dep_findings
+      - cve_list
+    timeout: 8m
+
+  - id: code-scan
+    skill: security-audit
+    agent: security-auditor
+    depends_on: [architecture]
+    inputs:
+      target: "{{target}}"
+      scope: code
+      focus_areas: "{{architecture.auth_patterns}}"
+    outputs:
+      - code_findings
+      - remediation_snippets
+    timeout: 10m
+
+  - id: compile-report
+    skill: security-audit
+    agent: report-compiler
+    depends_on: [architecture, dependencies, code-scan]
+    inputs:
+      arch: "{{architecture.arch_findings}}"
+      deps: "{{dependencies.dep_findings}}"
+      code: "{{code-scan.code_findings}}"
+      remediations: "{{code-scan.remediation_snippets}}"
+    outputs:
+      - security_report
+      - critical_items
+    timeout: 5m
+
+  - id: human-review
+    skill: security-audit
+    agent: orchestrator
+    depends_on: [compile-report]
+    inputs:
+      report: "{{compile-report.security_report}}"
+      criticals: "{{compile-report.critical_items}}"
+    gate: blocking
+    timeout: 0
+
+parameters:
+  target:
+    type: string
+    required: true
+    description: Repository path or URL to audit
+
+output_artifact: "security-audit-{{date}}.md"
+vault_folder: outputs

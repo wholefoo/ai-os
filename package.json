@@ -1,0 +1,37 @@
+{
+  "name": "ai-os-orchestration-lab",
+  "version": "1.0.0",
+  "description": "Multi-Agentic Workflow AI Operating System with Dashboard",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js",
+    "prod": "NODE_ENV=production node server.js",
+    "pm2:start": "pm2 start ecosystem.config.js --env production",
+    "pm2:stop": "pm2 stop ai-os",
+    "pm2:restart": "pm2 restart ai-os",
+    "pm2:logs": "pm2 logs ai-os",
+    "docker:build": "docker build -t ai-os .",
+    "docker:up": "docker compose up -d",
+    "docker:down": "docker compose down",
+    "audit": "npm audit"
+  },
+  "dependencies": {
+    "compression": "^1.8.1",
+    "cookie-parser": "^1.4.7",
+    "cors": "^2.8.6",
+    "dotenv": "^17.4.2",
+    "express": "^4.21.0",
+    "express-rate-limit": "^8.5.2",
+    "helmet": "^8.2.0",
+    "js-yaml": "^4.1.0",
+    "morgan": "^1.10.1",
+    "node-cron": "^4.2.1",
+    "stripe": "^22.1.1",
+    "uuid": "^10.0.0",
+    "ws": "^8.18.0"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  }
+}

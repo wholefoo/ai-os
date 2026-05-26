@@ -1,0 +1,107 @@
+registry_version: 1.0
+updated: 2026-05-24
+
+platforms:
+  n8n:
+    base_url: ${N8N_WEBHOOK_BASE}
+    auth_type: header
+    auth_header: X-N8N-Auth
+    auth_token: ${N8N_API_KEY}
+    timeout: 30000
+    status: configured
+
+  zapier:
+    base_url: https://hooks.zapier.com/hooks/catch
+    auth_type: none
+    timeout: 15000
+    status: placeholder
+
+  webhook:
+    timeout: 10000
+    status: ready
+
+actions:
+  - id: send-email
+    name: Send Email
+    platform: n8n
+    endpoint: /webhook/send-email
+    method: POST
+    params:
+      - { name: to, type: string, required: true }
+      - { name: subject, type: string, required: true }
+      - { name: body, type: string, required: true }
+      - { name: cc, type: string, required: false }
+    gate: blocking
+    description: Send email via configured SMTP relay
+
+  - id: post-slack
+    name: Post to Slack
+    platform: n8n
+    endpoint: /webhook/post-slack
+    method: POST
+    params:
+      - { name: channel, type: string, required: true }
+      - { name: message, type: string, required: true }
+      - { name: thread_ts, type: string, required: false }
+    gate: blocking
+    description: Post message to a Slack channel
+
+  - id: update-crm
+    name: Update CRM
+    platform: n8n
+    endpoint: /webhook/update-crm
+    method: POST
+    params:
+      - { name: contact_id, type: string, required: true }
+      - { name: fields, type: object, required: true }
+    gate: blocking
+    description: Update contact record in CRM
+
+  - id: create-task
+    name: Create Project Task
+    platform: zapier
+    endpoint: /12345/create-task
+    method: POST
+    params:
+      - { name: title, type: string, required: true }
+      - { name: description, type: string, required: false }
+      - { name: assignee, type: string, required: false }
+      - { name: due_date, type: string, required: false }
+    gate: advisory
+    description: Create task in project management tool
+
+  - id: post-social
+    name: Post to Social Media
+    platform: n8n
+    endpoint: /webhook/post-social
+    method: POST
+    params:
+      - { name: platform, type: enum, options: [twitter, linkedin, bluesky], required: true }
+      - { name: content, type: string, required: true }
+      - { name: media_url, type: string, required: false }
+    gate: blocking
+    description: Post content to social media account
+
+  - id: sync-drive
+    name: Sync to Google Drive
+    platform: zapier
+    endpoint: /12345/sync-drive
+    method: POST
+    params:
+      - { name: filename, type: string, required: true }
+      - { name: content, type: string, required: true }
+      - { name: folder_id, type: string, required: false }
+    gate: advisory
+    description: Upload or sync file to Google Drive
+
+  - id: notify-team
+    name: Team Notification
+    platform: webhook
+    endpoint: ${TEAM_WEBHOOK_URL}
+    method: POST
+    params:
+      - { name: title, type: string, required: true }
+      - { name: message, type: string, required: true }
+      - { name: priority, type: enum, options: [low, normal, urgent], required: false }
+    gate: advisory
+    description: Send notification to team webhook
