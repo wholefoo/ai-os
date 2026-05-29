@@ -1,0 +1,264 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>API Reference — AI OS Docs</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/css/landing.css">
+  <link rel="stylesheet" href="/css/docs.css">
+</head>
+<body>
+  <nav class="landing-nav">
+    <div class="nav-container">
+      <a href="/" class="nav-brand">
+        <span class="nav-logo">&#9678;</span>
+        <span class="nav-name">AI OS</span>
+      </a>
+      <div class="nav-links">
+        <a href="/">Home</a>
+        <a href="/docs" class="active">Docs</a>
+        <a href="/terms">Terms</a>
+        <a href="/privacy">Privacy</a>
+      </div>
+    </div>
+  </nav>
+
+  <main class="docs-page">
+    <div class="docs-container">
+      <div class="docs-layout">
+        <div class="docs-content">
+          <div class="docs-breadcrumb">
+            <a href="/docs">Docs</a> <span>/</span> API Reference
+          </div>
+
+          <h1>API Reference</h1>
+          <p class="docs-lead">40+ REST endpoints covering authentication, agent management, AI features, billing, and system health. All endpoints return JSON and require Bearer token authentication in production.</p>
+
+          <h2>Authentication</h2>
+          <p>API requests in production require a Bearer token set via the <code>API_TOKEN</code> environment variable:</p>
+          <pre><code>Authorization: Bearer your-api-token</code></pre>
+          <p>The <code>/api/health</code> endpoint is exempt from authentication. Dashboard access uses session cookies set during login.</p>
+
+          <h2>Rate Limits</h2>
+          <table class="docs-table">
+            <thead>
+              <tr><th>Scope</th><th>Limit</th><th>Window</th></tr>
+            </thead>
+            <tbody>
+              <tr><td>General API</td><td>120 requests</td><td>1 minute</td></tr>
+              <tr><td>Heavy operations</td><td>10 requests</td><td>1 minute</td></tr>
+            </tbody>
+          </table>
+          <p>Heavy rate limiting applies to: <code>clone-url</code>, <code>media/produce</code>, <code>leads/scrape</code>, <code>batch</code>, <code>grok/query</code>, <code>browser/execute</code>, <code>3d/scenes</code>, <code>vibe-design/projects</code>.</p>
+
+          <h2>System</h2>
+
+          <div class="docs-endpoint">
+            <span class="docs-endpoint-method get">GET</span>
+            <span class="docs-endpoint-path">/api/health</span>
+            <p class="docs-endpoint-desc">Server health check. Returns uptime, memory usage, version, and environment.</p>
+          </div>
+
+          <h2>Authentication Endpoints</h2>
+
+          <div class="docs-endpoint">
+            <span class="docs-endpoint-method post">POST</span>
+            <span class="docs-endpoint-path">/api/auth/login</span>
+            <p class="docs-endpoint-desc">Authenticate a user. Sets a session cookie and returns a token.</p>
+          </div>
+          <pre><code>// Request body
+{ "email": "user@example.com", "password": "..." }
+
+// Response
+{ "token": "session-token", "plan": "pro" }</code></pre>
+
+          <div class="docs-endpoint">
+            <span class="docs-endpoint-method get">GET</span>
+            <span class="docs-endpoint-path">/api/auth/me</span>
+            <p class="docs-endpoint-desc">Get current session info. Returns email and subscription plan.</p>
+          </div>
+
+          <div class="docs-endpoint">
+            <span class="docs-endpoint-method post">POST</span>
+            <span class="docs-endpoint-path">/api/auth/logout</span>
+            <p class="docs-endpoint-desc">Invalidate the current session and clear the cookie.</p>
+          </div>
+
+          <h2>Agents &amp; Skills</h2>
+
+          <div class="docs-endpoint">
+            <span class="docs-endpoint-method get">GET</span>
+            <span class="docs-endpoint-path">/api/agents</span>
+            <p class="docs-endpoint-desc">List all available agents with metadata (name, model, tier, description).</p>
+          </div>
+
+          <div class="docs-endpoint">
+            <span class="docs-endpoint-method get">GET</span>
+            <span class="docs-endpoint-path">/api/skills</span>
+            <p class="docs-endpoint-desc">List all available skills with descriptions and input schemas.</p>
+          </div>
+
+          <div class="docs-endpoint">
+            <span class="docs-endpoint-method post">POST</span>
+            <span class="docs-endpoint-path">/api/orchestrate</span>
+            <p class="docs-endpoint-desc">Send a task to the Orchestrator for intelligent routing and execution.</p>
+          </div>
+
+          <h2>Design System</h2>
+
+          <div class="docs-endpoint">
+            <span class="docs-endpoint-method get">GET</span>
+            <span class="docs-endpoint-path">/api/design-system</span>
+            <p class="docs-endpoint-desc">Get the current DESIGN.md content with reasoning and token layers.</p>
+          </div>
+
+          <div class="docs-endpoint">
+            <span class="docs-endpoint-method post">POST</span>
+            <span class="docs-endpoint-path">/api/design-system/clone-url</span>
+            <p class="docs-endpoint-desc">Clone a brand's design system from a URL. Heavy rate limited.</p>
+          </div>
+          <pre><code>// Request body
+{ "url": "https://example.com" }
+
+// Response
+{ "design": { "reasoning": {...}, "tokens": {...} } }</code></pre>
+
+          <div class="docs-endpoint">
+            <span class="docs-endpoint-method get">GET</span>
+            <span class="docs-endpoint-path">/api/design-system/export</span>
+            <p class="docs-endpoint-desc">Export the design system as DESIGN.md, CSS variables, JSON tokens, or Tailwind config.</p>
+          </div>
+
+          <h2>Media &amp; 3D</h2>
+
+          <div class="docs-endpoint">
+            <span class="docs-endpoint-method post">POST</span>
+            <span class="docs-endpoint-path">/api/media/produce</span>
+            <p class="docs-endpoint-desc">Start a media production job (video, image, audio). Heavy rate limited.</p>
+          </div>
+
+          <div class="docs-endpoint">
+            <span class="docs-endpoint-method post">POST</span>
+            <span class="docs-endpoint-path">/api/3d/scenes</span>
+            <p class="docs-endpoint-desc">Generate a Blender 3D scene from a text prompt. Heavy rate limited.</p>
+          </div>
+
+          <div class="docs-endpoint">
+            <span class="docs-endpoint-method post">POST</span>
+            <span class="docs-endpoint-path">/api/vibe-design/projects</span>
+            <p class="docs-endpoint-desc">Create a new Vibe Design Studio project. Heavy rate limited.</p>
+          </div>
+
+          <h2>Monetization</h2>
+
+          <div class="docs-endpoint">
+            <span class="docs-endpoint-method post">POST</span>
+            <span class="docs-endpoint-path">/api/leads/scrape</span>
+            <p class="docs-endpoint-desc">Start a lead scraping job for a target industry. Heavy rate limited.</p>
+          </div>
+
+          <div class="docs-endpoint">
+            <span class="docs-endpoint-method post">POST</span>
+            <span class="docs-endpoint-path">/api/batch</span>
+            <p class="docs-endpoint-desc">Submit a batch content generation job. Heavy rate limited.</p>
+          </div>
+          <pre><code>// Request body
+{
+  "type": "blog|social|product|email|seo",
+  "prompt": "Topic or instructions",
+  "count": 10  // max: 100
+}</code></pre>
+
+          <h2>AI Queries</h2>
+
+          <div class="docs-endpoint">
+            <span class="docs-endpoint-method post">POST</span>
+            <span class="docs-endpoint-path">/api/grok/query</span>
+            <p class="docs-endpoint-desc">Send a real-time query to Grok-3 for live data. Heavy rate limited.</p>
+          </div>
+
+          <div class="docs-endpoint">
+            <span class="docs-endpoint-method post">POST</span>
+            <span class="docs-endpoint-path">/api/browser/execute</span>
+            <p class="docs-endpoint-desc">Execute a headless browser task. Heavy rate limited.</p>
+          </div>
+
+          <h2>Billing</h2>
+
+          <div class="docs-endpoint">
+            <span class="docs-endpoint-method get">GET</span>
+            <span class="docs-endpoint-path">/api/stripe/checkout?plan=pro</span>
+            <p class="docs-endpoint-desc">Create a Stripe Checkout session. Redirects to Stripe's hosted payment page.</p>
+          </div>
+
+          <div class="docs-endpoint">
+            <span class="docs-endpoint-method post">POST</span>
+            <span class="docs-endpoint-path">/api/stripe/webhook</span>
+            <p class="docs-endpoint-desc">Stripe webhook receiver. Requires raw body (not JSON parsed) for signature verification.</p>
+          </div>
+
+          <h2>Knowledge Graph</h2>
+
+          <div class="docs-endpoint">
+            <span class="docs-endpoint-method get">GET</span>
+            <span class="docs-endpoint-path">/api/knowledge</span>
+            <p class="docs-endpoint-desc">List all knowledge graph entries with metadata.</p>
+          </div>
+
+          <div class="docs-endpoint">
+            <span class="docs-endpoint-method post">POST</span>
+            <span class="docs-endpoint-path">/api/knowledge</span>
+            <p class="docs-endpoint-desc">Add a new entry to the knowledge graph.</p>
+          </div>
+
+          <h2>Error Responses</h2>
+          <p>All endpoints return standard error objects:</p>
+          <pre><code>{
+  "error": "Description of what went wrong"
+}</code></pre>
+
+          <table class="docs-table">
+            <thead>
+              <tr><th>Status</th><th>Meaning</th></tr>
+            </thead>
+            <tbody>
+              <tr><td><code>400</code></td><td>Bad Request — Missing or invalid parameters</td></tr>
+              <tr><td><code>401</code></td><td>Unauthorized — Missing or invalid API token</td></tr>
+              <tr><td><code>403</code></td><td>Forbidden — Valid token but insufficient permissions</td></tr>
+              <tr><td><code>404</code></td><td>Not Found — Resource does not exist</td></tr>
+              <tr><td><code>429</code></td><td>Too Many Requests — Rate limit exceeded</td></tr>
+              <tr><td><code>500</code></td><td>Server Error — Unexpected failure</td></tr>
+            </tbody>
+          </table>
+
+          <div class="docs-page-nav">
+            <a href="/docs/batch-queue">&larr; Batch Queue</a>
+            <a href="/docs/deployment">Deployment &rarr;</a>
+          </div>
+        </div>
+
+        <aside class="docs-toc">
+          <div class="docs-toc-title">On this page</div>
+          <a href="#authentication">Authentication</a>
+          <a href="#rate-limits">Rate Limits</a>
+          <a href="#system">System</a>
+          <a href="#agents-skills">Agents &amp; Skills</a>
+          <a href="#design-system">Design System</a>
+          <a href="#media-3d">Media &amp; 3D</a>
+          <a href="#monetization">Monetization</a>
+          <a href="#billing">Billing</a>
+          <a href="#error-responses">Error Responses</a>
+        </aside>
+      </div>
+    </div>
+  </main>
+
+  <footer class="site-footer">
+    <div class="footer-bottom">
+      <p>&copy; 2026 AI OS Orchestration Lab. All rights reserved.</p>
+    </div>
+  </footer>
+</body>
+</html>

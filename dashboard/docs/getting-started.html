@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Quick Start — AI OS Docs</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/css/landing.css">
+  <link rel="stylesheet" href="/css/docs.css">
+</head>
+<body>
+  <nav class="landing-nav">
+    <div class="nav-container">
+      <a href="/" class="nav-brand">
+        <span class="nav-logo">&#9678;</span>
+        <span class="nav-name">AI OS</span>
+      </a>
+      <div class="nav-links">
+        <a href="/">Home</a>
+        <a href="/docs" class="active">Docs</a>
+        <a href="/terms">Terms</a>
+        <a href="/privacy">Privacy</a>
+      </div>
+    </div>
+  </nav>
+
+  <main class="docs-page">
+    <div class="docs-container">
+      <div class="docs-layout">
+        <div class="docs-content">
+          <div class="docs-breadcrumb">
+            <a href="/docs">Docs</a> <span>/</span> Quick Start
+          </div>
+
+          <h1>Quick Start</h1>
+          <p class="docs-lead">Get AI OS running locally in under five minutes. This guide covers prerequisites, installation, configuration, and launching the dashboard.</p>
+
+          <h2>Prerequisites</h2>
+          <ul>
+            <li><strong>Node.js 20+</strong> — LTS recommended. Verify with <code>node -v</code></li>
+            <li><strong>npm 10+</strong> — Ships with Node.js 20</li>
+            <li><strong>Git</strong> — For cloning the repository</li>
+            <li><strong>Stripe account</strong> — Required for subscription management (test keys work for development)</li>
+            <li><strong>AI API keys</strong> — At least one of: Anthropic (Claude), DeepSeek, or xAI (Grok)</li>
+          </ul>
+
+          <h2>Installation</h2>
+          <p>Clone the repository and install dependencies:</p>
+          <pre><code>git clone https://github.com/wholefoo/ai-os.git
+cd ai-os
+npm install</code></pre>
+
+          <h2>Configuration</h2>
+          <p>Copy the example environment file and fill in your credentials:</p>
+          <pre><code>cp .env.example .env</code></pre>
+
+          <p>Open <code>.env</code> and configure the required variables:</p>
+
+          <table class="docs-table">
+            <thead>
+              <tr>
+                <th>Variable</th>
+                <th>Required</th>
+                <th>Description</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><code>PORT</code></td>
+                <td>No</td>
+                <td>Server port (default: 3000)</td>
+              </tr>
+              <tr>
+                <td><code>NODE_ENV</code></td>
+                <td>No</td>
+                <td><code>development</code> or <code>production</code></td>
+              </tr>
+              <tr>
+                <td><code>STRIPE_SECRET_KEY</code></td>
+                <td>Yes</td>
+                <td>From Stripe dashboard &rarr; Developers &rarr; API keys</td>
+              </tr>
+              <tr>
+                <td><code>STRIPE_WEBHOOK_SECRET</code></td>
+                <td>Yes</td>
+                <td>From Stripe dashboard &rarr; Webhooks &rarr; Signing secret</td>
+              </tr>
+              <tr>
+                <td><code>STRIPE_PRO_PRICE_ID</code></td>
+                <td>Yes</td>
+                <td>Stripe Price ID for the Pro plan ($49/mo)</td>
+              </tr>
+              <tr>
+                <td><code>STRIPE_ENTERPRISE_PRICE_ID</code></td>
+                <td>Yes</td>
+                <td>Stripe Price ID for the Enterprise plan ($199/mo)</td>
+              </tr>
+              <tr>
+                <td><code>ANTHROPIC_API_KEY</code></td>
+                <td>For AI</td>
+                <td>Claude API key for Opus 4.8 agents (all effort tiers)</td>
+              </tr>
+              <tr>
+                <td><code>API_TOKEN</code></td>
+                <td>Prod</td>
+                <td>Bearer token for API authentication</td>
+              </tr>
+            </tbody>
+          </table>
+
+          <div class="docs-callout info">
+            <strong>Tip:</strong> For local development, use Stripe test keys (prefix <code>sk_test_</code>). No real charges will be processed.
+          </div>
+
+          <h2>Launch</h2>
+          <p>Start the server in development mode:</p>
+          <pre><code>npm start
+# Dashboard at http://localhost:3000</code></pre>
+
+          <p>Or use the dev script with auto-restart:</p>
+          <pre><code>npm run dev</code></pre>
+
+          <h2>First Steps</h2>
+          <ol>
+            <li><strong>Visit the landing page</strong> at <code>http://localhost:3000</code> to see the public site</li>
+            <li><strong>Log in</strong> using the login modal (email + password)</li>
+            <li><strong>Subscribe</strong> via the Stripe checkout flow (use test card <code>4242 4242 4242 4242</code>)</li>
+            <li><strong>Access the dashboard</strong> at <code>/app</code> — all 16+ views are now available</li>
+            <li><strong>Run an agent</strong> from the Agent Fleet view to verify your AI API keys work</li>
+          </ol>
+
+          <h2>Project Structure</h2>
+          <pre><code>.claude/
+  agents/        31 agent role definitions
+  skills/        19 procedural skill files
+  rules/         Guardrails, cost routing, security
+  identity/      Soul, user preferences, personality
+  pipelines/     Declarative YAML skill chains
+  projects/      Per-project context overrides
+.magent/
+  vault/         Knowledge base (raw, wiki, outputs)
+  state/         Persisted runtime state
+  team.yaml      Agent roster and escalation paths
+dashboard/
+  index.html     Public landing page
+  app.html       Authenticated dashboard
+  css/           Landing, legal, docs, and dashboard styles
+  js/            Landing and dashboard scripts
+  docs/          Documentation pages
+deploy/
+  nginx.conf     Reverse proxy config
+  install-vps.sh VPS provisioning script
+server.js        Express + WebSocket backend</code></pre>
+
+          <div class="docs-callout warn">
+            <strong>Note:</strong> The <code>.magent/state/</code> directory is auto-created on first run and excluded from version control. Your runtime state persists between server restarts.
+          </div>
+
+          <div class="docs-page-nav">
+            <span></span>
+            <a href="/docs/architecture">Architecture &rarr;</a>
+          </div>
+        </div>
+
+        <aside class="docs-toc">
+          <div class="docs-toc-title">On this page</div>
+          <a href="#prerequisites">Prerequisites</a>
+          <a href="#installation">Installation</a>
+          <a href="#configuration">Configuration</a>
+          <a href="#launch">Launch</a>
+          <a href="#first-steps">First Steps</a>
+          <a href="#project-structure">Project Structure</a>
+        </aside>
+      </div>
+    </div>
+  </main>
+
+  <footer class="site-footer">
+    <div class="footer-bottom">
+      <p>&copy; 2026 AI OS Orchestration Lab. All rights reserved.</p>
+    </div>
+  </footer>
+</body>
+</html>

@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Hermes Agent — AI OS Docs</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/css/landing.css">
+  <link rel="stylesheet" href="/css/docs.css">
+</head>
+<body>
+  <nav class="landing-nav">
+    <div class="nav-container">
+      <a href="/" class="nav-brand">
+        <span class="nav-logo">&#9678;</span>
+        <span class="nav-name">AI OS</span>
+      </a>
+      <div class="nav-links">
+        <a href="/">Home</a>
+        <a href="/docs" class="active">Docs</a>
+        <a href="/terms">Terms</a>
+        <a href="/privacy">Privacy</a>
+      </div>
+    </div>
+  </nav>
+
+  <main class="docs-page">
+    <div class="docs-container">
+      <div class="docs-layout">
+        <div class="docs-content">
+          <div class="docs-breadcrumb">
+            <a href="/docs">Docs</a> <span>/</span> Hermes Agent
+          </div>
+
+          <h1>Hermes Agent</h1>
+          <p class="docs-lead">Hermes is the persistent background worker tier — an always-on, self-improving MCP bridge that runs 24/7 on the same VPS as AI OS. While Claude is the "brain" (planning and decisions), Hermes is the "hands" (interacting with the real world around the clock).</p>
+
+          <h2>Architecture</h2>
+          <p>Hermes connects to AI OS as a Model Context Protocol (MCP) server running on the same VPS. The Orchestrator delegates tasks to Hermes for persistent, background execution:</p>
+          <ul>
+            <li><strong>Claude (AI OS)</strong> — Planning, decision-making, orchestration, complex reasoning</li>
+            <li><strong>Hermes</strong> — 24/7 execution, mobile bridge, cron jobs, approval gating, long-running tasks</li>
+          </ul>
+          <p>The MCP connection runs locally at <code>http://127.0.0.1:8420</code> by default, configured via the <code>HERMES_MCP_URL</code> environment variable.</p>
+
+          <h2>Remote Approval Gate</h2>
+          <p>When Hermes encounters a destructive or risky operation, it pauses execution and pushes an approval prompt to your phone:</p>
+          <ol>
+            <li>A task requests a risky action (file deletion, force-push, database modification)</li>
+            <li>Hermes suspends the action and creates an approval request</li>
+            <li>A notification is sent via Telegram, Slack, or Discord</li>
+            <li>You approve or reject from your phone</li>
+            <li>Hermes resumes or aborts based on your decision</li>
+          </ol>
+
+          <p>Approval requests are tagged with risk levels:</p>
+          <table class="docs-table">
+            <thead>
+              <tr><th>Risk Level</th><th>Examples</th><th>Default Action</th></tr>
+            </thead>
+            <tbody>
+              <tr><td><strong>High</strong></td><td>Force-push, database drop, production deploy, key rotation</td><td>Block until approved</td></tr>
+              <tr><td><strong>Medium</strong></td><td>File deletion, config changes, branch deletion</td><td>Block until approved</td></tr>
+              <tr><td><strong>Low</strong></td><td>Log cleanup, cache purge, temp file removal</td><td>Auto-approve after 5 min</td></tr>
+            </tbody>
+          </table>
+
+          <h2>Walkaway Mode</h2>
+          <p>Initiate a long-running task from the dashboard, then close your laptop. Hermes acts as the bridge:</p>
+          <ul>
+            <li><strong>Progress pings</strong> — Sends status updates to your phone at each milestone</li>
+            <li><strong>Mobile replies</strong> — Reply from your phone with instructions: "keep going," "make it simpler," "push to GitHub"</li>
+            <li><strong>Completion notification</strong> — Alerts you when the task finishes with a summary</li>
+            <li><strong>Approval integration</strong> — If the task hits a risky action, you get an approval prompt on mobile</li>
+          </ul>
+
+          <div class="docs-callout info">
+            <strong>Example:</strong> Start a massive refactoring task, walk away, and Hermes will ping you on Telegram with progress updates. Reply "push to staging" from your phone when it's done.
+          </div>
+
+          <h2>Remote Bug Diagnosis</h2>
+          <p>When a bug report arrives in Discord or Slack, use Hermes from your phone to trigger analysis:</p>
+          <ol>
+            <li>Send a message to Hermes via Telegram: "Analyze the auth bug reported in #bugs"</li>
+            <li>Hermes reads the bug report, instructs Claude to analyze the relevant files</li>
+            <li>Claude's diagnosis is sent back to your phone</li>
+            <li>Optionally, approve a fix from mobile</li>
+          </ol>
+
+          <h2>24/7 Cron Jobs</h2>
+          <p>While AI OS requires your environment to be open, Hermes runs persistently. Delegate scheduled tasks that execute automatically:</p>
+
+          <table class="docs-table">
+            <thead>
+              <tr><th>Job</th><th>Schedule</th><th>Description</th></tr>
+            </thead>
+            <tbody>
+              <tr><td><strong>Inbox Summary</strong></td><td><code>0 8 * * *</code></td><td>Daily email digest pushed to Telegram</td></tr>
+              <tr><td><strong>AI News Brief</strong></td><td><code>30 7 * * 1-5</code></td><td>Weekday morning AI/tech roundup</td></tr>
+              <tr><td><strong>GitHub Backup</strong></td><td><code>0 2 * * *</code></td><td>Nightly repository backup to secondary location</td></tr>
+              <tr><td><strong>Comment Monitor</strong></td><td><code>0 */4 * * *</code></td><td>YouTube/social comment tracker every 4 hours</td></tr>
+              <tr><td><strong>Health Check</strong></td><td><code>*/30 * * * *</code></td><td>VPS disk, memory, and service monitoring</td></tr>
+            </tbody>
+          </table>
+
+          <h2>Self-Improving Skills</h2>
+          <p>Hermes has an autonomous "do, learn, improve" loop. When it solves a complex problem, it extracts the successful patterns and writes them into reusable skill files for faster future execution. These skills are stored locally and available to all agents.</p>
+
+          <h2>API Endpoints</h2>
+
+          <div class="docs-endpoint">
+            <span class="docs-endpoint-method get">GET</span>
+            <span class="docs-endpoint-path">/api/hermes/status</span>
+            <p class="docs-endpoint-desc">Check MCP connection status, uptime, stats, and loaded skills.</p>
+          </div>
+
+          <div class="docs-endpoint">
+            <span class="docs-endpoint-method post">POST</span>
+            <span class="docs-endpoint-path">/api/hermes/delegate</span>
+            <p class="docs-endpoint-desc">Delegate a task to Hermes. Modes: background, walkaway, or cron.</p>
+          </div>
+
+          <div class="docs-endpoint">
+            <span class="docs-endpoint-method get">GET</span>
+            <span class="docs-endpoint-path">/api/hermes/tasks</span>
+            <p class="docs-endpoint-desc">List all active delegated tasks with progress and logs.</p>
+          </div>
+
+          <div class="docs-endpoint">
+            <span class="docs-endpoint-method get">GET</span>
+            <span class="docs-endpoint-path">/api/hermes/approvals</span>
+            <p class="docs-endpoint-desc">Get pending approval requests with risk levels and context.</p>
+          </div>
+
+          <div class="docs-endpoint">
+            <span class="docs-endpoint-method post">POST</span>
+            <span class="docs-endpoint-path">/api/hermes/approvals/:id</span>
+            <p class="docs-endpoint-desc">Approve or reject a pending action. Body: <code>{ "decision": "approve" }</code></p>
+          </div>
+
+          <div class="docs-endpoint">
+            <span class="docs-endpoint-method get">GET</span>
+            <span class="docs-endpoint-path">/api/hermes/cron</span>
+            <p class="docs-endpoint-desc">List all scheduled Hermes cron jobs.</p>
+          </div>
+
+          <div class="docs-endpoint">
+            <span class="docs-endpoint-method post">POST</span>
+            <span class="docs-endpoint-path">/api/hermes/cron</span>
+            <p class="docs-endpoint-desc">Create a new Hermes cron job.</p>
+          </div>
+
+          <h2>Configuration</h2>
+          <table class="docs-table">
+            <thead>
+              <tr><th>Variable</th><th>Default</th><th>Description</th></tr>
+            </thead>
+            <tbody>
+              <tr><td><code>HERMES_MCP_URL</code></td><td><code>http://127.0.0.1:8420</code></td><td>MCP server endpoint for Hermes</td></tr>
+              <tr><td><code>TELEGRAM_BOT_TOKEN</code></td><td>—</td><td>Required for mobile approval prompts via Telegram</td></tr>
+              <tr><td><code>SLACK_WEBHOOK_URL</code></td><td>—</td><td>Required for Slack notifications from Hermes</td></tr>
+            </tbody>
+          </table>
+
+          <h2>Privacy &amp; Cost Benefits</h2>
+          <ul>
+            <li><strong>Data privacy</strong> — Hermes runs locally on your VPS. Your data never leaves your infrastructure.</li>
+            <li><strong>Cost savings</strong> — Background and cron tasks run on the free local model, saving API costs.</li>
+            <li><strong>Always available</strong> — Unlike Claude which requires your session, Hermes works 24/7.</li>
+          </ul>
+
+          <div class="docs-page-nav">
+            <a href="/docs/notifications">&larr; Notifications</a>
+            <span></span>
+          </div>
+        </div>
+
+        <aside class="docs-toc">
+          <div class="docs-toc-title">On this page</div>
+          <a href="#architecture">Architecture</a>
+          <a href="#remote-approval-gate">Approval Gate</a>
+          <a href="#walkaway-mode">Walkaway Mode</a>
+          <a href="#remote-bug-diagnosis">Bug Diagnosis</a>
+          <a href="#cron-jobs">Cron Jobs</a>
+          <a href="#self-improving-skills">Skills</a>
+          <a href="#api-endpoints">API</a>
+          <a href="#configuration">Configuration</a>
+        </aside>
+      </div>
+    </div>
+  </main>
+
+  <footer class="site-footer">
+    <div class="footer-bottom">
+      <p>&copy; 2026 AI OS Orchestration Lab. All rights reserved.</p>
+    </div>
+  </footer>
+</body>
+</html>

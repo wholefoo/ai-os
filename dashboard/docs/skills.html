@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Skills &amp; Pipelines — AI OS Docs</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/css/landing.css">
+  <link rel="stylesheet" href="/css/docs.css">
+</head>
+<body>
+  <nav class="landing-nav">
+    <div class="nav-container">
+      <a href="/" class="nav-brand">
+        <span class="nav-logo">&#9678;</span>
+        <span class="nav-name">AI OS</span>
+      </a>
+      <div class="nav-links">
+        <a href="/">Home</a>
+        <a href="/docs" class="active">Docs</a>
+        <a href="/terms">Terms</a>
+        <a href="/privacy">Privacy</a>
+      </div>
+    </div>
+  </nav>
+
+  <main class="docs-page">
+    <div class="docs-container">
+      <div class="docs-layout">
+        <div class="docs-content">
+          <div class="docs-breadcrumb">
+            <a href="/docs">Docs</a> <span>/</span> Skills &amp; Pipelines
+          </div>
+
+          <h1>Skills &amp; Pipelines</h1>
+          <p class="docs-lead">Skills are procedural instruction files that teach agents how to perform specific tasks. Pipelines chain multiple skills into declarative YAML workflows for complex multi-step operations.</p>
+
+          <h2>Skills Overview</h2>
+          <p>AI OS includes 19 built-in skill files stored in <code>.claude/skills/</code>. Each skill is a structured Markdown document that an agent reads and follows step by step.</p>
+
+          <h3>Skill Categories</h3>
+          <ul>
+            <li><strong>Research</strong> — Deep research, competitive analysis, literature review</li>
+            <li><strong>Content</strong> — Blog writing, social posts, email sequences, report generation</li>
+            <li><strong>Technical</strong> — Code generation, debugging, API integration, database design</li>
+            <li><strong>Design</strong> — Brand cloning, design system creation, UI mockup generation</li>
+            <li><strong>Media</strong> — Video scripting, thumbnail creation, audio transcription</li>
+            <li><strong>Business</strong> — Lead scraping, product listing, market analysis, pricing strategy</li>
+            <li><strong>Data</strong> — Cleaning, transformation, visualization, statistical analysis</li>
+          </ul>
+
+          <h3>Skill Anatomy</h3>
+          <p>A skill file follows a consistent structure:</p>
+          <pre><code># Skill: Deep Research
+
+## Purpose
+Conduct thorough research on a topic with source
+synthesis and citation tracking.
+
+## Inputs
+- topic: The subject to research
+- depth: shallow | medium | deep
+- format: report | bullets | wiki
+
+## Steps
+1. Identify 5-10 authoritative sources
+2. Extract key claims with citations
+3. Cross-reference conflicting information
+4. Synthesize findings into requested format
+5. Write to vault/outputs/
+
+## Output
+Structured research document saved to the Memory Vault.
+
+## Guardrails
+- Always cite sources
+- Flag low-confidence claims
+- Escalate if topic requires specialized knowledge</code></pre>
+
+          <h2>Pipelines</h2>
+          <p>Pipelines are declarative YAML files in <code>.claude/pipelines/</code> that chain multiple skills into automated workflows. The Orchestrator reads the pipeline definition and executes each step in sequence, passing outputs between stages.</p>
+
+          <h3>Pipeline Structure</h3>
+          <pre><code>name: content-pipeline
+description: End-to-end blog content creation
+trigger: manual
+
+steps:
+  - skill: deep-research
+    agent: researcher
+    inputs:
+      topic: "{{topic}}"
+      depth: deep
+
+  - skill: blog-writing
+    agent: writer
+    inputs:
+      research: "{{steps.0.output}}"
+      tone: professional
+      length: 1500
+
+  - skill: seo-optimization
+    agent: marketing-hub
+    inputs:
+      content: "{{steps.1.output}}"
+      keywords: "{{keywords}}"
+
+  - skill: social-distribution
+    agent: marketing-hub
+    inputs:
+      content: "{{steps.2.output}}"
+      platforms:
+        - twitter
+        - linkedin</code></pre>
+
+          <h3>Pipeline Features</h3>
+          <ul>
+            <li><strong>Variable interpolation</strong> — Use <code>{{variable}}</code> syntax to pass data between steps</li>
+            <li><strong>Step references</strong> — Access previous step outputs via <code>{{steps.N.output}}</code></li>
+            <li><strong>Conditional execution</strong> — Steps can have <code>condition</code> fields for branching logic</li>
+            <li><strong>Error handling</strong> — Each step can define <code>on_error: skip | retry | abort</code></li>
+            <li><strong>Triggers</strong> — Pipelines can be triggered manually, via CRON schedule, or by webhook</li>
+          </ul>
+
+          <h2>Continuous Loops</h2>
+          <p>AI OS supports CRON-scheduled autonomous routines through the Automator and Routine Runner agents. These loops execute predefined pipelines on a schedule with built-in rate limiting to manage API costs.</p>
+
+          <pre><code>name: daily-intel
+schedule: "0 8 * * *"  # 8 AM daily
+agent: routine-runner
+pipeline: market-intel-pipeline
+rate_limit:
+  max_runs: 1
+  window: 24h</code></pre>
+
+          <h2>Custom Skills</h2>
+          <p>You can create custom skills by adding Markdown files to <code>.claude/skills/</code>. Follow the standard anatomy (Purpose, Inputs, Steps, Output, Guardrails) and the system will automatically discover and make them available to agents.</p>
+
+          <div class="docs-callout info">
+            <strong>Tip:</strong> Use the Skills view in the dashboard to browse all available skills, see their descriptions, and trigger them directly.
+          </div>
+
+          <div class="docs-page-nav">
+            <a href="/docs/agents">&larr; Agent Fleet</a>
+            <a href="/docs/knowledge-graph">Knowledge Graph &rarr;</a>
+          </div>
+        </div>
+
+        <aside class="docs-toc">
+          <div class="docs-toc-title">On this page</div>
+          <a href="#skills-overview">Skills Overview</a>
+          <a href="#pipelines">Pipelines</a>
+          <a href="#continuous-loops">Continuous Loops</a>
+          <a href="#custom-skills">Custom Skills</a>
+        </aside>
+      </div>
+    </div>
+  </main>
+
+  <footer class="site-footer">
+    <div class="footer-bottom">
+      <p>&copy; 2026 AI OS Orchestration Lab. All rights reserved.</p>
+    </div>
+  </footer>
+</body>
+</html>

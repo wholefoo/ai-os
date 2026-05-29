@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Billing &amp; Subscriptions — AI OS Docs</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/css/landing.css">
+  <link rel="stylesheet" href="/css/docs.css">
+</head>
+<body>
+  <nav class="landing-nav">
+    <div class="nav-container">
+      <a href="/" class="nav-brand">
+        <span class="nav-logo">&#9678;</span>
+        <span class="nav-name">AI OS</span>
+      </a>
+      <div class="nav-links">
+        <a href="/">Home</a>
+        <a href="/docs" class="active">Docs</a>
+        <a href="/terms">Terms</a>
+        <a href="/privacy">Privacy</a>
+      </div>
+    </div>
+  </nav>
+
+  <main class="docs-page">
+    <div class="docs-container">
+      <div class="docs-layout">
+        <div class="docs-content">
+          <div class="docs-breadcrumb">
+            <a href="/docs">Docs</a> <span>/</span> Billing &amp; Subscriptions
+          </div>
+
+          <h1>Billing &amp; Subscriptions</h1>
+          <p class="docs-lead">AI OS uses Stripe for subscription management with two paid tiers. The dashboard is gated behind an active subscription via session-based access control.</p>
+
+          <h2>Subscription Tiers</h2>
+          <table class="docs-table">
+            <thead>
+              <tr><th>Feature</th><th>Pro ($49/mo)</th><th>Enterprise ($199/mo)</th></tr>
+            </thead>
+            <tbody>
+              <tr><td>Agent access</td><td>All 25+ agents</td><td>All 25+ agents</td></tr>
+              <tr><td>Model tiers</td><td>Scout + Professional</td><td>All tiers including Strategic</td></tr>
+              <tr><td>Batch queue</td><td>50 items/day</td><td>Unlimited</td></tr>
+              <tr><td>API rate limit</td><td>120 req/min</td><td>300 req/min</td></tr>
+              <tr><td>Knowledge Graph entries</td><td>1,000</td><td>Unlimited</td></tr>
+              <tr><td>Concurrent pipelines</td><td>2</td><td>10</td></tr>
+              <tr><td>Vault storage</td><td>5 GB</td><td>50 GB</td></tr>
+              <tr><td>Support</td><td>Email</td><td>Priority email + Slack</td></tr>
+            </tbody>
+          </table>
+
+          <h2>Checkout Flow</h2>
+          <p>The subscription flow uses Stripe Checkout for secure, PCI-compliant payment processing:</p>
+          <ol>
+            <li>User clicks a pricing CTA on the landing page</li>
+            <li>The server creates a Stripe Checkout Session via <code>GET /api/stripe/checkout?plan=pro</code></li>
+            <li>User is redirected to Stripe's hosted payment page</li>
+            <li>After successful payment, Stripe redirects to <code>/api/stripe/success</code></li>
+            <li>The server creates a session cookie and redirects to <code>/app</code></li>
+          </ol>
+
+          <h2>Webhook Handling</h2>
+          <p>Stripe sends webhook events to <code>POST /api/stripe/webhook</code> for lifecycle management:</p>
+          <table class="docs-table">
+            <thead>
+              <tr><th>Event</th><th>Action</th></tr>
+            </thead>
+            <tbody>
+              <tr><td><code>checkout.session.completed</code></td><td>Activate subscription, create session</td></tr>
+              <tr><td><code>customer.subscription.updated</code></td><td>Update plan tier</td></tr>
+              <tr><td><code>customer.subscription.deleted</code></td><td>Revoke dashboard access</td></tr>
+              <tr><td><code>invoice.payment_failed</code></td><td>Notify user, enter grace period</td></tr>
+            </tbody>
+          </table>
+
+          <div class="docs-callout warn">
+            <strong>Important:</strong> The webhook endpoint receives raw request bodies (not JSON parsed) because Stripe requires the raw body for signature verification via <code>STRIPE_WEBHOOK_SECRET</code>.
+          </div>
+
+          <h2>Session Management</h2>
+          <p>Dashboard access is controlled by a session cookie:</p>
+          <ul>
+            <li><strong>Cookie name:</strong> <code>ai-os-session</code></li>
+            <li><strong>Type:</strong> HTTP-only (not accessible via JavaScript)</li>
+            <li><strong>Expiry:</strong> 30 days</li>
+            <li><strong>Content:</strong> Cryptographically random token (not email or PII)</li>
+            <li><strong>Validation:</strong> Server-side lookup maps token to email + plan</li>
+          </ul>
+
+          <h3>Access Control Flow</h3>
+          <ol>
+            <li>User requests <code>/app</code></li>
+            <li>Server reads <code>ai-os-session</code> cookie</li>
+            <li>Looks up session in memory (token &rarr; email + plan + expiry)</li>
+            <li>If valid session with active plan: serve <code>app.html</code></li>
+            <li>If no session, expired, or no plan: redirect to <code>/login</code></li>
+          </ol>
+
+          <h2>Stripe Configuration</h2>
+          <p>Required environment variables for billing:</p>
+          <table class="docs-table">
+            <thead>
+              <tr><th>Variable</th><th>Where to Find</th></tr>
+            </thead>
+            <tbody>
+              <tr><td><code>STRIPE_SECRET_KEY</code></td><td>Stripe Dashboard &rarr; Developers &rarr; API keys</td></tr>
+              <tr><td><code>STRIPE_WEBHOOK_SECRET</code></td><td>Stripe Dashboard &rarr; Developers &rarr; Webhooks &rarr; Signing secret</td></tr>
+              <tr><td><code>STRIPE_PRO_PRICE_ID</code></td><td>Stripe Dashboard &rarr; Products &rarr; Pro plan &rarr; Price ID</td></tr>
+              <tr><td><code>STRIPE_ENTERPRISE_PRICE_ID</code></td><td>Stripe Dashboard &rarr; Products &rarr; Enterprise plan &rarr; Price ID</td></tr>
+            </tbody>
+          </table>
+
+          <div class="docs-callout info">
+            <strong>Testing:</strong> Use Stripe test mode keys (prefix <code>sk_test_</code>) during development. Test card number: <code>4242 4242 4242 4242</code> with any future expiry and any CVC.
+          </div>
+
+          <div class="docs-page-nav">
+            <a href="/docs/deployment">&larr; Deployment</a>
+            <a href="/docs/notifications">Notifications &rarr;</a>
+          </div>
+        </div>
+
+        <aside class="docs-toc">
+          <div class="docs-toc-title">On this page</div>
+          <a href="#subscription-tiers">Subscription Tiers</a>
+          <a href="#checkout-flow">Checkout Flow</a>
+          <a href="#webhook-handling">Webhook Handling</a>
+          <a href="#session-management">Session Management</a>
+          <a href="#stripe-configuration">Stripe Configuration</a>
+        </aside>
+      </div>
+    </div>
+  </main>
+
+  <footer class="site-footer">
+    <div class="footer-bottom">
+      <p>&copy; 2026 AI OS Orchestration Lab. All rights reserved.</p>
+    </div>
+  </footer>
+</body>
+</html>

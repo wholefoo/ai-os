@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Notifications — AI OS Docs</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/css/landing.css">
+  <link rel="stylesheet" href="/css/docs.css">
+</head>
+<body>
+  <nav class="landing-nav">
+    <div class="nav-container">
+      <a href="/" class="nav-brand">
+        <span class="nav-logo">&#9678;</span>
+        <span class="nav-name">AI OS</span>
+      </a>
+      <div class="nav-links">
+        <a href="/">Home</a>
+        <a href="/docs" class="active">Docs</a>
+        <a href="/terms">Terms</a>
+        <a href="/privacy">Privacy</a>
+      </div>
+    </div>
+  </nav>
+
+  <main class="docs-page">
+    <div class="docs-container">
+      <div class="docs-layout">
+        <div class="docs-content">
+          <div class="docs-breadcrumb">
+            <a href="/docs">Docs</a> <span>/</span> Notifications
+          </div>
+
+          <h1>Notifications</h1>
+          <p class="docs-lead">AI OS delivers notifications through three channels: real-time WebSocket messages in the dashboard, Telegram Bot API, and Slack Incoming Webhooks. All channels are optional and independently configurable.</p>
+
+          <h2>WebSocket (Dashboard)</h2>
+          <p>The primary notification channel. All connected dashboard clients receive real-time updates via WebSocket:</p>
+          <ul>
+            <li><strong>Agent status</strong> — Started, processing, completed, or failed</li>
+            <li><strong>Batch progress</strong> — Per-item status updates and completion counts</li>
+            <li><strong>System alerts</strong> — Memory warnings, rate limit hits, server shutdown notices</li>
+            <li><strong>Pipeline updates</strong> — Step-by-step progress through multi-stage pipelines</li>
+          </ul>
+
+          <h3>Connection Management</h3>
+          <ul>
+            <li><strong>Heartbeat:</strong> Server pings every 30 seconds; clients that miss 2 pings are disconnected</li>
+            <li><strong>Auto-reconnect:</strong> Client uses exponential backoff (1s, 2s, 4s, ... up to 30s max)</li>
+            <li><strong>Reconnect banner:</strong> Visual indicator appears when connection drops</li>
+            <li><strong>Graceful shutdown:</strong> Server sends <code>server_shutdown</code> event before stopping</li>
+          </ul>
+
+          <h2>Telegram</h2>
+          <p>Send notifications to a Telegram chat via the Bot API. Useful for mobile alerts when you're away from the dashboard.</p>
+
+          <h3>Setup</h3>
+          <ol>
+            <li>Create a bot via <code>@BotFather</code> on Telegram</li>
+            <li>Copy the bot token to <code>TELEGRAM_BOT_TOKEN</code> in <code>.env</code></li>
+            <li>Start a chat with your bot and send any message</li>
+            <li>Get your chat ID and set it as <code>TELEGRAM_CHAT_ID</code></li>
+          </ol>
+
+          <h3>Environment Variables</h3>
+          <table class="docs-table">
+            <thead>
+              <tr><th>Variable</th><th>Description</th></tr>
+            </thead>
+            <tbody>
+              <tr><td><code>TELEGRAM_BOT_TOKEN</code></td><td>Bot token from @BotFather</td></tr>
+              <tr><td><code>TELEGRAM_CHAT_ID</code></td><td>Target chat/group ID for messages</td></tr>
+            </tbody>
+          </table>
+
+          <p>The server calls the Telegram Bot API directly via HTTP POST to <code>api.telegram.org</code>. Messages are sent as HTML-formatted text with agent name, status, and summary.</p>
+
+          <h2>Slack</h2>
+          <p>Send notifications to a Slack channel via Incoming Webhooks.</p>
+
+          <h3>Setup</h3>
+          <ol>
+            <li>Go to your Slack workspace settings &rarr; Apps &rarr; Incoming Webhooks</li>
+            <li>Create a new webhook and select the target channel</li>
+            <li>Copy the webhook URL to <code>SLACK_WEBHOOK_URL</code> in <code>.env</code></li>
+          </ol>
+
+          <h3>Environment Variable</h3>
+          <table class="docs-table">
+            <thead>
+              <tr><th>Variable</th><th>Description</th></tr>
+            </thead>
+            <tbody>
+              <tr><td><code>SLACK_WEBHOOK_URL</code></td><td>Full webhook URL from Slack app settings</td></tr>
+            </tbody>
+          </table>
+
+          <p>Notifications are sent as Slack Block Kit messages with structured formatting including title, description, and status indicators.</p>
+
+          <h2>Notification Events</h2>
+          <p>The following events trigger notifications across all configured channels:</p>
+          <table class="docs-table">
+            <thead>
+              <tr><th>Event</th><th>WebSocket</th><th>Telegram</th><th>Slack</th></tr>
+            </thead>
+            <tbody>
+              <tr><td>Agent completed</td><td>Always</td><td>If configured</td><td>If configured</td></tr>
+              <tr><td>Agent failed</td><td>Always</td><td>If configured</td><td>If configured</td></tr>
+              <tr><td>Batch completed</td><td>Always</td><td>If configured</td><td>If configured</td></tr>
+              <tr><td>Pipeline finished</td><td>Always</td><td>If configured</td><td>If configured</td></tr>
+              <tr><td>Rate limit hit</td><td>Always</td><td>No</td><td>No</td></tr>
+              <tr><td>Server shutdown</td><td>Always</td><td>If configured</td><td>If configured</td></tr>
+            </tbody>
+          </table>
+
+          <div class="docs-page-nav">
+            <a href="/docs/billing">&larr; Billing</a>
+            <a href="/docs/hermes">Hermes Agent &rarr;</a>
+          </div>
+        </div>
+
+        <aside class="docs-toc">
+          <div class="docs-toc-title">On this page</div>
+          <a href="#websocket">WebSocket</a>
+          <a href="#telegram">Telegram</a>
+          <a href="#slack">Slack</a>
+          <a href="#notification-events">Events</a>
+        </aside>
+      </div>
+    </div>
+  </main>
+
+  <footer class="site-footer">
+    <div class="footer-bottom">
+      <p>&copy; 2026 AI OS Orchestration Lab. All rights reserved.</p>
+    </div>
+  </footer>
+</body>
+</html>

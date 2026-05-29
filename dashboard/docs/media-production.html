@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Media Production — AI OS Docs</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/css/landing.css">
+  <link rel="stylesheet" href="/css/docs.css">
+</head>
+<body>
+  <nav class="landing-nav">
+    <div class="nav-container">
+      <a href="/" class="nav-brand">
+        <span class="nav-logo">&#9678;</span>
+        <span class="nav-name">AI OS</span>
+      </a>
+      <div class="nav-links">
+        <a href="/">Home</a>
+        <a href="/docs" class="active">Docs</a>
+        <a href="/terms">Terms</a>
+        <a href="/privacy">Privacy</a>
+      </div>
+    </div>
+  </nav>
+
+  <main class="docs-page">
+    <div class="docs-container">
+      <div class="docs-layout">
+        <div class="docs-content">
+          <div class="docs-breadcrumb">
+            <a href="/docs">Docs</a> <span>/</span> Media Production
+          </div>
+
+          <h1>Media Production</h1>
+          <p class="docs-lead">Generate video content, 3D assets, and rich media from natural language prompts. AI OS integrates with Remotion for programmatic video, Google Vids for collaborative editing, and Blender MCP for 3D scene generation.</p>
+
+          <h2>Remotion Video</h2>
+          <p>Remotion enables programmatic video creation using React components. The Media Producer agent translates natural language prompts into Remotion compositions:</p>
+          <ul>
+            <li><strong>Script generation</strong> — AI writes the video script, scene breakdown, and timing</li>
+            <li><strong>Component assembly</strong> — Automatically selects and configures Remotion components (text overlays, transitions, animations)</li>
+            <li><strong>Rendering</strong> — Server-side rendering to MP4 with configurable resolution and frame rate</li>
+            <li><strong>Batch production</strong> — Generate multiple video variants for A/B testing</li>
+          </ul>
+
+          <h3>Supported Video Types</h3>
+          <table class="docs-table">
+            <thead>
+              <tr><th>Type</th><th>Description</th></tr>
+            </thead>
+            <tbody>
+              <tr><td><strong>Explainer</strong></td><td>Animated text and graphics explaining concepts</td></tr>
+              <tr><td><strong>Social Clip</strong></td><td>Short-form content for Instagram, TikTok, YouTube Shorts</td></tr>
+              <tr><td><strong>Product Demo</strong></td><td>Feature walkthroughs with screen recordings and annotations</td></tr>
+              <tr><td><strong>Data Story</strong></td><td>Animated charts and statistics with narrative voiceover</td></tr>
+              <tr><td><strong>Slideshow</strong></td><td>Image sequences with transitions, captions, and music</td></tr>
+            </tbody>
+          </table>
+
+          <h2>Google Vids</h2>
+          <p>For collaborative video editing, AI OS integrates with Google Vids:</p>
+          <ul>
+            <li>AI-generated storyboards pushed to Google Vids for human review</li>
+            <li>Collaborative editing with team members in real time</li>
+            <li>Automatic captioning and transcript generation</li>
+            <li>Export to multiple formats and platforms</li>
+          </ul>
+
+          <h2>Blender 3D</h2>
+          <p>The Blender 3D agent creates three-dimensional scenes and product renders from text descriptions via the Blender MCP integration:</p>
+          <ul>
+            <li><strong>Scene generation</strong> — Describe a scene and get a complete Blender project file</li>
+            <li><strong>Product renders</strong> — Studio-quality product photography from 3D models</li>
+            <li><strong>Environment design</strong> — Interior/exterior scenes for architectural visualization</li>
+            <li><strong>Animation</strong> — Simple object animations (rotations, camera paths, material transitions)</li>
+          </ul>
+
+          <h3>Prompt Examples</h3>
+          <pre><code>"A minimalist desk setup with a laptop, coffee cup,
+and potted succulent. Soft morning light from the
+left. White marble desk surface."
+
+"Product render of a matte black wireless headphone
+on a dark gradient background. Three-quarter view
+with subtle rim lighting."</code></pre>
+
+          <h2>Vibe Design Studio</h2>
+          <p>The Vibe Designer agent generates UI mockups and interaction designs from prompts:</p>
+          <ul>
+            <li><strong>Prompt-to-UI</strong> — Describe a screen and get a visual mockup</li>
+            <li><strong>Predictive heat maps</strong> — AI-estimated attention maps showing where users will look first</li>
+            <li><strong>Interaction flows</strong> — Multi-screen user journey maps</li>
+            <li><strong>Component extraction</strong> — Break mockups into reusable component specs</li>
+          </ul>
+
+          <h2>Dashboard Integration</h2>
+          <p>The Media view in the dashboard provides:</p>
+          <ul>
+            <li>Natural language prompt input with type selector (video, 3D, UI)</li>
+            <li>Real-time progress tracking via WebSocket</li>
+            <li>Preview panel for generated media</li>
+            <li>History of all generated assets with re-generation options</li>
+            <li>Batch queue integration for high-volume production</li>
+          </ul>
+
+          <div class="docs-page-nav">
+            <a href="/docs/design-system">&larr; Design System</a>
+            <a href="/docs/monetization">Monetization &rarr;</a>
+          </div>
+        </div>
+
+        <aside class="docs-toc">
+          <div class="docs-toc-title">On this page</div>
+          <a href="#remotion-video">Remotion Video</a>
+          <a href="#google-vids">Google Vids</a>
+          <a href="#blender-3d">Blender 3D</a>
+          <a href="#vibe-design-studio">Vibe Design Studio</a>
+          <a href="#dashboard-integration">Dashboard</a>
+        </aside>
+      </div>
+    </div>
+  </main>
+
+  <footer class="site-footer">
+    <div class="footer-bottom">
+      <p>&copy; 2026 AI OS Orchestration Lab. All rights reserved.</p>
+    </div>
+  </footer>
+</body>
+</html>

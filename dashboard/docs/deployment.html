@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Deployment — AI OS Docs</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/css/landing.css">
+  <link rel="stylesheet" href="/css/docs.css">
+</head>
+<body>
+  <nav class="landing-nav">
+    <div class="nav-container">
+      <a href="/" class="nav-brand">
+        <span class="nav-logo">&#9678;</span>
+        <span class="nav-name">AI OS</span>
+      </a>
+      <div class="nav-links">
+        <a href="/">Home</a>
+        <a href="/docs" class="active">Docs</a>
+        <a href="/terms">Terms</a>
+        <a href="/privacy">Privacy</a>
+      </div>
+    </div>
+  </nav>
+
+  <main class="docs-page">
+    <div class="docs-container">
+      <div class="docs-layout">
+        <div class="docs-content">
+          <div class="docs-breadcrumb">
+            <a href="/docs">Docs</a> <span>/</span> Deployment
+          </div>
+
+          <h1>Deployment</h1>
+          <p class="docs-lead">Deploy AI OS to production with PM2 + Nginx (recommended) or Docker. Includes VPS provisioning, TLS setup, and a production hardening checklist.</p>
+
+          <h2>Option 1 — PM2 + Nginx (Recommended)</h2>
+          <p>The recommended production deployment uses PM2 for process management and Nginx as a reverse proxy with TLS termination.</p>
+
+          <h3>VPS Provisioning</h3>
+          <p>Run the automated install script on a fresh Ubuntu 22.04+ VPS:</p>
+          <pre><code>sudo bash deploy/install-vps.sh yourdomain.com</code></pre>
+          <p>This script automatically:</p>
+          <ul>
+            <li>Configures UFW firewall (allows SSH, HTTP, HTTPS only)</li>
+            <li>Installs Node.js 20 LTS via NodeSource</li>
+            <li>Installs PM2 globally with startup configuration</li>
+            <li>Installs Nginx and deploys the reverse proxy config</li>
+            <li>Installs Certbot for Let's Encrypt TLS certificates</li>
+            <li>Creates a dedicated <code>aios</code> system user</li>
+          </ul>
+
+          <h3>Application Setup</h3>
+          <pre><code>cd /opt/ai-os
+npm install --production
+cp .env.example .env
+nano .env   # Configure all required variables
+
+pm2 start ecosystem.config.js --env production
+pm2 save</code></pre>
+
+          <h3>TLS Certificate</h3>
+          <pre><code>sudo certbot --nginx -d yourdomain.com</code></pre>
+          <p>Certbot auto-renews certificates. Nginx is configured to redirect HTTP to HTTPS.</p>
+
+          <h2>Option 2 — Docker</h2>
+          <pre><code>docker compose up -d</code></pre>
+          <p>The Docker setup uses <code>node:20-alpine</code> with:</p>
+          <ul>
+            <li>Non-root user for security</li>
+            <li>Health check endpoint monitoring</li>
+            <li>Volume mounts for <code>.magent/</code> and <code>logs/</code> persistence</li>
+            <li>Port binding to <code>127.0.0.1:3000</code> (Nginx fronts external traffic)</li>
+          </ul>
+
+          <div class="docs-callout info">
+            <strong>Note:</strong> Docker is optional. The PM2 + Nginx path is simpler and recommended for most deployments.
+          </div>
+
+          <h2>Nginx Configuration</h2>
+          <p>The included <code>deploy/nginx.conf</code> provides:</p>
+          <ul>
+            <li><strong>TLS termination</strong> — SSL certificates via Certbot</li>
+            <li><strong>WebSocket upgrade</strong> — Proper <code>Upgrade</code> and <code>Connection</code> headers for WS</li>
+            <li><strong>Static caching</strong> — 7 days for CSS/JS, 30 days for images and fonts</li>
+            <li><strong>Rate limiting</strong> — 10 req/s burst with nodelay</li>
+            <li><strong>Security headers</strong> — X-Frame-Options, X-Content-Type-Options, Referrer-Policy</li>
+            <li><strong>Sensitive path blocking</strong> — Returns 404 for <code>/.magent/</code>, <code>/.claude/</code>, <code>/.env</code></li>
+          </ul>
+
+          <h2>PM2 Configuration</h2>
+          <p>The <code>ecosystem.config.js</code> configures:</p>
+          <ul>
+            <li><strong>Auto-restart</strong> — Restarts on crash with exponential backoff</li>
+            <li><strong>Memory limit</strong> — 512 MB max, restarts if exceeded</li>
+            <li><strong>Log rotation</strong> — Timestamped logs with daily rotation</li>
+            <li><strong>Environment separation</strong> — Distinct configs for development and production</li>
+            <li><strong>Watch mode</strong> — Disabled in production, enabled in development</li>
+          </ul>
+
+          <h2>Production Hardening Checklist</h2>
+          <table class="docs-table">
+            <thead>
+              <tr><th>Item</th><th>Status</th></tr>
+            </thead>
+            <tbody>
+              <tr><td>Helmet CSP headers</td><td>Built-in</td></tr>
+              <tr><td>CORS origin restriction</td><td>Via <code>CORS_ORIGIN</code> env var</td></tr>
+              <tr><td>Response compression (gzip)</td><td>Built-in</td></tr>
+              <tr><td>Request logging (morgan)</td><td>Built-in (file in prod, console in dev)</td></tr>
+              <tr><td>API rate limiting</td><td>120/min general, 10/min heavy</td></tr>
+              <tr><td>Input validation</td><td>Built-in on all POST endpoints</td></tr>
+              <tr><td>Bearer token auth</td><td>Via <code>API_TOKEN</code> env var</td></tr>
+              <tr><td>Session cookie auth</td><td>HTTP-only, 30-day expiry</td></tr>
+              <tr><td>Stripe webhook signature verification</td><td>Built-in</td></tr>
+              <tr><td>Graceful shutdown (SIGTERM/SIGINT)</td><td>Built-in</td></tr>
+              <tr><td>Uncaught exception handler</td><td>Built-in</td></tr>
+              <tr><td>State auto-save with debounce</td><td>Built-in</td></tr>
+              <tr><td>WebSocket heartbeat (30s)</td><td>Built-in</td></tr>
+              <tr><td>robots.txt (blocks /api, /.magent, /.claude)</td><td>Built-in</td></tr>
+              <tr><td>HOST binding (127.0.0.1 in production)</td><td>Built-in</td></tr>
+            </tbody>
+          </table>
+
+          <h2>Environment Variables</h2>
+          <p>See the <a href="/docs/getting-started">Quick Start</a> guide for the full environment variable reference. In production, ensure all <code>STRIPE_*</code> variables use live keys (prefix <code>sk_live_</code>) and set <code>NODE_ENV=production</code>.</p>
+
+          <div class="docs-page-nav">
+            <a href="/docs/api">&larr; API Reference</a>
+            <a href="/docs/billing">Billing &rarr;</a>
+          </div>
+        </div>
+
+        <aside class="docs-toc">
+          <div class="docs-toc-title">On this page</div>
+          <a href="#pm2-nginx">PM2 + Nginx</a>
+          <a href="#docker">Docker</a>
+          <a href="#nginx-config">Nginx Config</a>
+          <a href="#pm2-config">PM2 Config</a>
+          <a href="#hardening-checklist">Hardening Checklist</a>
+          <a href="#environment-variables">Environment Variables</a>
+        </aside>
+      </div>
+    </div>
+  </main>
+
+  <footer class="site-footer">
+    <div class="footer-bottom">
+      <p>&copy; 2026 AI OS Orchestration Lab. All rights reserved.</p>
+    </div>
+  </footer>
+</body>
+</html>

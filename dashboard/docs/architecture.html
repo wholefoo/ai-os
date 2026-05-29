@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Architecture — AI OS Docs</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/css/landing.css">
+  <link rel="stylesheet" href="/css/docs.css">
+</head>
+<body>
+  <nav class="landing-nav">
+    <div class="nav-container">
+      <a href="/" class="nav-brand">
+        <span class="nav-logo">&#9678;</span>
+        <span class="nav-name">AI OS</span>
+      </a>
+      <div class="nav-links">
+        <a href="/">Home</a>
+        <a href="/docs" class="active">Docs</a>
+        <a href="/terms">Terms</a>
+        <a href="/privacy">Privacy</a>
+      </div>
+    </div>
+  </nav>
+
+  <main class="docs-page">
+    <div class="docs-container">
+      <div class="docs-layout">
+        <div class="docs-content">
+          <div class="docs-breadcrumb">
+            <a href="/docs">Docs</a> <span>/</span> Architecture
+          </div>
+
+          <h1>Architecture</h1>
+          <p class="docs-lead">AI OS is built around three pillars: the Orchestrator, the Agent Fleet, and the Memory Vault. Every request flows through a multi-model routing layer that selects the optimal AI provider for each task.</p>
+
+          <h2>System Topology</h2>
+          <p>The platform is organized into three vertical layers:</p>
+          <ul>
+            <li><strong>Public Layer</strong> — Landing page, legal pages, documentation. Accessible without authentication.</li>
+            <li><strong>Authenticated Layer</strong> — Dashboard with 16+ views, gated behind Stripe subscription and session cookie.</li>
+            <li><strong>Intelligence Layer</strong> — Orchestrator, agent fleet, multi-model routing, and memory vault. Accessed exclusively through the backend API.</li>
+          </ul>
+
+          <h2>Request Flow</h2>
+          <p>When a user initiates a task from the dashboard:</p>
+          <ol>
+            <li>The browser sends an HTTP request to the Express backend</li>
+            <li>Middleware validates the session cookie and checks rate limits</li>
+            <li>The Orchestrator (Opus 4.8 xhigh) analyzes the request and determines which agent(s) to invoke</li>
+            <li>The effort router selects the optimal effort level (xhigh/high/low) based on task complexity and cost profile</li>
+            <li>The agent executes, optionally reading from or writing to the Memory Vault</li>
+            <li>Results stream back via WebSocket for real-time dashboard updates</li>
+          </ol>
+
+          <h2>Effort-Based Model Routing</h2>
+          <p>AI OS consolidates Anthropic models into a single Opus 4.8 model with effort-based routing, plus external models for specialized roles:</p>
+
+          <table class="docs-table">
+            <thead>
+              <tr>
+                <th>Tier</th>
+                <th>Model</th>
+                <th>Effort</th>
+                <th>Use Case</th>
+                <th>Cost Profile</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><strong>Strategic</strong></td>
+                <td>Opus 4.8</td>
+                <td>xhigh</td>
+                <td>Orchestration, architecture, code review, security audits</td>
+                <td>$10/$50 per 1M tokens</td>
+              </tr>
+              <tr>
+                <td><strong>Professional</strong></td>
+                <td>Opus 4.8</td>
+                <td>high</td>
+                <td>Research, coding, writing, design, media, lead gen</td>
+                <td>$5/$25 per 1M tokens</td>
+              </tr>
+              <tr>
+                <td><strong>Scout</strong></td>
+                <td>Opus 4.8</td>
+                <td>low</td>
+                <td>Quick lookups, social intel, routine running</td>
+                <td>$5/$25 per 1M tokens</td>
+              </tr>
+              <tr>
+                <td><strong>Economy</strong></td>
+                <td>DeepSeek V4</td>
+                <td>—</td>
+                <td>Batch processing, bulk content generation</td>
+                <td>$0.14/$0.28 per 1M tokens</td>
+              </tr>
+              <tr>
+                <td><strong>Realtime</strong></td>
+                <td>Grok-3</td>
+                <td>—</td>
+                <td>Live data, current events, real-time queries</td>
+                <td>$3/$15 per 1M tokens</td>
+              </tr>
+              <tr>
+                <td><strong>Persistent</strong></td>
+                <td>Hermes MCP</td>
+                <td>—</td>
+                <td>Background tasks, walkaway mode, cron jobs, approval gates</td>
+                <td>Varies by delegated model</td>
+              </tr>
+            </tbody>
+          </table>
+
+          <h3>Opus 4.8 Features</h3>
+          <ul>
+            <li><strong>1M token context window</strong> — no beta header required, available by default</li>
+            <li><strong>Adaptive thinking</strong> — model decides when to reason deeply (no manual budget_tokens)</li>
+            <li><strong>Dynamic Workflows</strong> — plans large tasks, fans out to parallel subagents, resumes on interruption</li>
+            <li><strong>Effort controls</strong> — xhigh for maximum reasoning, high for balanced, low for fast/cheap</li>
+            <li><strong>Mid-conversation system messages</strong> — inject context updates between turns</li>
+            <li><strong>Improved compaction</strong> — longer autonomous sessions with better recovery after context compression</li>
+            <li><strong>Better tool triggering</strong> — fewer skipped tool calls compared to 4.7</li>
+          </ul>
+
+          <h2>The Orchestrator</h2>
+          <p>The Orchestrator is the central intelligence that decides how to fulfill every request. Running on Opus 4.8 at xhigh effort (maximum reasoning depth), it:</p>
+          <ul>
+            <li>Decomposes complex requests into sub-tasks</li>
+            <li>Selects which agents to invoke and in what order</li>
+            <li>Manages inter-agent dependencies and data handoffs</li>
+            <li>Escalates decisions when confidence is low</li>
+            <li>Synthesizes final outputs from multiple agent results</li>
+          </ul>
+
+          <h2>Memory Vault</h2>
+          <p>The <code>.magent/</code> directory serves as the persistent memory layer:</p>
+          <ul>
+            <li><strong>vault/raw/</strong> — Ingested source documents and data</li>
+            <li><strong>vault/wiki/</strong> — Processed knowledge articles</li>
+            <li><strong>vault/outputs/</strong> — Generated artifacts and deliverables</li>
+            <li><strong>state/</strong> — Runtime state with JSON persistence (auto-saved with debounce)</li>
+            <li><strong>team.yaml</strong> — Agent roster, roles, and escalation paths</li>
+          </ul>
+
+          <h2>Backend Stack</h2>
+          <table class="docs-table">
+            <thead>
+              <tr>
+                <th>Component</th>
+                <th>Technology</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>Runtime</td>
+                <td>Node.js 20 + Express</td>
+              </tr>
+              <tr>
+                <td>Real-time</td>
+                <td>WebSocket (ws) with heartbeat</td>
+              </tr>
+              <tr>
+                <td>Security</td>
+                <td>Helmet CSP, CORS, express-rate-limit</td>
+              </tr>
+              <tr>
+                <td>Auth</td>
+                <td>Session cookies + Bearer token API auth</td>
+              </tr>
+              <tr>
+                <td>Payments</td>
+                <td>Stripe Checkout + Webhooks</td>
+              </tr>
+              <tr>
+                <td>State</td>
+                <td>File-based JSON with debounced auto-save</td>
+              </tr>
+              <tr>
+                <td>Agent Definitions</td>
+                <td>Markdown + YAML frontmatter</td>
+              </tr>
+              <tr>
+                <td>Process Manager</td>
+                <td>PM2 with memory limits and log rotation</td>
+              </tr>
+            </tbody>
+          </table>
+
+          <h2>Frontend Stack</h2>
+          <p>The dashboard is built with vanilla HTML, CSS, and JavaScript — no build tools, no framework dependencies:</p>
+          <ul>
+            <li><strong>WebSocket</strong> — Auto-reconnect with exponential backoff (max 30s), visual reconnect banner</li>
+            <li><strong>CSS Variables</strong> — Centralized design tokens for consistent theming</li>
+            <li><strong>View Router</strong> — Hash-based navigation across 16+ dashboard views</li>
+            <li><strong>Inter + JetBrains Mono</strong> — Google Fonts for UI and code typography</li>
+          </ul>
+
+          <div class="docs-page-nav">
+            <a href="/docs/getting-started">&larr; Quick Start</a>
+            <a href="/docs/agents">Agent Fleet &rarr;</a>
+          </div>
+        </div>
+
+        <aside class="docs-toc">
+          <div class="docs-toc-title">On this page</div>
+          <a href="#system-topology">System Topology</a>
+          <a href="#request-flow">Request Flow</a>
+          <a href="#multi-model-routing">Multi-Model Routing</a>
+          <a href="#the-orchestrator">The Orchestrator</a>
+          <a href="#memory-vault">Memory Vault</a>
+          <a href="#backend-stack">Backend Stack</a>
+          <a href="#frontend-stack">Frontend Stack</a>
+        </aside>
+      </div>
+    </div>
+  </main>
+
+  <footer class="site-footer">
+    <div class="footer-bottom">
+      <p>&copy; 2026 AI OS Orchestration Lab. All rights reserved.</p>
+    </div>
+  </footer>
+</body>
+</html>

@@ -80,6 +80,9 @@ function switchView(view) {
     '3d-studio': load3DStudio,
     predictions: loadPredictions,
     batch: loadBatch,
+    hermes: loadHermes,
+    'seo-agency': loadSeoAgency,
+    settings: loadSettings,
     automations: loadAutomations,
     social: loadSocial,
     artifacts: loadArtifacts,
@@ -1256,13 +1259,25 @@ function closeModal() {
 // --- Utilities ---
 async function fetchJSON(url, opts = {}) {
   try {
-    const options = { headers: { 'Content-Type': 'application/json' }, ...opts };
+    const headers = { 'Content-Type': 'application/json' };
+    // Include Bearer token from localStorage as fallback for cookie auth
+    const token = localStorage.getItem('ai-os-token');
+    if (token) headers['Authorization'] = `Bearer ${token}`;
+
+    const options = { credentials: 'same-origin', headers, ...opts };
     if (opts.body) options.body = JSON.stringify(opts.body);
+    // Preserve our headers if opts also has headers
+    if (opts.headers) options.headers = { ...headers, ...opts.headers };
+
     const res = await fetch(`${API}${url}`, options);
-    return await res.json();
+    if (!res.ok && res.status === 401) {
+      console.warn('Unauthorized — session may have expired');
+    }
+    const text = await res.text();
+    try { return JSON.parse(text); } catch { return { error: text || `HTTP ${res.status}` }; }
   } catch (e) {
     console.error('Fetch error:', e);
-    return opts.method === 'POST' ? {} : [];
+    return opts.method ? { error: e.message } : [];
   }
 }
 
@@ -1855,10 +1870,11 @@ function renderCostStats(summary) {
   if (!container) return;
 
   const tiers = [
-    { key: 'strategic', label: 'Strategic (Opus)', cls: 'opus' },
-    { key: 'professional', label: 'Professional (Sonnet)', cls: 'sonnet' },
-    { key: 'scout', label: 'Scout (Haiku)', cls: 'haiku' },
+    { key: 'strategic', label: 'Strategic (Opus xhigh)', cls: 'opus' },
+    { key: 'professional', label: 'Professional (Opus high)', cls: 'sonnet' },
+    { key: 'scout', label: 'Scout (Opus low)', cls: 'haiku' },
     { key: 'economy', label: 'Economy (DeepSeek)', cls: 'deepseek' },
+    { key: 'realtime', label: 'Realtime (Grok)', cls: 'grok' },
   ];
 
   container.innerHTML = tiers.map(t => {
@@ -1879,10 +1895,11 @@ function renderCostTierBreakdown(summary) {
 
   const totalCost = summary.monthly.cost || 1;
   const tiers = [
-    { key: 'strategic', label: 'Strategic', cls: 'strategic' },
-    { key: 'professional', label: 'Professional', cls: 'professional' },
-    { key: 'scout', label: 'Scout', cls: 'scout' },
+    { key: 'strategic', label: 'Strategic (xhigh)', cls: 'strategic' },
+    { key: 'professional', label: 'Professional (high)', cls: 'professional' },
+    { key: 'scout', label: 'Scout (low)', cls: 'scout' },
     { key: 'economy', label: 'Economy', cls: 'economy' },
+    { key: 'realtime', label: 'Realtime', cls: 'realtime' },
   ];
 
   container.innerHTML = tiers.map(t => {
@@ -1935,9 +1952,10 @@ function renderCostLedger(entries) {
   }
 
   const modelClass = (m) => {
-    if (m.includes('opus')) return 'opus';
-    if (m.includes('sonnet')) return 'sonnet';
-    if (m.includes('haiku')) return 'haiku';
+    if (m.includes('xhigh') || m.includes('opus')) return 'opus';
+    if (m.includes('4.8-high') || m.includes('sonnet')) return 'sonnet';
+    if (m.includes('4.8-low') || m.includes('haiku')) return 'haiku';
+    if (m.includes('grok')) return 'grok';
     if (m.includes('deepseek')) return 'deepseek';
     return '';
   };
@@ -1959,7 +1977,7 @@ function renderCostLedger(entries) {
         ${entries.map(e => `
           <tr>
             <td class="ledger-agent">${escapeHtml(e.agent)}</td>
-            <td><span class="ledger-model ${modelClass(e.model)}">${e.model.replace('claude-4.7-', '')}</span></td>
+            <td><span class="ledger-model ${modelClass(e.model)}">${e.model.replace('opus-4.8-', 'Opus 4.8 ').replace('claude-4.7-', '')}</span></td>
             <td>${escapeHtml(e.skill)}</td>
             <td class="ledger-tokens">${formatTokenCount(e.inputTokens)}</td>
             <td class="ledger-tokens">${formatTokenCount(e.outputTokens)}</td>
@@ -4789,6 +4807,422 @@ function formatTokenCount(tokens) {
   return (tokens / 1000000).toFixed(2) + 'M';
 }
 
+// --- Hermes Agent ---
+
+async function loadHermes() {
+  const [status, tasks, approvals, cron] = await Promise.all([
+    fetchJSON('/api/hermes/status'),
+    fetchJSON('/api/hermes/tasks'),
+    fetchJSON('/api/hermes/approvals'),
+    fetchJSON('/api/hermes/cron'),
+  ]);
+  renderHermesStatus(status);
+  renderHermesApprovals(approvals);
+  renderHermesTasks(tasks);
+  renderHermesCron(cron);
+}
+
+function renderHermesStatus(status) {
+  const badge = document.getElementById('hermesStatusBadge');
+  if (badge) {
+    badge.textContent = status.connected ? 'Connected' : 'Disconnected';
+    badge.className = 'hermes-status-badge ' + (status.connected ? 'online' : 'offline');
+  }
+  const el = document.getElementById('hermesStats');
+  if (!el) return;
+  el.innerHTML = `
+    <div class="hermes-stat-grid">
+      <div class="hermes-stat">
+        <div class="hermes-stat-value">${status.connected ? 'Online' : 'Offline'}</div>
+        <div class="hermes-stat-label">MCP Status</div>
+      </div>
+      <div class="hermes-stat">
+        <div class="hermes-stat-value">${status.endpoint}</div>
+        <div class="hermes-stat-label">Endpoint</div>
+      </div>
+      <div class="hermes-stat">
+        <div class="hermes-stat-value">${status.stats.tasksCompleted}</div>
+        <div class="hermes-stat-label">Tasks Completed</div>
+      </div>
+      <div class="hermes-stat">
+        <div class="hermes-stat-value">${status.stats.cronExecutions}</div>
+        <div class="hermes-stat-label">Cron Executions</div>
+      </div>
+      <div class="hermes-stat">
+        <div class="hermes-stat-value">${status.stats.approvalsPending}</div>
+        <div class="hermes-stat-label">Approvals Pending</div>
+      </div>
+      <div class="hermes-stat">
+        <div class="hermes-stat-value">${status.skills.length}</div>
+        <div class="hermes-stat-label">Skills Loaded</div>
+      </div>
+    </div>
+  `;
+}
+
+function renderHermesApprovals(approvals) {
+  const countEl = document.getElementById('hermesApprovalCount');
+  if (countEl) countEl.textContent = approvals.length;
+  const el = document.getElementById('hermesApprovals');
+  if (!el) return;
+  if (!approvals.length) { el.innerHTML = '<div class="empty-state">No pending approvals</div>'; return; }
+  el.innerHTML = approvals.map(a => `
+    <div class="hermes-approval-card risk-${a.risk}">
+      <div class="hermes-approval-header">
+        <span class="hermes-risk-badge ${a.risk}">${a.risk.toUpperCase()}</span>
+        <span class="hermes-approval-time">${timeAgo(a.requestedAt)}</span>
+      </div>
+      <div class="hermes-approval-action">${a.action}</div>
+      <div class="hermes-approval-context">${a.context}</div>
+      <div class="hermes-approval-buttons">
+        <button class="btn btn-success btn-sm" onclick="respondApproval('${a.id}', 'approve')">Approve</button>
+        <button class="btn btn-danger btn-sm" onclick="respondApproval('${a.id}', 'reject')">Reject</button>
+      </div>
+    </div>
+  `).join('');
+}
+
+async function respondApproval(id, decision) {
+  await fetchJSON(`/api/hermes/approvals/${id}`, { method: 'POST', body: { decision } });
+  loadHermes();
+}
+
+function renderHermesTasks(tasks) {
+  const el = document.getElementById('hermesTasks');
+  if (!el) return;
+  if (!tasks.length) { el.innerHTML = '<div class="empty-state">No active tasks</div>'; return; }
+  el.innerHTML = tasks.map(t => `
+    <div class="hermes-task-card">
+      <div class="hermes-task-header">
+        <span class="hermes-task-name">${t.task}</span>
+        <span class="badge ${t.status === 'complete' ? 'badge-success' : t.status === 'running' ? 'badge-info' : ''}">${t.status}</span>
+      </div>
+      <div class="hermes-task-meta">
+        <span class="hermes-mode-badge">${t.mode}</span>
+        <span>via ${t.notifyVia || 'websocket'}</span>
+        <span>${timeAgo(t.delegatedAt)}</span>
+      </div>
+      ${t.progress !== undefined ? `<div class="hermes-progress"><div class="hermes-progress-bar" style="width:${t.progress}%"></div></div>` : ''}
+      <div class="hermes-task-log">${(t.log || []).map(l => `<div class="hermes-log-line">${l}</div>`).join('')}</div>
+      ${t.mode === 'walkaway' && t.status === 'running' ? `
+        <div class="hermes-walkaway-reply">
+          <input type="text" class="form-input" id="reply-${t.id}" placeholder="Send a mobile reply...">
+          <button class="btn btn-sm btn-primary" onclick="sendWalkawayReply('${t.id}')">Send</button>
+        </div>` : ''}
+    </div>
+  `).join('');
+}
+
+async function sendWalkawayReply(taskId) {
+  const input = document.getElementById(`reply-${taskId}`);
+  if (!input || !input.value.trim()) return;
+  await fetchJSON(`/api/hermes/walkaway/${taskId}/reply`, { method: 'POST', body: { message: input.value.trim() } });
+  input.value = '';
+  loadHermes();
+}
+
+function renderHermesCron(jobs) {
+  const el = document.getElementById('hermesCronJobs');
+  if (!el) return;
+  if (!jobs.length) { el.innerHTML = '<div class="empty-state">No cron jobs configured</div>'; return; }
+  el.innerHTML = `<table class="table"><thead><tr><th>Task</th><th>Schedule</th><th>Last Run</th><th>Next Run</th><th>Runs</th><th>Notify</th><th></th></tr></thead><tbody>
+    ${jobs.map(j => `<tr>
+      <td><strong>${j.task}</strong></td>
+      <td><code>${j.schedule}</code></td>
+      <td>${j.lastRun ? timeAgo(j.lastRun) : '—'}</td>
+      <td>${j.nextRun ? new Date(j.nextRun).toLocaleTimeString() : '—'}</td>
+      <td>${j.runs || 0}</td>
+      <td>${j.notifyVia || 'ws'}</td>
+      <td><button class="btn btn-danger btn-sm" onclick="deleteHermesCron('${j.id}')">&#10005;</button></td>
+    </tr>`).join('')}
+  </tbody></table>`;
+}
+
+async function deleteHermesCron(id) {
+  await fetchJSON(`/api/hermes/cron/${id}`, { method: 'DELETE' });
+  loadHermes();
+}
+
+function showDelegateModal() {
+  showModal('Delegate to Hermes', `
+    <div style="display:flex;flex-direction:column;gap:14px;">
+      <div><label class="form-label">Task Description</label>
+        <textarea id="hermesTask" class="form-input" rows="3" placeholder="Describe the task to delegate to Hermes..."></textarea></div>
+      <div><label class="form-label">Mode</label>
+        <select id="hermesMode" class="grok-type-select" style="width:100%;">
+          <option value="background">Background — fire and forget</option>
+          <option value="walkaway">Walkaway — progress pings to mobile</option>
+          <option value="cron">Cron — scheduled recurring task</option>
+        </select></div>
+      <div id="hermesCronScheduleWrap" style="display:none;">
+        <label class="form-label">Cron Schedule</label>
+        <input type="text" id="hermesCronSchedule" class="form-input" placeholder="0 8 * * * (daily at 8am)">
+      </div>
+      <div><label class="form-label">Notify Via</label>
+        <select id="hermesNotify" class="grok-type-select" style="width:100%;">
+          <option value="websocket">Dashboard (WebSocket)</option>
+          <option value="telegram">Telegram</option>
+          <option value="slack">Slack</option>
+        </select></div>
+      <button class="btn btn-primary" onclick="submitHermesDelegate()">&#9889; Delegate</button>
+    </div>
+  `);
+  document.getElementById('hermesMode').addEventListener('change', (e) => {
+    document.getElementById('hermesCronScheduleWrap').style.display = e.target.value === 'cron' ? 'block' : 'none';
+  });
+}
+
+async function submitHermesDelegate() {
+  const task = document.getElementById('hermesTask').value.trim();
+  const mode = document.getElementById('hermesMode').value;
+  const notifyVia = document.getElementById('hermesNotify').value;
+  if (!task) return;
+
+  const body = { task, mode, notifyVia };
+  if (mode === 'cron') {
+    body.schedule = document.getElementById('hermesCronSchedule').value.trim() || '0 8 * * *';
+  }
+  await fetchJSON('/api/hermes/delegate', { method: 'POST', body });
+  closeModal();
+  loadHermes();
+}
+
+function showAddCronModal() {
+  showModal('New Cron Job', `
+    <div style="display:flex;flex-direction:column;gap:14px;">
+      <div><label class="form-label">Task Description</label>
+        <input type="text" id="cronTask" class="form-input" placeholder="Daily inbox summary..."></div>
+      <div><label class="form-label">Cron Schedule</label>
+        <input type="text" id="cronSchedule" class="form-input" placeholder="0 8 * * * (daily at 8am)"></div>
+      <div><label class="form-label">Notify Via</label>
+        <select id="cronNotify" class="grok-type-select" style="width:100%;">
+          <option value="websocket">Dashboard</option>
+          <option value="telegram">Telegram</option>
+          <option value="slack">Slack</option>
+        </select></div>
+      <button class="btn btn-primary" onclick="submitHermesCron()">+ Create Job</button>
+    </div>
+  `);
+}
+
+async function submitHermesCron() {
+  const task = document.getElementById('cronTask').value.trim();
+  const schedule = document.getElementById('cronSchedule').value.trim();
+  const notifyVia = document.getElementById('cronNotify').value;
+  if (!task || !schedule) return;
+  await fetchJSON('/api/hermes/cron', { method: 'POST', body: { task, schedule, notifyVia } });
+  closeModal();
+  loadHermes();
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  const delegateBtn = document.getElementById('hermesDelegateBtn');
+  if (delegateBtn) delegateBtn.addEventListener('click', showDelegateModal);
+  const cronAddBtn = document.getElementById('hermesCronAddBtn');
+  if (cronAddBtn) cronAddBtn.addEventListener('click', showAddCronModal);
+});
+
+// --- Settings ---
+
+// Map of section → field → input ID
+const settingsFieldMap = {
+  ai: ['anthropic_api_key', 'deepseek_api_key', 'xai_api_key', 'firecrawl_api_key', 'gemini_api_key'],
+  mcp: ['hermes_url', 'hermes_enabled'],
+  notifications: ['telegram_bot_token', 'telegram_chat_id', 'slack_webhook_url'],
+  automation: ['n8n_webhook_base', 'n8n_api_key', 'team_webhook_url'],
+  stripe: ['secret_key', 'webhook_secret', 'pro_price_id', 'enterprise_price_id'],
+  seo: ['dataforseo_login', 'dataforseo_password', 'default_location', 'default_language'],
+  general: ['demo_mode', 'cors_origin', 'api_token'],
+};
+
+async function loadSettings() {
+  const data = await fetchJSON('/api/settings');
+  if (!data || data.error) return;
+
+  // Populate fields from server response
+  for (const [section, fields] of Object.entries(settingsFieldMap)) {
+    const sectionData = data[section];
+    if (!sectionData) continue;
+
+    for (const field of fields) {
+      const el = document.getElementById(`set-${field}`);
+      if (!el) continue;
+      const val = sectionData[field];
+
+      if (el.type === 'checkbox') {
+        el.checked = typeof val === 'object' ? val.configured : !!val;
+      } else if (typeof val === 'object' && val !== null) {
+        // Masked key object { value, configured }
+        el.value = val.value || '';
+        el.placeholder = val.configured ? 'Configured (enter new value to change)' : el.placeholder;
+        const statusEl = document.getElementById(`status-${field}`);
+        if (statusEl) {
+          statusEl.textContent = val.configured ? 'Active' : 'Not set';
+          statusEl.className = `settings-status ${val.configured ? 'active' : 'inactive'}`;
+        }
+      } else {
+        el.value = val || '';
+      }
+    }
+  }
+}
+
+async function saveSettings(section) {
+  const fields = settingsFieldMap[section];
+  if (!fields) return;
+
+  const body = {};
+  let hasNewValue = false;
+  for (const field of fields) {
+    const el = document.getElementById(`set-${field}`);
+    if (!el) { console.warn(`[Settings] Missing element: set-${field}`); continue; }
+    if (el.type === 'checkbox') {
+      body[field] = el.checked;
+    } else {
+      body[field] = el.value;
+      // Track if user entered a non-empty, non-masked value
+      if (el.value && !el.value.includes('****')) hasNewValue = true;
+    }
+  }
+
+  // Show debug info on page
+  const debugEl = document.getElementById(`settings-${section}-debug`);
+  const debugLines = fields.map(f => {
+    const v = body[f];
+    if (typeof v === 'boolean') return `${f}=${v}`;
+    if (!v) return `${f}=EMPTY`;
+    if (v.includes('****')) return `${f}=MASKED`;
+    return `${f}=${v.substring(0, 6)}...(${v.length})`;
+  });
+  if (debugEl) debugEl.textContent = debugLines.join(' | ');
+
+  if (!hasNewValue) {
+    showSettingsToast('No new values entered — type a key then click Save', true);
+    if (debugEl) debugEl.textContent += ' → BLOCKED: all empty or masked';
+    return;
+  }
+
+  // Direct fetch with explicit auth
+  try {
+    const token = localStorage.getItem('ai-os-token');
+    const headers = { 'Content-Type': 'application/json' };
+    if (token) headers['Authorization'] = `Bearer ${token}`;
+
+    if (debugEl) debugEl.textContent += ` | token:${token ? 'YES' : 'NONE'}`;
+    console.log('[Settings] PUT', section, body);
+
+    const res = await fetch(`/api/settings/${section}`, {
+      method: 'PUT',
+      credentials: 'same-origin',
+      headers,
+      body: JSON.stringify(body),
+    });
+
+    const text = await res.text();
+    let result;
+    try { result = JSON.parse(text); } catch { result = { error: text }; }
+    console.log(`[Settings] HTTP ${res.status}:`, result);
+    if (debugEl) debugEl.textContent += ` → ${res.status}: ${JSON.stringify(result).substring(0, 120)}`;
+
+    if (res.status === 401) {
+      showSettingsToast('Session expired — log out and log back in', true);
+      return;
+    }
+    if (res.status === 403) {
+      showSettingsToast('Admin access required', true);
+      return;
+    }
+
+    if (result.ok) {
+      const saved = result.updated && result.updated.length > 0;
+      showSettingsToast(saved ? `Saved: ${result.updated.join(', ')}` : 'No changes detected', !saved);
+      setTimeout(() => loadSettings(), 500);
+    } else {
+      showSettingsToast(result.error || `Save failed (HTTP ${res.status})`, true);
+    }
+  } catch (e) {
+    console.error('[Settings] Save error:', e);
+    if (debugEl) debugEl.textContent += ` → ERROR: ${e.message}`;
+    showSettingsToast(`Network error: ${e.message}`, true);
+  }
+}
+
+async function testConnection(service) {
+  const result = await fetchJSON(`/api/settings/test/${service}`, { method: 'POST', body: {} });
+  const msg = result.message || (result.ok ? 'Connected' : 'Failed');
+  showSettingsToast(`${service}: ${msg}`, !result.ok);
+}
+
+async function changePassword() {
+  const current = document.getElementById('set-current-password').value;
+  const newPw = document.getElementById('set-new-password').value;
+  const confirm = document.getElementById('set-confirm-password').value;
+  const msgEl = document.getElementById('settingsPasswordMsg');
+
+  if (!current || !newPw) {
+    msgEl.textContent = 'Both fields are required';
+    msgEl.className = 'settings-msg error';
+    return;
+  }
+  if (newPw !== confirm) {
+    msgEl.textContent = 'New passwords do not match';
+    msgEl.className = 'settings-msg error';
+    return;
+  }
+  if (newPw.length < 10) {
+    msgEl.textContent = 'Password must be at least 10 characters';
+    msgEl.className = 'settings-msg error';
+    return;
+  }
+
+  const result = await fetchJSON('/api/settings/change-password', {
+    method: 'POST',
+    body: { currentPassword: current, newPassword: newPw },
+  });
+
+  if (result.ok) {
+    msgEl.textContent = 'Password changed successfully';
+    msgEl.className = 'settings-msg success';
+    document.getElementById('set-current-password').value = '';
+    document.getElementById('set-new-password').value = '';
+    document.getElementById('set-confirm-password').value = '';
+  } else {
+    msgEl.textContent = result.error || 'Failed to change password';
+    msgEl.className = 'settings-msg error';
+  }
+}
+
+function toggleKeyVisibility(btn) {
+  const input = btn.parentElement.querySelector('.settings-input');
+  if (!input) return;
+  if (input.classList.contains('visible')) {
+    input.classList.remove('visible');
+    btn.textContent = '👁';
+    btn.title = 'Show';
+  } else {
+    input.classList.add('visible');
+    btn.textContent = '🙈';
+    btn.title = 'Hide';
+  }
+}
+
+function showSettingsToast(message, isError = false) {
+  // Remove existing toast if any
+  const existing = document.querySelector('.settings-toast');
+  if (existing) existing.remove();
+
+  const toast = document.createElement('div');
+  toast.className = `settings-toast ${isError ? 'error' : 'success'}`;
+  toast.textContent = message;
+  document.body.appendChild(toast);
+
+  requestAnimationFrame(() => toast.classList.add('visible'));
+  setTimeout(() => {
+    toast.classList.remove('visible');
+    setTimeout(() => toast.remove(), 300);
+  }, 3000);
+}
+
 function renderMarkdown(text) {
   if (!text) return '';
   return text
@@ -4803,4 +5237,396 @@ function renderMarkdown(text) {
     .replace(/^(?!<[hul])/gm, '<p>')
     .replace(/(<p>)+/g, '<p>')
     .replace(/<p><\/p>/g, '');
+}
+
+// --- Gemini Omni Creative ---
+async function startOmniGeneration() {
+  const prompt = document.getElementById('omniPrompt').value.trim();
+  if (!prompt) return;
+
+  const type = document.querySelector('input[name="omniType"]:checked')?.value || 'video';
+  const progressEl = document.getElementById('omniProgress');
+  const resultEl = document.getElementById('omniResult');
+  const btn = document.getElementById('omniGenerateBtn');
+
+  btn.disabled = true;
+  btn.textContent = 'Generating...';
+  resultEl.innerHTML = '';
+  progressEl.innerHTML = `
+    <div class="omni-progress-bar">
+      <div class="omni-progress-fill" id="omniProgressFill" style="width:5%"></div>
+    </div>
+    <div class="omni-progress-status" id="omniProgressStatus">Initializing Gemini Omni...</div>
+  `;
+
+  const result = await fetchJSON('/api/omni/generate', { method: 'POST', body: { type, prompt } });
+
+  if (!result.ok) {
+    progressEl.innerHTML = '';
+    resultEl.innerHTML = `<div class="empty-state" style="color:var(--error);">${result.error || 'Generation failed'}</div>`;
+    btn.disabled = false;
+    btn.innerHTML = '&#10024; Generate';
+    return;
+  }
+
+  // Listen for WebSocket progress updates
+  const jobId = result.jobId;
+  const originalOnMessage = ws?.onmessage;
+  const progressHandler = (event) => {
+    try {
+      const data = JSON.parse(event.data);
+      if (data.event === 'omni_job_progress' && data.data.id === jobId) {
+        const fill = document.getElementById('omniProgressFill');
+        const status = document.getElementById('omniProgressStatus');
+        if (fill) fill.style.width = `${data.data.progress}%`;
+        if (status) status.textContent = data.data.msg;
+      }
+      if (data.event === 'omni_job_complete' && data.data.id === jobId) {
+        renderOmniResult(data.data.type, data.data.result);
+        progressEl.innerHTML = '';
+        btn.disabled = false;
+        btn.innerHTML = '&#10024; Generate';
+      }
+    } catch {}
+    // Call original handler too
+    if (originalOnMessage) originalOnMessage(event);
+  };
+  if (ws) ws.onmessage = progressHandler;
+
+  // Fallback: stop after 30s
+  setTimeout(() => {
+    if (btn.disabled) {
+      btn.disabled = false;
+      btn.innerHTML = '&#10024; Generate';
+      if (ws) ws.onmessage = originalOnMessage;
+      if (!resultEl.innerHTML) resultEl.innerHTML = '<div class="empty-state">Generation timed out — check Activity Log for status.</div>';
+    }
+  }, 30000);
+}
+
+function renderOmniResult(type, result) {
+  const el = document.getElementById('omniResult');
+  if (!el || !result) return;
+
+  const typeIcons = { video: '&#127909;', image: '&#128444;', audio: '&#127911;', thumbnail: '&#128247;', 'social-clip': '&#128241;' };
+  const icon = typeIcons[type] || '&#10024;';
+
+  const details = Object.entries(result)
+    .filter(([k]) => !['prompt', 'model', 'watermark', 'generatedAt', 'preview'].includes(k))
+    .map(([k, v]) => `<div class="omni-result-detail"><span class="omni-detail-key">${k.replace(/([A-Z])/g, ' $1').trim()}</span><span class="omni-detail-val">${v}</span></div>`)
+    .join('');
+
+  el.innerHTML = `
+    <div class="omni-result-card">
+      <div class="omni-result-header">
+        <span class="omni-result-icon">${icon}</span>
+        <div>
+          <strong>${capitalize(type)} Generated</strong>
+          <div style="font-size:12px; color:var(--text-muted);">${escapeHtml(result.prompt.substring(0, 100))}${result.prompt.length > 100 ? '...' : ''}</div>
+        </div>
+        <span class="omni-result-badge">${result.model}</span>
+      </div>
+      <div class="omni-result-details">${details}</div>
+      <div class="omni-result-preview">${escapeHtml(result.preview)}</div>
+      <div class="omni-result-meta">
+        <span>&#128274; SynthID watermarked</span>
+        <span>${new Date(result.generatedAt).toLocaleString()}</span>
+      </div>
+    </div>
+  `;
+}
+
+// --- SEO Agency ---
+let seoAudits = [];
+
+async function loadSeoAgency() {
+  const data = await fetchJSON('/api/seo/audits');
+  if (Array.isArray(data)) seoAudits = data;
+  renderSeoAgency();
+}
+
+function renderSeoAgency() {
+  const container = document.getElementById('seoAuditList');
+  if (!container) return;
+
+  if (seoAudits.length === 0) {
+    container.innerHTML = '<div class="empty-state">No audits yet. Enter a domain above and click Audit to start.</div>';
+    return;
+  }
+
+  container.innerHTML = seoAudits.slice().reverse().map(a => {
+    const scoreClass = a.compositeScore >= 75 ? 'good' : a.compositeScore >= 50 ? 'warning' : 'critical';
+    const statusIcon = a.status === 'complete' ? '&#9989;' : a.status === 'running' ? '&#9203;' : '&#10060;';
+    return `
+      <div class="seo-audit-card" data-id="${a.id}">
+        <div class="seo-audit-header">
+          <span class="seo-audit-domain">${statusIcon} ${escapeHtml(a.domain)}</span>
+          ${a.compositeScore !== null ? `<span class="seo-score seo-score-${scoreClass}">${a.compositeScore}<small>/100</small></span>` : '<span class="seo-score seo-score-pending">...</span>'}
+        </div>
+        <div class="seo-audit-meta">
+          <span>${new Date(a.startedAt).toLocaleDateString()}</span>
+          <span class="seo-audit-status status-${a.status}">${a.status}</span>
+        </div>
+        <div class="seo-audit-actions">
+          <button class="btn btn-sm btn-primary" onclick="viewSeoAudit('${a.id}')" ${a.status !== 'complete' ? 'disabled' : ''}>View Report</button>
+          <button class="btn btn-sm" onclick="generateSeoReport('${a.id}')" ${a.status !== 'complete' ? 'disabled' : ''}>Export PDF</button>
+          <button class="btn btn-sm btn-danger" onclick="deleteSeoAudit('${a.id}')">Delete</button>
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+async function startSeoAudit() {
+  const input = document.getElementById('seoAuditDomain');
+  const domain = input.value.trim();
+  if (!domain) return;
+
+  input.disabled = true;
+  document.getElementById('seoAuditBtn').disabled = true;
+
+  const result = await fetchJSON('/api/seo/audit', { method: 'POST', body: { domain } });
+
+  if (result.ok) {
+    showSettingsToast(`Audit started: ${result.domain}`);
+    input.value = '';
+    // Poll for updates
+    pollSeoAudit(result.auditId);
+  } else {
+    showSettingsToast(result.error || 'Failed to start audit', true);
+  }
+
+  input.disabled = false;
+  document.getElementById('seoAuditBtn').disabled = false;
+}
+
+function pollSeoAudit(auditId) {
+  const poll = setInterval(async () => {
+    const audit = await fetchJSON(`/api/seo/audit/${auditId}`);
+    if (audit && audit.status === 'complete') {
+      clearInterval(poll);
+      loadSeoAgency();
+      showSettingsToast(`Audit complete: ${audit.domain} — Score: ${audit.compositeScore}/100`);
+    }
+  }, 2000);
+  // Stop polling after 60 seconds regardless
+  setTimeout(() => clearInterval(poll), 60000);
+  // Refresh list immediately
+  setTimeout(() => loadSeoAgency(), 1000);
+}
+
+async function viewSeoAudit(auditId) {
+  const audit = await fetchJSON(`/api/seo/audit/${auditId}`);
+  if (!audit || audit.error) return;
+
+  const detail = document.getElementById('seoAuditDetail');
+  if (!detail) return;
+
+  const agentCards = Object.entries(audit.agents).map(([name, data]) => {
+    const scoreClass = data.score >= 75 ? 'good' : data.score >= 50 ? 'warning' : 'critical';
+    const findings = (data.findings || []).map(f => {
+      const sevClass = f.severity === 'critical' ? 'critical' : f.severity === 'high' ? 'high' : f.severity === 'medium' ? 'warning' : 'info';
+      return `<div class="seo-finding seo-finding-${sevClass}">
+        <span class="seo-finding-severity">${f.severity.toUpperCase()}</span>
+        <div><strong>${escapeHtml(f.issue)}</strong><br><span class="seo-finding-rec">${escapeHtml(f.recommendation)}</span></div>
+      </div>`;
+    }).join('');
+    return `
+      <div class="seo-agent-card">
+        <div class="seo-agent-header">
+          <span class="seo-agent-name">${capitalize(name)} Analysis</span>
+          <span class="seo-score seo-score-${scoreClass}">${data.score}<small>/100</small></span>
+        </div>
+        <div class="seo-findings">${findings}</div>
+      </div>
+    `;
+  }).join('');
+
+  const quickWins = (audit.quickWins || []).map(w =>
+    `<tr><td>${w.priority}</td><td>${escapeHtml(w.action)}</td><td>${w.time}</td><td><span class="seo-impact seo-impact-${w.impact}">${w.impact}</span></td></tr>`
+  ).join('');
+
+  const actionPlan = (audit.actionPlan || []).map(p =>
+    `<div class="seo-phase">
+      <div class="seo-phase-header"><span class="seo-phase-name">${p.phase}</span><span class="seo-phase-title">${p.title}</span><span class="seo-phase-priority priority-${p.priority}">${p.priority}</span></div>
+      <ul>${p.tasks.map(t => `<li>${escapeHtml(t)}</li>`).join('')}</ul>
+    </div>`
+  ).join('');
+
+  const scoreClass = audit.compositeScore >= 75 ? 'good' : audit.compositeScore >= 50 ? 'warning' : 'critical';
+
+  detail.innerHTML = `
+    <div class="seo-report">
+      <div class="seo-report-header">
+        <button class="btn btn-sm" onclick="document.getElementById('seoAuditDetail').innerHTML=''; document.getElementById('seoAuditDetail').style.display='none';">&larr; Back to Audits</button>
+        <h3>${escapeHtml(audit.domain)} — Full SEO Audit Report</h3>
+        <span class="seo-score seo-score-${scoreClass} seo-score-lg">${audit.compositeScore}<small>/100</small></span>
+      </div>
+
+      <section class="panel" style="margin-top:16px;">
+        <h3 class="panel-title">Executive Summary</h3>
+        <p class="seo-executive-summary">${escapeHtml(audit.executiveSummary)}</p>
+      </section>
+
+      <section class="panel" style="margin-top:16px;">
+        <h3 class="panel-title">Quick Wins</h3>
+        <table class="docs-table seo-quickwins-table">
+          <thead><tr><th>#</th><th>Action</th><th>Time</th><th>Impact</th></tr></thead>
+          <tbody>${quickWins}</tbody>
+        </table>
+      </section>
+
+      <section class="panel" style="margin-top:16px;">
+        <h3 class="panel-title">Agent Analysis (5 Parallel Sub-Agents)</h3>
+        <div class="seo-agents-grid">${agentCards}</div>
+      </section>
+
+      <section class="panel" style="margin-top:16px;">
+        <h3 class="panel-title">Action Plan</h3>
+        <div class="seo-action-plan">${actionPlan}</div>
+      </section>
+
+      <section class="panel seo-post-actions" style="margin-top:16px;">
+        <h3 class="panel-title">Post-Audit Actions</h3>
+        <p style="font-size:13px; color:var(--text-secondary); margin-bottom:14px;">Generate deliverables from this audit's findings to accelerate implementation.</p>
+        <div class="seo-action-btns">
+          <button class="btn btn-primary" onclick="seoGenerateBriefs('${audit.id}')">
+            <span class="seo-action-icon">&#128221;</span> Draft Content Briefs
+          </button>
+          <button class="btn btn-primary" onclick="seoGenerateCalendar('${audit.id}')">
+            <span class="seo-action-icon">&#128197;</span> Generate Content Calendar
+          </button>
+          <button class="btn btn-primary" onclick="seoOptimizeMeta('${audit.id}')">
+            <span class="seo-action-icon">&#127991;</span> Optimize Meta Tags
+          </button>
+          <button class="btn" onclick="generateSeoReport('${audit.id}')">
+            <span class="seo-action-icon">&#128196;</span> Export PDF Report
+          </button>
+        </div>
+        <div id="seoPostActionResult" style="margin-top:16px;"></div>
+      </section>
+    </div>
+  `;
+  detail.style.display = 'block';
+}
+
+async function generateSeoReport(auditId) {
+  const result = await fetchJSON(`/api/seo/report/${auditId}`, { method: 'POST', body: {} });
+  if (result.ok) {
+    showSettingsToast(`Report generated: ${result.filename}`);
+  } else {
+    showSettingsToast(result.error || 'Report generation failed', true);
+  }
+}
+
+async function seoGenerateBriefs(auditId) {
+  const container = document.getElementById('seoPostActionResult');
+  container.innerHTML = '<div class="empty-state">Generating content briefs...</div>';
+
+  const result = await fetchJSON(`/api/seo/briefs/${auditId}`, { method: 'POST', body: {} });
+  if (!result.ok) { container.innerHTML = `<div class="empty-state" style="color:var(--error);">${result.error || 'Failed'}</div>`; return; }
+
+  container.innerHTML = `
+    <h4 style="margin-bottom:12px;">Content Briefs for ${escapeHtml(result.domain)} (${result.briefs.length} briefs)</h4>
+    ${result.briefs.map((b, i) => `
+      <div class="seo-brief-card">
+        <div class="seo-brief-header">
+          <span class="seo-brief-num">${i + 1}</span>
+          <div class="seo-brief-info">
+            <strong>${escapeHtml(b.title)}</strong>
+            <div class="seo-brief-meta">
+              <span class="seo-impact seo-impact-${b.priority}">${b.priority}</span>
+              <span>${b.wordCount} words</span>
+              <span class="seo-intent-badge">${b.intent}</span>
+              <span>Target: <code>${escapeHtml(b.targetKeyword)}</code></span>
+            </div>
+          </div>
+        </div>
+        <div class="seo-brief-outline">
+          <strong>Outline:</strong>
+          <ol>${b.outline.map(s => `<li>${escapeHtml(s)}</li>`).join('')}</ol>
+        </div>
+      </div>
+    `).join('')}
+  `;
+}
+
+async function seoGenerateCalendar(auditId) {
+  const container = document.getElementById('seoPostActionResult');
+  container.innerHTML = '<div class="empty-state">Generating content calendar...</div>';
+
+  const result = await fetchJSON(`/api/seo/calendar/${auditId}`, { method: 'POST', body: {} });
+  if (!result.ok) { container.innerHTML = `<div class="empty-state" style="color:var(--error);">${result.error || 'Failed'}</div>`; return; }
+
+  container.innerHTML = `
+    <h4 style="margin-bottom:12px;">12-Week Content Calendar for ${escapeHtml(result.domain)}</h4>
+    <div class="seo-calendar">
+      ${result.weeks.map(w => `
+        <div class="seo-calendar-week">
+          <div class="seo-calendar-week-label">${escapeHtml(w.week)}</div>
+          <div class="seo-calendar-items">
+            ${w.items.map(item => `
+              <div class="seo-calendar-item seo-cal-${item.type}">
+                <span class="seo-cal-type">${item.type}</span>
+                <span class="seo-cal-title">${escapeHtml(item.title)}</span>
+                <span class="seo-cal-effort">${item.effort}</span>
+                <span class="seo-impact seo-impact-${item.priority}">${item.priority}</span>
+              </div>
+            `).join('')}
+          </div>
+        </div>
+      `).join('')}
+    </div>
+  `;
+}
+
+async function seoOptimizeMeta(auditId) {
+  const container = document.getElementById('seoPostActionResult');
+  container.innerHTML = '<div class="empty-state">Optimizing meta tags...</div>';
+
+  const result = await fetchJSON(`/api/seo/meta/${auditId}`, { method: 'POST', body: {} });
+  if (!result.ok) { container.innerHTML = `<div class="empty-state" style="color:var(--error);">${result.error || 'Failed'}</div>`; return; }
+
+  container.innerHTML = `
+    <h4 style="margin-bottom:12px;">Optimized Meta Tags for ${escapeHtml(result.domain)} (${result.pages.length} pages)</h4>
+    ${result.pages.map(p => `
+      <div class="seo-meta-card">
+        <div class="seo-meta-page">
+          <strong>${escapeHtml(p.page)}</strong>
+          <code>${escapeHtml(p.url)}</code>
+        </div>
+        <div class="seo-meta-comparison">
+          <div class="seo-meta-before">
+            <span class="seo-meta-label">Current Title</span>
+            <div class="seo-meta-value seo-meta-old">${escapeHtml(p.currentTitle)}</div>
+          </div>
+          <div class="seo-meta-after">
+            <span class="seo-meta-label">Optimized Title</span>
+            <div class="seo-meta-value seo-meta-new">${escapeHtml(p.optimizedTitle)}</div>
+          </div>
+        </div>
+        <div class="seo-meta-comparison">
+          <div class="seo-meta-before">
+            <span class="seo-meta-label">Current Description</span>
+            <div class="seo-meta-value seo-meta-old">${p.currentDesc ? escapeHtml(p.currentDesc) : '<em>Missing</em>'}</div>
+          </div>
+          <div class="seo-meta-after">
+            <span class="seo-meta-label">Optimized Description</span>
+            <div class="seo-meta-value seo-meta-new">${escapeHtml(p.optimizedDesc)}</div>
+          </div>
+        </div>
+        <div class="seo-meta-changes">
+          <strong>Changes:</strong> ${p.changes.map(c => `<span class="seo-meta-change">${escapeHtml(c)}</span>`).join('')}
+        </div>
+      </div>
+    `).join('')}
+  `;
+}
+
+async function deleteSeoAudit(auditId) {
+  const result = await fetchJSON(`/api/seo/audit/${auditId}`, { method: 'DELETE' });
+  if (result.ok) {
+    loadSeoAgency();
+    showSettingsToast('Audit deleted');
+  }
 }

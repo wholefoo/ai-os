@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Batch Queue — AI OS Docs</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/css/landing.css">
+  <link rel="stylesheet" href="/css/docs.css">
+</head>
+<body>
+  <nav class="landing-nav">
+    <div class="nav-container">
+      <a href="/" class="nav-brand">
+        <span class="nav-logo">&#9678;</span>
+        <span class="nav-name">AI OS</span>
+      </a>
+      <div class="nav-links">
+        <a href="/">Home</a>
+        <a href="/docs" class="active">Docs</a>
+        <a href="/terms">Terms</a>
+        <a href="/privacy">Privacy</a>
+      </div>
+    </div>
+  </nav>
+
+  <main class="docs-page">
+    <div class="docs-container">
+      <div class="docs-layout">
+        <div class="docs-content">
+          <div class="docs-breadcrumb">
+            <a href="/docs">Docs</a> <span>/</span> Batch Queue
+          </div>
+
+          <h1>Batch Queue</h1>
+          <p class="docs-lead">Mass content production at economy-tier cost. Queue hundreds of generation tasks, manage priorities, and route outputs to the right destination automatically.</p>
+
+          <h2>How It Works</h2>
+          <p>The Batch Queue routes high-volume tasks to the Economy tier (DeepSeek V4) for cost-efficient processing:</p>
+          <ol>
+            <li>Submit batch items via the dashboard or API with type, prompt, and count</li>
+            <li>Items enter a priority queue managed by the Batch Runner agent</li>
+            <li>The runner processes items sequentially, respecting rate limits</li>
+            <li>Completed outputs are saved to the vault and reported via WebSocket</li>
+            <li>Failed items are automatically retried up to 3 times</li>
+          </ol>
+
+          <h2>Supported Batch Types</h2>
+          <table class="docs-table">
+            <thead>
+              <tr><th>Type</th><th>Description</th><th>Typical Count</th></tr>
+            </thead>
+            <tbody>
+              <tr><td><code>blog</code></td><td>Blog posts on specified topics</td><td>10-50</td></tr>
+              <tr><td><code>social</code></td><td>Social media posts with platform variants</td><td>20-100</td></tr>
+              <tr><td><code>product</code></td><td>Product descriptions and listings</td><td>10-200</td></tr>
+              <tr><td><code>email</code></td><td>Email sequences and templates</td><td>5-30</td></tr>
+              <tr><td><code>seo</code></td><td>SEO-optimized page content</td><td>10-100</td></tr>
+            </tbody>
+          </table>
+
+          <h2>API Usage</h2>
+          <div class="docs-endpoint">
+            <span class="docs-endpoint-method post">POST</span>
+            <span class="docs-endpoint-path">/api/batch</span>
+            <p class="docs-endpoint-desc">Submit a new batch job for processing.</p>
+          </div>
+
+          <pre><code>{
+  "type": "blog",
+  "prompt": "Write about sustainable tech trends",
+  "count": 10,
+  "priority": "normal"
+}</code></pre>
+
+          <h3>Priority Levels</h3>
+          <ul>
+            <li><strong>high</strong> — Processed immediately, jumps to front of queue</li>
+            <li><strong>normal</strong> — Standard FIFO processing (default)</li>
+            <li><strong>low</strong> — Processed only when no higher-priority items remain</li>
+          </ul>
+
+          <h2>Rate Limiting</h2>
+          <p>Batch operations are subject to rate limiting to manage API costs:</p>
+          <ul>
+            <li>Maximum 10 batch submissions per minute (heavy rate limiter)</li>
+            <li>Maximum 100 items per single batch submission</li>
+            <li>Economy-tier processing has provider-specific throughput limits</li>
+            <li>Failed items use exponential backoff before retry</li>
+          </ul>
+
+          <h2>Dashboard View</h2>
+          <p>The Batch view provides real-time monitoring:</p>
+          <ul>
+            <li>Queue depth and estimated completion time</li>
+            <li>Per-item status tracking (queued, processing, complete, failed)</li>
+            <li>Output preview with download options</li>
+            <li>Cost estimation and actual spend tracking</li>
+            <li>Bulk actions (pause, resume, cancel, re-queue failed)</li>
+          </ul>
+
+          <div class="docs-page-nav">
+            <a href="/docs/monetization">&larr; Monetization</a>
+            <a href="/docs/api">API Reference &rarr;</a>
+          </div>
+        </div>
+
+        <aside class="docs-toc">
+          <div class="docs-toc-title">On this page</div>
+          <a href="#how-it-works">How It Works</a>
+          <a href="#supported-types">Supported Types</a>
+          <a href="#api-usage">API Usage</a>
+          <a href="#rate-limiting">Rate Limiting</a>
+          <a href="#dashboard-view">Dashboard View</a>
+        </aside>
+      </div>
+    </div>
+  </main>
+
+  <footer class="site-footer">
+    <div class="footer-bottom">
+      <p>&copy; 2026 AI OS Orchestration Lab. All rights reserved.</p>
+    </div>
+  </footer>
+</body>
+</html>
