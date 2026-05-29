@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Agent Fleet — AI OS Docs</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/css/landing.css">
+  <link rel="stylesheet" href="/css/docs.css">
+</head>
+<body>
+  <nav class="landing-nav">
+    <div class="nav-container">
+      <a href="/" class="nav-brand">
+        <span class="nav-logo">&#9678;</span>
+        <span class="nav-name">AI OS</span>
+      </a>
+      <div class="nav-links">
+        <a href="/">Home</a>
+        <a href="/docs" class="active">Docs</a>
+        <a href="/terms">Terms</a>
+        <a href="/privacy">Privacy</a>
+      </div>
+    </div>
+  </nav>
+
+  <main class="docs-page">
+    <div class="docs-container">
+      <div class="docs-layout">
+        <div class="docs-content">
+          <div class="docs-breadcrumb">
+            <a href="/docs">Docs</a> <span>/</span> Agent Fleet
+          </div>
+
+          <h1>Agent Fleet</h1>
+          <p class="docs-lead">AI OS orchestrates 25+ specialized sub-agents powered by Claude Opus 4.8 with effort-based routing. Instead of separate models, agents are assigned effort levels (xhigh, high, low) that control reasoning depth. Each agent has a defined role, capabilities, and escalation path managed through Markdown files with YAML frontmatter.</p>
+
+          <h2>Strategic Tier — Opus 4.8 (effort: xhigh)</h2>
+          <p>Maximum reasoning depth for decisions requiring deep analysis, architectural judgment, and cross-system awareness. Uses adaptive thinking for complex multi-step planning.</p>
+
+          <table class="docs-table">
+            <thead>
+              <tr><th>Agent</th><th>Role</th></tr>
+            </thead>
+            <tbody>
+              <tr><td><strong>Orchestrator</strong></td><td>Central intelligence. Decomposes complex requests, delegates to sub-agents, manages inter-agent data flow, synthesizes final outputs.</td></tr>
+              <tr><td><strong>Architect</strong></td><td>System design and technical architecture. Evaluates trade-offs, defines data models, plans migrations.</td></tr>
+              <tr><td><strong>Reviewer</strong></td><td>Code and content review. Identifies quality issues, enforces standards, provides actionable improvement suggestions.</td></tr>
+              <tr><td><strong>Security Auditor</strong></td><td>Vulnerability assessment, dependency auditing, CSP review, authentication flow analysis.</td></tr>
+            </tbody>
+          </table>
+
+          <h2>Professional Tier — Opus 4.8 (effort: high)</h2>
+          <p>The workhorse tier handles the majority of tasks with balanced quality and speed. Opus 4.8 at high effort provides the same model quality with optimized thinking depth.</p>
+
+          <table class="docs-table">
+            <thead>
+              <tr><th>Agent</th><th>Role</th></tr>
+            </thead>
+            <tbody>
+              <tr><td><strong>Researcher</strong></td><td>Deep research with source synthesis, citation tracking, and structured output generation.</td></tr>
+              <tr><td><strong>Coder</strong></td><td>Full-stack development, debugging, refactoring, and test authoring across languages.</td></tr>
+              <tr><td><strong>Writer</strong></td><td>Long-form content, copywriting, documentation, and tone-adaptive writing.</td></tr>
+              <tr><td><strong>Design System</strong></td><td>DESIGN.md creation, brand reasoning, color theory, WCAG compliance, component specifications.</td></tr>
+              <tr><td><strong>Media Producer</strong></td><td>Remotion video generation, Google Vids integration, asset composition.</td></tr>
+              <tr><td><strong>Lead Gen</strong></td><td>Prospect scraping, enrichment, scoring, and personalized outreach sequence generation.</td></tr>
+              <tr><td><strong>Marketing Hub</strong></td><td>Multi-platform content pipelines, scheduling, A/B variant generation, performance tracking.</td></tr>
+              <tr><td><strong>Product Factory</strong></td><td>Digital product creation, marketplace listing, Etsy/Gumroad publishing automation.</td></tr>
+              <tr><td><strong>Vibe Designer</strong></td><td>Prompt-driven UI generation with predictive heat maps and interaction flow analysis.</td></tr>
+              <tr><td><strong>Blender 3D</strong></td><td>Text-to-3D environments and product renders via Blender MCP integration.</td></tr>
+              <tr><td><strong>Knowledge Graph</strong></td><td>Auto-categorizing knowledge ingestion, semantic linking, and radial graph visualization.</td></tr>
+              <tr><td><strong>Golden Loop</strong></td><td>Gemini Gems synced to NotebookLM notebooks for continuous knowledge amplification.</td></tr>
+              <tr><td><strong>Synthesis</strong></td><td>Cross-agent output merging, conflict resolution, and cohesive deliverable assembly.</td></tr>
+              <tr><td><strong>Automator</strong></td><td>CRON-scheduled routines, workflow triggers, and conditional automation chains.</td></tr>
+              <tr><td><strong>Browser Agent</strong></td><td>Headless browser control for scraping, form filling, and multi-step web interactions.</td></tr>
+              <tr><td><strong>Report Compiler</strong></td><td>Structured report generation from multiple data sources with charts and tables.</td></tr>
+              <tr><td><strong>Research Architect</strong></td><td>Research project planning, methodology design, and literature review structuring.</td></tr>
+              <tr><td><strong>Data Wrangler</strong></td><td>Data cleaning, transformation, format conversion, and statistical analysis.</td></tr>
+              <tr><td><strong>QA</strong></td><td>Test plan creation, regression testing, edge case identification, and quality metrics.</td></tr>
+            </tbody>
+          </table>
+
+          <h2>Scout Tier — Opus 4.8 (effort: low)</h2>
+          <p>Fast agents for quick lookups and lightweight tasks. Low effort minimizes thinking time while retaining Opus 4.8's full capability when needed.</p>
+
+          <table class="docs-table">
+            <thead>
+              <tr><th>Agent</th><th>Role</th></tr>
+            </thead>
+            <tbody>
+              <tr><td><strong>Scout</strong></td><td>Quick fact-checking, simple lookups, and rapid triage of incoming requests.</td></tr>
+              <tr><td><strong>Social Intel</strong></td><td>Social media monitoring, sentiment analysis, and trend detection.</td></tr>
+              <tr><td><strong>Routine Runner</strong></td><td>Executes pre-defined CRON routines with minimal overhead.</td></tr>
+            </tbody>
+          </table>
+
+          <h2>Economy Tier — DeepSeek V4</h2>
+          <p>Maximum throughput at minimal cost for batch operations.</p>
+
+          <table class="docs-table">
+            <thead>
+              <tr><th>Agent</th><th>Role</th></tr>
+            </thead>
+            <tbody>
+              <tr><td><strong>DeepSeek Worker</strong></td><td>Bulk content generation, template expansion, and high-volume text processing.</td></tr>
+              <tr><td><strong>Batch Runner</strong></td><td>Queue-based mass production with automatic retry and output routing.</td></tr>
+            </tbody>
+          </table>
+
+          <h2>Realtime Tier — Grok-3</h2>
+
+          <table class="docs-table">
+            <thead>
+              <tr><th>Agent</th><th>Role</th></tr>
+            </thead>
+            <tbody>
+              <tr><td><strong>Grok Realtime</strong></td><td>Live data queries, current events, real-time web intelligence, and social platform analysis.</td></tr>
+            </tbody>
+          </table>
+
+          <h2>Agent Definitions</h2>
+          <p>Each agent is defined as a Markdown file in <code>.claude/agents/</code> with YAML frontmatter specifying its metadata:</p>
+          <pre><code>---
+name: researcher
+model: opus-4.8
+effort: high
+tier: professional
+escalates_to: orchestrator
+tools:
+  - web_search
+  - vault_read
+  - vault_write
+---
+
+# Researcher Agent
+
+You are a deep research specialist. Your role is to...
+</code></pre>
+
+          <h3>Frontmatter Fields</h3>
+          <ul>
+            <li><strong>name</strong> — Unique identifier used in API calls and routing</li>
+            <li><strong>model</strong> — AI model to use (opus-4.8, deepseek, grok)</li>
+            <li><strong>effort</strong> — Opus 4.8 effort level: xhigh (strategic), high (professional), low (scout)</li>
+            <li><strong>tier</strong> — Cost/capability tier for routing decisions</li>
+            <li><strong>escalates_to</strong> — Agent to escalate to when confidence is low</li>
+            <li><strong>tools</strong> — List of tools/capabilities available to this agent</li>
+          </ul>
+
+          <h2>Persistent Tier — Hermes (Local MCP)</h2>
+          <p>The always-on background worker tier that runs 24/7 on the same VPS. Hermes connects via MCP and handles tasks that require persistence beyond the active session.</p>
+
+          <table class="docs-table">
+            <thead>
+              <tr><th>Agent</th><th>Role</th></tr>
+            </thead>
+            <tbody>
+              <tr><td><strong>Hermes Delegate</strong></td><td>Background task execution with progress pings. Walkaway mode for long refactoring tasks with mobile replies.</td></tr>
+              <tr><td><strong>Hermes Cron</strong></td><td>24/7 scheduled jobs: inbox summaries, news briefs, GitHub backups, comment monitoring, health checks.</td></tr>
+              <tr><td><strong>Hermes Approval Gate</strong></td><td>Pauses destructive actions and pushes approval prompts to Telegram/Slack/Discord for mobile review.</td></tr>
+            </tbody>
+          </table>
+
+          <div class="docs-callout info">
+            <strong>Learn more:</strong> See the <a href="/docs/hermes">Hermes Agent</a> documentation for setup, API endpoints, and walkaway mode details.
+          </div>
+
+          <h2>Escalation Paths</h2>
+          <p>Agents can escalate tasks upward when they encounter requests beyond their capability. The escalation chain follows the tier hierarchy:</p>
+          <ul>
+            <li>Economy &rarr; Scout &rarr; Professional &rarr; Strategic (Orchestrator)</li>
+            <li>The Orchestrator is the terminal escalation point and can re-delegate to any agent</li>
+          </ul>
+
+          <div class="docs-page-nav">
+            <a href="/docs/architecture">&larr; Architecture</a>
+            <a href="/docs/skills">Skills &amp; Pipelines &rarr;</a>
+          </div>
+        </div>
+
+        <aside class="docs-toc">
+          <div class="docs-toc-title">On this page</div>
+          <a href="#strategic-tier">Strategic Tier</a>
+          <a href="#professional-tier">Professional Tier</a>
+          <a href="#scout-tier">Scout Tier</a>
+          <a href="#economy-tier">Economy Tier</a>
+          <a href="#realtime-tier">Realtime Tier</a>
+          <a href="#agent-definitions">Agent Definitions</a>
+          <a href="#escalation-paths">Escalation Paths</a>
+        </aside>
+      </div>
+    </div>
+  </main>
+
+  <footer class="site-footer">
+    <div class="footer-bottom">
+      <p>&copy; 2026 AI OS Orchestration Lab. All rights reserved.</p>
+    </div>
+  </footer>
+</body>
+</html>

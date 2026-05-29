@@ -115,11 +115,20 @@
         <a href="#" class="nav-item" data-view="batch">
           <span class="nav-icon">&#9968;</span> Batch Queue
         </a>
+        <a href="#" class="nav-item" data-view="hermes">
+          <span class="nav-icon">&#9889;</span> Hermes
+        </a>
+        <a href="#" class="nav-item" data-view="seo-agency">
+          <span class="nav-icon">&#128269;</span> SEO Agency
+        </a>
         <a href="#" class="nav-item" data-view="artifacts">
           <span class="nav-icon">&#9776;</span> Artifacts
         </a>
         <a href="#" class="nav-item" data-view="logs">
           <span class="nav-icon">&#9881;</span> Logs
+        </a>
+        <a href="#" class="nav-item" data-view="settings">
+          <span class="nav-icon">&#9881;</span> Settings
         </a>
       </nav>
       <div class="sidebar-footer">
@@ -815,7 +824,7 @@
           <div class="radar-header">
             <div class="radar-header-left">
               <h2 class="radar-title">Media Production Pipeline</h2>
-              <span class="radar-subtitle">Remotion video, Google Vids, Blender 3D — prompt-to-production media</span>
+              <span class="radar-subtitle">Gemini Omni creative generation — video, image, audio, thumbnails &amp; social clips</span>
             </div>
             <div class="radar-actions">
               <button class="btn btn-primary" id="mediaProduceBtn">+ New Production</button>
@@ -826,7 +835,38 @@
             <!-- Populated by JS -->
           </div>
 
-          <div class="media-layout">
+          <!-- Gemini Omni Quick Generate -->
+          <section class="panel" style="margin-top:16px;">
+            <h3 class="panel-title">&#10024; Gemini Omni — Multimodal Creative Studio</h3>
+            <p style="font-size:13px; color:var(--text-secondary); margin-bottom:12px;">Generate video, images, audio, thumbnails, or social clips from text prompts. Powered by Gemini Omni Flash with physics simulation and SynthID watermarking.</p>
+            <div class="omni-generate-form">
+              <div class="omni-type-selector">
+                <label class="omni-type-option">
+                  <input type="radio" name="omniType" value="video" checked> <span class="omni-type-label">&#127909; Video</span>
+                </label>
+                <label class="omni-type-option">
+                  <input type="radio" name="omniType" value="image"> <span class="omni-type-label">&#128444; Image</span>
+                </label>
+                <label class="omni-type-option">
+                  <input type="radio" name="omniType" value="audio"> <span class="omni-type-label">&#127911; Audio</span>
+                </label>
+                <label class="omni-type-option">
+                  <input type="radio" name="omniType" value="thumbnail"> <span class="omni-type-label">&#128247; Thumbnail</span>
+                </label>
+                <label class="omni-type-option">
+                  <input type="radio" name="omniType" value="social-clip"> <span class="omni-type-label">&#128241; Social Clip</span>
+                </label>
+              </div>
+              <div class="settings-input-row" style="margin-top:10px;">
+                <input type="text" class="settings-input" id="omniPrompt" placeholder="Describe what you want to create..." spellcheck="false" style="font-size:14px;">
+                <button class="btn btn-primary" id="omniGenerateBtn" onclick="startOmniGeneration()">&#10024; Generate</button>
+              </div>
+              <div id="omniProgress" style="margin-top:12px;"></div>
+              <div id="omniResult" style="margin-top:12px;"></div>
+            </div>
+          </section>
+
+          <div class="media-layout" style="margin-top:16px;">
             <section class="panel">
               <h3 class="panel-title">Active Productions</h3>
               <div class="media-productions" id="mediaProductions">
@@ -1066,10 +1106,378 @@
           </section>
         </div>
 
+        <!-- Hermes Agent View -->
+        <div class="view" id="view-hermes">
+          <div class="radar-header">
+            <div class="radar-header-left">
+              <h2 class="radar-title">Hermes Agent</h2>
+              <span class="radar-subtitle">Persistent background worker — always-on MCP bridge for walkaway tasks, approvals, and cron jobs</span>
+            </div>
+            <div class="radar-actions">
+              <span class="hermes-status-badge" id="hermesStatusBadge">Checking...</span>
+              <button class="btn btn-primary" id="hermesDelegateBtn">+ Delegate Task</button>
+            </div>
+          </div>
+
+          <!-- Connection Status -->
+          <section class="panel hermes-connection" id="hermesConnection">
+            <h3 class="panel-title">MCP Connection</h3>
+            <div class="hermes-stats" id="hermesStats"></div>
+          </section>
+
+          <!-- Approval Queue -->
+          <section class="panel">
+            <h3 class="panel-title">Approval Queue <span class="badge badge-warning" id="hermesApprovalCount">0</span></h3>
+            <div id="hermesApprovals">
+              <div class="empty-state">No pending approvals</div>
+            </div>
+          </section>
+
+          <!-- Active Tasks -->
+          <section class="panel">
+            <h3 class="panel-title">Active Tasks</h3>
+            <div id="hermesTasks">
+              <div class="empty-state">No active tasks</div>
+            </div>
+          </section>
+
+          <!-- Cron Jobs -->
+          <section class="panel">
+            <h3 class="panel-title">Scheduled Cron Jobs <button class="btn btn-sm" id="hermesCronAddBtn">+ Add</button></h3>
+            <div id="hermesCronJobs">
+              <div class="empty-state">No cron jobs configured</div>
+            </div>
+          </section>
+        </div>
+
         <!-- Logs View -->
         <div class="view" id="view-logs">
           <div class="logs-container" id="logsContainer">
             <!-- Populated by JS -->
+          </div>
+        </div>
+
+        <!-- SEO Agency View -->
+        <div class="view" id="view-seo-agency">
+          <div class="radar-header">
+            <div class="radar-header-left">
+              <h2 class="radar-title">SEO Agency</h2>
+              <span class="radar-subtitle">Automated SEO audits with 5 parallel sub-agents, composite scoring, and client-ready reports</span>
+            </div>
+          </div>
+
+          <section class="panel">
+            <h3 class="panel-title">Launch SEO Audit</h3>
+            <p style="font-size:13px; color:var(--text-secondary); margin-bottom:12px;">Enter a domain to run a comprehensive audit. Five sub-agents (Keyword, Technical, Competitor, Content, Backlink) analyze the site in parallel and generate a composite score.</p>
+            <div class="settings-input-row" style="max-width:600px;">
+              <input type="text" class="settings-input" id="seoAuditDomain" placeholder="example.com" spellcheck="false" autocomplete="off" style="font-family:var(--font-mono);">
+              <button class="btn btn-primary" id="seoAuditBtn" onclick="startSeoAudit()">Audit</button>
+            </div>
+          </section>
+
+          <div id="seoAuditDetail" style="display:none;"></div>
+
+          <section class="panel" style="margin-top:20px;">
+            <h3 class="panel-title">Audit History</h3>
+            <div id="seoAuditList">
+              <div class="empty-state">No audits yet. Enter a domain above and click Audit to start.</div>
+            </div>
+          </section>
+        </div>
+
+        <!-- Settings View -->
+        <div class="view" id="view-settings">
+          <div class="radar-header">
+            <div class="radar-header-left">
+              <h2 class="radar-title">Settings</h2>
+              <span class="radar-subtitle">API integrations, MCP connections, notifications, and account management</span>
+            </div>
+          </div>
+
+          <div class="settings-grid" id="settingsContainer">
+            <!-- AI Model Keys -->
+            <section class="panel settings-section">
+              <h3 class="panel-title settings-section-title">
+                <span class="settings-section-icon">&#129302;</span> AI Model API Keys
+              </h3>
+              <p class="settings-desc">Configure API keys for each AI model tier. Keys are stored encrypted on the server and never exposed to the browser.</p>
+              <div class="settings-fields">
+                <div class="settings-field">
+                  <label class="settings-label">Anthropic API Key <span class="settings-tier">Opus 4.8 — Strategic / Professional / Scout</span></label>
+                  <div class="settings-input-row">
+                    <input type="text" class="settings-input settings-secret" id="set-anthropic_api_key" placeholder="sk-ant-..." autocomplete="new-password" data-lpignore="true" data-1p-ignore spellcheck="false">
+                    <button type="button" class="btn btn-sm settings-eye" onclick="toggleKeyVisibility(this)" title="Show/hide">&#128065;</button>
+                    <span class="settings-status" id="status-anthropic_api_key"></span>
+                    <button class="btn btn-sm" onclick="testConnection('anthropic')">Test</button>
+                  </div>
+                </div>
+                <div class="settings-field">
+                  <label class="settings-label">DeepSeek API Key <span class="settings-tier">Economy tier</span></label>
+                  <div class="settings-input-row">
+                    <input type="text" class="settings-input settings-secret" id="set-deepseek_api_key" placeholder="sk-..." autocomplete="new-password" data-lpignore="true" data-1p-ignore spellcheck="false">
+                    <button type="button" class="btn btn-sm settings-eye" onclick="toggleKeyVisibility(this)" title="Show/hide">&#128065;</button>
+                    <span class="settings-status" id="status-deepseek_api_key"></span>
+                    <button class="btn btn-sm" onclick="testConnection('deepseek')">Test</button>
+                  </div>
+                </div>
+                <div class="settings-field">
+                  <label class="settings-label">xAI (Grok) API Key <span class="settings-tier">Realtime tier</span></label>
+                  <div class="settings-input-row">
+                    <input type="text" class="settings-input settings-secret" id="set-xai_api_key" placeholder="xai-..." autocomplete="new-password" data-lpignore="true" data-1p-ignore spellcheck="false">
+                    <button type="button" class="btn btn-sm settings-eye" onclick="toggleKeyVisibility(this)" title="Show/hide">&#128065;</button>
+                    <span class="settings-status" id="status-xai_api_key"></span>
+                    <button class="btn btn-sm" onclick="testConnection('xai')">Test</button>
+                  </div>
+                </div>
+                <div class="settings-field">
+                  <label class="settings-label">Firecrawl API Key <span class="settings-tier">Web scraping</span></label>
+                  <div class="settings-input-row">
+                    <input type="text" class="settings-input settings-secret" id="set-firecrawl_api_key" placeholder="fc-..." autocomplete="new-password" data-lpignore="true" data-1p-ignore spellcheck="false">
+                    <button type="button" class="btn btn-sm settings-eye" onclick="toggleKeyVisibility(this)" title="Show/hide">&#128065;</button>
+                    <span class="settings-status" id="status-firecrawl_api_key"></span>
+                  </div>
+                </div>
+                <div class="settings-field">
+                  <label class="settings-label">Google Gemini API Key <span class="settings-tier">Creative tier — Omni video/image/audio</span></label>
+                  <div class="settings-input-row">
+                    <input type="text" class="settings-input settings-secret" id="set-gemini_api_key" placeholder="AIza..." autocomplete="new-password" data-lpignore="true" data-1p-ignore spellcheck="false">
+                    <button type="button" class="btn btn-sm settings-eye" onclick="toggleKeyVisibility(this)" title="Show/hide">&#128065;</button>
+                    <span class="settings-status" id="status-gemini_api_key"></span>
+                    <button class="btn btn-sm" onclick="testConnection('gemini')">Test</button>
+                  </div>
+                </div>
+              </div>
+              <div id="settings-ai-debug" style="font-size:11px; color: var(--text-secondary); margin-bottom:8px;"></div>
+              <button class="btn btn-primary settings-save" onclick="saveSettings('ai')">Save AI Keys</button>
+            </section>
+
+            <!-- MCP Connections -->
+            <section class="panel settings-section">
+              <h3 class="panel-title settings-section-title">
+                <span class="settings-section-icon">&#128268;</span> MCP Connections
+              </h3>
+              <p class="settings-desc">Configure Model Context Protocol server endpoints for persistent agent communication.</p>
+              <div class="settings-fields">
+                <div class="settings-field">
+                  <label class="settings-label">Hermes MCP URL</label>
+                  <div class="settings-input-row">
+                    <input type="text" class="settings-input" id="set-hermes_url" placeholder="http://127.0.0.1:8420" autocomplete="off">
+                    <button class="btn btn-sm" onclick="testConnection('hermes')">Test</button>
+                  </div>
+                </div>
+                <div class="settings-field">
+                  <label class="settings-label">Hermes Enabled</label>
+                  <label class="settings-toggle">
+                    <input type="checkbox" id="set-hermes_enabled">
+                    <span class="settings-toggle-slider"></span>
+                    <span class="settings-toggle-label">Enable Hermes MCP background worker</span>
+                  </label>
+                </div>
+              </div>
+              <button class="btn btn-primary settings-save" onclick="saveSettings('mcp')">Save MCP Settings</button>
+            </section>
+
+            <!-- Notifications -->
+            <section class="panel settings-section">
+              <h3 class="panel-title settings-section-title">
+                <span class="settings-section-icon">&#128276;</span> Notifications
+              </h3>
+              <p class="settings-desc">Connect Telegram and Slack for agent status alerts, approval prompts, and walkaway mode pings.</p>
+              <div class="settings-fields">
+                <div class="settings-field">
+                  <label class="settings-label">Telegram Bot Token</label>
+                  <div class="settings-input-row">
+                    <input type="password" class="settings-input" id="set-telegram_bot_token" placeholder="123456:ABC-DEF..." autocomplete="off">
+                    <span class="settings-status" id="status-telegram_bot_token"></span>
+                    <button class="btn btn-sm" onclick="testConnection('telegram')">Test</button>
+                  </div>
+                </div>
+                <div class="settings-field">
+                  <label class="settings-label">Telegram Chat ID</label>
+                  <div class="settings-input-row">
+                    <input type="text" class="settings-input" id="set-telegram_chat_id" placeholder="-100123456789" autocomplete="off">
+                  </div>
+                </div>
+                <div class="settings-field">
+                  <label class="settings-label">Slack Webhook URL</label>
+                  <div class="settings-input-row">
+                    <input type="password" class="settings-input" id="set-slack_webhook_url" placeholder="https://hooks.slack.com/services/..." autocomplete="off">
+                    <span class="settings-status" id="status-slack_webhook_url"></span>
+                    <button class="btn btn-sm" onclick="testConnection('slack')">Test</button>
+                  </div>
+                </div>
+              </div>
+              <button class="btn btn-primary settings-save" onclick="saveSettings('notifications')">Save Notifications</button>
+            </section>
+
+            <!-- Automation -->
+            <section class="panel settings-section">
+              <h3 class="panel-title settings-section-title">
+                <span class="settings-section-icon">&#9881;</span> Automation
+              </h3>
+              <p class="settings-desc">External automation bridges for n8n workflows and team webhook integrations.</p>
+              <div class="settings-fields">
+                <div class="settings-field">
+                  <label class="settings-label">n8n Webhook Base URL</label>
+                  <div class="settings-input-row">
+                    <input type="text" class="settings-input" id="set-n8n_webhook_base" placeholder="http://localhost:5678" autocomplete="off">
+                  </div>
+                </div>
+                <div class="settings-field">
+                  <label class="settings-label">n8n API Key</label>
+                  <div class="settings-input-row">
+                    <input type="password" class="settings-input" id="set-n8n_api_key" placeholder="n8n-api-key..." autocomplete="off">
+                    <span class="settings-status" id="status-n8n_api_key"></span>
+                  </div>
+                </div>
+                <div class="settings-field">
+                  <label class="settings-label">Team Webhook URL</label>
+                  <div class="settings-input-row">
+                    <input type="text" class="settings-input" id="set-team_webhook_url" placeholder="https://..." autocomplete="off">
+                  </div>
+                </div>
+              </div>
+              <button class="btn btn-primary settings-save" onclick="saveSettings('automation')">Save Automation</button>
+            </section>
+
+            <!-- Stripe -->
+            <section class="panel settings-section">
+              <h3 class="panel-title settings-section-title">
+                <span class="settings-section-icon">&#128179;</span> Stripe Billing
+              </h3>
+              <p class="settings-desc">Subscription payment processing. Use test keys for development, live keys for production.</p>
+              <div class="settings-fields">
+                <div class="settings-field">
+                  <label class="settings-label">Stripe Secret Key</label>
+                  <div class="settings-input-row">
+                    <input type="password" class="settings-input" id="set-secret_key" placeholder="sk_live_..." autocomplete="off">
+                    <span class="settings-status" id="status-secret_key"></span>
+                  </div>
+                </div>
+                <div class="settings-field">
+                  <label class="settings-label">Stripe Webhook Secret</label>
+                  <div class="settings-input-row">
+                    <input type="password" class="settings-input" id="set-webhook_secret" placeholder="whsec_..." autocomplete="off">
+                    <span class="settings-status" id="status-webhook_secret"></span>
+                  </div>
+                </div>
+                <div class="settings-field">
+                  <label class="settings-label">Pro Plan Price ID</label>
+                  <div class="settings-input-row">
+                    <input type="text" class="settings-input" id="set-pro_price_id" placeholder="price_..." autocomplete="off">
+                  </div>
+                </div>
+                <div class="settings-field">
+                  <label class="settings-label">Enterprise Plan Price ID</label>
+                  <div class="settings-input-row">
+                    <input type="text" class="settings-input" id="set-enterprise_price_id" placeholder="price_..." autocomplete="off">
+                  </div>
+                </div>
+              </div>
+              <button class="btn btn-primary settings-save" onclick="saveSettings('stripe')">Save Stripe</button>
+            </section>
+
+            <!-- SEO / DataForSEO -->
+            <section class="panel settings-section">
+              <h3 class="panel-title settings-section-title">
+                <span class="settings-section-icon">&#128269;</span> SEO Agency (DataForSEO)
+              </h3>
+              <p class="settings-desc">Connect DataForSEO for real keyword research, backlink analysis, competitor data, and technical crawl data. <a href="https://dataforseo.com" target="_blank" style="color:var(--primary);">Sign up for a free account</a>.</p>
+              <div class="settings-fields">
+                <div class="settings-field">
+                  <label class="settings-label">DataForSEO Login (Email)</label>
+                  <div class="settings-input-row">
+                    <input type="text" class="settings-input" id="set-dataforseo_login" placeholder="your@email.com" autocomplete="off" spellcheck="false">
+                    <span class="settings-status" id="status-dataforseo_login"></span>
+                  </div>
+                </div>
+                <div class="settings-field">
+                  <label class="settings-label">DataForSEO Password</label>
+                  <div class="settings-input-row">
+                    <input type="text" class="settings-input settings-secret" id="set-dataforseo_password" placeholder="API password" autocomplete="new-password" data-lpignore="true" data-1p-ignore spellcheck="false">
+                    <button type="button" class="btn btn-sm settings-eye" onclick="toggleKeyVisibility(this)" title="Show/hide">&#128065;</button>
+                    <span class="settings-status" id="status-dataforseo_password"></span>
+                    <button class="btn btn-sm" onclick="testConnection('dataforseo')">Test</button>
+                  </div>
+                </div>
+                <div class="settings-field">
+                  <label class="settings-label">Default Location</label>
+                  <div class="settings-input-row">
+                    <input type="text" class="settings-input" id="set-default_location" placeholder="United States" autocomplete="off">
+                  </div>
+                </div>
+                <div class="settings-field">
+                  <label class="settings-label">Default Language</label>
+                  <div class="settings-input-row">
+                    <input type="text" class="settings-input" id="set-default_language" placeholder="en" autocomplete="off">
+                  </div>
+                </div>
+              </div>
+              <div id="settings-seo-debug" style="font-size:11px; color: var(--text-secondary); margin-bottom:8px;"></div>
+              <button class="btn btn-primary settings-save" onclick="saveSettings('seo')">Save SEO Settings</button>
+            </section>
+
+            <!-- General -->
+            <section class="panel settings-section">
+              <h3 class="panel-title settings-section-title">
+                <span class="settings-section-icon">&#128736;</span> General
+              </h3>
+              <p class="settings-desc">System-wide configuration including demo mode, CORS, and API authentication.</p>
+              <div class="settings-fields">
+                <div class="settings-field">
+                  <label class="settings-label">Demo Mode</label>
+                  <label class="settings-toggle">
+                    <input type="checkbox" id="set-demo_mode">
+                    <span class="settings-toggle-slider"></span>
+                    <span class="settings-toggle-label">Simulate API responses (disable for live integrations)</span>
+                  </label>
+                </div>
+                <div class="settings-field">
+                  <label class="settings-label">CORS Origin</label>
+                  <div class="settings-input-row">
+                    <input type="text" class="settings-input" id="set-cors_origin" placeholder="https://yourdomain.com or *" autocomplete="off">
+                  </div>
+                </div>
+                <div class="settings-field">
+                  <label class="settings-label">API Bearer Token</label>
+                  <div class="settings-input-row">
+                    <input type="password" class="settings-input" id="set-api_token" placeholder="your-secret-token" autocomplete="off">
+                    <span class="settings-status" id="status-api_token"></span>
+                  </div>
+                </div>
+              </div>
+              <button class="btn btn-primary settings-save" onclick="saveSettings('general')">Save General</button>
+            </section>
+
+            <!-- Account / Change Password -->
+            <section class="panel settings-section">
+              <h3 class="panel-title settings-section-title">
+                <span class="settings-section-icon">&#128274;</span> Account Security
+              </h3>
+              <p class="settings-desc">Change your admin password. Passwords are hashed with bcrypt (12 rounds) and never stored in plain text.</p>
+              <div class="settings-fields">
+                <div class="settings-field">
+                  <label class="settings-label">Current Password</label>
+                  <div class="settings-input-row">
+                    <input type="password" class="settings-input" id="set-current-password" autocomplete="off">
+                  </div>
+                </div>
+                <div class="settings-field">
+                  <label class="settings-label">New Password <span class="settings-tier">Min 10 characters</span></label>
+                  <div class="settings-input-row">
+                    <input type="password" class="settings-input" id="set-new-password" autocomplete="off">
+                  </div>
+                </div>
+                <div class="settings-field">
+                  <label class="settings-label">Confirm New Password</label>
+                  <div class="settings-input-row">
+                    <input type="password" class="settings-input" id="set-confirm-password" autocomplete="off">
+                  </div>
+                </div>
+              </div>
+              <button class="btn btn-primary settings-save" onclick="changePassword()">Change Password</button>
+              <div id="settingsPasswordMsg" class="settings-msg"></div>
+            </section>
           </div>
         </div>
       </div>
@@ -1107,6 +1515,6 @@
     </div>
   </div>
 
-  <script src="js/app.js"></script>
+  <script src="js/app.js?v=7"></script>
 </body>
 </html>

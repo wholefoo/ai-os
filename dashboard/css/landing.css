@@ -382,6 +382,8 @@ a:hover { color: #60a5fa; }
 .agent-chip.economy:hover { border-color: #f59e0b; box-shadow: 0 0 12px #f59e0b20; }
 .agent-chip.grok { border-color: #ef444440; }
 .agent-chip.grok:hover { border-color: #ef4444; box-shadow: 0 0 12px #ef444420; }
+.agent-chip.hermes { border-color: #a78bfa40; }
+.agent-chip.hermes:hover { border-color: #a78bfa; box-shadow: 0 0 12px #a78bfa20; }
 .agent-dot {
   width: 8px;
   height: 8px;
@@ -394,6 +396,10 @@ a:hover { color: #60a5fa; }
 .agent-chip.haiku .agent-dot { color: #10b981; }
 .agent-chip.economy .agent-dot { color: #f59e0b; }
 .agent-chip.grok .agent-dot { color: #ef4444; }
+.agent-chip.hermes .agent-dot { color: #a78bfa; }
+.agent-chip.omni { border-color: #ec489940; }
+.agent-chip.omni:hover { border-color: #ec4899; box-shadow: 0 0 12px #ec489920; }
+.agent-chip.omni .agent-dot { color: #ec4899; }
 @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
 .agent-model { font-size: 10px; color: var(--text-muted); font-weight: 400; margin-left: 4px; }
 .agent-legend { display: flex; gap: 24px; justify-content: center; flex-wrap: wrap; }
@@ -404,6 +410,8 @@ a:hover { color: #60a5fa; }
 .legend-dot.haiku { background: #10b981; }
 .legend-dot.economy { background: #f59e0b; }
 .legend-dot.grok { background: #ef4444; }
+.legend-dot.omni { background: #ec4899; }
+.legend-dot.hermes { background: #a78bfa; }
 
 /* ================================
    PRICING

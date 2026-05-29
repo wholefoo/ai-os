@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Design System — AI OS Docs</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/css/landing.css">
+  <link rel="stylesheet" href="/css/docs.css">
+</head>
+<body>
+  <nav class="landing-nav">
+    <div class="nav-container">
+      <a href="/" class="nav-brand">
+        <span class="nav-logo">&#9678;</span>
+        <span class="nav-name">AI OS</span>
+      </a>
+      <div class="nav-links">
+        <a href="/">Home</a>
+        <a href="/docs" class="active">Docs</a>
+        <a href="/terms">Terms</a>
+        <a href="/privacy">Privacy</a>
+      </div>
+    </div>
+  </nav>
+
+  <main class="docs-page">
+    <div class="docs-container">
+      <div class="docs-layout">
+        <div class="docs-content">
+          <div class="docs-breadcrumb">
+            <a href="/docs">Docs</a> <span>/</span> Design System
+          </div>
+
+          <h1>Design System</h1>
+          <p class="docs-lead">AI OS uses a DESIGN.md dual-structure protocol that separates emotional design reasoning from exact implementation tokens. This enables brand-aware UI generation with WCAG accessibility compliance.</p>
+
+          <h2>Dual-Structure Protocol</h2>
+          <p>Every design system in AI OS has two layers:</p>
+          <ul>
+            <li><strong>Reasoning Layer</strong> — The "why" behind design decisions: brand personality, emotional intent, visual metaphors, and audience targeting.</li>
+            <li><strong>Token Layer</strong> — The "what" of implementation: exact hex values, font sizes, spacing scales, border radii, and shadow definitions.</li>
+          </ul>
+          <p>This separation ensures that AI agents understand the intent behind design choices, not just the values, enabling smarter generation of new UI components that feel cohesive.</p>
+
+          <h2>Brand Reasoning</h2>
+          <p>The Reasoning section of DESIGN.md captures subjective design intent:</p>
+          <pre><code>## Reasoning
+
+### Brand Personality
+Authoritative yet approachable. Technical precision
+with human warmth.
+
+### Color Philosophy
+Dark background conveys depth and focus. Blue primary
+signals trust and intelligence. Green accents for
+success states create positive reinforcement.
+
+### Typography Intent
+Inter for UI clarity — geometric, neutral, highly
+legible at small sizes. JetBrains Mono for code —
+designed for extended reading of technical content.</code></pre>
+
+          <h2>Color Hierarchy</h2>
+          <p>Colors are organized into a semantic hierarchy rather than a flat palette:</p>
+
+          <table class="docs-table">
+            <thead>
+              <tr><th>Role</th><th>Token</th><th>Usage</th></tr>
+            </thead>
+            <tbody>
+              <tr><td><strong>Primary</strong></td><td><code>--primary</code></td><td>Interactive elements, links, focus states, primary CTAs</td></tr>
+              <tr><td><strong>Secondary</strong></td><td><code>--secondary</code></td><td>Supporting actions, secondary buttons, less prominent UI</td></tr>
+              <tr><td><strong>Tertiary</strong></td><td><code>--tertiary</code></td><td>Accents, decorative elements, inline code highlighting</td></tr>
+              <tr><td><strong>Success</strong></td><td><code>--success</code></td><td>Positive states, confirmations, health indicators</td></tr>
+              <tr><td><strong>Warning</strong></td><td><code>--warning</code></td><td>Caution states, pending actions, rate limit indicators</td></tr>
+              <tr><td><strong>Error</strong></td><td><code>--error</code></td><td>Destructive actions, failures, validation errors</td></tr>
+            </tbody>
+          </table>
+
+          <h2>Component Specifications</h2>
+          <p>The Design System agent generates component specs with exact measurements and states:</p>
+          <ul>
+            <li><strong>Buttons</strong> — Primary, secondary, ghost, danger variants with hover/active/disabled states</li>
+            <li><strong>Cards</strong> — Standard, elevated, interactive variants with border-glow hover effects</li>
+            <li><strong>Forms</strong> — Input, select, checkbox, radio with focus rings and error states</li>
+            <li><strong>Navigation</strong> — Top nav, sidebar, breadcrumbs, tabs</li>
+            <li><strong>Feedback</strong> — Toasts, modals, loading skeletons, empty states</li>
+          </ul>
+
+          <h2>WCAG Linting</h2>
+          <p>The Design System automatically validates accessibility compliance:</p>
+          <ul>
+            <li><strong>Contrast ratios</strong> — All text/background pairs checked against WCAG AA (4.5:1) and AAA (7:1) thresholds</li>
+            <li><strong>Focus indicators</strong> — Ensures all interactive elements have visible focus states</li>
+            <li><strong>Color independence</strong> — Validates that color is not the sole means of conveying information</li>
+            <li><strong>Touch targets</strong> — Minimum 44x44px for mobile interactive elements</li>
+          </ul>
+
+          <h2>Brand Clone from URL</h2>
+          <p>The clone feature analyzes any website URL and extracts its design DNA:</p>
+          <ol>
+            <li>Scrapes the target URL for CSS variables, computed styles, and font references</li>
+            <li>Extracts the color palette with usage percentages</li>
+            <li>Identifies typography stack and size scale</li>
+            <li>Detects spacing patterns and border-radius conventions</li>
+            <li>Generates a complete DESIGN.md with both reasoning and token layers</li>
+          </ol>
+
+          <h2>Export</h2>
+          <p>Design systems can be exported in multiple formats:</p>
+          <ul>
+            <li><strong>DESIGN.md</strong> — Full Markdown specification (reasoning + tokens)</li>
+            <li><strong>CSS Variables</strong> — Ready-to-use custom properties</li>
+            <li><strong>JSON Tokens</strong> — For use with design token tools (Style Dictionary, Figma Tokens)</li>
+            <li><strong>Tailwind Config</strong> — Tailwind CSS theme extension</li>
+          </ul>
+
+          <div class="docs-page-nav">
+            <a href="/docs/knowledge-graph">&larr; Knowledge Graph</a>
+            <a href="/docs/media-production">Media Production &rarr;</a>
+          </div>
+        </div>
+
+        <aside class="docs-toc">
+          <div class="docs-toc-title">On this page</div>
+          <a href="#dual-structure-protocol">Dual-Structure Protocol</a>
+          <a href="#brand-reasoning">Brand Reasoning</a>
+          <a href="#color-hierarchy">Color Hierarchy</a>
+          <a href="#component-specifications">Components</a>
+          <a href="#wcag-linting">WCAG Linting</a>
+          <a href="#brand-clone">Brand Clone</a>
+          <a href="#export">Export</a>
+        </aside>
+      </div>
+    </div>
+  </main>
+
+  <footer class="site-footer">
+    <div class="footer-bottom">
+      <p>&copy; 2026 AI OS Orchestration Lab. All rights reserved.</p>
+    </div>
+  </footer>
+</body>
+</html>

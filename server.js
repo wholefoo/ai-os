@@ -14,6 +14,7 @@ const compression = require('compression');
 const morgan = require('morgan');
 const rateLimit = require('express-rate-limit');
 const cookieParser = require('cookie-parser');
+const bcrypt = require('bcryptjs');
 
 const app = express();
 const server = http.createServer(app);
@@ -36,6 +37,7 @@ app.use(helmet({
     directives: {
       defaultSrc: ["'self'"],
       scriptSrc: ["'self'", "'unsafe-inline'"],
+      scriptSrcAttr: ["'unsafe-inline'"],  // Required for onclick handlers in HTML
       styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
       fontSrc: ["'self'", "https://fonts.gstatic.com"],
       connectSrc: ["'self'", "ws:", "wss:"],
@@ -112,6 +114,22 @@ const STRIPE_PLANS = {
 // In-memory user/session store (replace with DB in production)
 const users = loadState('users', []);
 const sessions = new Map(); // token -> { email, plan, stripeCustomerId, expiresAt }
+
+// Seed admin account if not present
+(function seedAdmin() {
+  const adminEmail = process.env.ADMIN_EMAIL || 'wholefoo@gmail.com';
+  if (!users.find(u => u.email === adminEmail)) {
+    users.push({
+      email: adminEmail,
+      passwordHash: process.env.ADMIN_PASSWORD_HASH || '$2b$12$fhfoAN1tNo4ibPfElk60UOuNHEAJckkE9Oko8etkDpJvggDYBrrZa',
+      plan: 'enterprise',
+      role: 'admin',
+      createdAt: new Date().toISOString(),
+    });
+    saveState('users', users);
+    console.log(`[AUTH] Admin account seeded: ${adminEmail}`);
+  }
+})();
 
 function generateToken() { return uuidv4() + '-' + uuidv4(); }
 
@@ -232,7 +250,7 @@ app.post('/api/stripe/webhook', express.raw({ type: 'application/json' }), (req,
 });
 
 // --- User Auth ---
-app.post('/api/auth/login', (req, res) => {
+app.post('/api/auth/login', async (req, res) => {
   const { email, password } = req.body;
   if (!email || !password) return res.status(400).json({ error: 'Email and password required' });
 
@@ -240,11 +258,21 @@ app.post('/api/auth/login', (req, res) => {
   if (!user) return res.status(401).json({ error: 'Invalid credentials' });
   if (!user.plan || user.plan === 'free') return res.status(403).json({ error: 'No active subscription. Please choose a plan.' });
 
-  // Simple password check (in production, use bcrypt + hashed passwords)
-  if (user.password && user.password !== password) return res.status(401).json({ error: 'Invalid credentials' });
+  // Verify password with bcrypt
+  const valid = user.passwordHash
+    ? await bcrypt.compare(password, user.passwordHash)
+    : (user.password && user.password === password); // legacy fallback
+  if (!valid) return res.status(401).json({ error: 'Invalid credentials' });
 
   const token = generateToken();
-  sessions.set(token, { email: user.email, plan: user.plan, expiresAt: new Date(Date.now() + 30 * 86400000).toISOString() });
+  sessions.set(token, {
+    email: user.email,
+    plan: user.plan,
+    role: user.role || 'user',
+    expiresAt: new Date(Date.now() + 30 * 86400000).toISOString(),
+  });
+
+  logActivity('auth', `Login: ${user.email} (${user.role || 'user'})`, { plan: user.plan });
 
   res.cookie('ai-os-session', token, {
     httpOnly: true,
@@ -252,7 +280,7 @@ app.post('/api/auth/login', (req, res) => {
     sameSite: 'lax',
     maxAge: 30 * 86400000,
   });
-  res.json({ ok: true, token, plan: user.plan });
+  res.json({ ok: true, token, plan: user.plan, role: user.role || 'user' });
 });
 
 app.post('/api/auth/logout', (req, res) => {
@@ -296,6 +324,13 @@ app.get('/login', (req, res) => {
 app.get('/terms', (req, res) => res.sendFile(path.join(BASE, 'dashboard', 'terms.html')));
 app.get('/privacy', (req, res) => res.sendFile(path.join(BASE, 'dashboard', 'privacy.html')));
 
+// Documentation pages
+app.get('/docs', (req, res) => res.sendFile(path.join(BASE, 'dashboard', 'docs', 'index.html')));
+const docPages = ['getting-started','architecture','agents','skills','knowledge-graph','design-system','media-production','monetization','batch-queue','api','deployment','billing','notifications','hermes'];
+docPages.forEach(page => {
+  app.get(`/docs/${page}`, (req, res) => res.sendFile(path.join(BASE, 'dashboard', 'docs', `${page}.html`)));
+});
+
 // Static files (served by Nginx in production, Express in dev)
 app.use(express.static(path.join(BASE, 'dashboard'), {
   maxAge: process.env.NODE_ENV === 'production' ? '7d' : 0,
@@ -304,6 +339,11 @@ app.use(express.static(path.join(BASE, 'dashboard'), {
 // Health check endpoint
 const startTime = Date.now();
 app.get('/api/health', (req, res) => {
+  const agentDir = path.join(CLAUDE_DIR, 'agents');
+  const skillDir = path.join(CLAUDE_DIR, 'skills');
+  const agentCount = fs.existsSync(agentDir) ? fs.readdirSync(agentDir).filter(f => f.endsWith('.md')).length : 0;
+  const skillCount = fs.existsSync(skillDir) ? fs.readdirSync(skillDir).filter(f => f.endsWith('.md')).length : 0;
+
   res.json({
     status: 'ok',
     uptime: Math.floor((Date.now() - startTime) / 1000),
@@ -312,8 +352,11 @@ app.get('/api/health', (req, res) => {
     demoMode: DEMO_MODE,
     nodeEnv: process.env.NODE_ENV || 'development',
     stripeConfigured: !!stripe,
+    agents: agentCount,
+    skills: skillCount,
     activeUsers: users.filter(u => u.plan && u.plan !== 'free').length,
     activeSessions: sessions.size,
+    missionActive: workflows.size > 0,
   });
 });
 
@@ -351,17 +394,34 @@ function saveState(key, data) {
 }
 
 function loadState(key, fallback) {
+  const defaults = typeof fallback === 'function' ? fallback() : fallback;
   try {
     const fp = path.join(STATE_DIR, `${key}.json`);
     if (fs.existsSync(fp)) {
       const data = JSON.parse(fs.readFileSync(fp, 'utf-8'));
       console.log(`[STATE] Loaded ${key} from disk`);
+      // Deep-merge: ensure any new default keys are present in loaded data
+      if (defaults && typeof defaults === 'object' && !Array.isArray(defaults)) {
+        for (const [section, vals] of Object.entries(defaults)) {
+          if (typeof vals === 'object' && !Array.isArray(vals) && vals !== null) {
+            if (!data[section]) data[section] = {};
+            for (const [k, v] of Object.entries(vals)) {
+              if (!(k in data[section])) {
+                data[section][k] = v;
+                console.log(`[STATE] Added missing default: ${key}.${section}.${k}`);
+              }
+            }
+          } else if (!(section in data)) {
+            data[section] = vals;
+          }
+        }
+      }
       return data;
     }
   } catch (e) {
     console.error(`[STATE] Failed to load ${key}:`, e.message);
   }
-  return typeof fallback === 'function' ? fallback() : fallback;
+  return defaults;
 }
 
 // Debounced auto-save: saves state 2s after last mutation
@@ -461,11 +521,67 @@ const techRadarReports = [];
 const updateProposals = [];
 
 // --- Cost Tracking State ---
+// --- Model Configuration ---
+const OPUS_MODEL = 'claude-opus-4-8';
+const OPUS_API_VERSION = '2023-06-01';
+const GEMINI_OMNI_MODEL = 'gemini-omni-flash';
+
+// Effort-level routing: maps agent tiers to Opus 4.8 effort levels
+const EFFORT_ROUTING = {
+  // Strategic tier — full reasoning power, complex planning, architecture decisions
+  strategic: { effort: 'xhigh', agents: ['orchestrator', 'architect', 'reviewer', 'security-auditor'] },
+  // Professional tier — balanced quality/speed for most agent work
+  professional: { effort: 'high', agents: ['researcher', 'coder', 'writer', 'synthesis', 'research-architect', 'report-compiler', 'data-wrangler', 'design-system', 'lead-gen', 'marketing-hub', 'product-factory', 'knowledge-graph', 'golden-loop', 'automator', 'browser-agent'] },
+  // Scout tier — fast, lightweight tasks
+  scout: { effort: 'low', agents: ['scout', 'social-intel', 'routine-runner'] },
+  // Creative tier — Gemini Omni for multimodal generation (video, image, audio)
+  creative: { model: 'gemini-omni', agents: ['media-producer', 'vibe-designer', 'video-creator', 'audio-producer', 'thumbnail-gen'] },
+};
+
+// Resolve agent name to effort level / model tier
+function getAgentEffort(agentName) {
+  for (const [tier, config] of Object.entries(EFFORT_ROUTING)) {
+    if (config.agents.includes(agentName)) {
+      if (tier === 'creative') return { tier, effort: null, model: 'gemini-omni' };
+      return { tier, effort: config.effort, model: `opus-4.8-${config.effort}` };
+    }
+  }
+  return { tier: 'professional', effort: 'high', model: 'opus-4.8-high' };
+}
+
+// Build Anthropic API request body with Opus 4.8 features
+function buildOpusRequest(messages, { effort = 'high', systemMessages = [], maxTokens = 4096 } = {}) {
+  const body = {
+    model: OPUS_MODEL,
+    max_tokens: maxTokens,
+    // Adaptive thinking — Opus 4.8 decides when to reason deeply
+    thinking: { type: 'adaptive' },
+    messages,
+  };
+  // Effort controls thinking depth
+  if (effort) body.effort = effort;
+  // Mid-conversation system messages (new in 4.8)
+  if (systemMessages.length > 0) {
+    // Insert system messages after user turns where needed
+    body.system = systemMessages;
+  }
+  return body;
+}
+
 const COST_RATES = {
-  'claude-4.7-opus':   { input: 15.00, output: 75.00 },   // per 1M tokens
+  // Opus 4.8 — effort-based routing (single model, three tiers)
+  'opus-4.8-xhigh':    { input: 10.00, output: 50.00 },   // per 1M tokens — fast mode, strategic work
+  'opus-4.8-high':     { input: 5.00,  output: 25.00 },   // standard — professional work
+  'opus-4.8-low':      { input: 5.00,  output: 25.00 },   // standard — scout/quick tasks (same rate, less thinking)
+  // Legacy aliases (for backward compat with existing ledger entries)
+  'claude-4.7-opus':   { input: 15.00, output: 75.00 },
   'claude-4.7-sonnet': { input: 3.00,  output: 15.00 },
   'claude-4.7-haiku':  { input: 0.25,  output: 1.25  },
+  // External models
   'deepseek-v4':       { input: 0.14,  output: 0.28  },
+  'grok-3':            { input: 3.00,  output: 15.00 },
+  // Gemini Omni — multimodal creative generation (video, image, audio)
+  'gemini-omni':       { input: 1.25,  output: 5.00  },   // Omni Flash pricing (text+image input, video output)
 };
 
 const costLedger = [];   // individual cost entries
@@ -478,25 +594,25 @@ const costBudget = {
 function seedCostLedger() {
   const now = Date.now();
   const entries = [
-    { agent: 'orchestrator', model: 'claude-4.7-opus', skill: 'task-routing', inputTokens: 12400, outputTokens: 3200, timestamp: new Date(now - 3600000).toISOString() },
-    { agent: 'researcher', model: 'claude-4.7-sonnet', skill: 'research-brief', inputTokens: 45000, outputTokens: 8500, timestamp: new Date(now - 7200000).toISOString() },
-    { agent: 'scout', model: 'claude-4.7-haiku', skill: 'tech-radar', inputTokens: 28000, outputTokens: 4200, timestamp: new Date(now - 10800000).toISOString() },
+    { agent: 'orchestrator', model: 'opus-4.8-xhigh', skill: 'task-routing', effort: 'xhigh', inputTokens: 12400, outputTokens: 3200, timestamp: new Date(now - 3600000).toISOString() },
+    { agent: 'researcher', model: 'opus-4.8-high', skill: 'research-brief', effort: 'high', inputTokens: 45000, outputTokens: 8500, timestamp: new Date(now - 7200000).toISOString() },
+    { agent: 'scout', model: 'opus-4.8-low', skill: 'tech-radar', effort: 'low', inputTokens: 28000, outputTokens: 4200, timestamp: new Date(now - 10800000).toISOString() },
     { agent: 'deepseek-worker', model: 'deepseek-v4', skill: 'content-creation', inputTokens: 62000, outputTokens: 18000, timestamp: new Date(now - 14400000).toISOString() },
-    { agent: 'coder', model: 'claude-4.7-sonnet', skill: 'implementation', inputTokens: 38000, outputTokens: 12000, timestamp: new Date(now - 18000000).toISOString() },
-    { agent: 'writer', model: 'claude-4.7-sonnet', skill: 'content-creation', inputTokens: 22000, outputTokens: 9500, timestamp: new Date(now - 21600000).toISOString() },
-    { agent: 'security-auditor', model: 'claude-4.7-opus', skill: 'security-audit', inputTokens: 55000, outputTokens: 14000, timestamp: new Date(now - 25200000).toISOString() },
-    { agent: 'synthesis', model: 'claude-4.7-sonnet', skill: 'deep-research', inputTokens: 34000, outputTokens: 7800, timestamp: new Date(now - 28800000).toISOString() },
-    { agent: 'research-architect', model: 'claude-4.7-sonnet', skill: 'deep-research', inputTokens: 18000, outputTokens: 5200, timestamp: new Date(now - 32400000).toISOString() },
-    { agent: 'report-compiler', model: 'claude-4.7-sonnet', skill: 'academic-paper', inputTokens: 41000, outputTokens: 16000, timestamp: new Date(now - 36000000).toISOString() },
-    { agent: 'reviewer', model: 'claude-4.7-opus', skill: 'review', inputTokens: 32000, outputTokens: 6400, timestamp: new Date(now - 43200000).toISOString() },
-    { agent: 'data-wrangler', model: 'claude-4.7-sonnet', skill: 'lead-enrichment', inputTokens: 29000, outputTokens: 11000, timestamp: new Date(now - 50400000).toISOString() },
+    { agent: 'coder', model: 'opus-4.8-high', skill: 'implementation', effort: 'high', inputTokens: 38000, outputTokens: 12000, timestamp: new Date(now - 18000000).toISOString() },
+    { agent: 'writer', model: 'opus-4.8-high', skill: 'content-creation', effort: 'high', inputTokens: 22000, outputTokens: 9500, timestamp: new Date(now - 21600000).toISOString() },
+    { agent: 'security-auditor', model: 'opus-4.8-xhigh', skill: 'security-audit', effort: 'xhigh', inputTokens: 55000, outputTokens: 14000, timestamp: new Date(now - 25200000).toISOString() },
+    { agent: 'synthesis', model: 'opus-4.8-high', skill: 'deep-research', effort: 'high', inputTokens: 34000, outputTokens: 7800, timestamp: new Date(now - 28800000).toISOString() },
+    { agent: 'research-architect', model: 'opus-4.8-high', skill: 'deep-research', effort: 'high', inputTokens: 18000, outputTokens: 5200, timestamp: new Date(now - 32400000).toISOString() },
+    { agent: 'report-compiler', model: 'opus-4.8-high', skill: 'academic-paper', effort: 'high', inputTokens: 41000, outputTokens: 16000, timestamp: new Date(now - 36000000).toISOString() },
+    { agent: 'reviewer', model: 'opus-4.8-xhigh', skill: 'review', effort: 'xhigh', inputTokens: 32000, outputTokens: 6400, timestamp: new Date(now - 43200000).toISOString() },
+    { agent: 'data-wrangler', model: 'opus-4.8-high', skill: 'lead-enrichment', effort: 'high', inputTokens: 29000, outputTokens: 11000, timestamp: new Date(now - 50400000).toISOString() },
     { agent: 'deepseek-worker', model: 'deepseek-v4', skill: 'seo-audit', inputTokens: 85000, outputTokens: 24000, timestamp: new Date(now - 57600000).toISOString() },
-    { agent: 'scout', model: 'claude-4.7-haiku', skill: 'tech-radar', inputTokens: 31000, outputTokens: 5100, timestamp: new Date(now - 86400000).toISOString() },
-    { agent: 'researcher', model: 'claude-4.7-sonnet', skill: 'research-brief', inputTokens: 52000, outputTokens: 9800, timestamp: new Date(now - 90000000).toISOString() },
+    { agent: 'scout', model: 'opus-4.8-low', skill: 'tech-radar', effort: 'low', inputTokens: 31000, outputTokens: 5100, timestamp: new Date(now - 86400000).toISOString() },
+    { agent: 'researcher', model: 'opus-4.8-high', skill: 'research-brief', effort: 'high', inputTokens: 52000, outputTokens: 9800, timestamp: new Date(now - 90000000).toISOString() },
   ];
 
   entries.forEach(e => {
-    const rates = COST_RATES[e.model] || COST_RATES['claude-4.7-sonnet'];
+    const rates = COST_RATES[e.model] || COST_RATES['opus-4.8-high'];
     const cost = (e.inputTokens / 1_000_000) * rates.input + (e.outputTokens / 1_000_000) * rates.output;
     costLedger.push({
       id: uuidv4(),
@@ -771,18 +887,18 @@ updateProposals.push(
     id: 'prop-003',
     radarId: 'radar-001',
     findingId: 'f-001',
-    title: 'Update agent model references to Claude 4.7 Opus',
-    finding: 'Claude 4.7 Opus released with 400K context window',
+    title: 'Migrate to Opus 4.8 effort-based routing',
+    finding: 'Claude Opus 4.8 released with 1M context, effort controls, dynamic workflows, and adaptive thinking',
     impact: 'high',
     category: 'models',
     action: {
       type: 'config_change',
-      target: '.claude/agents/*.md',
-      description: 'Update Opus-tier agents (orchestrator, architect, reviewer, safety) from 4.6-opus to 4.7-opus. Doubles available context window for complex planning tasks.',
-      effort: 'low',
-      risk: 'Model behavior may differ — run integration test workflow after upgrade',
+      target: '.claude/agents/*.md + server.js',
+      description: 'Consolidate Opus/Sonnet/Haiku into single Opus 4.8 model with effort routing (xhigh=strategic, high=professional, low=scout). Enables 1M context, dynamic workflows for mission orchestration, and improved tool triggering.',
+      effort: 'medium',
+      risk: 'Effort-level token allocation differs from 4.7 — monitor cost and latency during transition',
     },
-    rollback: 'Revert model references to claude-4.6-opus in agent files',
+    rollback: 'Revert to separate Opus 4.7/Sonnet/Haiku model routing',
     status: 'pending',
     created: new Date().toISOString(),
   }
@@ -1764,7 +1880,7 @@ app.put('/api/costs/budget', (req, res) => {
 app.post('/api/costs/track', (req, res) => {
   const { agent, model, skill, inputTokens, outputTokens } = req.body;
   if (!agent || !model) return res.status(400).json({ error: 'agent and model required' });
-  const rates = COST_RATES[model] || COST_RATES['claude-4.7-sonnet'];
+  const rates = COST_RATES[model] || COST_RATES['opus-4.8-high'];
   const cost = ((inputTokens || 0) / 1_000_000) * rates.input + ((outputTokens || 0) / 1_000_000) * rates.output;
   const entry = {
     id: uuidv4(),
@@ -2322,16 +2438,16 @@ function simulatePipelineStages(run) {
       // Track cost for each stage
       run.stages.forEach(s => {
         const modelMap = {
-          'researcher': 'claude-4.7-sonnet', 'synthesis': 'claude-4.7-sonnet',
-          'research-architect': 'claude-4.7-sonnet', 'report-compiler': 'claude-4.7-sonnet',
-          'writer': 'claude-4.7-sonnet', 'reviewer': 'claude-4.7-opus',
-          'security-auditor': 'claude-4.7-opus', 'orchestrator': 'claude-4.7-opus',
-          'deepseek-worker': 'deepseek-v4', 'scout': 'claude-4.7-haiku',
+          'researcher': 'opus-4.8-high', 'synthesis': 'opus-4.8-high',
+          'research-architect': 'opus-4.8-high', 'report-compiler': 'opus-4.8-high',
+          'writer': 'opus-4.8-high', 'reviewer': 'opus-4.8-xhigh',
+          'security-auditor': 'opus-4.8-xhigh', 'orchestrator': 'opus-4.8-xhigh',
+          'deepseek-worker': 'deepseek-v4', 'scout': 'opus-4.8-low',
         };
-        const model = modelMap[s.agent] || 'claude-4.7-sonnet';
+        const model = modelMap[s.agent] || 'opus-4.8-high';
         const inputTokens = 15000 + Math.floor(Math.random() * 25000);
         const outputTokens = 4000 + Math.floor(Math.random() * 12000);
-        const rates = COST_RATES[model] || COST_RATES['claude-4.7-sonnet'];
+        const rates = COST_RATES[model] || COST_RATES['opus-4.8-high'];
         const cost = (inputTokens / 1_000_000) * rates.input + (outputTokens / 1_000_000) * rates.output;
         costLedger.push({
           id: uuidv4(),
@@ -4054,6 +4170,876 @@ app.post('/api/batch', heavyLimiter, (req, res) => {
     broadcast({ event: 'batch_update', data: batch });
   }, 8000);
   res.json(batch);
+});
+
+// --- Hermes Agent (Persistent Background Worker via MCP) ---
+
+// Hermes MCP connection state
+const hermesState = {
+  connected: false,
+  endpoint: process.env.HERMES_MCP_URL || 'http://127.0.0.1:8420',
+  lastPing: null,
+  uptime: 0,
+  activeTasks: [],
+  approvalQueue: [],
+  cronJobs: [],
+  skills: [],
+  stats: { tasksCompleted: 0, tasksFailed: 0, approvalsPending: 0, cronExecutions: 0 },
+};
+
+// Simulate Hermes connection check
+function checkHermesConnection() {
+  if (DEMO_MODE) {
+    hermesState.connected = true;
+    hermesState.lastPing = new Date().toISOString();
+    hermesState.uptime = Math.floor((Date.now() - startTime) / 1000);
+    hermesState.skills = [
+      { name: 'inbox-summary', description: 'Daily email inbox digest' },
+      { name: 'news-brief', description: 'Morning AI/tech news roundup' },
+      { name: 'github-backup', description: 'Nightly repository backup' },
+      { name: 'comment-monitor', description: 'YouTube/social comment tracker' },
+      { name: 'uptime-check', description: 'VPS and service health monitor' },
+    ];
+    return true;
+  }
+  // Real MCP connection would go here
+  return false;
+}
+
+// Hermes status
+app.get('/api/hermes/status', (req, res) => {
+  checkHermesConnection();
+  res.json({
+    connected: hermesState.connected,
+    endpoint: hermesState.endpoint,
+    lastPing: hermesState.lastPing,
+    uptime: hermesState.uptime,
+    stats: hermesState.stats,
+    skills: hermesState.skills,
+  });
+});
+
+// Delegate a task to Hermes
+app.post('/api/hermes/delegate', (req, res) => {
+  const errors = validateBody(req.body, {
+    task: { type: 'string', required: true, maxLength: 2000 },
+    mode: { type: 'string' }, // 'background' | 'walkaway' | 'cron'
+  });
+  if (errors) return res.status(400).json({ error: errors.join(', ') });
+
+  const { task, mode = 'background', schedule, notifyVia } = req.body;
+  const id = uuidv4();
+  const delegated = {
+    id,
+    task,
+    mode,
+    status: 'delegated',
+    delegatedAt: new Date().toISOString(),
+    progress: 0,
+    log: [`Task delegated to Hermes (${mode} mode)`],
+    notifyVia: notifyVia || 'websocket',
+  };
+
+  if (mode === 'cron' && schedule) {
+    delegated.schedule = schedule;
+    delegated.nextRun = new Date(Date.now() + 3600000).toISOString();
+    hermesState.cronJobs.push(delegated);
+  } else {
+    hermesState.activeTasks.push(delegated);
+  }
+
+  hermesState.stats.tasksCompleted++;
+  logActivity('hermes', `Task delegated to Hermes: ${task.substring(0, 80)}`, { id, mode });
+  broadcast({ event: 'hermes_task', data: delegated });
+
+  // Simulate progress for demo
+  if (DEMO_MODE && mode !== 'cron') {
+    setTimeout(() => {
+      delegated.status = 'running';
+      delegated.progress = 35;
+      delegated.log.push('Hermes picked up the task');
+      broadcast({ event: 'hermes_progress', data: delegated });
+    }, 2000);
+    setTimeout(() => {
+      delegated.status = 'complete';
+      delegated.progress = 100;
+      delegated.completedAt = new Date().toISOString();
+      delegated.log.push('Task completed successfully');
+      delegated.result = `Hermes completed: ${task.substring(0, 60)}`;
+      broadcast({ event: 'hermes_complete', data: delegated });
+    }, 8000);
+  }
+
+  res.json(delegated);
+});
+
+// Get active Hermes tasks
+app.get('/api/hermes/tasks', (req, res) => {
+  if (DEMO_MODE && hermesState.activeTasks.length === 0) {
+    hermesState.activeTasks = [
+      { id: 'h-1', task: 'Morning AI news brief compilation', mode: 'background', status: 'complete', progress: 100, delegatedAt: new Date(Date.now() - 3600000).toISOString(), completedAt: new Date(Date.now() - 3000000).toISOString(), log: ['Compiled 12 articles', 'Summary written to vault'], notifyVia: 'telegram' },
+      { id: 'h-2', task: 'Refactor authentication module to use JWT tokens', mode: 'walkaway', status: 'running', progress: 62, delegatedAt: new Date(Date.now() - 1800000).toISOString(), log: ['Analyzing current auth flow', 'Identified 8 files to modify', 'Modified 5/8 files'], notifyVia: 'telegram' },
+      { id: 'h-3', task: 'Monitor YouTube channel comments for new feedback', mode: 'background', status: 'running', progress: 0, delegatedAt: new Date(Date.now() - 600000).toISOString(), log: ['Watching 3 videos for new comments'], notifyVia: 'slack' },
+    ];
+  }
+  res.json(hermesState.activeTasks);
+});
+
+// Approval queue — Hermes pauses risky actions and asks for confirmation
+app.get('/api/hermes/approvals', (req, res) => {
+  if (DEMO_MODE && hermesState.approvalQueue.length === 0) {
+    hermesState.approvalQueue = [
+      { id: 'apr-1', action: 'Delete 47 outdated log files from /var/log/ai-os/', risk: 'medium', requestedAt: new Date(Date.now() - 300000).toISOString(), context: 'Part of scheduled disk cleanup routine. Files are older than 90 days.', taskId: 'h-cron-1' },
+      { id: 'apr-2', action: 'Force-push branch fix/auth-refactor to origin', risk: 'high', requestedAt: new Date(Date.now() - 120000).toISOString(), context: 'Walkaway refactoring task. Branch has 3 commits that rewrite auth flow.', taskId: 'h-2' },
+    ];
+    hermesState.stats.approvalsPending = 2;
+  }
+  res.json(hermesState.approvalQueue);
+});
+
+// Respond to an approval request
+app.post('/api/hermes/approvals/:id', (req, res) => {
+  const { id } = req.params;
+  const { decision } = req.body; // 'approve' | 'reject'
+  const idx = hermesState.approvalQueue.findIndex(a => a.id === id);
+  if (idx === -1) return res.status(404).json({ error: 'Approval not found' });
+
+  const approval = hermesState.approvalQueue[idx];
+  approval.decision = decision;
+  approval.decidedAt = new Date().toISOString();
+  hermesState.approvalQueue.splice(idx, 1);
+  hermesState.stats.approvalsPending = hermesState.approvalQueue.length;
+
+  logActivity('hermes', `Approval ${decision}: ${approval.action.substring(0, 60)}`, { id });
+  broadcast({ event: 'hermes_approval_resolved', data: approval });
+  res.json({ ok: true, approval });
+});
+
+// Walkaway mode — get status of long-running delegated tasks
+app.get('/api/hermes/walkaway', (req, res) => {
+  const walkawayTasks = hermesState.activeTasks.filter(t => t.mode === 'walkaway');
+  res.json({
+    active: walkawayTasks.length,
+    tasks: walkawayTasks,
+    approvalsPending: hermesState.stats.approvalsPending,
+  });
+});
+
+// Send a mobile reply to a walkaway task
+app.post('/api/hermes/walkaway/:id/reply', (req, res) => {
+  const { id } = req.params;
+  const { message } = req.body;
+  const task = hermesState.activeTasks.find(t => t.id === id);
+  if (!task) return res.status(404).json({ error: 'Task not found' });
+
+  task.log.push(`Mobile reply: ${message}`);
+  broadcast({ event: 'hermes_walkaway_reply', data: { taskId: id, message } });
+  logActivity('hermes', `Walkaway reply: ${message.substring(0, 60)}`, { taskId: id });
+  res.json({ ok: true });
+});
+
+// Hermes cron jobs — scheduled background tasks
+app.get('/api/hermes/cron', (req, res) => {
+  if (DEMO_MODE && hermesState.cronJobs.length === 0) {
+    hermesState.cronJobs = [
+      { id: 'h-cron-1', task: 'Daily inbox summary', schedule: '0 8 * * *', status: 'active', mode: 'cron', lastRun: new Date(Date.now() - 86400000).toISOString(), nextRun: new Date(Date.now() + 28800000).toISOString(), runs: 14, notifyVia: 'telegram' },
+      { id: 'h-cron-2', task: 'GitHub repository backup', schedule: '0 2 * * *', status: 'active', mode: 'cron', lastRun: new Date(Date.now() - 43200000).toISOString(), nextRun: new Date(Date.now() + 43200000).toISOString(), runs: 30, notifyVia: 'slack' },
+      { id: 'h-cron-3', task: 'Morning AI/tech news brief', schedule: '30 7 * * 1-5', status: 'active', mode: 'cron', lastRun: new Date(Date.now() - 86400000).toISOString(), nextRun: new Date(Date.now() + 57600000).toISOString(), runs: 22, notifyVia: 'telegram' },
+      { id: 'h-cron-4', task: 'YouTube comment monitoring', schedule: '0 */4 * * *', status: 'active', mode: 'cron', lastRun: new Date(Date.now() - 7200000).toISOString(), nextRun: new Date(Date.now() + 7200000).toISOString(), runs: 168, notifyVia: 'websocket' },
+      { id: 'h-cron-5', task: 'VPS disk and memory health check', schedule: '*/30 * * * *', status: 'active', mode: 'cron', lastRun: new Date(Date.now() - 900000).toISOString(), nextRun: new Date(Date.now() + 900000).toISOString(), runs: 720, notifyVia: 'websocket' },
+    ];
+    hermesState.stats.cronExecutions = 954;
+  }
+  res.json(hermesState.cronJobs);
+});
+
+// Create a new Hermes cron job
+app.post('/api/hermes/cron', (req, res) => {
+  const errors = validateBody(req.body, {
+    task: { type: 'string', required: true, maxLength: 500 },
+    schedule: { type: 'string', required: true, maxLength: 50 },
+  });
+  if (errors) return res.status(400).json({ error: errors.join(', ') });
+
+  const id = `h-cron-${uuidv4().substring(0, 6)}`;
+  const job = {
+    id,
+    task: req.body.task,
+    schedule: req.body.schedule,
+    status: 'active',
+    mode: 'cron',
+    lastRun: null,
+    nextRun: new Date(Date.now() + 3600000).toISOString(),
+    runs: 0,
+    notifyVia: req.body.notifyVia || 'websocket',
+  };
+  hermesState.cronJobs.push(job);
+  logActivity('hermes', `Cron job created: ${job.task}`, { id, schedule: job.schedule });
+  broadcast({ event: 'hermes_cron_created', data: job });
+  res.json(job);
+});
+
+// Delete a Hermes cron job
+app.delete('/api/hermes/cron/:id', (req, res) => {
+  const idx = hermesState.cronJobs.findIndex(j => j.id === req.params.id);
+  if (idx === -1) return res.status(404).json({ error: 'Cron job not found' });
+  const removed = hermesState.cronJobs.splice(idx, 1)[0];
+  logActivity('hermes', `Cron job deleted: ${removed.task}`, { id: removed.id });
+  res.json({ ok: true });
+});
+
+// --- Settings (Admin-only API key & connection management) ---
+
+// Settings persisted to state file — keys are encrypted at rest in production
+const settings = loadState('settings', {
+  ai: {
+    anthropic_api_key: process.env.ANTHROPIC_API_KEY || '',
+    deepseek_api_key: process.env.DEEPSEEK_API_KEY || '',
+    xai_api_key: process.env.XAI_API_KEY || '',
+    firecrawl_api_key: process.env.FIRECRAWL_API_KEY || '',
+    gemini_api_key: process.env.GEMINI_API_KEY || '',
+  },
+  mcp: {
+    hermes_url: process.env.HERMES_MCP_URL || 'http://127.0.0.1:8420',
+    hermes_enabled: false,
+  },
+  notifications: {
+    telegram_bot_token: process.env.TELEGRAM_BOT_TOKEN || '',
+    telegram_chat_id: process.env.TELEGRAM_CHAT_ID || '',
+    slack_webhook_url: process.env.SLACK_WEBHOOK_URL || '',
+  },
+  automation: {
+    n8n_webhook_base: process.env.N8N_WEBHOOK_BASE || '',
+    n8n_api_key: process.env.N8N_API_KEY || '',
+    team_webhook_url: process.env.TEAM_WEBHOOK_URL || '',
+  },
+  stripe: {
+    secret_key: process.env.STRIPE_SECRET_KEY || '',
+    webhook_secret: process.env.STRIPE_WEBHOOK_SECRET || '',
+    pro_price_id: process.env.STRIPE_PRO_PRICE_ID || '',
+    enterprise_price_id: process.env.STRIPE_ENTERPRISE_PRICE_ID || '',
+  },
+  seo: {
+    dataforseo_login: process.env.DATAFORSEO_LOGIN || '',
+    dataforseo_password: process.env.DATAFORSEO_PASSWORD || '',
+    default_location: 'United States',
+    default_language: 'en',
+  },
+  general: {
+    demo_mode: DEMO_MODE,
+    cors_origin: process.env.CORS_ORIGIN || '*',
+    api_token: process.env.API_TOKEN || '',
+  },
+});
+
+// Middleware: require admin role
+function requireAdmin(req, res, next) {
+  const token = req.cookies?.['ai-os-session'] || req.headers.authorization?.replace('Bearer ', '');
+  const session = isValidSession(token);
+  if (!session) return res.status(401).json({ error: 'Not authenticated' });
+  if (session.role !== 'admin') return res.status(403).json({ error: 'Admin access required' });
+  next();
+}
+
+// Mask a key for display — show first 4 and last 4 chars
+function capitalize(str) {
+  return str.replace(/\b\w/g, c => c.toUpperCase());
+}
+
+function maskKey(key) {
+  if (!key || key.length < 12) return key ? '****' : '';
+  return key.substring(0, 4) + '****' + key.substring(key.length - 4);
+}
+
+// GET settings — returns masked keys (never send raw secrets to the browser)
+app.get('/api/settings', requireAdmin, (req, res) => {
+  const masked = {
+    ai: {
+      anthropic_api_key: { value: maskKey(settings.ai.anthropic_api_key), configured: !!settings.ai.anthropic_api_key },
+      deepseek_api_key: { value: maskKey(settings.ai.deepseek_api_key), configured: !!settings.ai.deepseek_api_key },
+      xai_api_key: { value: maskKey(settings.ai.xai_api_key), configured: !!settings.ai.xai_api_key },
+      firecrawl_api_key: { value: maskKey(settings.ai.firecrawl_api_key), configured: !!settings.ai.firecrawl_api_key },
+      gemini_api_key: { value: maskKey(settings.ai.gemini_api_key), configured: !!settings.ai.gemini_api_key },
+    },
+    mcp: {
+      hermes_url: settings.mcp.hermes_url,
+      hermes_enabled: settings.mcp.hermes_enabled,
+    },
+    notifications: {
+      telegram_bot_token: { value: maskKey(settings.notifications.telegram_bot_token), configured: !!settings.notifications.telegram_bot_token },
+      telegram_chat_id: settings.notifications.telegram_chat_id,
+      slack_webhook_url: { value: maskKey(settings.notifications.slack_webhook_url), configured: !!settings.notifications.slack_webhook_url },
+    },
+    automation: {
+      n8n_webhook_base: settings.automation.n8n_webhook_base,
+      n8n_api_key: { value: maskKey(settings.automation.n8n_api_key), configured: !!settings.automation.n8n_api_key },
+      team_webhook_url: settings.automation.team_webhook_url,
+    },
+    stripe: {
+      secret_key: { value: maskKey(settings.stripe.secret_key), configured: !!settings.stripe.secret_key },
+      webhook_secret: { value: maskKey(settings.stripe.webhook_secret), configured: !!settings.stripe.webhook_secret },
+      pro_price_id: settings.stripe.pro_price_id,
+      enterprise_price_id: settings.stripe.enterprise_price_id,
+    },
+    seo: {
+      dataforseo_login: settings.seo.dataforseo_login || '',
+      dataforseo_password: { value: maskKey(settings.seo.dataforseo_password), configured: !!settings.seo.dataforseo_password },
+      default_location: settings.seo.default_location || 'United States',
+      default_language: settings.seo.default_language || 'en',
+    },
+    general: {
+      demo_mode: settings.general.demo_mode,
+      cors_origin: settings.general.cors_origin,
+      api_token: { value: maskKey(settings.general.api_token), configured: !!settings.general.api_token },
+    },
+  };
+  res.json(masked);
+});
+
+// PUT settings — update a specific section
+app.put('/api/settings/:section', requireAdmin, (req, res) => {
+  const { section } = req.params;
+  if (!settings[section]) return res.status(400).json({ error: `Unknown section: ${section}` });
+
+  const updates = req.body;
+  const updated = [];
+  const skipped = [];
+
+  for (const [key, value] of Object.entries(updates)) {
+    if (!(key in settings[section])) { skipped.push(`${key}:unknown`); continue; }
+    // Skip masked placeholder values — only update if the user actually typed a new key
+    if (typeof value === 'string' && value.includes('****')) { skipped.push(`${key}:masked`); continue; }
+    // Skip empty strings that are already empty (no-op)
+    if (value === '' && settings[section][key] === '') { skipped.push(`${key}:empty`); continue; }
+    settings[section][key] = value;
+    updated.push(key);
+  }
+
+  console.log(`[SETTINGS] PUT ${section} — updated: [${updated.join(', ')}], skipped: [${skipped.join(', ')}]`);
+
+  if (updated.length > 0) {
+    saveState('settings', settings);
+    logActivity('settings', `Settings updated: ${section} → ${updated.join(', ')}`, { section });
+  }
+
+  res.json({ ok: true, updated, skipped });
+});
+
+// POST test a connection (Hermes MCP, Telegram, Slack)
+app.post('/api/settings/test/:service', requireAdmin, async (req, res) => {
+  const { service } = req.params;
+
+  if (service === 'hermes') {
+    try {
+      const url = settings.mcp.hermes_url + '/health';
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 5000);
+      const r = await fetch(url, { signal: controller.signal });
+      clearTimeout(timeout);
+      const ok = r.ok;
+      res.json({ ok, status: r.status, message: ok ? 'Hermes MCP is reachable' : `HTTP ${r.status}` });
+    } catch (e) {
+      res.json({ ok: false, message: `Connection failed: ${e.message}` });
+    }
+  } else if (service === 'telegram') {
+    if (!settings.notifications.telegram_bot_token) return res.json({ ok: false, message: 'No bot token configured' });
+    try {
+      const url = `https://api.telegram.org/bot${settings.notifications.telegram_bot_token}/getMe`;
+      const r = await fetch(url);
+      const data = await r.json();
+      res.json({ ok: data.ok, message: data.ok ? `Bot: @${data.result.username}` : (data.description || 'Invalid token') });
+    } catch (e) {
+      res.json({ ok: false, message: `Connection failed: ${e.message}` });
+    }
+  } else if (service === 'slack') {
+    if (!settings.notifications.slack_webhook_url) return res.json({ ok: false, message: 'No webhook URL configured' });
+    try {
+      const r = await fetch(settings.notifications.slack_webhook_url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text: '✓ AI OS Settings: Connection test successful' }),
+      });
+      res.json({ ok: r.ok, message: r.ok ? 'Test message sent to Slack' : `HTTP ${r.status}` });
+    } catch (e) {
+      res.json({ ok: false, message: `Connection failed: ${e.message}` });
+    }
+  } else if (service === 'anthropic') {
+    if (!settings.ai.anthropic_api_key) return res.json({ ok: false, message: 'No API key configured' });
+    try {
+      const r = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: {
+          'x-api-key': settings.ai.anthropic_api_key,
+          'anthropic-version': '2023-06-01',
+          'content-type': 'application/json',
+        },
+        body: JSON.stringify({ model: 'claude-opus-4-8', max_tokens: 10, messages: [{ role: 'user', content: 'ping' }] }),
+      });
+      const ok = r.ok;
+      res.json({ ok, message: ok ? 'Anthropic API key is valid' : `HTTP ${r.status} — check your key` });
+    } catch (e) {
+      res.json({ ok: false, message: `Connection failed: ${e.message}` });
+    }
+  } else if (service === 'deepseek') {
+    if (!settings.ai.deepseek_api_key) return res.json({ ok: false, message: 'No DeepSeek API key configured — save your key first' });
+    try {
+      const r = await fetch('https://api.deepseek.com/models', {
+        headers: { 'Authorization': `Bearer ${settings.ai.deepseek_api_key}` },
+      });
+      res.json({ ok: r.ok, message: r.ok ? 'DeepSeek API key is valid' : `HTTP ${r.status} — check your key` });
+    } catch (e) {
+      res.json({ ok: false, message: `Connection failed: ${e.message}` });
+    }
+  } else if (service === 'xai') {
+    if (!settings.ai.xai_api_key) return res.json({ ok: false, message: 'No xAI API key configured — save your key first' });
+    try {
+      const r = await fetch('https://api.x.ai/v1/models', {
+        headers: { 'Authorization': `Bearer ${settings.ai.xai_api_key}` },
+      });
+      const ok = r.ok;
+      if (ok) {
+        const data = await r.json();
+        const models = data.data ? data.data.map(m => m.id).slice(0, 3).join(', ') : 'connected';
+        res.json({ ok: true, message: `xAI API valid — models: ${models}` });
+      } else {
+        res.json({ ok: false, message: `HTTP ${r.status} — check your xAI key` });
+      }
+    } catch (e) {
+      res.json({ ok: false, message: `Connection failed: ${e.message}` });
+    }
+  } else if (service === 'gemini') {
+    if (!settings.ai.gemini_api_key) return res.json({ ok: false, message: 'No Gemini API key configured — save your key first' });
+    try {
+      const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${settings.ai.gemini_api_key}`);
+      const data = await r.json();
+      if (data.models) {
+        const omniModels = data.models.filter(m => m.name.includes('omni') || m.name.includes('gemini')).slice(0, 3);
+        res.json({ ok: true, message: `Gemini API valid — ${data.models.length} models available` + (omniModels.length ? ` (incl. ${omniModels.map(m => m.name.split('/').pop()).join(', ')})` : '') });
+      } else {
+        res.json({ ok: false, message: data.error?.message || `HTTP ${r.status}` });
+      }
+    } catch (e) {
+      res.json({ ok: false, message: `Connection failed: ${e.message}` });
+    }
+  } else if (service === 'dataforseo') {
+    if (!settings.seo.dataforseo_login || !settings.seo.dataforseo_password) {
+      return res.json({ ok: false, message: 'DataForSEO login and password required — save your credentials first' });
+    }
+    try {
+      const creds = Buffer.from(`${settings.seo.dataforseo_login}:${settings.seo.dataforseo_password}`).toString('base64');
+      const r = await fetch('https://api.dataforseo.com/v3/serp/google/organic/live/advanced', {
+        method: 'POST',
+        headers: { 'Authorization': `Basic ${creds}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify([{ keyword: 'test', location_name: 'United States', language_name: 'English', depth: 1 }]),
+      });
+      const data = await r.json();
+      const ok = data.status_code === 20000;
+      res.json({ ok, message: ok ? `DataForSEO connected — balance: $${data.cost || 'N/A'}` : (data.status_message || `HTTP ${r.status}`) });
+    } catch (e) {
+      res.json({ ok: false, message: `Connection failed: ${e.message}` });
+    }
+  } else {
+    res.status(400).json({ error: `Unknown service: ${service}` });
+  }
+});
+
+// --- Gemini Omni Creative Endpoints ---
+
+// POST /api/omni/generate — multimodal content generation
+app.post('/api/omni/generate', requireAdmin, async (req, res) => {
+  const { type, prompt, inputs } = req.body;
+  if (!prompt) return res.status(400).json({ error: 'Prompt is required' });
+
+  const validTypes = ['video', 'image', 'audio', 'thumbnail', 'social-clip'];
+  const outputType = validTypes.includes(type) ? type : 'video';
+
+  const jobId = uuidv4();
+  const job = {
+    id: jobId,
+    type: outputType,
+    prompt,
+    inputs: inputs || {},
+    status: 'processing',
+    progress: 0,
+    startedAt: new Date().toISOString(),
+    completedAt: null,
+    result: null,
+  };
+
+  logActivity('omni', `Omni ${outputType} generation started`, { jobId, prompt: prompt.substring(0, 80) });
+  broadcast({ event: 'omni_job_started', data: { id: jobId, type: outputType } });
+
+  if (DEMO_MODE) {
+    // Simulate progressive generation
+    const steps = [
+      { progress: 20, status: 'analyzing', msg: 'Analyzing input modalities...' },
+      { progress: 45, status: 'composing', msg: `Composing ${outputType} elements...` },
+      { progress: 70, status: 'rendering', msg: `Rendering ${outputType} output...` },
+      { progress: 90, status: 'finalizing', msg: 'Applying SynthID watermark & quality check...' },
+      { progress: 100, status: 'complete', msg: 'Generation complete' },
+    ];
+
+    steps.forEach((step, i) => {
+      setTimeout(() => {
+        job.progress = step.progress;
+        job.status = step.status;
+        broadcast({ event: 'omni_job_progress', data: { id: jobId, ...step } });
+
+        if (step.progress === 100) {
+          job.status = 'complete';
+          job.completedAt = new Date().toISOString();
+          job.result = generateOmniResult(outputType, prompt);
+          broadcast({ event: 'omni_job_complete', data: { id: jobId, type: outputType, result: job.result } });
+          logActivity('omni', `Omni ${outputType} complete: ${prompt.substring(0, 50)}`, { jobId });
+
+          // Track cost
+          const inputTokens = 2000 + Math.floor(Math.random() * 5000);
+          const outputTokens = outputType === 'video' ? 50000 + Math.floor(Math.random() * 100000) : 10000 + Math.floor(Math.random() * 20000);
+          const rates = COST_RATES['gemini-omni'];
+          const cost = (inputTokens / 1_000_000) * rates.input + (outputTokens / 1_000_000) * rates.output;
+          costLedger.push({
+            id: uuidv4(), agent: `omni-${outputType}`, model: 'gemini-omni', skill: `${outputType}-generation`,
+            inputTokens, outputTokens, cost: Math.round(cost * 10000) / 10000, timestamp: new Date().toISOString(),
+          });
+        }
+      }, (i + 1) * 1500);
+    });
+  }
+
+  res.json({ ok: true, jobId, type: outputType, status: 'processing' });
+});
+
+// GET /api/omni/job/:id — check generation job status
+app.get('/api/omni/job/:id', requireAdmin, (req, res) => {
+  // In demo mode, return simulated status from broadcast events
+  res.json({ ok: true, message: 'Job status available via WebSocket events' });
+});
+
+// GET /api/omni/capabilities — list available Omni generation types
+app.get('/api/omni/capabilities', (req, res) => {
+  res.json({
+    model: GEMINI_OMNI_MODEL,
+    configured: !!settings.ai.gemini_api_key,
+    capabilities: [
+      { type: 'video', label: 'Video Generation', desc: 'Text/image/audio → video with physics simulation', maxDuration: '60s', formats: ['mp4', 'webm'] },
+      { type: 'image', label: 'Image Generation & Editing', desc: 'Text/image → edited or generated images', formats: ['png', 'jpg', 'webp'] },
+      { type: 'audio', label: 'Audio & Voiceover', desc: 'Text → natural speech, music, sound effects', formats: ['mp3', 'wav'] },
+      { type: 'thumbnail', label: 'Thumbnail Generation', desc: 'Content context → optimized thumbnail images', formats: ['png', 'jpg'] },
+      { type: 'social-clip', label: 'Social Media Clips', desc: 'Long content → short-form vertical video clips', maxDuration: '30s', formats: ['mp4'] },
+    ],
+  });
+});
+
+// Demo result generator for Omni outputs
+function generateOmniResult(type, prompt) {
+  const base = {
+    prompt,
+    model: GEMINI_OMNI_MODEL,
+    watermark: 'SynthID',
+    generatedAt: new Date().toISOString(),
+  };
+
+  switch (type) {
+    case 'video':
+      return { ...base, duration: `${8 + Math.floor(Math.random() * 22)}s`, resolution: '1080p', fps: 30, format: 'mp4', size: `${2 + Math.floor(Math.random() * 8)}MB`, scenes: Math.floor(Math.random() * 4) + 2, hasAudio: true, preview: 'Demo mode — video generation simulated' };
+    case 'image':
+      return { ...base, resolution: '1024x1024', format: 'png', size: `${200 + Math.floor(Math.random() * 800)}KB`, variants: 3, preview: 'Demo mode — image generation simulated' };
+    case 'audio':
+      return { ...base, duration: `${15 + Math.floor(Math.random() * 45)}s`, format: 'mp3', sampleRate: '44.1kHz', voice: 'Natural (en-US)', size: `${100 + Math.floor(Math.random() * 400)}KB`, preview: 'Demo mode — audio generation simulated' };
+    case 'thumbnail':
+      return { ...base, resolution: '1280x720', format: 'png', variants: 4, optimizedFor: 'YouTube', size: `${150 + Math.floor(Math.random() * 350)}KB`, preview: 'Demo mode — thumbnail generation simulated' };
+    case 'social-clip':
+      return { ...base, duration: `${10 + Math.floor(Math.random() * 20)}s`, resolution: '1080x1920', format: 'mp4', platform: 'Instagram Reels / TikTok / Shorts', size: `${1 + Math.floor(Math.random() * 4)}MB`, preview: 'Demo mode — social clip generation simulated' };
+    default:
+      return { ...base, preview: 'Demo mode — generation simulated' };
+  }
+}
+
+// --- SEO Agency Endpoints ---
+
+// In-memory SEO audit state
+const seoAudits = loadState('seo_audits', []);
+
+// POST /api/seo/audit — launch a full SEO audit for a domain
+app.post('/api/seo/audit', requireAdmin, async (req, res) => {
+  const { domain } = req.body;
+  if (!domain) return res.status(400).json({ error: 'Domain is required' });
+
+  const auditId = uuidv4();
+  const audit = {
+    id: auditId,
+    domain: domain.replace(/^https?:\/\//, '').replace(/\/.*$/, ''),
+    status: 'running',
+    startedAt: new Date().toISOString(),
+    completedAt: null,
+    compositeScore: null,
+    agents: {
+      keyword:    { status: 'running', score: null, findings: [], startedAt: new Date().toISOString() },
+      technical:  { status: 'running', score: null, findings: [], startedAt: new Date().toISOString() },
+      competitor: { status: 'running', score: null, findings: [], startedAt: new Date().toISOString() },
+      content:    { status: 'running', score: null, findings: [], startedAt: new Date().toISOString() },
+      backlink:   { status: 'running', score: null, findings: [], startedAt: new Date().toISOString() },
+    },
+    quickWins: [],
+    actionPlan: [],
+    executiveSummary: '',
+  };
+
+  seoAudits.push(audit);
+  broadcast({ event: 'seo_audit_started', data: { id: auditId, domain: audit.domain } });
+  logActivity('seo', `SEO audit started: ${audit.domain}`, { auditId });
+
+  // Simulate parallel agent execution (demo mode)
+  if (DEMO_MODE) {
+    const agentNames = ['keyword', 'technical', 'competitor', 'content', 'backlink'];
+    const delays = [2000, 3000, 2500, 3500, 4000];
+
+    agentNames.forEach((name, i) => {
+      setTimeout(() => {
+        const score = 40 + Math.floor(Math.random() * 50);
+        audit.agents[name].status = 'complete';
+        audit.agents[name].score = score;
+        audit.agents[name].completedAt = new Date().toISOString();
+        audit.agents[name].findings = generateSeoFindings(name, audit.domain);
+        broadcast({ event: 'seo_agent_complete', data: { auditId, agent: name, score } });
+
+        // Check if all agents are done
+        const allDone = agentNames.every(n => audit.agents[n].status === 'complete');
+        if (allDone) {
+          const scores = agentNames.map(n => audit.agents[n].score);
+          audit.compositeScore = Math.round(scores.reduce((a, b) => a + b, 0) / scores.length);
+          audit.status = 'complete';
+          audit.completedAt = new Date().toISOString();
+          audit.executiveSummary = generateExecutiveSummary(audit);
+          audit.quickWins = generateQuickWins(audit);
+          audit.actionPlan = generateActionPlan(audit);
+          saveState('seo_audits', seoAudits);
+          broadcast({ event: 'seo_audit_complete', data: { auditId, compositeScore: audit.compositeScore } });
+          logActivity('seo', `SEO audit complete: ${audit.domain} — score ${audit.compositeScore}/100`, { auditId });
+        }
+      }, delays[i]);
+    });
+  }
+
+  res.json({ ok: true, auditId, domain: audit.domain });
+});
+
+// GET /api/seo/audits — list all audits
+app.get('/api/seo/audits', requireAdmin, (req, res) => {
+  res.json(seoAudits.map(a => ({
+    id: a.id, domain: a.domain, status: a.status,
+    compositeScore: a.compositeScore, startedAt: a.startedAt, completedAt: a.completedAt,
+  })));
+});
+
+// GET /api/seo/audit/:id — get full audit detail
+app.get('/api/seo/audit/:id', requireAdmin, (req, res) => {
+  const audit = seoAudits.find(a => a.id === req.params.id);
+  if (!audit) return res.status(404).json({ error: 'Audit not found' });
+  res.json(audit);
+});
+
+// POST /api/seo/report/:id — generate PDF report (returns download URL)
+app.post('/api/seo/report/:id', requireAdmin, (req, res) => {
+  const audit = seoAudits.find(a => a.id === req.params.id);
+  if (!audit) return res.status(404).json({ error: 'Audit not found' });
+  if (audit.status !== 'complete') return res.status(400).json({ error: 'Audit not yet complete' });
+
+  // In demo mode, return a simulated report URL
+  const reportId = uuidv4();
+  logActivity('seo', `PDF report generated: ${audit.domain}`, { auditId: audit.id, reportId });
+  res.json({
+    ok: true,
+    reportId,
+    filename: `SEO-Audit-${audit.domain}-${new Date().toISOString().split('T')[0]}.pdf`,
+    message: DEMO_MODE ? 'Demo mode — PDF generation simulated' : 'Report generated',
+  });
+});
+
+// DELETE /api/seo/audit/:id — delete an audit
+app.delete('/api/seo/audit/:id', requireAdmin, (req, res) => {
+  const idx = seoAudits.findIndex(a => a.id === req.params.id);
+  if (idx === -1) return res.status(404).json({ error: 'Audit not found' });
+  seoAudits.splice(idx, 1);
+  saveState('seo_audits', seoAudits);
+  res.json({ ok: true });
+});
+
+// POST /api/seo/briefs/:id — generate content briefs from audit keyword data
+app.post('/api/seo/briefs/:id', requireAdmin, (req, res) => {
+  const audit = seoAudits.find(a => a.id === req.params.id);
+  if (!audit) return res.status(404).json({ error: 'Audit not found' });
+  if (audit.status !== 'complete') return res.status(400).json({ error: 'Audit not yet complete' });
+
+  const d = audit.domain;
+  const briefs = [
+    { title: `Complete Guide to ${d.split('.')[0].replace(/-/g, ' ')} Services in [City]`, targetKeyword: `${d.split('.')[0]} services near me`, wordCount: 2000, intent: 'commercial', outline: ['Introduction & local context', 'Services overview', 'Why choose local providers', 'Pricing guide', 'FAQ section', 'Call to action'], priority: 'high' },
+    { title: `How to Choose the Right ${capitalize(d.split('.')[0].replace(/-/g, ' '))} Company`, targetKeyword: `how to choose ${d.split('.')[0].replace(/-/g, ' ')}`, wordCount: 1500, intent: 'informational', outline: ['Key factors to consider', 'Red flags to avoid', 'Questions to ask', 'Licensing & insurance checklist', 'Cost comparison tips'], priority: 'high' },
+    { title: `${capitalize(d.split('.')[0].replace(/-/g, ' '))} vs Competitors: Honest Comparison`, targetKeyword: `${d.split('.')[0]} reviews`, wordCount: 1800, intent: 'commercial', outline: ['Overview of options', 'Feature comparison table', 'Pricing breakdown', 'Pros and cons', 'Our recommendation'], priority: 'medium' },
+    { title: `Top 10 ${capitalize(d.split('.')[0].replace(/-/g, ' '))} Tips for Homeowners`, targetKeyword: `${d.split('.')[0]} tips`, wordCount: 1200, intent: 'informational', outline: ['Quick wins list', 'Maintenance schedule', 'When to call a professional', 'Cost-saving strategies', 'Common mistakes'], priority: 'medium' },
+    { title: `${capitalize(d.split('.')[0].replace(/-/g, ' '))} Cost Guide [${new Date().getFullYear()}]`, targetKeyword: `${d.split('.')[0]} cost`, wordCount: 1600, intent: 'transactional', outline: ['Average costs by service type', 'Factors affecting price', 'Hidden fees to watch for', 'How to get quotes', 'Financing options'], priority: 'high' },
+  ];
+
+  logActivity('seo', `Content briefs generated: ${audit.domain} (${briefs.length} briefs)`, { auditId: audit.id });
+  res.json({ ok: true, domain: audit.domain, briefs });
+});
+
+// POST /api/seo/calendar/:id — generate content calendar from audit
+app.post('/api/seo/calendar/:id', requireAdmin, (req, res) => {
+  const audit = seoAudits.find(a => a.id === req.params.id);
+  if (!audit) return res.status(404).json({ error: 'Audit not found' });
+  if (audit.status !== 'complete') return res.status(400).json({ error: 'Audit not yet complete' });
+
+  const d = audit.domain;
+  const base = d.split('.')[0].replace(/-/g, ' ');
+  const now = new Date();
+  const weeks = [];
+
+  for (let w = 0; w < 12; w++) {
+    const weekDate = new Date(now.getTime() + w * 7 * 86400000);
+    const weekLabel = `Week ${w + 1} — ${weekDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`;
+    const items = [];
+
+    if (w < 2) {
+      items.push({ type: 'fix', title: 'Fix critical technical issues', priority: 'critical', effort: '2-4 hours' });
+      items.push({ type: 'optimize', title: 'Optimize title tags & meta descriptions for top 10 pages', priority: 'high', effort: '1-2 hours' });
+    } else if (w < 4) {
+      items.push({ type: 'content', title: `Publish: "Complete Guide to ${capitalize(base)} Services"`, priority: 'high', effort: '4-6 hours' });
+      items.push({ type: 'optimize', title: 'Add schema markup to service pages', priority: 'medium', effort: '1 hour' });
+    } else if (w < 6) {
+      items.push({ type: 'content', title: `Publish: "${capitalize(base)} Cost Guide ${now.getFullYear()}"`, priority: 'high', effort: '3-4 hours' });
+      items.push({ type: 'link', title: 'Submit to 10 local business directories', priority: 'medium', effort: '2 hours' });
+    } else if (w < 8) {
+      items.push({ type: 'content', title: `Publish: "How to Choose the Right ${capitalize(base)} Company"`, priority: 'medium', effort: '3-4 hours' });
+      items.push({ type: 'content', title: `Publish: "Top 10 ${capitalize(base)} Tips"`, priority: 'medium', effort: '2-3 hours' });
+    } else if (w < 10) {
+      items.push({ type: 'link', title: 'Guest post outreach to 5 industry blogs', priority: 'medium', effort: '3-4 hours' });
+      items.push({ type: 'content', title: `Publish comparison article: "${capitalize(base)} vs Competitors"`, priority: 'medium', effort: '4-5 hours' });
+    } else {
+      items.push({ type: 'analyze', title: 'Review ranking changes and traffic growth', priority: 'high', effort: '1 hour' });
+      items.push({ type: 'content', title: 'Publish FAQ page from top customer questions', priority: 'medium', effort: '2 hours' });
+      items.push({ type: 'optimize', title: 'Update internal links across all new content', priority: 'low', effort: '1 hour' });
+    }
+    weeks.push({ week: weekLabel, items });
+  }
+
+  logActivity('seo', `Content calendar generated: ${audit.domain} (12 weeks)`, { auditId: audit.id });
+  res.json({ ok: true, domain: audit.domain, weeks });
+});
+
+// POST /api/seo/meta/:id — generate optimized meta tags
+app.post('/api/seo/meta/:id', requireAdmin, (req, res) => {
+  const audit = seoAudits.find(a => a.id === req.params.id);
+  if (!audit) return res.status(404).json({ error: 'Audit not found' });
+  if (audit.status !== 'complete') return res.status(400).json({ error: 'Audit not yet complete' });
+
+  const d = audit.domain;
+  const base = capitalize(d.split('.')[0].replace(/-/g, ' '));
+  const pages = [
+    { page: 'Homepage', url: `https://${d}/`, currentTitle: `${base} - Home`, currentDesc: '', optimizedTitle: `${base} | Professional Services in [City] | Licensed & Insured`, optimizedDesc: `${base} offers trusted, affordable services in [City]. Licensed, insured, 5-star rated. Get a free quote today. Call (555) 123-4567.`, changes: ['Added location keyword', 'Added trust signals', 'Added CTA with phone number'] },
+    { page: 'Services', url: `https://${d}/services`, currentTitle: `Services - ${base}`, currentDesc: '', optimizedTitle: `Our ${base} Services | Residential & Commercial | [City]`, optimizedDesc: `Full-service ${base.toLowerCase()} for homes and businesses in [City]. Same-day appointments, upfront pricing, satisfaction guaranteed.`, changes: ['Added service scope', 'Added location', 'Added urgency & guarantee'] },
+    { page: 'About', url: `https://${d}/about`, currentTitle: `About Us - ${base}`, currentDesc: '', optimizedTitle: `About ${base} | ${5 + Math.floor(Math.random() * 20)}+ Years Serving [City]`, optimizedDesc: `Family-owned ${base.toLowerCase()} company with ${5 + Math.floor(Math.random() * 20)}+ years of experience. Meet our licensed team and learn why [City] trusts us.`, changes: ['Added years of experience', 'Added family-owned trust signal', 'Personalized description'] },
+    { page: 'Contact', url: `https://${d}/contact`, currentTitle: `Contact - ${base}`, currentDesc: '', optimizedTitle: `Contact ${base} | Free Estimates | [City], [State]`, optimizedDesc: `Get a free estimate from ${base}. Call (555) 123-4567 or fill out our online form. Serving [City] and surrounding areas.`, changes: ['Added free estimate CTA', 'Added phone number', 'Added service area'] },
+    { page: 'Blog', url: `https://${d}/blog`, currentTitle: `Blog - ${base}`, currentDesc: '', optimizedTitle: `${base} Blog | Tips, Guides & Industry News`, optimizedDesc: `Expert ${base.toLowerCase()} tips, how-to guides, and industry updates. Learn how to save money, avoid common mistakes, and maintain your home.`, changes: ['Added content descriptors', 'Added value proposition', 'Improved keyword targeting'] },
+  ];
+
+  logActivity('seo', `Meta tags optimized: ${audit.domain} (${pages.length} pages)`, { auditId: audit.id });
+  res.json({ ok: true, domain: audit.domain, pages });
+});
+
+// --- SEO Demo Data Generators ---
+function generateSeoFindings(agentName, domain) {
+  const findings = {
+    keyword: [
+      { severity: 'high', issue: `Missing long-tail keywords for "${domain}" services`, recommendation: 'Create dedicated landing pages for top 10 service keywords' },
+      { severity: 'medium', issue: 'No local keyword targeting detected', recommendation: 'Add city + service keyword combinations to title tags and H1s' },
+      { severity: 'low', issue: 'Keyword cannibalization on 3 pages', recommendation: 'Consolidate overlapping pages or differentiate target keywords' },
+      { severity: 'high', issue: `Top competitor ranks for ${12 + Math.floor(Math.random() * 20)} keywords you don\'t target`, recommendation: 'Prioritize content creation for gap keywords with volume > 500/mo' },
+    ],
+    technical: [
+      { severity: 'critical', issue: 'Cloudflare settings blocking SEO crawlers', recommendation: 'Whitelist Googlebot and Bingbot user agents in Cloudflare firewall rules' },
+      { severity: 'high', issue: `${3 + Math.floor(Math.random() * 8)} pages returning 404 errors`, recommendation: 'Set up 301 redirects for broken URLs to relevant live pages' },
+      { severity: 'medium', issue: 'Missing XML sitemap or outdated entries', recommendation: 'Generate and submit a fresh sitemap via Google Search Console' },
+      { severity: 'medium', issue: 'Core Web Vitals: LCP exceeds 4s on mobile', recommendation: 'Optimize hero images, implement lazy loading, and defer non-critical JS' },
+      { severity: 'low', issue: 'Missing hreflang tags', recommendation: 'Add hreflang if targeting multiple languages/regions' },
+    ],
+    competitor: [
+      { severity: 'info', issue: `Top 3 competitors: identified with avg. Domain Authority ${45 + Math.floor(Math.random() * 25)}`, recommendation: 'Focus on content gaps where competitors rank but you don\'t' },
+      { severity: 'high', issue: 'Competitor #1 publishes 4x more blog content monthly', recommendation: 'Increase content velocity to 8-12 posts/month targeting informational queries' },
+      { severity: 'medium', issue: 'Competitors using schema markup you\'re missing', recommendation: 'Implement LocalBusiness, FAQ, and Review schema on key pages' },
+    ],
+    content: [
+      { severity: 'high', issue: 'No blog or content hub detected', recommendation: 'Create a blog targeting top 20 informational keywords in your niche' },
+      { severity: 'high', issue: 'Thin content on service pages (avg. 180 words)', recommendation: 'Expand service pages to 800-1500 words with unique value propositions' },
+      { severity: 'medium', issue: 'Missing internal linking structure', recommendation: 'Build topic clusters with pillar pages linking to supporting content' },
+      { severity: 'low', issue: 'Duplicate meta descriptions on 5 pages', recommendation: 'Write unique meta descriptions (150-160 chars) for each page' },
+    ],
+    backlink: [
+      { severity: 'high', issue: `Only ${5 + Math.floor(Math.random() * 15)} referring domains detected`, recommendation: 'Launch a link building campaign targeting local directories and industry publications' },
+      { severity: 'medium', issue: `${2 + Math.floor(Math.random() * 5)} toxic backlinks detected (spam score > 60)`, recommendation: 'Disavow toxic domains via Google Search Console disavow tool' },
+      { severity: 'high', issue: 'Backlinks pointing to 404 pages (link equity lost)', recommendation: 'Redirect broken backlink URLs to relevant live pages to recapture link equity' },
+      { severity: 'low', issue: 'No branded anchor text diversity', recommendation: 'Vary anchor text in outreach campaigns (branded, partial match, generic)' },
+    ],
+  };
+  return findings[agentName] || [];
+}
+
+function generateExecutiveSummary(audit) {
+  const d = audit.domain;
+  const score = audit.compositeScore;
+  const level = score >= 75 ? 'good' : score >= 50 ? 'needs improvement' : 'critical';
+  const techScore = audit.agents.technical.score;
+  const contentScore = audit.agents.content.score;
+  const backlinkScore = audit.agents.backlink.score;
+  return `${d} scores ${score}/100 overall (${level}). Technical health: ${techScore}/100 — ` +
+    `Content quality: ${contentScore}/100 — Backlink profile: ${backlinkScore}/100. ` +
+    (score < 50 ? `Immediate action required: the site has critical technical issues blocking crawlers and lacks content depth to compete. ` : '') +
+    (score < 75 ? `Key opportunities: expand content strategy, fix technical errors, and build quality backlinks to close the gap with competitors.` :
+    `The site is performing well. Focus on maintaining momentum with consistent content and monitoring competitor movements.`);
+}
+
+function generateQuickWins(audit) {
+  const wins = [];
+  if (audit.agents.technical.score < 70) wins.push({ priority: 1, action: 'Fix crawler blocking rules in Cloudflare/server config', time: '15 min', impact: 'high' });
+  if (audit.agents.technical.score < 80) wins.push({ priority: 2, action: 'Submit updated XML sitemap to Google Search Console', time: '10 min', impact: 'medium' });
+  if (audit.agents.content.score < 60) wins.push({ priority: 3, action: 'Add unique meta descriptions to all service pages', time: '30 min', impact: 'medium' });
+  if (audit.agents.backlink.score < 70) wins.push({ priority: 4, action: 'Set up 301 redirects for backlinks pointing to 404 pages', time: '20 min', impact: 'high' });
+  wins.push({ priority: 5, action: 'Add LocalBusiness schema markup to homepage', time: '15 min', impact: 'medium' });
+  wins.push({ priority: 6, action: 'Optimize title tags with primary keyword + location', time: '25 min', impact: 'high' });
+  return wins;
+}
+
+function generateActionPlan(audit) {
+  return [
+    { phase: 'Week 1-2', title: 'Technical Foundation', tasks: ['Fix all critical technical issues', 'Submit sitemap', 'Configure robots.txt', 'Fix broken redirects'], priority: 'critical' },
+    { phase: 'Week 3-4', title: 'Content Optimization', tasks: ['Expand thin service pages to 800+ words', 'Write unique meta descriptions', 'Add schema markup to all pages'], priority: 'high' },
+    { phase: 'Month 2', title: 'Content Creation', tasks: ['Launch blog with 8 keyword-targeted posts', 'Build pillar page for primary service', 'Create FAQ page from customer questions'], priority: 'high' },
+    { phase: 'Month 3', title: 'Link Building & Authority', tasks: ['Submit to 20 relevant local directories', 'Guest post outreach to 10 industry blogs', 'Disavow toxic backlinks', 'Monitor competitor link acquisition'], priority: 'medium' },
+    { phase: 'Ongoing', title: 'Monitoring & Growth', tasks: ['Publish 2-4 blog posts per week', 'Monthly rank tracking and reporting', 'Quarterly competitor re-analysis', 'Core Web Vitals monitoring'], priority: 'standard' },
+  ];
+}
+
+// Change password (admin)
+app.post('/api/settings/change-password', requireAdmin, async (req, res) => {
+  const { currentPassword, newPassword } = req.body;
+  if (!currentPassword || !newPassword) return res.status(400).json({ error: 'Both current and new password required' });
+  if (newPassword.length < 10) return res.status(400).json({ error: 'New password must be at least 10 characters' });
+
+  const token = req.cookies?.['ai-os-session'] || req.headers.authorization?.replace('Bearer ', '');
+  const session = isValidSession(token);
+  const user = findUserByEmail(session.email);
+  if (!user) return res.status(404).json({ error: 'User not found' });
+
+  const valid = user.passwordHash
+    ? await bcrypt.compare(currentPassword, user.passwordHash)
+    : (user.password === currentPassword);
+  if (!valid) return res.status(401).json({ error: 'Current password is incorrect' });
+
+  user.passwordHash = await bcrypt.hash(newPassword, 12);
+  delete user.password; // remove legacy plain-text if present
+  saveState('users', users);
+  logActivity('settings', `Password changed for ${session.email}`);
+  res.json({ ok: true });
 });
 
 // --- Downloads ---

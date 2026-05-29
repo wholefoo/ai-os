@@ -107,11 +107,11 @@
     <div class="trust-container">
       <span class="trust-label">Powered by</span>
       <div class="trust-logos">
-        <span class="trust-logo">Claude Opus</span>
-        <span class="trust-logo">Claude Sonnet</span>
-        <span class="trust-logo">Claude Haiku</span>
+        <span class="trust-logo">Claude Opus 4.8</span>
         <span class="trust-logo">DeepSeek V4</span>
         <span class="trust-logo">Grok-3</span>
+        <span class="trust-logo">Firecrawl</span>
+        <span class="trust-logo">Hermes MCP</span>
       </div>
     </div>
   </section>
@@ -240,7 +240,7 @@
           <div class="arch-layer-num">05</div>
           <div class="arch-layer-content">
             <h3>Execution &amp; Automation</h3>
-            <p>Multi-model routing (Opus/Sonnet/Haiku/DeepSeek/Grok), skill chaining, CRON loops, Playwright browser agent.</p>
+            <p>Opus 4.8 effort-based routing (xhigh/high/low), DeepSeek economy tier, Grok realtime, Hermes MCP persistence, skill chaining, CRON loops, dynamic workflows.</p>
           </div>
         </div>
         <div class="arch-layer">
@@ -263,38 +263,46 @@
         <p class="section-subtitle">Each agent has a defined role, model tier, and skill set. The orchestrator routes work to the cheapest capable engine.</p>
       </div>
       <div class="agent-grid">
-        <div class="agent-chip opus"><span class="agent-dot"></span>Orchestrator <span class="agent-model">Opus</span></div>
-        <div class="agent-chip opus"><span class="agent-dot"></span>Architect <span class="agent-model">Opus</span></div>
-        <div class="agent-chip opus"><span class="agent-dot"></span>Reviewer <span class="agent-model">Opus</span></div>
-        <div class="agent-chip opus"><span class="agent-dot"></span>Security Auditor <span class="agent-model">Opus</span></div>
-        <div class="agent-chip sonnet"><span class="agent-dot"></span>Researcher <span class="agent-model">Sonnet</span></div>
-        <div class="agent-chip sonnet"><span class="agent-dot"></span>Coder <span class="agent-model">Sonnet</span></div>
-        <div class="agent-chip sonnet"><span class="agent-dot"></span>Writer <span class="agent-model">Sonnet</span></div>
-        <div class="agent-chip sonnet"><span class="agent-dot"></span>Design System <span class="agent-model">Sonnet</span></div>
-        <div class="agent-chip sonnet"><span class="agent-dot"></span>Media Producer <span class="agent-model">Sonnet</span></div>
-        <div class="agent-chip sonnet"><span class="agent-dot"></span>Lead Gen <span class="agent-model">Sonnet</span></div>
-        <div class="agent-chip sonnet"><span class="agent-dot"></span>Marketing Hub <span class="agent-model">Sonnet</span></div>
-        <div class="agent-chip sonnet"><span class="agent-dot"></span>Product Factory <span class="agent-model">Sonnet</span></div>
-        <div class="agent-chip sonnet"><span class="agent-dot"></span>Vibe Designer <span class="agent-model">Sonnet</span></div>
-        <div class="agent-chip sonnet"><span class="agent-dot"></span>Blender 3D <span class="agent-model">Sonnet</span></div>
-        <div class="agent-chip sonnet"><span class="agent-dot"></span>Knowledge Graph <span class="agent-model">Sonnet</span></div>
-        <div class="agent-chip sonnet"><span class="agent-dot"></span>Golden Loop <span class="agent-model">Sonnet</span></div>
-        <div class="agent-chip sonnet"><span class="agent-dot"></span>Synthesis <span class="agent-model">Sonnet</span></div>
-        <div class="agent-chip sonnet"><span class="agent-dot"></span>Automator <span class="agent-model">Sonnet</span></div>
-        <div class="agent-chip sonnet"><span class="agent-dot"></span>Browser Agent <span class="agent-model">Sonnet</span></div>
-        <div class="agent-chip haiku"><span class="agent-dot"></span>Scout <span class="agent-model">Haiku</span></div>
-        <div class="agent-chip haiku"><span class="agent-dot"></span>Social Intel <span class="agent-model">Haiku</span></div>
-        <div class="agent-chip haiku"><span class="agent-dot"></span>Routine Runner <span class="agent-model">Haiku</span></div>
+        <div class="agent-chip opus"><span class="agent-dot"></span>Orchestrator <span class="agent-model">xhigh</span></div>
+        <div class="agent-chip opus"><span class="agent-dot"></span>Architect <span class="agent-model">xhigh</span></div>
+        <div class="agent-chip opus"><span class="agent-dot"></span>Reviewer <span class="agent-model">xhigh</span></div>
+        <div class="agent-chip opus"><span class="agent-dot"></span>Security Auditor <span class="agent-model">xhigh</span></div>
+        <div class="agent-chip sonnet"><span class="agent-dot"></span>Researcher <span class="agent-model">high</span></div>
+        <div class="agent-chip sonnet"><span class="agent-dot"></span>Coder <span class="agent-model">high</span></div>
+        <div class="agent-chip sonnet"><span class="agent-dot"></span>Writer <span class="agent-model">high</span></div>
+        <div class="agent-chip sonnet"><span class="agent-dot"></span>Design System <span class="agent-model">high</span></div>
+        <div class="agent-chip omni"><span class="agent-dot"></span>Media Producer <span class="agent-model">Omni</span></div>
+        <div class="agent-chip sonnet"><span class="agent-dot"></span>Lead Gen <span class="agent-model">high</span></div>
+        <div class="agent-chip sonnet"><span class="agent-dot"></span>Marketing Hub <span class="agent-model">high</span></div>
+        <div class="agent-chip sonnet"><span class="agent-dot"></span>Product Factory <span class="agent-model">high</span></div>
+        <div class="agent-chip omni"><span class="agent-dot"></span>Vibe Designer <span class="agent-model">Omni</span></div>
+        <div class="agent-chip sonnet"><span class="agent-dot"></span>Blender 3D <span class="agent-model">high</span></div>
+        <div class="agent-chip sonnet"><span class="agent-dot"></span>Knowledge Graph <span class="agent-model">high</span></div>
+        <div class="agent-chip sonnet"><span class="agent-dot"></span>Golden Loop <span class="agent-model">high</span></div>
+        <div class="agent-chip sonnet"><span class="agent-dot"></span>Synthesis <span class="agent-model">high</span></div>
+        <div class="agent-chip sonnet"><span class="agent-dot"></span>Automator <span class="agent-model">high</span></div>
+        <div class="agent-chip sonnet"><span class="agent-dot"></span>Browser Agent <span class="agent-model">high</span></div>
+        <div class="agent-chip haiku"><span class="agent-dot"></span>Scout <span class="agent-model">low</span></div>
+        <div class="agent-chip haiku"><span class="agent-dot"></span>Social Intel <span class="agent-model">low</span></div>
+        <div class="agent-chip haiku"><span class="agent-dot"></span>Routine Runner <span class="agent-model">low</span></div>
+        <div class="agent-chip omni"><span class="agent-dot"></span>Video Creator <span class="agent-model">Omni</span></div>
+        <div class="agent-chip omni"><span class="agent-dot"></span>Audio Producer <span class="agent-model">Omni</span></div>
+        <div class="agent-chip omni"><span class="agent-dot"></span>Thumbnail Gen <span class="agent-model">Omni</span></div>
         <div class="agent-chip economy"><span class="agent-dot"></span>DeepSeek Worker <span class="agent-model">DeepSeek</span></div>
         <div class="agent-chip economy"><span class="agent-dot"></span>Batch Runner <span class="agent-model">DeepSeek</span></div>
         <div class="agent-chip grok"><span class="agent-dot"></span>Grok Realtime <span class="agent-model">Grok-3</span></div>
+        <div class="agent-chip hermes"><span class="agent-dot"></span>Hermes Delegate <span class="agent-model">Hermes</span></div>
+        <div class="agent-chip hermes"><span class="agent-dot"></span>Hermes Cron <span class="agent-model">Hermes</span></div>
+        <div class="agent-chip hermes"><span class="agent-dot"></span>Hermes Approval Gate <span class="agent-model">Hermes</span></div>
       </div>
       <div class="agent-legend">
-        <span class="legend-item"><span class="legend-dot opus"></span>Strategic (Opus)</span>
-        <span class="legend-item"><span class="legend-dot sonnet"></span>Professional (Sonnet)</span>
-        <span class="legend-item"><span class="legend-dot haiku"></span>Scout (Haiku)</span>
+        <span class="legend-item"><span class="legend-dot opus"></span>Strategic (Opus 4.8 xhigh)</span>
+        <span class="legend-item"><span class="legend-dot sonnet"></span>Professional (Opus 4.8 high)</span>
+        <span class="legend-item"><span class="legend-dot haiku"></span>Scout (Opus 4.8 low)</span>
+        <span class="legend-item"><span class="legend-dot omni"></span>Creative (Gemini Omni)</span>
         <span class="legend-item"><span class="legend-dot economy"></span>Economy (DeepSeek)</span>
         <span class="legend-item"><span class="legend-dot grok"></span>Realtime (Grok)</span>
+        <span class="legend-item"><span class="legend-dot hermes"></span>Persistent (Hermes)</span>
       </div>
     </div>
   </section>
@@ -374,7 +382,7 @@
           </div>
         </div>
         <div class="testimonial-card">
-          <div class="testimonial-text">"The multi-model routing is genius. Opus for architecture decisions, Haiku for monitoring, DeepSeek for bulk work. Costs stayed under $5/day."</div>
+          <div class="testimonial-text">"The effort-based routing is genius. Opus 4.8 xhigh for architecture decisions, low effort for monitoring, DeepSeek for bulk work. Costs stayed under $5/day."</div>
           <div class="testimonial-author">
             <div class="testimonial-avatar">SK</div>
             <div>
@@ -411,7 +419,7 @@
         </div>
         <div class="faq-item">
           <button class="faq-question">What AI models does it support?<span class="faq-toggle">+</span></button>
-          <div class="faq-answer">Five model tiers out of the box: Claude Opus (strategic), Claude Sonnet (professional), Claude Haiku (scout), DeepSeek V4 (economy), and Grok-3 (realtime). The orchestrator auto-routes tasks to the cheapest capable model.</div>
+          <div class="faq-answer">One Anthropic model, three effort tiers: Opus 4.8 at xhigh (strategic), high (professional), and low (scout) — plus DeepSeek V4 (economy), Grok-3 (realtime), and Hermes MCP (persistent). The orchestrator auto-routes tasks to the right effort level for optimal cost and quality.</div>
         </div>
         <div class="faq-item">
           <button class="faq-question">Can I add custom agents?<span class="faq-toggle">+</span></button>
@@ -461,7 +469,7 @@
         <div class="footer-col">
           <h4>Resources</h4>
           <a href="#faq">FAQ</a>
-          <a href="#">Documentation</a>
+          <a href="/docs">Documentation</a>
           <a href="#">Changelog</a>
         </div>
         <div class="footer-col">

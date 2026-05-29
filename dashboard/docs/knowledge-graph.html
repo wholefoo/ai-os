@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Knowledge Graph — AI OS Docs</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/css/landing.css">
+  <link rel="stylesheet" href="/css/docs.css">
+</head>
+<body>
+  <nav class="landing-nav">
+    <div class="nav-container">
+      <a href="/" class="nav-brand">
+        <span class="nav-logo">&#9678;</span>
+        <span class="nav-name">AI OS</span>
+      </a>
+      <div class="nav-links">
+        <a href="/">Home</a>
+        <a href="/docs" class="active">Docs</a>
+        <a href="/terms">Terms</a>
+        <a href="/privacy">Privacy</a>
+      </div>
+    </div>
+  </nav>
+
+  <main class="docs-page">
+    <div class="docs-container">
+      <div class="docs-layout">
+        <div class="docs-content">
+          <div class="docs-breadcrumb">
+            <a href="/docs">Docs</a> <span>/</span> Knowledge Graph
+          </div>
+
+          <h1>Knowledge Graph</h1>
+          <p class="docs-lead">The Knowledge Graph is an auto-categorizing knowledge base that stores, links, and visualizes information with semantic connections. It serves as the long-term memory for all agents.</p>
+
+          <h2>How It Works</h2>
+          <p>When agents generate research, reports, or artifacts, the Knowledge Graph agent automatically:</p>
+          <ol>
+            <li>Ingests the raw content into <code>.magent/vault/raw/</code></li>
+            <li>Extracts key entities, topics, and relationships</li>
+            <li>Creates semantic links between related knowledge entries</li>
+            <li>Categorizes entries by domain, type, and confidence level</li>
+            <li>Makes everything searchable and retrievable by other agents</li>
+          </ol>
+
+          <h2>Vault Structure</h2>
+          <pre><code>.magent/vault/
+  raw/          Original ingested documents
+  wiki/         Processed knowledge articles
+  outputs/      Generated artifacts and deliverables</code></pre>
+
+          <h3>Entry Format</h3>
+          <p>Each knowledge entry is stored as a JSON file with metadata:</p>
+          <pre><code>{
+  "id": "kg-a1b2c3d4",
+  "title": "Competitive Analysis: SaaS Market Q1 2026",
+  "category": "research",
+  "tags": ["saas", "market-analysis", "competitive"],
+  "created": "2026-05-20T14:30:00Z",
+  "source_agent": "researcher",
+  "connections": ["kg-e5f6g7h8", "kg-i9j0k1l2"],
+  "confidence": 0.92,
+  "content": "..."
+}</code></pre>
+
+          <h2>Radial Visualization</h2>
+          <p>The dashboard provides an interactive radial graph that displays knowledge entries as nodes with connections drawn between semantically related items. Features include:</p>
+          <ul>
+            <li><strong>Color coding</strong> — Nodes colored by category (research, technical, business, creative)</li>
+            <li><strong>Size weighting</strong> — Larger nodes indicate higher connection count or confidence</li>
+            <li><strong>Interactive exploration</strong> — Click nodes to expand connections, hover for previews</li>
+            <li><strong>Search and filter</strong> — Find entries by keyword, category, or date range</li>
+          </ul>
+
+          <h2>Agent Integration</h2>
+          <p>Any agent can read from and write to the Knowledge Graph:</p>
+          <ul>
+            <li><strong>vault_read</strong> — Search and retrieve knowledge entries by query or ID</li>
+            <li><strong>vault_write</strong> — Store new entries with automatic categorization</li>
+            <li><strong>vault_link</strong> — Create explicit connections between entries</li>
+          </ul>
+          <p>The Orchestrator automatically queries the Knowledge Graph for relevant context before delegating tasks, giving agents access to previously gathered intelligence.</p>
+
+          <h2>Dashboard View</h2>
+          <p>The Knowledge Graph view in the dashboard provides:</p>
+          <ul>
+            <li>Radial graph visualization with pan/zoom controls</li>
+            <li>List view with sortable columns (title, category, date, connections)</li>
+            <li>Full-text search across all entries</li>
+            <li>Category filters and date range selectors</li>
+            <li>Entry detail panel with content preview and connection map</li>
+            <li>Manual entry creation and editing</li>
+          </ul>
+
+          <div class="docs-page-nav">
+            <a href="/docs/skills">&larr; Skills &amp; Pipelines</a>
+            <a href="/docs/design-system">Design System &rarr;</a>
+          </div>
+        </div>
+
+        <aside class="docs-toc">
+          <div class="docs-toc-title">On this page</div>
+          <a href="#how-it-works">How It Works</a>
+          <a href="#vault-structure">Vault Structure</a>
+          <a href="#radial-visualization">Radial Visualization</a>
+          <a href="#agent-integration">Agent Integration</a>
+          <a href="#dashboard-view">Dashboard View</a>
+        </aside>
+      </div>
+    </div>
+  </main>
+
+  <footer class="site-footer">
+    <div class="footer-bottom">
+      <p>&copy; 2026 AI OS Orchestration Lab. All rights reserved.</p>
+    </div>
+  </footer>
+</body>
+</html>
