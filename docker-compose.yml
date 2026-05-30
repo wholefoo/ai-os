@@ -8,15 +8,53 @@ services:
     ports:
       - "127.0.0.1:3000:3000"
     volumes:
-      - ./.magent:/app/.magent
-      - ./logs:/app/logs
+      - aios-state:/app/.magent
+      - aios-logs:/app/logs
     env_file:
       - .env
     environment:
       - NODE_ENV=production
+      - DEMO_MODE=false
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:3000/api/health"]
       interval: 30s
       timeout: 5s
       retries: 3
       start_period: 10s
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: '1.5'
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # Uncomment when Hermes MCP server is ready
+  # hermes:
+  #   build:
+  #     context: .
+  #     dockerfile: hermes/Dockerfile
+  #   container_name: hermes-mcp
+  #   restart: unless-stopped
+  #   ports:
+  #     - "127.0.0.1:8420:8420"
+  #   volumes:
+  #     - aios-state:/app/.magent
+  #   env_file:
+  #     - .env
+  #   environment:
+  #     - NODE_ENV=production
+  #     - PORT=8420
+  #   deploy:
+  #     resources:
+  #       limits:
+  #         memory: 256M
+
+volumes:
+  aios-state:
+    driver: local
+  aios-logs:
+    driver: local

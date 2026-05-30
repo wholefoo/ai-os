@@ -1,6 +1,6 @@
 # AI OS — The Agentic Operating System
 
-A multi-agentic AI operating system that orchestrates 39 specialized sub-agents across 7 model tiers to execute complex workflows autonomously. Research, create, analyze, and monetize — all from a single dashboard.
+A multi-agentic AI operating system built as a Virtual Corporate Headquarters, orchestrating 47 specialized sub-agents across 9 departments and 7 model tiers. Research, create, analyze, and monetize — all from a single dashboard.
 
 ## Architecture
 
@@ -11,15 +11,15 @@ A multi-agentic AI operating system that orchestrates 39 specialized sub-agents 
                     └────────────┬────────────┘
                                  │
                     ┌────────────▼────────────┐
-                    │       Dashboard          │  Authenticated
+                    │    Virtual Corporate HQ  │  Authenticated
                     │   30+ navigable views    │
                     └────────────┬────────────┘
                                  │
           ┌──────────────────────┼──────────────────────┐
           │                      │                      │
    ┌──────▼──────┐      ┌───────▼───────┐      ┌───────▼───────┐
-   │ Orchestrator │      │  Agent Fleet  │      │  Memory Vault │
-   │(Opus 4.8 xh)│──────│  39 agents    │──────│  .magent/     │
+   │  CEO Atlas   │      │  Agent Fleet  │      │  Memory Vault │
+   │(Opus 4.8 xh)│──────│  47 agents    │──────│  .magent/     │
    └──────────────┘      └───────────────┘      └───────────────┘
           │                      │
    ┌──────▼──────────────────────▼──────┐
@@ -34,27 +34,43 @@ A multi-agentic AI operating system that orchestrates 39 specialized sub-agents 
    └──────────┴─────────┴──────┴────────┘
 ```
 
+## Virtual Corporate Headquarters
+
+AI OS presents its agent fleet as a virtual company with named employees, departments, and reporting lines:
+
+| Department | Employees | Key Roles |
+|---|---|---|
+| **Executive Office** | 4 | CEO (Atlas), CTO (Nova), CFO (Ledger), COO (Meridian) |
+| **Board of Directors** | 3 | Quality Director, Security Director, Research Director |
+| **Engineering** | 5 | Engineering Lead, QA, Data Engineer, Automation, DevOps |
+| **Marketing & Sales** | 5 | Marketing Director, Content Lead, SEO Lead, Social Manager, Sales Director |
+| **Creative Studio** | 6 | Creative Director, UI/UX Designer, Video Producer, 3D Artist, Audio Engineer, Brand Designer |
+| **Customer Service** | 3 | Support Lead, Tier 1, Tier 2 |
+| **Tech Support & IT** | 3 | IT Director, SysAdmin, Help Desk |
+| **Product & Innovation** | 4 | Product Manager, Research Analyst, Data Scientist, Knowledge Manager |
+| **Operations & Hermes** | 6 | Hermes Director, Scheduler, Compliance Officer, Scout, Batch Processor, Intel Analyst |
+
+Each virtual employee maps to an AI agent with a specific model tier, can receive dispatched tasks, and reports through a corporate hierarchy.
+
 ## Features
 
 ### Core Intelligence
 - **Knowledge Graph** — Auto-categorizing knowledge base with semantic connections and visual radial graph
-- **Design System** — DESIGN.md dual-structure protocol (reasoning + tokens), WCAG linter, brand clone from URL
+- **Design System** — DESIGN.md dual-structure protocol, WCAG linter, brand clone from URL
 - **Tech Radar** — Automated intelligence sweeps with proposal system and upgrade tracking
 - **Continuous Loops** — CRON-scheduled autonomous routines with rate limiting
 
 ### SEO Agency
 - **Automated SEO Audits** — 5 parallel sub-agents (Keyword, Technical, Competitor, Content, Backlink)
 - **Composite Scoring** — Site health score out of 100 with severity-coded findings
-- **Content Brief Generation** — Keyword-targeted briefs with outlines and word counts
-- **12-Week Content Calendar** — Phased action plan from audit findings
-- **Meta Tag Optimizer** — Before/after title and description recommendations
+- **Post-Audit Actions** — Content brief generation, 12-week content calendar, meta tag optimizer
 - **DataForSEO Integration** — Real keyword, backlink, and competitor data
 
 ### Creative Studio (Gemini Omni)
 - **Video Generation** — Text/image/audio to video with physics simulation
 - **Image Creation & Editing** — Any-to-image generation and editing
 - **Audio & Voiceover** — Natural speech, music, and sound effects
-- **Thumbnail Generation** — Platform-optimized thumbnails with variants
+- **Thumbnail Generation** — Platform-optimized thumbnails with A/B variants
 - **Social Clips** — Long content to short-form vertical video
 
 ### Media & Marketing
@@ -80,10 +96,10 @@ A multi-agentic AI operating system that orchestrates 39 specialized sub-agents 
 - **Admin Dashboard** — Settings page for all API keys, MCP connections, and account management
 - **Stripe Paywall** — Pro ($49/mo) and Enterprise ($199/mo) subscriptions
 - **Auth System** — bcrypt password hashing, session cookies, Bearer token fallback, admin roles
-- **Security** — Helmet CSP (with `script-src-attr`), CORS, rate limiting, input validation
+- **Security** — Helmet CSP, CORS, rate limiting, input validation
 - **Notifications** — Dashboard (WebSocket), Telegram Bot API, Slack Incoming Webhooks
 - **Documentation Hub** — 14 sub-pages covering architecture, agents, skills, deployment, and more
-- **Deployment** — PM2, Nginx with TLS, Docker, VPS install script
+- **VPS Deployment** — One-command install script, PM2, Nginx with TLS
 
 ## Tech Stack
 
@@ -99,7 +115,7 @@ A multi-agentic AI operating system that orchestrates 39 specialized sub-agents 
 | Agent definitions | Markdown with YAML frontmatter |
 | Memory | File-based (.magent/) with JSON state persistence |
 | Security | Helmet, CORS, express-rate-limit, compression |
-| Deployment | PM2, Nginx, Docker, Let's Encrypt |
+| Deployment | PM2, Nginx, Let's Encrypt |
 
 ## Quick Start
 
@@ -131,29 +147,30 @@ ADMIN_PASSWORD_HASH=$2b$12$...   # Generate with: node -e "require('bcryptjs').h
 
 Navigate to `http://localhost:3000`, click Login, and enter your credentials.
 
-## Production Deployment
-
-### Option 1 — PM2 + Nginx (Recommended)
+## Production Deployment (PM2 + Nginx)
 
 ```bash
-# On your VPS
+# On your VPS (Ubuntu 22.04/24.04)
 sudo bash deploy/install-vps.sh yourdomain.com
 
-# Then
-cd /opt/ai-os
-npm install --production
-cp .env.example .env && nano .env
-pm2 start ecosystem.config.js --env production
-pm2 save
+# Edit .env with your API keys
+sudo nano /opt/ai-os/.env
 
-# Get TLS
+# Get TLS certificate
 sudo certbot --nginx -d yourdomain.com
+
+# Restart with production config
+sudo -u aios pm2 restart ai-os --update-env
+
+# Verify
+curl -s https://yourdomain.com/api/health | jq .
 ```
 
-### Option 2 — Docker
+### Push Updates
 
 ```bash
-docker compose up -d
+# From your local machine
+bash deploy/push-update.sh root@your-vps-ip
 ```
 
 ## Environment Variables
@@ -181,14 +198,12 @@ docker compose up -d
 | `TELEGRAM_CHAT_ID` | No | Telegram chat target |
 | `SLACK_WEBHOOK_URL` | No | Slack notifications |
 | `HERMES_MCP_URL` | No | Hermes MCP server URL (default: http://127.0.0.1:8420) |
-| `N8N_WEBHOOK_BASE` | No | n8n automation webhook base URL |
-| `N8N_API_KEY` | No | n8n API key |
 
 ## Project Structure
 
 ```
 .claude/
-  agents/        39 agent role definitions (YAML frontmatter + instructions)
+  agents/        47 agent role definitions (YAML frontmatter + instructions)
   skills/        21 procedural skill files
   rules/         Guardrails, cost routing, security
   identity/      Soul, user preferences, personality
@@ -205,95 +220,56 @@ dashboard/
   js/            Landing and dashboard scripts
   docs/          14 documentation sub-pages
 deploy/
-  nginx.conf     Reverse proxy with TLS and WS upgrade
-  install-vps.sh One-command VPS provisioning
-server.js        Express + WebSocket backend (~5500 lines)
+  install-vps.sh One-command VPS provisioning (Ubuntu)
+  push-update.sh Local-to-VPS update script
+  nginx.conf     Reverse proxy with TLS, WS, rate limiting
+server.js        Express + WebSocket backend (~6000 lines)
+ecosystem.config.js  PM2 process manager config
 ```
 
 ## Agent Fleet — 7 Model Tiers
 
-| Tier | Model | Effort | Agents | Role |
-|------|-------|--------|--------|------|
-| Strategic | Opus 4.8 | xhigh | Orchestrator, Architect, Reviewer, Security Auditor | Deep reasoning, architecture, code review |
-| Professional | Opus 4.8 | high | Researcher, Coder, Writer, Design System, Lead Gen, Marketing Hub, Product Factory, Knowledge Graph, Golden Loop, Synthesis, Automator, Browser Agent, Report Compiler, Research Architect, Data Wrangler, QA | Balanced quality/speed for most work |
-| Scout | Opus 4.8 | low | Scout, Social Intel, Routine Runner | Fast lookups, lightweight tasks |
-| Creative | Gemini Omni | — | Media Producer, Vibe Designer, Video Creator, Audio Producer, Thumbnail Gen | Video, image, audio generation |
-| Economy | DeepSeek V4 | — | DeepSeek Worker, Batch Runner | Bulk text processing |
-| Realtime | Grok-3 | — | Grok Realtime | Live web search, trending topics |
-| Persistent | Hermes MCP | — | Hermes Delegate, Hermes Cron, Hermes Approval Gate | Background tasks, walkaway mode |
+| Tier | Model | Effort | Count | Role |
+|------|-------|--------|-------|------|
+| Strategic | Opus 4.8 | xhigh | 5 | Deep reasoning, architecture, code review |
+| Professional | Opus 4.8 | high | 20 | Research, coding, writing, support, IT |
+| Scout | Opus 4.8 | low | 4 | Fast lookups, triage, routine running |
+| Creative | Gemini Omni | — | 5 | Video, image, audio generation |
+| Economy | DeepSeek V4 | — | 2 | Bulk text processing |
+| Realtime | Grok-3 | — | 1 | Live web search, trending topics |
+| Persistent | Hermes MCP | — | 3 | Background tasks, walkaway mode |
 
-### SEO Agency Sub-Agents
+### SEO Agency Sub-Agents (5)
 
-| Agent | Role |
-|-------|------|
-| SEO Keyword | Keyword research, gap analysis, cannibalization detection |
-| SEO Technical | Crawl analysis, Core Web Vitals, HTTP status, security |
-| SEO Competitor | Top 10 competitor profiling, content velocity, schema adoption |
-| SEO Content | Content inventory, thin content detection, topic clusters |
-| SEO Backlink | Referring domains, toxicity detection, broken link recovery |
+Keyword Analysis, Technical Audit, Competitor Analysis, Content Analysis, Backlink Profile
 
 ## API
 
-60+ endpoints across all features. Key routes:
+60+ endpoints. Key routes:
 
 ```
-GET  /api/health                    Health check (agents, skills, uptime)
-GET  /api/agents                    List all agents
-GET  /api/skills                    List all skills
-POST /api/auth/login                User login (bcrypt + session cookie)
-GET  /api/auth/me                   Current session info
-
-# Settings (admin)
-GET  /api/settings                  Get settings (masked keys)
-PUT  /api/settings/:section         Update settings section
+GET  /api/health                    Health check
+POST /api/auth/login                Login
+GET  /api/hq/org                    Full org chart
+GET  /api/hq/stats                  HQ summary stats
+POST /api/hq/dispatch/:employeeId   Dispatch task to virtual employee
+GET  /api/settings                  Settings (masked keys)
+PUT  /api/settings/:section         Update settings
 POST /api/settings/test/:service    Test API connection
-
-# SEO Agency
-POST /api/seo/audit                 Launch full SEO audit (5 parallel agents)
-GET  /api/seo/audits                List all audits
-GET  /api/seo/audit/:id             Full audit detail with findings
-POST /api/seo/briefs/:id            Generate content briefs from audit
-POST /api/seo/calendar/:id          Generate 12-week content calendar
-POST /api/seo/meta/:id              Generate optimized meta tags
-POST /api/seo/report/:id            Generate PDF report
-
-# Gemini Omni Creative
-POST /api/omni/generate             Multimodal content generation
-GET  /api/omni/capabilities         List generation types and formats
-
-# Hermes Agent
-GET  /api/hermes/status             Hermes connection status
-POST /api/hermes/delegate           Delegate task to Hermes
-GET  /api/hermes/approvals          Pending approval requests
-POST /api/hermes/walkaway           Start walkaway mode session
-
-# Core Features
+POST /api/seo/audit                 Launch SEO audit
+POST /api/seo/briefs/:id            Generate content briefs
+POST /api/seo/calendar/:id          Generate content calendar
+POST /api/seo/meta/:id              Optimize meta tags
+POST /api/omni/generate             Gemini Omni creative generation
+GET  /api/omni/capabilities         List generation types
 POST /api/grok/query                Real-time Grok query
-POST /api/design-system/clone-url   Clone brand from URL
-POST /api/media/produce             Start media production
-POST /api/batch                     Queue batch generation
-POST /api/leads/scrape              Start lead scraping
+POST /api/hermes/delegate           Delegate to Hermes
 GET  /api/stripe/checkout?plan=pro  Start Stripe checkout
 ```
 
 ## Documentation
 
-Full documentation is available at `/docs` when the server is running:
-
-- Getting Started
-- Architecture & Model Routing
-- Agent Fleet & Definitions
-- Skills Library
-- Knowledge Graph
-- Design System
-- Media Production
-- Monetization
-- Batch Queue
-- API Reference
-- Deployment Guide
-- Billing & Subscriptions
-- Notifications
-- Hermes Agent
+Full documentation at `/docs` when the server is running, covering architecture, agents, skills, deployment, billing, and all subsystems.
 
 ## License
 

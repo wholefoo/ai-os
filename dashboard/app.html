@@ -118,6 +118,9 @@
         <a href="#" class="nav-item" data-view="hermes">
           <span class="nav-icon">&#9889;</span> Hermes
         </a>
+        <a href="#" class="nav-item" data-view="hq">
+          <span class="nav-icon">&#127970;</span> Virtual HQ
+        </a>
         <a href="#" class="nav-item" data-view="seo-agency">
           <span class="nav-icon">&#128269;</span> SEO Agency
         </a>
@@ -1157,6 +1160,27 @@
           </div>
         </div>
 
+        <!-- Virtual HQ View -->
+        <div class="view" id="view-hq">
+          <div class="radar-header">
+            <div class="radar-header-left">
+              <h2 class="radar-title">Virtual Corporate Headquarters</h2>
+              <span class="radar-subtitle">AI OS Corp — <span id="hqEmployeeCount">0</span> virtual employees across <span id="hqDeptCount">0</span> departments</span>
+            </div>
+          </div>
+
+          <div class="hq-stats" id="hqStats"></div>
+
+          <div id="hqOrgChart" class="hq-org-chart">
+            <div class="empty-state">Loading org chart...</div>
+          </div>
+
+          <!-- Employee detail modal -->
+          <div id="hqEmployeeModal" class="hq-modal" style="display:none;">
+            <div class="hq-modal-content" id="hqEmployeeDetail"></div>
+          </div>
+        </div>
+
         <!-- SEO Agency View -->
         <div class="view" id="view-seo-agency">
           <div class="radar-header">
@@ -1515,6 +1539,6 @@
     </div>
   </div>
 
-  <script src="js/app.js?v=7"></script>
+  <script src="js/app.js?v=8"></script>
 </body>
 </html>
