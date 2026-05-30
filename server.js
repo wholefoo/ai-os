@@ -4643,6 +4643,174 @@ app.post('/api/settings/test/:service', requireAdmin, async (req, res) => {
   }
 });
 
+// --- Virtual Corporate HQ ---
+
+const ORG_CHART = {
+  company: 'AI OS Corp',
+  departments: [
+    {
+      id: 'executive', name: 'Executive Office', icon: '🏛️', color: '#8b5cf6',
+      employees: [
+        { id: 'ceo', title: 'Chief Executive Officer', name: 'Atlas', agent: 'orchestrator', tier: 'strategic', avatar: '👔', status: 'active', reportsTo: null, desc: 'Strategic vision, cross-department coordination, final decision authority' },
+        { id: 'cto', title: 'Chief Technology Officer', name: 'Nova', agent: 'architect', tier: 'strategic', avatar: '🧠', status: 'active', reportsTo: 'ceo', desc: 'Technical architecture, model routing, infrastructure decisions' },
+        { id: 'cfo', title: 'Chief Financial Officer', name: 'Ledger', agent: 'cost-analyst', tier: 'strategic', avatar: '📊', status: 'active', reportsTo: 'ceo', desc: 'Budget management, cost optimization, financial reporting' },
+        { id: 'coo', title: 'Chief Operating Officer', name: 'Meridian', agent: 'automator', tier: 'professional', avatar: '⚙️', status: 'active', reportsTo: 'ceo', desc: 'Operational workflows, CRON routines, process automation' },
+      ]
+    },
+    {
+      id: 'board', name: 'Board of Directors', icon: '🏆', color: '#6366f1',
+      employees: [
+        { id: 'board-quality', title: 'Quality Director', name: 'Sentinel', agent: 'reviewer', tier: 'strategic', avatar: '🔍', status: 'active', reportsTo: 'ceo', desc: 'Code and content quality standards, review enforcement' },
+        { id: 'board-security', title: 'Security Director', name: 'Aegis', agent: 'security-auditor', tier: 'strategic', avatar: '🛡️', status: 'active', reportsTo: 'ceo', desc: 'Security posture, vulnerability assessment, compliance' },
+        { id: 'board-research', title: 'Research Director', name: 'Cipher', agent: 'research-architect', tier: 'professional', avatar: '🔬', status: 'active', reportsTo: 'ceo', desc: 'Research methodology, knowledge strategy, academic rigor' },
+      ]
+    },
+    {
+      id: 'engineering', name: 'Engineering', icon: '💻', color: '#3b82f6',
+      employees: [
+        { id: 'eng-lead', title: 'Engineering Lead', name: 'Forge', agent: 'coder', tier: 'professional', avatar: '⌨️', status: 'active', reportsTo: 'cto', desc: 'Full-stack development, debugging, refactoring, implementation' },
+        { id: 'eng-qa', title: 'QA Engineer', name: 'Prism', agent: 'qa', tier: 'professional', avatar: '🧪', status: 'active', reportsTo: 'eng-lead', desc: 'Test plans, regression testing, edge case identification' },
+        { id: 'eng-data', title: 'Data Engineer', name: 'Flux', agent: 'data-wrangler', tier: 'professional', avatar: '📈', status: 'active', reportsTo: 'eng-lead', desc: 'Data cleaning, transformation, analysis, format conversion' },
+        { id: 'eng-browser', title: 'Automation Engineer', name: 'Phantom', agent: 'browser-agent', tier: 'professional', avatar: '🌐', status: 'active', reportsTo: 'eng-lead', desc: 'Browser automation, web scraping, headless operations' },
+        { id: 'eng-devops', title: 'DevOps Engineer', name: 'Relay', agent: 'devops', tier: 'professional', avatar: '🔧', status: 'idle', reportsTo: 'cto', desc: 'Deployment, monitoring, infrastructure, CI/CD pipelines' },
+      ]
+    },
+    {
+      id: 'marketing', name: 'Marketing & Sales', icon: '📣', color: '#10b981',
+      employees: [
+        { id: 'mkt-lead', title: 'Marketing Director', name: 'Echo', agent: 'marketing-hub', tier: 'professional', avatar: '📢', status: 'active', reportsTo: 'coo', desc: 'Multi-platform content pipelines, campaign strategy, performance tracking' },
+        { id: 'mkt-content', title: 'Content Lead', name: 'Quill', agent: 'writer', tier: 'professional', avatar: '✍️', status: 'active', reportsTo: 'mkt-lead', desc: 'Long-form content, copywriting, documentation, tone adaptation' },
+        { id: 'mkt-seo', title: 'SEO Lead', name: 'Beacon', agent: 'seo-keyword', tier: 'professional', avatar: '🔎', status: 'active', reportsTo: 'mkt-lead', desc: 'SEO audits, keyword research, content optimization, competitor analysis' },
+        { id: 'mkt-social', title: 'Social Media Manager', name: 'Pulse', agent: 'social-intel', tier: 'scout', avatar: '📱', status: 'active', reportsTo: 'mkt-lead', desc: 'Social monitoring, sentiment analysis, trend detection' },
+        { id: 'sales-lead', title: 'Sales Director', name: 'Catalyst', agent: 'lead-gen', tier: 'professional', avatar: '🤝', status: 'active', reportsTo: 'coo', desc: 'Lead generation, prospect enrichment, scoring, outreach sequences' },
+      ]
+    },
+    {
+      id: 'creative', name: 'Creative Studio', icon: '🎨', color: '#ec4899',
+      employees: [
+        { id: 'creative-dir', title: 'Creative Director', name: 'Muse', agent: 'media-producer', tier: 'creative', avatar: '🎬', status: 'active', reportsTo: 'coo', desc: 'Media production pipeline, creative strategy, brand consistency' },
+        { id: 'creative-design', title: 'UI/UX Designer', name: 'Pixel', agent: 'vibe-designer', tier: 'creative', avatar: '🎨', status: 'active', reportsTo: 'creative-dir', desc: 'Prompt-driven UI generation, predictive heat maps, interaction flows' },
+        { id: 'creative-video', title: 'Video Producer', name: 'Reel', agent: 'video-creator', tier: 'creative', avatar: '🎥', status: 'active', reportsTo: 'creative-dir', desc: 'Video generation, editing, social clips, thumbnails' },
+        { id: 'creative-3d', title: '3D Artist', name: 'Vertex', agent: 'blender-3d', tier: 'creative', avatar: '🧊', status: 'active', reportsTo: 'creative-dir', desc: 'Blender MCP text-to-3D environments and product renders' },
+        { id: 'creative-audio', title: 'Audio Engineer', name: 'Sonance', agent: 'audio-producer', tier: 'creative', avatar: '🎵', status: 'active', reportsTo: 'creative-dir', desc: 'Voiceovers, music, sound effects, podcast audio' },
+        { id: 'creative-brand', title: 'Brand Designer', name: 'Palette', agent: 'design-system', tier: 'professional', avatar: '🖌️', status: 'active', reportsTo: 'creative-dir', desc: 'Design systems, WCAG compliance, brand cloning, component specs' },
+      ]
+    },
+    {
+      id: 'customer-service', name: 'Customer Service', icon: '💬', color: '#f59e0b',
+      employees: [
+        { id: 'cs-lead', title: 'Support Lead', name: 'Harbor', agent: 'cs-lead', tier: 'professional', avatar: '🎧', status: 'active', reportsTo: 'coo', desc: 'Escalation management, ticket triage, satisfaction tracking' },
+        { id: 'cs-tier1', title: 'Tier 1 Support', name: 'Compass', agent: 'cs-tier1', tier: 'scout', avatar: '💬', status: 'active', reportsTo: 'cs-lead', desc: 'First-response support, FAQ handling, basic troubleshooting' },
+        { id: 'cs-tier2', title: 'Tier 2 Support', name: 'Resolve', agent: 'cs-tier2', tier: 'professional', avatar: '🔧', status: 'idle', reportsTo: 'cs-lead', desc: 'Complex issue resolution, technical investigation, bug reproduction' },
+      ]
+    },
+    {
+      id: 'tech-support', name: 'Tech Support & IT', icon: '🖥️', color: '#06b6d4',
+      employees: [
+        { id: 'it-lead', title: 'IT Director', name: 'Matrix', agent: 'it-director', tier: 'professional', avatar: '🖥️', status: 'active', reportsTo: 'cto', desc: 'Infrastructure oversight, system health, deployment coordination' },
+        { id: 'it-sysadmin', title: 'System Administrator', name: 'Root', agent: 'sysadmin', tier: 'professional', avatar: '🔑', status: 'active', reportsTo: 'it-lead', desc: 'Server management, monitoring, uptime, security patches' },
+        { id: 'it-helpdesk', title: 'Help Desk', name: 'Guide', agent: 'helpdesk', tier: 'scout', avatar: '🆘', status: 'idle', reportsTo: 'it-lead', desc: 'Internal support, tool provisioning, access management' },
+      ]
+    },
+    {
+      id: 'product', name: 'Product & Innovation', icon: '🚀', color: '#f97316',
+      employees: [
+        { id: 'prod-lead', title: 'Product Manager', name: 'Horizon', agent: 'product-factory', tier: 'professional', avatar: '🚀', status: 'active', reportsTo: 'ceo', desc: 'Product strategy, roadmap, digital product creation and publishing' },
+        { id: 'prod-research', title: 'Research Analyst', name: 'Oracle', agent: 'researcher', tier: 'professional', avatar: '📚', status: 'active', reportsTo: 'prod-lead', desc: 'Deep research, source synthesis, citation tracking, structured output' },
+        { id: 'prod-predict', title: 'Data Scientist', name: 'Forecast', agent: 'predictions', tier: 'professional', avatar: '📉', status: 'active', reportsTo: 'prod-lead', desc: 'Predictive analytics, forecasts, confidence scoring, trend analysis' },
+        { id: 'prod-knowledge', title: 'Knowledge Manager', name: 'Archive', agent: 'knowledge-graph', tier: 'professional', avatar: '🧩', status: 'active', reportsTo: 'prod-lead', desc: 'Knowledge ingestion, semantic linking, graph visualization' },
+      ]
+    },
+    {
+      id: 'operations', name: 'Operations & Hermes', icon: '⚡', color: '#a78bfa',
+      employees: [
+        { id: 'ops-hermes', title: 'Hermes Director', name: 'Hermes', agent: 'hermes-delegate', tier: 'persistent', avatar: '⚡', status: 'active', reportsTo: 'coo', desc: 'Persistent background tasks, walkaway mode, always-on worker' },
+        { id: 'ops-cron', title: 'Scheduler', name: 'Tempo', agent: 'hermes-cron', tier: 'persistent', avatar: '⏰', status: 'active', reportsTo: 'ops-hermes', desc: 'CRON job management, routine scheduling, periodic execution' },
+        { id: 'ops-gate', title: 'Compliance Officer', name: 'Gatekeeper', agent: 'hermes-approval', tier: 'persistent', avatar: '✅', status: 'active', reportsTo: 'ops-hermes', desc: 'Approval gates, risk assessment, compliance enforcement' },
+        { id: 'ops-scout', title: 'Field Scout', name: 'Ranger', agent: 'scout', tier: 'scout', avatar: '🔭', status: 'active', reportsTo: 'coo', desc: 'Quick fact-checking, lookups, rapid triage' },
+        { id: 'ops-batch', title: 'Batch Processor', name: 'Conveyor', agent: 'deepseek-worker', tier: 'economy', avatar: '📦', status: 'active', reportsTo: 'coo', desc: 'Bulk content generation, economy-tier batch processing' },
+        { id: 'ops-grok', title: 'Intelligence Analyst', name: 'Hawkeye', agent: 'grok-realtime', tier: 'realtime', avatar: '🦅', status: 'active', reportsTo: 'ceo', desc: 'Real-time web search, trending topics, live intelligence' },
+      ]
+    },
+  ],
+};
+
+// GET /api/hq/org — full org chart
+app.get('/api/hq/org', (req, res) => {
+  res.json(ORG_CHART);
+});
+
+// GET /api/hq/department/:id — single department detail
+app.get('/api/hq/department/:id', (req, res) => {
+  const dept = ORG_CHART.departments.find(d => d.id === req.params.id);
+  if (!dept) return res.status(404).json({ error: 'Department not found' });
+  res.json(dept);
+});
+
+// GET /api/hq/employee/:id — single employee detail
+app.get('/api/hq/employee/:id', (req, res) => {
+  for (const dept of ORG_CHART.departments) {
+    const emp = dept.employees.find(e => e.id === req.params.id);
+    if (emp) return res.json({ ...emp, department: dept.name, departmentId: dept.id });
+  }
+  res.status(404).json({ error: 'Employee not found' });
+});
+
+// GET /api/hq/stats — HQ summary stats
+app.get('/api/hq/stats', (req, res) => {
+  const allEmployees = ORG_CHART.departments.flatMap(d => d.employees);
+  const byTier = {};
+  const byStatus = { active: 0, idle: 0, busy: 0 };
+  allEmployees.forEach(e => {
+    byTier[e.tier] = (byTier[e.tier] || 0) + 1;
+    byStatus[e.status] = (byStatus[e.status] || 0) + 1;
+  });
+  res.json({
+    company: ORG_CHART.company,
+    departments: ORG_CHART.departments.length,
+    totalEmployees: allEmployees.length,
+    byTier,
+    byStatus,
+    cSuite: ORG_CHART.departments.find(d => d.id === 'executive').employees.length,
+  });
+});
+
+// POST /api/hq/dispatch/:employeeId — dispatch a task to a virtual employee
+app.post('/api/hq/dispatch/:employeeId', requireAdmin, (req, res) => {
+  const { task } = req.body;
+  if (!task) return res.status(400).json({ error: 'Task description required' });
+
+  let employee, department;
+  for (const dept of ORG_CHART.departments) {
+    const emp = dept.employees.find(e => e.id === req.params.employeeId);
+    if (emp) { employee = emp; department = dept; break; }
+  }
+  if (!employee) return res.status(404).json({ error: 'Employee not found' });
+
+  const taskId = uuidv4();
+  const routing = getAgentEffort(employee.agent);
+
+  logActivity('hq', `Task dispatched to ${employee.name} (${employee.title}): ${task.substring(0, 80)}`, {
+    taskId, employee: employee.id, department: department.id, model: routing.model,
+  });
+
+  broadcast({ event: 'hq_task_dispatched', data: {
+    taskId, employee: employee.id, name: employee.name, title: employee.title,
+    department: department.name, task, model: routing.model, tier: routing.tier,
+  }});
+
+  if (DEMO_MODE) {
+    setTimeout(() => {
+      broadcast({ event: 'hq_task_complete', data: {
+        taskId, employee: employee.id, name: employee.name,
+        result: `${employee.name} completed the task: "${task.substring(0, 60)}" — output ready for review.`,
+      }});
+    }, 3000 + Math.random() * 4000);
+  }
+
+  res.json({ ok: true, taskId, employee: employee.name, title: employee.title, department: department.name, model: routing.model });
+});
+
 // --- Gemini Omni Creative Endpoints ---
 
 // POST /api/omni/generate — multimodal content generation

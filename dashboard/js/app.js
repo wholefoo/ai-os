@@ -81,6 +81,7 @@ function switchView(view) {
     predictions: loadPredictions,
     batch: loadBatch,
     hermes: loadHermes,
+    hq: loadHQ,
     'seo-agency': loadSeoAgency,
     settings: loadSettings,
     automations: loadAutomations,
@@ -5237,6 +5238,126 @@ function renderMarkdown(text) {
     .replace(/^(?!<[hul])/gm, '<p>')
     .replace(/(<p>)+/g, '<p>')
     .replace(/<p><\/p>/g, '');
+}
+
+// --- Virtual HQ ---
+async function loadHQ() {
+  const [org, stats] = await Promise.all([
+    fetchJSON('/api/hq/org'),
+    fetchJSON('/api/hq/stats'),
+  ]);
+  if (!org || !org.departments) return;
+
+  renderHQStats(stats);
+  renderOrgChart(org);
+
+  const countEl = document.getElementById('hqEmployeeCount');
+  const deptEl = document.getElementById('hqDeptCount');
+  if (countEl) countEl.textContent = stats.totalEmployees || 0;
+  if (deptEl) deptEl.textContent = stats.departments || 0;
+}
+
+function renderHQStats(stats) {
+  const container = document.getElementById('hqStats');
+  if (!container) return;
+  container.innerHTML = `
+    <div class="hq-stat"><div class="hq-stat-value">${stats.totalEmployees}</div><div class="hq-stat-label">Total Employees</div></div>
+    <div class="hq-stat"><div class="hq-stat-value">${stats.departments}</div><div class="hq-stat-label">Departments</div></div>
+    <div class="hq-stat"><div class="hq-stat-value" style="color:var(--success);">${stats.byStatus?.active || 0}</div><div class="hq-stat-label">Active</div></div>
+    <div class="hq-stat"><div class="hq-stat-value" style="color:var(--text-muted);">${stats.byStatus?.idle || 0}</div><div class="hq-stat-label">Idle</div></div>
+    <div class="hq-stat"><div class="hq-stat-value">${stats.cSuite}</div><div class="hq-stat-label">C-Suite</div></div>
+  `;
+}
+
+function renderOrgChart(org) {
+  const container = document.getElementById('hqOrgChart');
+  if (!container) return;
+
+  container.innerHTML = org.departments.map(dept => {
+    const employees = dept.employees.map(emp => {
+      const tierClass = emp.tier === 'strategic' ? 'opus' : emp.tier === 'creative' ? 'omni' : emp.tier === 'scout' ? 'haiku' : emp.tier === 'persistent' ? 'hermes' : emp.tier === 'economy' ? 'economy' : emp.tier === 'realtime' ? 'grok' : 'sonnet';
+      const statusDot = emp.status === 'active' ? '🟢' : emp.status === 'busy' ? '🟡' : '⚪';
+      return `
+        <div class="hq-employee" onclick="showEmployee('${emp.id}', this)" data-tier="${tierClass}">
+          <div class="hq-avatar">${emp.avatar}</div>
+          <div class="hq-emp-info">
+            <div class="hq-emp-name">${statusDot} ${emp.name}</div>
+            <div class="hq-emp-title">${emp.title}</div>
+          </div>
+          <span class="hq-tier-badge hq-tier-${tierClass}">${emp.tier}</span>
+        </div>
+      `;
+    }).join('');
+
+    return `
+      <div class="hq-department" style="--dept-color: ${dept.color};">
+        <div class="hq-dept-header">
+          <span class="hq-dept-icon">${dept.icon}</span>
+          <h3 class="hq-dept-name">${dept.name}</h3>
+          <span class="hq-dept-count">${dept.employees.length}</span>
+        </div>
+        <div class="hq-employees">${employees}</div>
+      </div>
+    `;
+  }).join('');
+}
+
+async function showEmployee(empId, el) {
+  const data = await fetchJSON(`/api/hq/employee/${empId}`);
+  if (!data || data.error) return;
+
+  const modal = document.getElementById('hqEmployeeModal');
+  const detail = document.getElementById('hqEmployeeDetail');
+  const tierClass = data.tier === 'strategic' ? 'opus' : data.tier === 'creative' ? 'omni' : data.tier === 'scout' ? 'haiku' : data.tier === 'persistent' ? 'hermes' : 'sonnet';
+  const routing = data.tier === 'strategic' ? 'Opus 4.8 xhigh' : data.tier === 'creative' ? 'Gemini Omni' : data.tier === 'scout' ? 'Opus 4.8 low' : data.tier === 'persistent' ? 'Hermes MCP' : data.tier === 'economy' ? 'DeepSeek V4' : data.tier === 'realtime' ? 'Grok-3' : 'Opus 4.8 high';
+
+  detail.innerHTML = `
+    <div class="hq-modal-header">
+      <button class="btn btn-sm" onclick="document.getElementById('hqEmployeeModal').style.display='none';">&times; Close</button>
+    </div>
+    <div class="hq-profile">
+      <div class="hq-profile-avatar">${data.avatar}</div>
+      <div class="hq-profile-info">
+        <h3>${data.name}</h3>
+        <div class="hq-profile-title">${data.title}</div>
+        <div class="hq-profile-dept">${data.department}</div>
+      </div>
+      <span class="hq-tier-badge hq-tier-${tierClass}">${data.tier}</span>
+    </div>
+    <div class="hq-profile-details">
+      <div class="hq-detail-row"><span class="hq-detail-key">Agent</span><span class="hq-detail-val"><code>${data.agent}</code></span></div>
+      <div class="hq-detail-row"><span class="hq-detail-key">Model</span><span class="hq-detail-val">${routing}</span></div>
+      <div class="hq-detail-row"><span class="hq-detail-key">Status</span><span class="hq-detail-val hq-status-${data.status}">${data.status}</span></div>
+      <div class="hq-detail-row"><span class="hq-detail-key">Reports To</span><span class="hq-detail-val">${data.reportsTo || 'Board'}</span></div>
+    </div>
+    <div class="hq-profile-desc">${data.desc}</div>
+    <div class="hq-dispatch">
+      <h4>Dispatch Task</h4>
+      <div class="settings-input-row">
+        <input type="text" class="settings-input" id="hqTaskInput" placeholder="Describe the task..." spellcheck="false">
+        <button class="btn btn-primary" onclick="dispatchHQTask('${data.id}')">Dispatch</button>
+      </div>
+      <div id="hqDispatchResult" style="margin-top:10px;"></div>
+    </div>
+  `;
+  modal.style.display = 'flex';
+}
+
+async function dispatchHQTask(employeeId) {
+  const input = document.getElementById('hqTaskInput');
+  const task = input.value.trim();
+  if (!task) return;
+
+  const resultEl = document.getElementById('hqDispatchResult');
+  resultEl.innerHTML = '<div class="empty-state">Dispatching...</div>';
+
+  const result = await fetchJSON(`/api/hq/dispatch/${employeeId}`, { method: 'POST', body: { task } });
+  if (result.ok) {
+    resultEl.innerHTML = `<div class="hq-dispatch-success">&#9989; Task dispatched to <strong>${result.employee}</strong> (${result.title}) via ${result.model}</div>`;
+    input.value = '';
+  } else {
+    resultEl.innerHTML = `<div class="hq-dispatch-error">${result.error || 'Dispatch failed'}</div>`;
+  }
 }
 
 // --- Gemini Omni Creative ---

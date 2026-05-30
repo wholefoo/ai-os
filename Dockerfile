@@ -8,12 +8,19 @@ RUN npm ci --production
 
 # Copy app source
 COPY server.js ./
+COPY ecosystem.config.js ./
 COPY dashboard/ ./dashboard/
 COPY .claude/ ./.claude/
-COPY ecosystem.config.js ./
+COPY deploy/ ./deploy/
 
 # Create required directories
-RUN mkdir -p .magent/state .magent/vault/raw .magent/vault/wiki .magent/vault/outputs .magent/artifacts logs
+RUN mkdir -p \
+  .magent/state \
+  .magent/vault/raw \
+  .magent/vault/wiki \
+  .magent/vault/outputs \
+  .magent/artifacts \
+  logs
 
 # Non-root user
 RUN addgroup -S aios && adduser -S aios -G aios
@@ -22,7 +29,8 @@ USER aios
 
 EXPOSE 3000
 
-HEALTHCHECK --interval=30s --timeout=5s --start-period=10s \
+# Health check
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
   CMD wget -qO- http://localhost:3000/api/health || exit 1
 
 CMD ["node", "server.js"]
