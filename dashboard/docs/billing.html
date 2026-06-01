@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Billing &amp; Subscriptions — AI OS Docs</title>
+  <title>Billing, Subscriptions &amp; Stripe Setup — AI OS Docs</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/css/landing.css">
@@ -30,93 +30,212 @@
       <div class="docs-layout">
         <div class="docs-content">
           <div class="docs-breadcrumb">
-            <a href="/docs">Docs</a> <span>/</span> Billing &amp; Subscriptions
+            <a href="/docs">Docs</a> <span>/</span> Billing &amp; Stripe Setup
           </div>
 
-          <h1>Billing &amp; Subscriptions</h1>
-          <p class="docs-lead">AI OS uses Stripe for subscription management with two paid tiers. The dashboard is gated behind an active subscription via session-based access control.</p>
+          <h1>Billing, Subscriptions &amp; Stripe Setup</h1>
+          <p class="docs-lead">Complete guide to configuring Stripe for subscription payments and franchise fees. Covers account creation, API keys, product setup, webhooks, testing, and going live.</p>
 
           <h2>Subscription Tiers</h2>
           <table class="docs-table">
             <thead>
-              <tr><th>Feature</th><th>Pro ($49/mo)</th><th>Enterprise ($199/mo)</th></tr>
+              <tr><th>Feature</th><th>Pro ($49/mo)</th><th>Enterprise ($199/mo)</th><th>Franchise ($10K one-time)</th></tr>
             </thead>
             <tbody>
-              <tr><td>Agent access</td><td>All 25+ agents</td><td>All 25+ agents</td></tr>
-              <tr><td>Model tiers</td><td>Scout + Professional</td><td>All tiers including Strategic</td></tr>
-              <tr><td>Batch queue</td><td>50 items/day</td><td>Unlimited</td></tr>
-              <tr><td>API rate limit</td><td>120 req/min</td><td>300 req/min</td></tr>
-              <tr><td>Knowledge Graph entries</td><td>1,000</td><td>Unlimited</td></tr>
-              <tr><td>Concurrent pipelines</td><td>2</td><td>10</td></tr>
-              <tr><td>Vault storage</td><td>5 GB</td><td>50 GB</td></tr>
-              <tr><td>Support</td><td>Email</td><td>Priority email + Slack</td></tr>
+              <tr><td>Agent access</td><td>All 51 agents</td><td>All 51 agents</td><td>All 51 agents</td></tr>
+              <tr><td>Virtual HQ</td><td>10 departments</td><td>10 departments</td><td>10 departments (white-label)</td></tr>
+              <tr><td>Model tiers</td><td>Scout + Professional</td><td>All tiers incl. Strategic + Creative</td><td>All tiers</td></tr>
+              <tr><td>SEO Agency</td><td>5 audits/month</td><td>Unlimited</td><td>Unlimited</td></tr>
+              <tr><td>Gemini Omni Studio</td><td>&#10060;</td><td>&#9989;</td><td>&#9989;</td></tr>
+              <tr><td>YouTube Intelligence</td><td>&#10060;</td><td>&#9989;</td><td>&#9989;</td></tr>
+              <tr><td>Batch queue</td><td>50 items/day</td><td>Unlimited</td><td>Unlimited</td></tr>
+              <tr><td>API rate limit</td><td>120 req/min</td><td>300 req/min</td><td>Unlimited</td></tr>
+              <tr><td>Vault storage</td><td>5 GB</td><td>50 GB</td><td>Unlimited</td></tr>
+              <tr><td>Custom agents</td><td>&#10060;</td><td>&#9989;</td><td>&#9989;</td></tr>
+              <tr><td>White-label branding</td><td>&#10060;</td><td>&#10060;</td><td>&#9989;</td></tr>
+              <tr><td>Own Stripe integration</td><td>&#10060;</td><td>&#10060;</td><td>&#9989;</td></tr>
+              <tr><td>Dedicated instance</td><td>&#10060;</td><td>&#10060;</td><td>&#9989;</td></tr>
+              <tr><td>Legal dept (franchise agreements)</td><td>&#10060;</td><td>&#10060;</td><td>&#9989;</td></tr>
+              <tr><td>Lifetime updates</td><td>While subscribed</td><td>While subscribed</td><td>&#9989; Forever</td></tr>
+              <tr><td>Support</td><td>Email</td><td>Priority email + Slack</td><td>30-day onboarding + ongoing</td></tr>
             </tbody>
           </table>
+
+          <h2>Step 1 — Create a Stripe Account</h2>
+          <ol>
+            <li>Go to <a href="https://dashboard.stripe.com/register" target="_blank">dashboard.stripe.com/register</a></li>
+            <li>Sign up with your email</li>
+            <li>Verify your email and complete onboarding</li>
+          </ol>
+
+          <h2>Step 2 — Get Your Secret Key</h2>
+          <ol>
+            <li>Go to <a href="https://dashboard.stripe.com/apikeys" target="_blank">dashboard.stripe.com/apikeys</a></li>
+            <li>You will see two keys:
+              <ul>
+                <li><strong>Publishable key</strong> (<code>pk_test_...</code>) &mdash; not needed for AI OS</li>
+                <li><strong>Secret key</strong> (<code>sk_test_...</code>) &mdash; click &ldquo;Reveal test key&rdquo; and copy it</li>
+              </ul>
+            </li>
+            <li>Paste into your <code>.env</code>:</li>
+          </ol>
+          <pre><code>STRIPE_SECRET_KEY=sk_test_XXXXXXXXXXXXXXXXXXXXXXXX</code></pre>
+
+          <div class="docs-callout info">
+            <strong>Test vs Live:</strong> Start with test keys (<code>sk_test_...</code>). When ready to accept real payments, toggle &ldquo;Test mode&rdquo; off in the Stripe dashboard and use live keys (<code>sk_live_...</code>).
+          </div>
+
+          <h2>Step 3 — Create Products and Prices</h2>
+
+          <h3>Pro Plan ($49/month)</h3>
+          <ol>
+            <li>Go to <a href="https://dashboard.stripe.com/products" target="_blank">dashboard.stripe.com/products</a></li>
+            <li>Click <strong>+ Add product</strong></li>
+            <li>Fill in:
+              <ul>
+                <li><strong>Name:</strong> <code>AI OS Pro</code></li>
+                <li><strong>Description:</strong> <code>Full dashboard access, 51 AI agents, Virtual HQ, SEO Agency, skills &amp; pipelines</code></li>
+              </ul>
+            </li>
+            <li>Under <strong>Price information:</strong>
+              <ul>
+                <li><strong>Pricing model:</strong> Standard</li>
+                <li><strong>Price:</strong> $49.00</li>
+                <li><strong>Billing period:</strong> Monthly</li>
+              </ul>
+            </li>
+            <li>Click <strong>Save product</strong></li>
+            <li>On the product page, copy the <strong>Price ID</strong> (starts with <code>price_</code>)</li>
+            <li>Paste into <code>.env</code>:</li>
+          </ol>
+          <pre><code>STRIPE_PRO_PRICE_ID=price_XXXXXXXXXXXXXXXXXXXXXXXX</code></pre>
+
+          <h3>Enterprise Plan ($199/month)</h3>
+          <ol>
+            <li>Click <strong>+ Add product</strong> again</li>
+            <li>Fill in:
+              <ul>
+                <li><strong>Name:</strong> <code>AI OS Enterprise</code></li>
+                <li><strong>Description:</strong> <code>Everything in Pro + Gemini Omni Studio, YouTube Intel, priority xhigh routing, custom agents, API access</code></li>
+              </ul>
+            </li>
+            <li>Price: $199.00 / Monthly</li>
+            <li>Save, copy the Price ID, paste into <code>.env</code>:</li>
+          </ol>
+          <pre><code>STRIPE_ENTERPRISE_PRICE_ID=price_XXXXXXXXXXXXXXXXXXXXXXXX</code></pre>
+
+          <h3>Franchise Fee ($10,000 one-time)</h3>
+          <div class="docs-callout info">
+            <strong>No Stripe product needed.</strong> The franchise fee is handled as a dynamic one-time Stripe Checkout session created by the server. The amount ($10,000) is set in <code>FRANCHISE_CONFIG.fee</code> in <code>server.js</code>. No separate Price ID is required.
+          </div>
+
+          <h2>Step 4 — Set Up the Webhook</h2>
+          <p>The webhook lets Stripe notify your server when payments succeed, subscriptions renew, or customers cancel.</p>
+          <ol>
+            <li>Go to <a href="https://dashboard.stripe.com/webhooks" target="_blank">dashboard.stripe.com/webhooks</a></li>
+            <li>Click <strong>+ Add endpoint</strong></li>
+            <li><strong>Endpoint URL:</strong> <code>https://yourdomain.com/api/stripe/webhook</code></li>
+            <li><strong>Events to listen to</strong> &mdash; click &ldquo;Select events&rdquo; and add:
+              <ul>
+                <li><code>checkout.session.completed</code></li>
+                <li><code>customer.subscription.updated</code></li>
+                <li><code>customer.subscription.deleted</code></li>
+                <li><code>invoice.payment_succeeded</code></li>
+                <li><code>invoice.payment_failed</code></li>
+              </ul>
+            </li>
+            <li>Click <strong>Add endpoint</strong></li>
+            <li>On the webhook page, click <strong>Reveal</strong> under &ldquo;Signing secret&rdquo; and copy it (<code>whsec_...</code>)</li>
+            <li>Paste into <code>.env</code>:</li>
+          </ol>
+          <pre><code>STRIPE_WEBHOOK_SECRET=whsec_XXXXXXXXXXXXXXXXXXXXXXXX</code></pre>
+
+          <div class="docs-callout warn">
+            <strong>Important:</strong> The webhook endpoint receives raw request bodies (not JSON parsed) because Stripe requires the raw body for signature verification. This is already handled in <code>server.js</code> &mdash; the JSON body parser skips the <code>/api/stripe/webhook</code> route.
+          </div>
+
+          <h2>Step 5 — Complete .env Configuration</h2>
+          <pre><code># Stripe — Subscription paywall + Franchise payments
+STRIPE_SECRET_KEY=sk_test_XXXXXXXXXXXXXXXXXXXXXXXX
+STRIPE_WEBHOOK_SECRET=whsec_XXXXXXXXXXXXXXXXXXXXXXXX
+STRIPE_PRO_PRICE_ID=price_XXXXXXXXXXXXXXXXXXXXXXXX
+STRIPE_ENTERPRISE_PRICE_ID=price_XXXXXXXXXXXXXXXXXXXXXXXX
+# Franchise fee ($10,000 one-time) handled automatically</code></pre>
+
+          <h2>Step 6 — Restart and Test</h2>
+          <pre><code>sudo -u aios pm2 restart ai-os --update-env</code></pre>
+
+          <h3>Stripe Test Cards</h3>
+          <table class="docs-table">
+            <thead>
+              <tr><th>Card Number</th><th>Result</th></tr>
+            </thead>
+            <tbody>
+              <tr><td><code>4242 4242 4242 4242</code></td><td>Successful payment</td></tr>
+              <tr><td><code>4000 0000 0000 3220</code></td><td>Requires 3D Secure authentication</td></tr>
+              <tr><td><code>4000 0000 0000 0002</code></td><td>Card declined</td></tr>
+              <tr><td><code>4000 0000 0000 9995</code></td><td>Insufficient funds</td></tr>
+            </tbody>
+          </table>
+          <p>Use any future expiry date, any 3-digit CVC, and any billing ZIP code.</p>
+
+          <h2>Step 7 — Go Live</h2>
+          <ol>
+            <li>Complete Stripe account activation (business info, bank account for payouts)</li>
+            <li>Toggle <strong>Test mode off</strong> in the Stripe dashboard</li>
+            <li>Copy the <strong>live</strong> keys (<code>sk_live_...</code>, <code>whsec_...</code>)</li>
+            <li>Create the same products/prices in live mode (Price IDs will be different)</li>
+            <li>Update your <code>.env</code> with all live keys</li>
+            <li>Update the webhook endpoint to use live mode</li>
+            <li>Restart: <code>sudo -u aios pm2 restart ai-os --update-env</code></li>
+          </ol>
+
+          <div class="docs-callout warn">
+            <strong>Before going live:</strong> Test the full checkout flow end-to-end with test cards. Verify the webhook fires correctly by checking <code>pm2 logs ai-os</code> for Stripe event handling logs.
+          </div>
 
           <h2>Checkout Flow</h2>
           <p>The subscription flow uses Stripe Checkout for secure, PCI-compliant payment processing:</p>
           <ol>
             <li>User clicks a pricing CTA on the landing page</li>
             <li>The server creates a Stripe Checkout Session via <code>GET /api/stripe/checkout?plan=pro</code></li>
-            <li>User is redirected to Stripe's hosted payment page</li>
-            <li>After successful payment, Stripe redirects to <code>/api/stripe/success</code></li>
+            <li>User is redirected to Stripe&rsquo;s hosted payment page</li>
+            <li>After successful payment, Stripe redirects to the success URL</li>
             <li>The server creates a session cookie and redirects to <code>/app</code></li>
           </ol>
 
-          <h2>Webhook Handling</h2>
-          <p>Stripe sends webhook events to <code>POST /api/stripe/webhook</code> for lifecycle management:</p>
+          <h3>Franchise Checkout Flow</h3>
+          <ol>
+            <li>Prospect submits application via <code>POST /api/franchise/apply</code></li>
+            <li>Admin reviews and approves in the Franchise dashboard</li>
+            <li>Admin triggers payment link via <code>POST /api/franchise/checkout/:id</code></li>
+            <li>Stripe creates a $10,000 one-time Checkout Session</li>
+            <li>After payment, admin marks participant as active and provisions their instance</li>
+          </ol>
+
+          <h2>Webhook Events</h2>
           <table class="docs-table">
             <thead>
               <tr><th>Event</th><th>Action</th></tr>
             </thead>
             <tbody>
-              <tr><td><code>checkout.session.completed</code></td><td>Activate subscription, create session</td></tr>
-              <tr><td><code>customer.subscription.updated</code></td><td>Update plan tier</td></tr>
+              <tr><td><code>checkout.session.completed</code></td><td>Activate subscription or franchise, create session</td></tr>
+              <tr><td><code>customer.subscription.updated</code></td><td>Update plan tier (pro &harr; enterprise)</td></tr>
               <tr><td><code>customer.subscription.deleted</code></td><td>Revoke dashboard access</td></tr>
+              <tr><td><code>invoice.payment_succeeded</code></td><td>Confirm renewal, extend access</td></tr>
               <tr><td><code>invoice.payment_failed</code></td><td>Notify user, enter grace period</td></tr>
             </tbody>
           </table>
 
-          <div class="docs-callout warn">
-            <strong>Important:</strong> The webhook endpoint receives raw request bodies (not JSON parsed) because Stripe requires the raw body for signature verification via <code>STRIPE_WEBHOOK_SECRET</code>.
-          </div>
-
           <h2>Session Management</h2>
-          <p>Dashboard access is controlled by a session cookie:</p>
           <ul>
             <li><strong>Cookie name:</strong> <code>ai-os-session</code></li>
-            <li><strong>Type:</strong> HTTP-only (not accessible via JavaScript)</li>
+            <li><strong>Type:</strong> HTTP-only, Secure (production), SameSite: Lax</li>
             <li><strong>Expiry:</strong> 30 days</li>
-            <li><strong>Content:</strong> Cryptographically random token (not email or PII)</li>
-            <li><strong>Validation:</strong> Server-side lookup maps token to email + plan</li>
+            <li><strong>Content:</strong> Cryptographically random token (UUID v4)</li>
+            <li><strong>Validation:</strong> Server-side lookup maps token &rarr; email + plan + role + expiry</li>
+            <li><strong>Fallback:</strong> Bearer token via <code>Authorization</code> header (for API clients)</li>
           </ul>
-
-          <h3>Access Control Flow</h3>
-          <ol>
-            <li>User requests <code>/app</code></li>
-            <li>Server reads <code>ai-os-session</code> cookie</li>
-            <li>Looks up session in memory (token &rarr; email + plan + expiry)</li>
-            <li>If valid session with active plan: serve <code>app.html</code></li>
-            <li>If no session, expired, or no plan: redirect to <code>/login</code></li>
-          </ol>
-
-          <h2>Stripe Configuration</h2>
-          <p>Required environment variables for billing:</p>
-          <table class="docs-table">
-            <thead>
-              <tr><th>Variable</th><th>Where to Find</th></tr>
-            </thead>
-            <tbody>
-              <tr><td><code>STRIPE_SECRET_KEY</code></td><td>Stripe Dashboard &rarr; Developers &rarr; API keys</td></tr>
-              <tr><td><code>STRIPE_WEBHOOK_SECRET</code></td><td>Stripe Dashboard &rarr; Developers &rarr; Webhooks &rarr; Signing secret</td></tr>
-              <tr><td><code>STRIPE_PRO_PRICE_ID</code></td><td>Stripe Dashboard &rarr; Products &rarr; Pro plan &rarr; Price ID</td></tr>
-              <tr><td><code>STRIPE_ENTERPRISE_PRICE_ID</code></td><td>Stripe Dashboard &rarr; Products &rarr; Enterprise plan &rarr; Price ID</td></tr>
-            </tbody>
-          </table>
-
-          <div class="docs-callout info">
-            <strong>Testing:</strong> Use Stripe test mode keys (prefix <code>sk_test_</code>) during development. Test card number: <code>4242 4242 4242 4242</code> with any future expiry and any CVC.
-          </div>
 
           <div class="docs-page-nav">
             <a href="/docs/deployment">&larr; Deployment</a>
@@ -126,11 +245,17 @@
 
         <aside class="docs-toc">
           <div class="docs-toc-title">On this page</div>
-          <a href="#subscription-tiers">Subscription Tiers</a>
-          <a href="#checkout-flow">Checkout Flow</a>
-          <a href="#webhook-handling">Webhook Handling</a>
-          <a href="#session-management">Session Management</a>
-          <a href="#stripe-configuration">Stripe Configuration</a>
+          <a href="#">Subscription Tiers</a>
+          <a href="#">Step 1 — Create Account</a>
+          <a href="#">Step 2 — Secret Key</a>
+          <a href="#">Step 3 — Products &amp; Prices</a>
+          <a href="#">Step 4 — Webhook</a>
+          <a href="#">Step 5 — .env Config</a>
+          <a href="#">Step 6 — Test</a>
+          <a href="#">Step 7 — Go Live</a>
+          <a href="#">Checkout Flow</a>
+          <a href="#">Webhook Events</a>
+          <a href="#">Session Management</a>
         </aside>
       </div>
     </div>
