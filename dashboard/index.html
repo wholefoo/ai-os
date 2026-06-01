@@ -547,6 +547,256 @@
     </div>
   </div>
 
+  <!-- Tour Guide Avatar Widget -->
+  <div id="tourGuide" class="tour-guide">
+    <button class="tour-guide-fab" id="tourFab" onclick="toggleTourGuide()">
+      <div class="tour-avatar">
+        <div class="tour-avatar-face">&#129302;</div>
+        <div class="tour-avatar-ring"></div>
+      </div>
+      <span class="tour-fab-label">Meet Atlas</span>
+    </button>
+
+    <div class="tour-panel" id="tourPanel">
+      <div class="tour-header">
+        <div class="tour-header-avatar">&#129302;</div>
+        <div class="tour-header-info">
+          <div class="tour-header-name">Atlas — AI Tour Guide</div>
+          <div class="tour-header-role">CEO &amp; Chief Orchestrator</div>
+        </div>
+        <button class="tour-close" onclick="toggleTourGuide()">&times;</button>
+      </div>
+
+      <div class="tour-messages" id="tourMessages">
+        <!-- Messages populate here -->
+      </div>
+
+      <div class="tour-options" id="tourOptions">
+        <!-- Quick reply buttons populate here -->
+      </div>
+
+      <div class="tour-input-row">
+        <input type="text" class="tour-input" id="tourInput" placeholder="Ask me anything..." onkeydown="if(event.key==='Enter')sendTourMessage()">
+        <button class="tour-send" onclick="sendTourMessage()">&#10148;</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+  // --- Tour Guide Avatar Logic ---
+  const tourGuideData = {
+    name: 'Atlas',
+    role: 'CEO & Chief Orchestrator',
+    greeting: "Hey there! I'm Atlas, the CEO of AI OS Corp. I run a virtual company with 51 AI employees across 10 departments. Want me to show you around?",
+    tours: {
+      overview: [
+        { msg: "AI OS is a Virtual Corporate Headquarters — imagine a full company staffed entirely by AI agents, each with a name, role, and department.", delay: 0 },
+        { msg: "We have 10 departments: Executive, Legal, Engineering, Marketing, Creative, Customer Service, IT, Product, Operations, and a Board of Directors.", delay: 2000 },
+        { msg: "Every agent runs on one of 7 model tiers — from my strategic Opus 4.8 xhigh brain, down to DeepSeek economy workers for bulk tasks.", delay: 4000 },
+        { msg: "Want to hear about a specific department, or should I tell you about our franchise opportunity?", delay: 6000, options: ['Tell me about SEO Agency', 'Creative Studio', 'The Franchise', 'How does pricing work?'] },
+      ],
+      seo: [
+        { msg: "Our SEO Agency is one of the most powerful features. When you audit a domain, I dispatch 5 sub-agents simultaneously:", delay: 0 },
+        { msg: "Beacon (Keyword Analysis), a Technical Auditor, a Competitor Analyst, a Content Reviewer, and a Backlink Profiler — all running in parallel.", delay: 2000 },
+        { msg: "They generate a composite score out of 100, plus content briefs, a 12-week action calendar, and optimized meta tags. It's what agencies charge $5K-$10K/month for.", delay: 4000 },
+        { msg: "Anything else you'd like to know?", delay: 6000, options: ['How does the Virtual HQ work?', 'Tell me about Franchise', 'What about Creative Studio?', 'Show me pricing'] },
+      ],
+      creative: [
+        { msg: "The Creative Studio is powered by Gemini Omni — Google's multimodal generation model. We have 5 creative agents:", delay: 0 },
+        { msg: "Muse (Creative Director), Pixel (UI/UX), Reel (Video Producer), Vertex (3D Artist), and Sonance (Audio Engineer). Plus Palette for brand design.", delay: 2000 },
+        { msg: "You can generate videos, images, audio, thumbnails, and social clips — all from text prompts. Every output gets SynthID watermarked for provenance.", delay: 4000 },
+        { msg: "We also have YouTube Intelligence — Claude Vision analyzes video frames to extract what speakers show on screen, not just what they say.", delay: 6000, options: ['Tell me about the franchise', 'How about SEO Agency?', 'Show me pricing', 'What models do you use?'] },
+      ],
+      franchise: [
+        { msg: "This is the big one. We're offering AI OS as a franchise — your own fully deployed Virtual Corporate HQ.", delay: 0 },
+        { msg: "It's a $10,000 one-time fee. No monthly royalties, no recurring charges. You get the entire platform deployed on your own infrastructure.", delay: 2000 },
+        { msg: "That includes all 51 agents, 10 departments, SEO Agency, Creative Studio, YouTube Intel, white-label branding, Stripe integration for YOUR customers, and lifetime updates.", delay: 4000 },
+        { msg: "We're limiting it to 1,000 participants total. Our Legal department — Justice, Shield, Covenant, and Clause — handles all the franchise agreements and compliance.", delay: 6000 },
+        { msg: "At full capacity, that's $10 million in franchise revenue. Want to learn more?", delay: 8000, options: ['How do I apply?', 'What\'s included exactly?', 'Show me the pricing page', 'Back to overview'] },
+      ],
+      pricing: [
+        { msg: "We have three tiers:", delay: 0 },
+        { msg: "Pro at $49/month — full dashboard, all 51 agents, Virtual HQ, SEO audits, skills, and cost tracking.", delay: 1500 },
+        { msg: "Enterprise at $199/month — everything in Pro plus Gemini Omni Studio, YouTube Intelligence, priority xhigh routing, custom agents, and API access.", delay: 3000 },
+        { msg: "Franchise at $10,000 one-time — everything in Enterprise plus your own deployed instance, white-label branding, Stripe for your customers, and lifetime updates. Limited to 1,000 spots.", delay: 5000, options: ['I want the franchise', 'Tell me more about features', 'Back to overview'] },
+      ],
+      models: [
+        { msg: "We route across 7 model tiers for optimal cost and quality:", delay: 0 },
+        { msg: "Strategic (Opus 4.8 xhigh) — that's me and the C-Suite. Deep reasoning for architecture and critical decisions.", delay: 1500 },
+        { msg: "Professional (Opus 4.8 high) — 23 agents handle research, coding, writing, legal, and support work.", delay: 3000 },
+        { msg: "Scout (Opus 4.8 low) — fast lookups and triage. Creative (Gemini Omni) — video, image, audio. Economy (DeepSeek V4) — bulk processing. Realtime (Grok-3) — live web search. Persistent (Hermes MCP) — background tasks.", delay: 5000, options: ['Tell me about SEO', 'Creative Studio', 'The Franchise', 'Pricing'] },
+      ],
+      apply: [
+        { msg: "To apply for a franchise, scroll down to the pricing section and click 'Apply for Franchise', or I can take you there now.", delay: 0 },
+        { msg: "You'll fill out a short application — name, email, company, and industry. Our team reviews it, and once approved, you'll get a Stripe payment link for the $10,000 fee.", delay: 2000 },
+        { msg: "After payment, we deploy your instance, configure your branding, and give you 30 days of onboarding support.", delay: 4000, options: ['Take me to pricing', 'Back to overview', 'What\'s included?'] },
+      ],
+    },
+    quickReplies: {
+      'Tell me about SEO Agency': 'seo',
+      'How about SEO Agency?': 'seo',
+      'Creative Studio': 'creative',
+      'What about Creative Studio?': 'creative',
+      'Tell me about the franchise': 'franchise',
+      'The Franchise': 'franchise',
+      'Tell me more about features': 'overview',
+      'How does the Virtual HQ work?': 'overview',
+      'Back to overview': 'overview',
+      'How does pricing work?': 'pricing',
+      'Show me pricing': 'pricing',
+      'Show me the pricing page': 'pricing',
+      'What models do you use?': 'models',
+      'I want the franchise': 'apply',
+      'How do I apply?': 'apply',
+      'What\'s included exactly?': 'franchise',
+      'What\'s included?': 'franchise',
+      'Take me to pricing': '_scroll_pricing',
+    },
+    fallbacks: [
+      "Great question! I'd love to help with that. For detailed answers, you can log into the dashboard or check our docs at /docs.",
+      "That's a bit outside my tour script, but the full platform has the answer. Want me to tell you about our features, pricing, or franchise instead?",
+      "I'm best at giving tours! Try asking about the SEO Agency, Creative Studio, Virtual HQ, or Franchise opportunity.",
+    ],
+  };
+
+  let tourOpen = false;
+  let tourTyping = false;
+
+  function toggleTourGuide() {
+    tourOpen = !tourOpen;
+    const panel = document.getElementById('tourPanel');
+    const fab = document.getElementById('tourFab');
+    panel.classList.toggle('open', tourOpen);
+    fab.classList.toggle('active', tourOpen);
+
+    if (tourOpen && document.getElementById('tourMessages').children.length === 0) {
+      addBotMessage(tourGuideData.greeting, ['Give me the tour!', 'Tell me about pricing', 'The Franchise', 'What models do you use?']);
+    }
+  }
+
+  function addBotMessage(text, options) {
+    const container = document.getElementById('tourMessages');
+    const bubble = document.createElement('div');
+    bubble.className = 'tour-msg tour-msg-bot';
+    bubble.innerHTML = '<span class="tour-msg-avatar">&#129302;</span><div class="tour-msg-text">' + text + '</div>';
+    container.appendChild(bubble);
+    container.scrollTop = container.scrollHeight;
+
+    if (options) {
+      setTimeout(() => setTourOptions(options), 300);
+    }
+  }
+
+  function addUserMessage(text) {
+    const container = document.getElementById('tourMessages');
+    const bubble = document.createElement('div');
+    bubble.className = 'tour-msg tour-msg-user';
+    bubble.innerHTML = '<div class="tour-msg-text">' + text + '</div>';
+    container.appendChild(bubble);
+    container.scrollTop = container.scrollHeight;
+  }
+
+  function showTyping() {
+    const container = document.getElementById('tourMessages');
+    const typing = document.createElement('div');
+    typing.className = 'tour-msg tour-msg-bot tour-typing';
+    typing.id = 'tourTypingIndicator';
+    typing.innerHTML = '<span class="tour-msg-avatar">&#129302;</span><div class="tour-msg-text"><span class="tour-dots"><span>.</span><span>.</span><span>.</span></span></div>';
+    container.appendChild(typing);
+    container.scrollTop = container.scrollHeight;
+  }
+
+  function hideTyping() {
+    const el = document.getElementById('tourTypingIndicator');
+    if (el) el.remove();
+  }
+
+  function setTourOptions(options) {
+    const container = document.getElementById('tourOptions');
+    container.innerHTML = options.map(opt =>
+      '<button class="tour-option" onclick="handleTourOption(\'' + opt.replace(/'/g, "\\'") + '\')">' + opt + '</button>'
+    ).join('');
+  }
+
+  function handleTourOption(option) {
+    addUserMessage(option);
+    document.getElementById('tourOptions').innerHTML = '';
+
+    const tourKey = tourGuideData.quickReplies[option];
+
+    if (tourKey === '_scroll_pricing') {
+      addBotMessage("Taking you to the pricing section now!");
+      setTimeout(() => document.getElementById('pricing').scrollIntoView({ behavior: 'smooth' }), 500);
+      return;
+    }
+
+    if (tourKey && tourGuideData.tours[tourKey]) {
+      playTour(tourKey);
+    } else {
+      const fallback = tourGuideData.fallbacks[Math.floor(Math.random() * tourGuideData.fallbacks.length)];
+      showTyping();
+      setTimeout(() => {
+        hideTyping();
+        addBotMessage(fallback, ['Give me the tour!', 'Pricing', 'The Franchise']);
+      }, 1000);
+    }
+  }
+
+  function playTour(tourKey) {
+    const steps = tourGuideData.tours[tourKey];
+    if (!steps) return;
+
+    showTyping();
+    steps.forEach((step, i) => {
+      setTimeout(() => {
+        hideTyping();
+        if (i < steps.length - 1) showTyping();
+        addBotMessage(step.msg, step.options || null);
+      }, step.delay + 1000);
+    });
+  }
+
+  function sendTourMessage() {
+    const input = document.getElementById('tourInput');
+    const text = input.value.trim();
+    if (!text) return;
+    input.value = '';
+
+    addUserMessage(text);
+    document.getElementById('tourOptions').innerHTML = '';
+
+    const lower = text.toLowerCase();
+    let matched = null;
+    if (lower.includes('seo') || lower.includes('audit')) matched = 'seo';
+    else if (lower.includes('creative') || lower.includes('video') || lower.includes('omni')) matched = 'creative';
+    else if (lower.includes('franchise') || lower.includes('10,000') || lower.includes('10000')) matched = 'franchise';
+    else if (lower.includes('price') || lower.includes('pricing') || lower.includes('cost') || lower.includes('how much')) matched = 'pricing';
+    else if (lower.includes('model') || lower.includes('opus') || lower.includes('tier')) matched = 'models';
+    else if (lower.includes('apply') || lower.includes('sign up') || lower.includes('join')) matched = 'apply';
+    else if (lower.includes('tour') || lower.includes('overview') || lower.includes('what is') || lower.includes('tell me')) matched = 'overview';
+    else if (lower.includes('youtube') || lower.includes('video intel')) matched = 'creative';
+    else if (lower.includes('legal') || lower.includes('compliance') || lower.includes('contract')) matched = 'franchise';
+    else if (lower.includes('hq') || lower.includes('headquarter') || lower.includes('department')) matched = 'overview';
+
+    showTyping();
+    setTimeout(() => {
+      hideTyping();
+      if (matched) {
+        playTour(matched);
+      } else {
+        const fallback = tourGuideData.fallbacks[Math.floor(Math.random() * tourGuideData.fallbacks.length)];
+        addBotMessage(fallback, ['Give me the tour!', 'Pricing', 'The Franchise', 'SEO Agency']);
+      }
+    }, 800);
+  }
+
+  // Auto-show tour guide after 5 seconds with a subtle bounce
+  setTimeout(() => {
+    const fab = document.getElementById('tourFab');
+    if (fab && !tourOpen) fab.classList.add('attention');
+  }, 5000);
+  </script>
+
   <script src="/js/landing.js"></script>
 </body>
 </html>
