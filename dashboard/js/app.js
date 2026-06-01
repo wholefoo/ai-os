@@ -81,6 +81,7 @@ function switchView(view) {
     predictions: loadPredictions,
     batch: loadBatch,
     hermes: loadHermes,
+    youtube: loadYouTube,
     hq: loadHQ,
     'seo-agency': loadSeoAgency,
     settings: loadSettings,
@@ -5027,7 +5028,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
 // Map of section → field → input ID
 const settingsFieldMap = {
-  ai: ['anthropic_api_key', 'deepseek_api_key', 'xai_api_key', 'firecrawl_api_key', 'gemini_api_key'],
+  ai: ['anthropic_api_key', 'deepseek_api_key', 'xai_api_key', 'firecrawl_api_key', 'gemini_api_key', 'tavily_api_key', 'apify_api_token'],
   mcp: ['hermes_url', 'hermes_enabled'],
   notifications: ['telegram_bot_token', 'telegram_chat_id', 'slack_webhook_url'],
   automation: ['n8n_webhook_base', 'n8n_api_key', 'team_webhook_url'],
@@ -5238,6 +5239,213 @@ function renderMarkdown(text) {
     .replace(/^(?!<[hul])/gm, '<p>')
     .replace(/(<p>)+/g, '<p>')
     .replace(/<p><\/p>/g, '');
+}
+
+// --- YouTube Video Intelligence ---
+let ytAnalyses = [];
+
+async function loadYouTube() {
+  const data = await fetchJSON('/api/youtube/analyses');
+  if (Array.isArray(data)) ytAnalyses = data;
+  renderYTList();
+}
+
+function renderYTList() {
+  const container = document.getElementById('ytAnalysisList');
+  if (!container) return;
+
+  if (ytAnalyses.length === 0) {
+    container.innerHTML = '<div class="empty-state">No videos analyzed yet. Paste a YouTube URL above to start.</div>';
+    return;
+  }
+
+  container.innerHTML = ytAnalyses.slice().reverse().map(a => {
+    const statusIcon = a.status === 'complete' ? '&#9989;' : a.status === 'processing' ? '&#9203;' : '&#10060;';
+    return `
+      <div class="yt-card">
+        <div class="yt-card-thumb">
+          <img src="https://img.youtube.com/vi/${a.videoId}/mqdefault.jpg" alt="thumbnail" loading="lazy">
+          <span class="yt-card-duration">${a.duration || '...'}</span>
+        </div>
+        <div class="yt-card-info">
+          <div class="yt-card-title">${statusIcon} ${escapeHtml(a.title || a.videoId)}</div>
+          <div class="yt-card-meta">
+            <span>${a.type}</span>
+            <span>${a.frameCount} frames</span>
+            <span>${new Date(a.startedAt).toLocaleDateString()}</span>
+            <span class="yt-status-${a.status}">${a.status}</span>
+          </div>
+        </div>
+        <div class="yt-card-actions">
+          <button class="btn btn-sm btn-primary" onclick="viewYTAnalysis('${a.id}')" ${a.status !== 'complete' ? 'disabled' : ''}>View</button>
+          <button class="btn btn-sm btn-danger" onclick="deleteYTAnalysis('${a.id}')">Delete</button>
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+async function startYTAnalysis() {
+  const urlInput = document.getElementById('ytUrl');
+  const url = urlInput.value.trim();
+  if (!url) return;
+
+  const frameInterval = parseInt(document.getElementById('ytFrameInterval').value);
+  const analysisType = document.getElementById('ytAnalysisType').value;
+  const btn = document.getElementById('ytAnalyzeBtn');
+  const progressEl = document.getElementById('ytProgress');
+
+  btn.disabled = true;
+  btn.textContent = 'Analyzing...';
+  progressEl.innerHTML = `
+    <div class="omni-progress-bar"><div class="omni-progress-fill yt-progress-fill" id="ytProgressFill" style="width:5%"></div></div>
+    <div class="omni-progress-status" id="ytProgressStatus">Initializing video analysis pipeline...</div>
+  `;
+
+  const result = await fetchJSON('/api/youtube/analyze', { method: 'POST', body: { url, frameInterval, analysisType } });
+
+  if (!result.ok) {
+    progressEl.innerHTML = `<div class="empty-state" style="color:var(--error);">${result.error || 'Analysis failed'}</div>`;
+    btn.disabled = false;
+    btn.innerHTML = '&#127909; Analyze';
+    return;
+  }
+
+  const analysisId = result.analysisId;
+
+  // Listen for WebSocket progress
+  const origHandler = ws?.onmessage;
+  const progressSteps = { fetching_info: 15, extracting_frames: 35, transcribing: 55, analyzing_frames: 75, synthesizing: 90, complete: 100 };
+
+  const handler = (event) => {
+    try {
+      const data = JSON.parse(event.data);
+      if (data.event === 'yt_analysis_progress' && data.data.id === analysisId) {
+        const fill = document.getElementById('ytProgressFill');
+        const status = document.getElementById('ytProgressStatus');
+        if (fill) fill.style.width = `${progressSteps[data.data.status] || 50}%`;
+        if (status) status.textContent = data.data.msg;
+      }
+      if (data.event === 'yt_analysis_complete' && data.data.id === analysisId) {
+        progressEl.innerHTML = '';
+        btn.disabled = false;
+        btn.innerHTML = '&#127909; Analyze';
+        urlInput.value = '';
+        loadYouTube();
+        showSettingsToast('Video analysis complete');
+        if (ws) ws.onmessage = origHandler;
+      }
+    } catch {}
+    if (origHandler) origHandler(event);
+  };
+  if (ws) ws.onmessage = handler;
+
+  setTimeout(() => {
+    if (btn.disabled) { btn.disabled = false; btn.innerHTML = '&#127909; Analyze'; if (ws) ws.onmessage = origHandler; loadYouTube(); }
+  }, 30000);
+}
+
+async function viewYTAnalysis(analysisId) {
+  const analysis = await fetchJSON(`/api/youtube/analysis/${analysisId}`);
+  if (!analysis || analysis.error) return;
+
+  const detail = document.getElementById('ytAnalysisDetail');
+  if (!detail) return;
+
+  const info = analysis.videoInfo || {};
+  const summary = analysis.summary || {};
+  const transcript = analysis.transcript || {};
+  const insights = analysis.insights || [];
+  const visuals = analysis.visualAnalysis || [];
+
+  // Visual timeline
+  const timeline = visuals.map(v => `
+    <div class="yt-timeline-frame">
+      <div class="yt-frame-time">${v.timecode}</div>
+      <div class="yt-frame-content">
+        <div class="yt-frame-scene">${escapeHtml(v.scene)}</div>
+        <div class="yt-frame-elements">${v.elements.map(e => `<span class="yt-element-tag">${escapeHtml(e)}</span>`).join('')}</div>
+        ${v.onScreenText ? `<div class="yt-frame-ocr"><span class="yt-ocr-label">On-screen:</span> ${escapeHtml(v.onScreenText)}</div>` : ''}
+      </div>
+    </div>
+  `).join('');
+
+  // Transcript segments
+  const transcriptHtml = (transcript.segments || []).map(s => `
+    <div class="yt-transcript-seg">
+      <span class="yt-transcript-time">${Math.floor(s.start / 60)}:${String(s.start % 60).padStart(2, '0')}</span>
+      <span class="yt-transcript-text">${escapeHtml(s.text)}</span>
+    </div>
+  `).join('');
+
+  // Insights
+  const insightsHtml = insights.map(i => {
+    const typeIcon = i.type === 'visual' ? '&#128065;' : i.type === 'content' ? '&#128218;' : i.type === 'seo' ? '&#128200;' : '&#128268;';
+    return `
+      <div class="yt-insight">
+        <span class="yt-insight-icon">${typeIcon}</span>
+        <div class="yt-insight-text">${escapeHtml(i.insight)}</div>
+        <span class="yt-insight-confidence">${Math.round(i.confidence * 100)}%</span>
+      </div>
+    `;
+  }).join('');
+
+  // Key topics
+  const topicsHtml = (summary.keyTopics || []).map(t => `<span class="yt-topic-tag">${escapeHtml(t)}</span>`).join('');
+
+  detail.innerHTML = `
+    <div class="yt-report">
+      <div class="yt-report-header">
+        <button class="btn btn-sm" onclick="document.getElementById('ytAnalysisDetail').innerHTML=''; document.getElementById('ytAnalysisDetail').style.display='none';">&larr; Back</button>
+        <h3>${escapeHtml(info.title || analysis.videoId)}</h3>
+      </div>
+
+      <div class="yt-video-meta">
+        <img src="https://img.youtube.com/vi/${analysis.videoId}/mqdefault.jpg" alt="thumb" class="yt-report-thumb">
+        <div class="yt-meta-details">
+          <div class="yt-meta-row"><strong>Channel:</strong> ${escapeHtml(info.channel || 'Unknown')}</div>
+          <div class="yt-meta-row"><strong>Duration:</strong> ${info.duration || 'Unknown'}</div>
+          <div class="yt-meta-row"><strong>Views:</strong> ${info.views ? info.views.toLocaleString() : 'N/A'}</div>
+          <div class="yt-meta-row"><strong>Likes:</strong> ${info.likes ? info.likes.toLocaleString() : 'N/A'}</div>
+          <div class="yt-meta-row"><strong>Frames analyzed:</strong> ${visuals.length}</div>
+          <div class="yt-meta-row"><strong>Analysis type:</strong> ${analysis.type}</div>
+        </div>
+      </div>
+
+      <section class="panel" style="margin-top:16px;">
+        <h3 class="panel-title">Summary</h3>
+        <p class="yt-summary-text">${escapeHtml(summary.overview || '')}</p>
+        <div class="yt-summary-meta">
+          <div><strong>Content Type:</strong> ${summary.contentType || 'N/A'}</div>
+          <div><strong>Level:</strong> ${summary.technicalLevel || 'N/A'}</div>
+          <div><strong>Actionability:</strong> ${summary.actionability || 'N/A'}</div>
+        </div>
+        <div class="yt-topics" style="margin-top:10px;">${topicsHtml}</div>
+      </section>
+
+      <section class="panel" style="margin-top:16px;">
+        <h3 class="panel-title">&#128065; Visual + Transcript Insights</h3>
+        <p style="font-size:12px; color:var(--text-muted); margin-bottom:12px;">What Claude Vision found that the transcript alone would miss.</p>
+        <div class="yt-insights">${insightsHtml}</div>
+      </section>
+
+      <section class="panel" style="margin-top:16px;">
+        <h3 class="panel-title">&#127910; Visual Frame-by-Frame Timeline</h3>
+        <div class="yt-timeline">${timeline}</div>
+      </section>
+
+      <section class="panel" style="margin-top:16px;">
+        <h3 class="panel-title">&#128196; Transcript</h3>
+        <div class="yt-transcript">${transcriptHtml}</div>
+      </section>
+    </div>
+  `;
+  detail.style.display = 'block';
+}
+
+async function deleteYTAnalysis(id) {
+  const result = await fetchJSON(`/api/youtube/analysis/${id}`, { method: 'DELETE' });
+  if (result.ok) { loadYouTube(); showSettingsToast('Analysis deleted'); }
 }
 
 // --- Virtual HQ ---

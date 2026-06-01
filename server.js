@@ -4398,6 +4398,8 @@ const settings = loadState('settings', {
     xai_api_key: process.env.XAI_API_KEY || '',
     firecrawl_api_key: process.env.FIRECRAWL_API_KEY || '',
     gemini_api_key: process.env.GEMINI_API_KEY || '',
+    tavily_api_key: process.env.TAVILY_API_KEY || '',
+    apify_api_token: process.env.APIFY_API_TOKEN || '',
   },
   mcp: {
     hermes_url: process.env.HERMES_MCP_URL || 'http://127.0.0.1:8420',
@@ -4460,6 +4462,8 @@ app.get('/api/settings', requireAdmin, (req, res) => {
       xai_api_key: { value: maskKey(settings.ai.xai_api_key), configured: !!settings.ai.xai_api_key },
       firecrawl_api_key: { value: maskKey(settings.ai.firecrawl_api_key), configured: !!settings.ai.firecrawl_api_key },
       gemini_api_key: { value: maskKey(settings.ai.gemini_api_key), configured: !!settings.ai.gemini_api_key },
+      tavily_api_key: { value: maskKey(settings.ai.tavily_api_key), configured: !!settings.ai.tavily_api_key },
+      apify_api_token: { value: maskKey(settings.ai.apify_api_token), configured: !!settings.ai.apify_api_token },
     },
     mcp: {
       hermes_url: settings.mcp.hermes_url,
@@ -4615,6 +4619,38 @@ app.post('/api/settings/test/:service', requireAdmin, async (req, res) => {
       if (data.models) {
         const omniModels = data.models.filter(m => m.name.includes('omni') || m.name.includes('gemini')).slice(0, 3);
         res.json({ ok: true, message: `Gemini API valid — ${data.models.length} models available` + (omniModels.length ? ` (incl. ${omniModels.map(m => m.name.split('/').pop()).join(', ')})` : '') });
+      } else {
+        res.json({ ok: false, message: data.error?.message || `HTTP ${r.status}` });
+      }
+    } catch (e) {
+      res.json({ ok: false, message: `Connection failed: ${e.message}` });
+    }
+  } else if (service === 'tavily') {
+    if (!settings.ai.tavily_api_key) return res.json({ ok: false, message: 'No Tavily API key configured — save your key first' });
+    try {
+      const r = await fetch('https://api.tavily.com/search', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ api_key: settings.ai.tavily_api_key, query: 'test', max_results: 1 }),
+      });
+      const data = await r.json();
+      if (data.results) {
+        res.json({ ok: true, message: `Tavily connected — ${data.results.length} result returned` });
+      } else {
+        res.json({ ok: false, message: data.detail || data.error || `HTTP ${r.status}` });
+      }
+    } catch (e) {
+      res.json({ ok: false, message: `Connection failed: ${e.message}` });
+    }
+  } else if (service === 'apify') {
+    if (!settings.ai.apify_api_token) return res.json({ ok: false, message: 'No Apify API token configured — save your token first' });
+    try {
+      const r = await fetch('https://api.apify.com/v2/user/me', {
+        headers: { 'Authorization': `Bearer ${settings.ai.apify_api_token}` },
+      });
+      const data = await r.json();
+      if (data.data?.username) {
+        res.json({ ok: true, message: `Apify connected — user: ${data.data.username}, plan: ${data.data.plan?.id || 'free'}` });
       } else {
         res.json({ ok: false, message: data.error?.message || `HTTP ${r.status}` });
       }
@@ -4810,6 +4846,238 @@ app.post('/api/hq/dispatch/:employeeId', requireAdmin, (req, res) => {
 
   res.json({ ok: true, taskId, employee: employee.name, title: employee.title, department: department.name, model: routing.model });
 });
+
+// --- YouTube Video Analysis ---
+
+const { execFile } = require('child_process');
+const YT_ANALYSIS_DIR = path.join(BASE, '.magent', 'artifacts', 'youtube');
+if (!fs.existsSync(YT_ANALYSIS_DIR)) fs.mkdirSync(YT_ANALYSIS_DIR, { recursive: true });
+
+const ytAnalyses = loadState('yt_analyses', []);
+
+// POST /api/youtube/analyze — start a YouTube video analysis
+app.post('/api/youtube/analyze', requireAdmin, async (req, res) => {
+  const { url, frameInterval, analysisType } = req.body;
+  if (!url) return res.status(400).json({ error: 'YouTube URL is required' });
+
+  // Validate YouTube URL
+  const ytMatch = url.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/shorts\/)([\w-]{11})/);
+  if (!ytMatch) return res.status(400).json({ error: 'Invalid YouTube URL — must be a youtube.com or youtu.be link' });
+
+  const videoId = ytMatch[1];
+  const analysisId = uuidv4();
+  const interval = frameInterval || 10; // seconds between frames
+  const type = analysisType || 'full'; // full, visual-only, transcript-only
+
+  const analysis = {
+    id: analysisId,
+    videoId,
+    url: url.trim(),
+    status: 'processing',
+    type,
+    frameInterval: interval,
+    startedAt: new Date().toISOString(),
+    completedAt: null,
+    videoInfo: null,
+    transcript: null,
+    frames: [],
+    visualAnalysis: [],
+    summary: null,
+    insights: null,
+  };
+
+  ytAnalyses.push(analysis);
+  broadcast({ event: 'yt_analysis_started', data: { id: analysisId, videoId } });
+  logActivity('youtube', `Video analysis started: ${videoId}`, { analysisId, type });
+
+  if (DEMO_MODE) {
+    // Simulate the analysis pipeline
+    const steps = [
+      { delay: 1500, status: 'fetching_info', msg: 'Fetching video metadata...' },
+      { delay: 3000, status: 'extracting_frames', msg: `Extracting frames every ${interval}s...` },
+      { delay: 5000, status: 'transcribing', msg: 'Extracting transcript...' },
+      { delay: 7000, status: 'analyzing_frames', msg: 'Claude Vision analyzing frames...' },
+      { delay: 9500, status: 'synthesizing', msg: 'Synthesizing visual + transcript analysis...' },
+      { delay: 11000, status: 'complete', msg: 'Analysis complete' },
+    ];
+
+    steps.forEach(step => {
+      setTimeout(() => {
+        analysis.status = step.status;
+        broadcast({ event: 'yt_analysis_progress', data: { id: analysisId, status: step.status, msg: step.msg } });
+
+        if (step.status === 'complete') {
+          analysis.completedAt = new Date().toISOString();
+          analysis.videoInfo = generateYTVideoInfo(videoId);
+          analysis.transcript = generateYTTranscript();
+          analysis.frames = generateYTFrames(interval);
+          analysis.visualAnalysis = generateYTVisualAnalysis(analysis.frames);
+          analysis.summary = generateYTSummary(analysis);
+          analysis.insights = generateYTInsights(analysis);
+          saveState('yt_analyses', ytAnalyses);
+          broadcast({ event: 'yt_analysis_complete', data: { id: analysisId, videoId } });
+          logActivity('youtube', `Video analysis complete: ${videoId}`, { analysisId });
+
+          // Track cost
+          const inputTokens = 15000 + analysis.frames.length * 2000;
+          const outputTokens = 5000 + analysis.frames.length * 500;
+          const rates = COST_RATES['opus-4.8-high'];
+          costLedger.push({
+            id: uuidv4(), agent: 'youtube-analyzer', model: 'opus-4.8-high', skill: 'video-analysis',
+            inputTokens, outputTokens,
+            cost: Math.round(((inputTokens / 1_000_000) * rates.input + (outputTokens / 1_000_000) * rates.output) * 10000) / 10000,
+            timestamp: new Date().toISOString(),
+          });
+        }
+      }, step.delay);
+    });
+  }
+
+  res.json({ ok: true, analysisId, videoId, type });
+});
+
+// GET /api/youtube/analyses — list all analyses
+app.get('/api/youtube/analyses', requireAdmin, (req, res) => {
+  res.json(ytAnalyses.map(a => ({
+    id: a.id, videoId: a.videoId, url: a.url, status: a.status, type: a.type,
+    startedAt: a.startedAt, completedAt: a.completedAt,
+    title: a.videoInfo?.title || null,
+    duration: a.videoInfo?.duration || null,
+    frameCount: a.frames?.length || 0,
+  })));
+});
+
+// GET /api/youtube/analysis/:id — full analysis detail
+app.get('/api/youtube/analysis/:id', requireAdmin, (req, res) => {
+  const analysis = ytAnalyses.find(a => a.id === req.params.id);
+  if (!analysis) return res.status(404).json({ error: 'Analysis not found' });
+  res.json(analysis);
+});
+
+// DELETE /api/youtube/analysis/:id
+app.delete('/api/youtube/analysis/:id', requireAdmin, (req, res) => {
+  const idx = ytAnalyses.findIndex(a => a.id === req.params.id);
+  if (idx === -1) return res.status(404).json({ error: 'Analysis not found' });
+  ytAnalyses.splice(idx, 1);
+  saveState('yt_analyses', ytAnalyses);
+  res.json({ ok: true });
+});
+
+// --- YouTube Demo Data Generators ---
+function generateYTVideoInfo(videoId) {
+  const titles = [
+    'Building AI Agents That Actually Work in Production',
+    'The Future of Multi-Agent Systems - Complete Guide',
+    'How to Deploy Node.js Apps on VPS - Full Tutorial',
+    'SEO Masterclass: From Zero to 10K Monthly Visitors',
+    'Product Demo: AI-Powered Dashboard Walkthrough',
+  ];
+  return {
+    title: titles[Math.floor(Math.random() * titles.length)],
+    channel: 'AI Engineering Hub',
+    duration: `${8 + Math.floor(Math.random() * 25)}:${String(Math.floor(Math.random() * 60)).padStart(2, '0')}`,
+    durationSeconds: 480 + Math.floor(Math.random() * 1500),
+    publishedAt: new Date(Date.now() - Math.random() * 90 * 86400000).toISOString(),
+    views: Math.floor(Math.random() * 500000) + 1000,
+    likes: Math.floor(Math.random() * 15000) + 50,
+    thumbnail: `https://img.youtube.com/vi/${videoId}/maxresdefault.jpg`,
+    videoId,
+  };
+}
+
+function generateYTTranscript() {
+  const segments = [];
+  const topics = [
+    'Welcome to this deep dive into building production-ready AI agents.',
+    'The key challenge with multi-agent systems is coordination between models.',
+    'Let me show you how effort-based routing works in practice.',
+    'Here on screen you can see the dashboard with real-time agent status.',
+    'Notice how the orchestrator delegates tasks to specialized sub-agents.',
+    'Cost optimization is critical — we use low effort for scout tasks and xhigh for strategic decisions.',
+    'The SEO agency module runs five parallel audits simultaneously.',
+    'Each finding is scored by severity and mapped to an action plan.',
+    'For the deployment, we use PM2 with Nginx as a reverse proxy.',
+    'The WebSocket connection streams live updates to the dashboard.',
+    'Let me demonstrate the content brief generation from audit data.',
+    'And finally, the meta tag optimizer shows before-and-after comparisons.',
+  ];
+  let time = 0;
+  topics.forEach((text, i) => {
+    segments.push({ start: time, end: time + 25 + Math.floor(Math.random() * 20), text });
+    time += 30 + Math.floor(Math.random() * 30);
+  });
+  return { language: 'en', segments, fullText: topics.join(' ') };
+}
+
+function generateYTFrames(interval) {
+  const frames = [];
+  const totalSeconds = 480 + Math.floor(Math.random() * 600);
+  for (let t = 0; t < totalSeconds; t += interval) {
+    frames.push({
+      timestamp: t,
+      timecode: `${Math.floor(t / 60)}:${String(t % 60).padStart(2, '0')}`,
+      description: null, // filled by visual analysis
+    });
+  }
+  return frames;
+}
+
+function generateYTVisualAnalysis(frames) {
+  const descriptions = [
+    { scene: 'Title card / intro animation with channel branding', elements: ['logo', 'title text', 'subscribe button'], onScreenText: 'Building AI Agents in Production' },
+    { scene: 'Speaker at desk with monitor showing code editor', elements: ['person', 'monitor', 'code editor', 'terminal'], onScreenText: 'server.js — line 524' },
+    { scene: 'Dashboard view showing agent fleet status panel', elements: ['dashboard UI', 'agent cards', 'status indicators', 'charts'], onScreenText: '39 Active Agents | 7 Model Tiers' },
+    { scene: 'Terminal showing PM2 process list with running services', elements: ['terminal', 'process table', 'CPU/memory stats'], onScreenText: 'pm2 status — ai-os online' },
+    { scene: 'Architecture diagram with model routing flow', elements: ['flowchart', 'arrows', 'model tier boxes'], onScreenText: 'Opus 4.8 xhigh → high → low' },
+    { scene: 'SEO audit results showing composite score and findings', elements: ['score badge', 'findings list', 'severity indicators'], onScreenText: 'Composite Score: 67/100' },
+    { scene: 'Split screen comparing before/after meta tags', elements: ['comparison table', 'old values', 'new values', 'change badges'], onScreenText: 'Optimized: +3 changes per page' },
+    { scene: 'Cost dashboard showing spending by model tier', elements: ['bar chart', 'tier breakdown', 'daily spend'], onScreenText: 'Daily: $3.42 | Monthly: $89.50' },
+    { scene: 'Browser automation recording showing form interaction', elements: ['browser window', 'cursor movement', 'form fields'], onScreenText: 'Playwright — automated form fill' },
+    { scene: 'Closing card with call-to-action and social links', elements: ['subscribe CTA', 'social links', 'next video thumbnail'], onScreenText: 'Subscribe for more AI tutorials' },
+  ];
+
+  return frames.map((frame, i) => {
+    const desc = descriptions[i % descriptions.length];
+    return {
+      timestamp: frame.timestamp,
+      timecode: frame.timecode,
+      ...desc,
+    };
+  });
+}
+
+function generateYTSummary(analysis) {
+  const info = analysis.videoInfo;
+  const frameCount = analysis.frames.length;
+  return {
+    overview: `"${info.title}" is a ${info.duration} video by ${info.channel} covering AI agent architecture and deployment. ` +
+      `The video includes code walkthroughs, dashboard demonstrations, and architecture diagrams. ` +
+      `${frameCount} frames were analyzed across ${analysis.visualAnalysis.filter(v => v.elements.includes('code editor') || v.elements.includes('terminal')).length} coding scenes ` +
+      `and ${analysis.visualAnalysis.filter(v => v.elements.includes('dashboard UI') || v.elements.includes('charts')).length} dashboard demonstrations.`,
+    keyTopics: [
+      'Multi-agent orchestration architecture',
+      'Effort-based model routing (Opus 4.8)',
+      'SEO agency with parallel sub-agents',
+      'VPS deployment with PM2 + Nginx',
+      'Real-time dashboard with WebSocket updates',
+      'Cost optimization across model tiers',
+    ],
+    contentType: 'Tutorial / Technical Walkthrough',
+    technicalLevel: 'Intermediate to Advanced',
+    actionability: 'High — includes step-by-step implementation details',
+  };
+}
+
+function generateYTInsights(analysis) {
+  return [
+    { type: 'visual', insight: 'Video contains significant screen recordings of code — transcript alone would miss the implementation details shown on screen', confidence: 0.92 },
+    { type: 'visual', insight: `${analysis.visualAnalysis.filter(v => v.onScreenText).length} frames contain on-screen text not captured in the spoken transcript`, confidence: 0.88 },
+    { type: 'content', insight: 'Architecture diagrams at 3:20 and 7:45 provide visual context that complements the verbal explanation', confidence: 0.85 },
+    { type: 'content', insight: 'The demo section (5:00-9:30) shows the actual dashboard UI — useful for design reference', confidence: 0.90 },
+    { type: 'seo', insight: `Video has ${analysis.videoInfo.views.toLocaleString()} views with ${analysis.videoInfo.likes.toLocaleString()} likes — strong engagement ratio`, confidence: 0.95 },
+    { type: 'extraction', insight: 'Key code snippets visible on screen could be extracted for documentation purposes', confidence: 0.78 },
+  ];
+}
 
 // --- Gemini Omni Creative Endpoints ---
 
