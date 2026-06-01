@@ -400,6 +400,9 @@ a:hover { color: #60a5fa; }
 .agent-chip.omni { border-color: #ec489940; }
 .agent-chip.omni:hover { border-color: #ec4899; box-shadow: 0 0 12px #ec489920; }
 .agent-chip.omni .agent-dot { color: #ec4899; }
+.agent-chip.legal { border-color: #78716c40; }
+.agent-chip.legal:hover { border-color: #78716c; box-shadow: 0 0 12px #78716c20; }
+.agent-chip.legal .agent-dot { color: #78716c; }
 @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
 .agent-model { font-size: 10px; color: var(--text-muted); font-weight: 400; margin-left: 4px; }
 .agent-legend { display: flex; gap: 24px; justify-content: center; flex-wrap: wrap; }
@@ -411,6 +414,7 @@ a:hover { color: #60a5fa; }
 .legend-dot.economy { background: #f59e0b; }
 .legend-dot.grok { background: #ef4444; }
 .legend-dot.omni { background: #ec4899; }
+.legend-dot.legal { background: #78716c; }
 .legend-dot.hermes { background: #a78bfa; }
 
 /* ================================

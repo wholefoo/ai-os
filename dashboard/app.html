@@ -127,6 +127,9 @@
         <a href="#" class="nav-item" data-view="seo-agency">
           <span class="nav-icon">&#128269;</span> SEO Agency
         </a>
+        <a href="#" class="nav-item" data-view="franchise">
+          <span class="nav-icon">&#127968;</span> Franchise
+        </a>
         <a href="#" class="nav-item" data-view="artifacts">
           <span class="nav-icon">&#9776;</span> Artifacts
         </a>
@@ -1255,6 +1258,37 @@
           </section>
         </div>
 
+        <!-- Franchise Management View -->
+        <div class="view" id="view-franchise">
+          <div class="radar-header">
+            <div class="radar-header-left">
+              <h2 class="radar-title">Franchise Management</h2>
+              <span class="radar-subtitle">AI OS Virtual Corporate HQ — $10,000 one-time fee, limited to 1,000 participants</span>
+            </div>
+          </div>
+
+          <div class="franchise-stats" id="franchiseStats"></div>
+
+          <div class="franchise-layout">
+            <section class="panel">
+              <h3 class="panel-title">Franchise Applications</h3>
+              <div id="franchiseList">
+                <div class="empty-state">No applications yet.</div>
+              </div>
+            </section>
+
+            <section class="panel">
+              <h3 class="panel-title">Program Details</h3>
+              <div id="franchiseInfo"></div>
+            </section>
+          </div>
+
+          <!-- Participant detail modal -->
+          <div id="franchiseModal" class="hq-modal" style="display:none;">
+            <div class="hq-modal-content" id="franchiseDetail" style="max-width:620px;"></div>
+          </div>
+        </div>
+
         <!-- Settings View -->
         <div class="view" id="view-settings">
           <div class="radar-header">
@@ -1603,6 +1637,6 @@
     </div>
   </div>
 
-  <script src="js/app.js?v=10"></script>
+  <script src="js/app.js?v=11"></script>
 </body>
 </html>

@@ -4768,6 +4768,15 @@ const ORG_CHART = {
         { id: 'ops-grok', title: 'Intelligence Analyst', name: 'Hawkeye', agent: 'grok-realtime', tier: 'realtime', avatar: '🦅', status: 'active', reportsTo: 'ceo', desc: 'Real-time web search, trending topics, live intelligence' },
       ]
     },
+    {
+      id: 'legal', name: 'Legal Department', icon: '⚖️', color: '#78716c',
+      employees: [
+        { id: 'legal-gc', title: 'General Counsel', name: 'Justice', agent: 'general-counsel', tier: 'strategic', avatar: '⚖️', status: 'active', reportsTo: 'ceo', desc: 'Chief Legal Officer — franchise agreements, IP protection, regulatory compliance, dispute resolution' },
+        { id: 'legal-compliance', title: 'Compliance Officer', name: 'Shield', agent: 'compliance-officer', tier: 'professional', avatar: '🛡️', status: 'active', reportsTo: 'legal-gc', desc: 'GDPR/CCPA compliance, audit trails, policy enforcement, regulatory monitoring' },
+        { id: 'legal-franchise', title: 'Franchise Attorney', name: 'Covenant', agent: 'franchise-attorney', tier: 'professional', avatar: '📜', status: 'active', reportsTo: 'legal-gc', desc: 'Franchise Disclosure Documents, participant agreements, territorial rights, FTC compliance' },
+        { id: 'legal-contracts', title: 'Contract Specialist', name: 'Clause', agent: 'contract-specialist', tier: 'professional', avatar: '📝', status: 'active', reportsTo: 'legal-gc', desc: 'Contract generation, review, lifecycle management, template library' },
+      ]
+    },
   ],
 };
 
@@ -4845,6 +4854,210 @@ app.post('/api/hq/dispatch/:employeeId', requireAdmin, (req, res) => {
   }
 
   res.json({ ok: true, taskId, employee: employee.name, title: employee.title, department: department.name, model: routing.model });
+});
+
+// --- Franchise Management System ---
+
+const FRANCHISE_CONFIG = {
+  fee: 10000,           // $10,000 one-time fee
+  maxParticipants: 1000,
+  currency: 'usd',
+  name: 'AI OS Virtual Corporate HQ Franchise',
+  description: 'Complete AI-powered Virtual Corporate HQ with 47+ agents, 9 departments, SEO agency, creative studio, and all integrations.',
+  includes: [
+    'Full AI OS platform deployment on dedicated instance',
+    'Virtual Corporate HQ with 47+ AI agents across 9 departments',
+    'SEO Agency with 5 parallel audit sub-agents',
+    'Gemini Omni Creative Studio (video, image, audio)',
+    'YouTube Video Intelligence pipeline',
+    'All API integrations (Anthropic, Gemini, DeepSeek, Grok, Firecrawl, Tavily, Apify)',
+    'White-label branding customization',
+    'Admin dashboard with settings management',
+    'Stripe payment integration for your own customers',
+    'VPS deployment scripts and Nginx config',
+    'Documentation hub (14 pages)',
+    'Lifetime updates and platform upgrades',
+    '30-day onboarding support',
+  ],
+};
+
+const franchises = loadState('franchises', []);
+
+// GET /api/franchise/info — public franchise opportunity info
+app.get('/api/franchise/info', (req, res) => {
+  const active = franchises.filter(f => f.status === 'active').length;
+  const remaining = FRANCHISE_CONFIG.maxParticipants - active;
+  res.json({
+    ...FRANCHISE_CONFIG,
+    active,
+    remaining,
+    available: remaining > 0,
+    soldPercentage: Math.round((active / FRANCHISE_CONFIG.maxParticipants) * 100),
+  });
+});
+
+// GET /api/franchise/participants — admin list of all franchise participants
+app.get('/api/franchise/participants', requireAdmin, (req, res) => {
+  res.json(franchises);
+});
+
+// GET /api/franchise/participant/:id — single participant detail
+app.get('/api/franchise/participant/:id', requireAdmin, (req, res) => {
+  const f = franchises.find(p => p.id === req.params.id);
+  if (!f) return res.status(404).json({ error: 'Participant not found' });
+  res.json(f);
+});
+
+// POST /api/franchise/apply — submit a franchise application
+app.post('/api/franchise/apply', async (req, res) => {
+  const { name, email, company, industry, website, phone, message } = req.body;
+  if (!name || !email) return res.status(400).json({ error: 'Name and email are required' });
+
+  const active = franchises.filter(f => f.status === 'active' || f.status === 'pending').length;
+  if (active >= FRANCHISE_CONFIG.maxParticipants) {
+    return res.status(400).json({ error: 'Franchise program is currently full (1,000 participants reached)' });
+  }
+
+  // Check for duplicate email
+  if (franchises.find(f => f.email === email && f.status !== 'rejected')) {
+    return res.status(400).json({ error: 'An application with this email already exists' });
+  }
+
+  const application = {
+    id: uuidv4(),
+    name,
+    email,
+    company: company || '',
+    industry: industry || '',
+    website: website || '',
+    phone: phone || '',
+    message: message || '',
+    status: 'pending',       // pending → approved → payment → active | rejected
+    appliedAt: new Date().toISOString(),
+    approvedAt: null,
+    activatedAt: null,
+    paymentId: null,
+    instanceUrl: null,
+    territory: null,
+    notes: '',
+  };
+
+  franchises.push(application);
+  saveState('franchises', franchises);
+
+  logActivity('franchise', `New franchise application: ${name} (${email})`, { id: application.id, company });
+  broadcast({ event: 'franchise_application', data: { id: application.id, name, email, company } });
+
+  res.json({ ok: true, id: application.id, message: 'Application received. You will be notified once reviewed.' });
+});
+
+// PUT /api/franchise/participant/:id — admin update participant (approve, reject, activate, notes)
+app.put('/api/franchise/participant/:id', requireAdmin, (req, res) => {
+  const f = franchises.find(p => p.id === req.params.id);
+  if (!f) return res.status(404).json({ error: 'Participant not found' });
+
+  const { status, notes, territory, instanceUrl } = req.body;
+
+  if (status) {
+    const validTransitions = {
+      pending: ['approved', 'rejected'],
+      approved: ['payment', 'rejected'],
+      payment: ['active', 'rejected'],
+      active: ['suspended'],
+      suspended: ['active'],
+      rejected: ['pending'],
+    };
+    if (!validTransitions[f.status]?.includes(status)) {
+      return res.status(400).json({ error: `Cannot transition from ${f.status} to ${status}` });
+    }
+    f.status = status;
+    if (status === 'approved') f.approvedAt = new Date().toISOString();
+    if (status === 'active') f.activatedAt = new Date().toISOString();
+  }
+
+  if (notes !== undefined) f.notes = notes;
+  if (territory) f.territory = territory;
+  if (instanceUrl) f.instanceUrl = instanceUrl;
+
+  saveState('franchises', franchises);
+  logActivity('franchise', `Franchise ${f.status}: ${f.name} (${f.email})`, { id: f.id, status: f.status });
+  broadcast({ event: 'franchise_updated', data: { id: f.id, status: f.status, name: f.name } });
+
+  res.json({ ok: true, participant: f });
+});
+
+// POST /api/franchise/checkout/:id — generate Stripe checkout for franchise fee
+app.post('/api/franchise/checkout/:id', async (req, res) => {
+  const f = franchises.find(p => p.id === req.params.id);
+  if (!f) return res.status(404).json({ error: 'Participant not found' });
+  if (f.status !== 'approved') return res.status(400).json({ error: 'Application must be approved before payment' });
+
+  if (DEMO_MODE) {
+    f.status = 'payment';
+    f.paymentId = `demo_pay_${uuidv4().substring(0, 8)}`;
+    saveState('franchises', franchises);
+    return res.json({
+      ok: true,
+      checkoutUrl: '#demo-checkout',
+      message: 'Demo mode — Stripe checkout simulated',
+      paymentId: f.paymentId,
+    });
+  }
+
+  // Real Stripe checkout (when configured)
+  if (!stripe) return res.status(500).json({ error: 'Stripe not configured' });
+
+  try {
+    const session = await stripe.checkout.sessions.create({
+      payment_method_types: ['card'],
+      line_items: [{
+        price_data: {
+          currency: 'usd',
+          product_data: {
+            name: FRANCHISE_CONFIG.name,
+            description: `One-time franchise fee — ${FRANCHISE_CONFIG.description}`,
+          },
+          unit_amount: FRANCHISE_CONFIG.fee * 100, // cents
+        },
+        quantity: 1,
+      }],
+      mode: 'payment',
+      success_url: `https://${req.headers.host}/franchise/success?session_id={CHECKOUT_SESSION_ID}&participant=${f.id}`,
+      cancel_url: `https://${req.headers.host}/franchise/cancel?participant=${f.id}`,
+      customer_email: f.email,
+      metadata: { franchise_id: f.id, participant_name: f.name },
+    });
+
+    f.status = 'payment';
+    f.paymentId = session.id;
+    saveState('franchises', franchises);
+
+    res.json({ ok: true, checkoutUrl: session.url, paymentId: session.id });
+  } catch (e) {
+    res.json({ ok: false, error: `Stripe error: ${e.message}` });
+  }
+});
+
+// GET /api/franchise/stats — franchise program stats
+app.get('/api/franchise/stats', requireAdmin, (req, res) => {
+  const byStatus = {};
+  franchises.forEach(f => { byStatus[f.status] = (byStatus[f.status] || 0) + 1; });
+
+  const active = byStatus.active || 0;
+  const revenue = active * FRANCHISE_CONFIG.fee;
+  const remaining = FRANCHISE_CONFIG.maxParticipants - active - (byStatus.pending || 0) - (byStatus.approved || 0) - (byStatus.payment || 0);
+
+  res.json({
+    total: franchises.length,
+    byStatus,
+    active,
+    remaining: Math.max(0, remaining),
+    maxParticipants: FRANCHISE_CONFIG.maxParticipants,
+    fee: FRANCHISE_CONFIG.fee,
+    totalRevenue: revenue,
+    projectedRevenue: FRANCHISE_CONFIG.maxParticipants * FRANCHISE_CONFIG.fee,
+    fillRate: Math.round((active / FRANCHISE_CONFIG.maxParticipants) * 100),
+  });
 });
 
 // --- YouTube Video Analysis ---
