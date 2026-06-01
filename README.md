@@ -118,6 +118,14 @@ Each virtual employee maps to an AI agent with a specific model tier, can receiv
 - **CRON Jobs** — Persistent scheduled tasks managed through MCP
 - **Always-On Worker** — Background processing without active browser session
 
+### Interactive Tour Guide
+- **Atlas avatar** — animated floating widget on landing page with pulsing glow
+- **Guided tours** — visitors choose topics (Overview, SEO, Creative, Franchise, Pricing, Models)
+- **Free-text input** — keyword matching routes typed questions to relevant tour paths
+- **Quick reply buttons** — contextual options after each tour segment
+- **Typing animation** — bot-style message bubbles with progressive disclosure
+- **Auto-attention** — bouncing animation after 5 seconds to invite engagement
+
 ### Infrastructure
 - **Admin Dashboard** — Settings page for all API keys, MCP connections, and account management
 - **Stripe Paywall** — Pro ($49/mo) and Enterprise ($199/mo) subscriptions
