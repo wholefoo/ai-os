@@ -1,6 +1,6 @@
 # AI OS — The Agentic Operating System
 
-A multi-agentic AI operating system built as a Virtual Corporate Headquarters, orchestrating 47 specialized sub-agents across 9 departments and 7 model tiers. Research, create, analyze, scrape, and monetize — all from a single dashboard.
+A multi-agentic AI operating system built as a Virtual Corporate Headquarters, orchestrating 51 specialized sub-agents across 10 departments and 7 model tiers. Research, create, analyze, scrape, and monetize — all from a single dashboard. Available as a franchise opportunity — $10,000 one-time fee, limited to 1,000 participants.
 
 ## Architecture
 
@@ -49,6 +49,7 @@ AI OS presents its agent fleet as a virtual company with named employees, depart
 | **Tech Support & IT** | 3 | IT Director, SysAdmin, Help Desk |
 | **Product & Innovation** | 4 | Product Manager, Research Analyst, Data Scientist, Knowledge Manager |
 | **Operations & Hermes** | 6 | Hermes Director, Scheduler, Compliance Officer, Scout, Batch Processor, Intel Analyst |
+| **Legal Department** | 4 | General Counsel (Justice), Compliance Officer (Shield), Franchise Attorney (Covenant), Contract Specialist (Clause) |
 
 Each virtual employee maps to an AI agent with a specific model tier, can receive dispatched tasks, and reports through a corporate hierarchy.
 
@@ -97,6 +98,19 @@ Each virtual employee maps to an AI agent with a specific model tier, can receiv
 - **Golden Loop** — Gemini Gems synced to NotebookLM notebooks in real time
 - **Predictive Analytics** — AI-estimated forecasts with confidence scores
 - **Batch Queue** — Mass content production at economy-tier cost
+
+### Legal Department
+- **General Counsel** — Franchise agreements, IP protection, regulatory compliance, dispute resolution
+- **Compliance Officer** — GDPR/CCPA enforcement, audit trails, policy monitoring
+- **Franchise Attorney** — Franchise Disclosure Documents, territorial rights, FTC compliance
+- **Contract Specialist** — Contract generation, review, lifecycle management, template library
+
+### Franchise Program
+- **$10,000 one-time fee** — limited to 1,000 participants
+- **Application pipeline** — apply, review, approve, payment, activate
+- **Stripe checkout** — one-time payment integration for franchise fees
+- **Admin management** — status tracking, territory assignment, instance provisioning, admin notes
+- **Revenue dashboard** — active count, fill rate, total and projected revenue
 
 ### Hermes Agent (Persistent MCP)
 - **Walkaway Mode** — Delegate tasks that run autonomously in the background
@@ -218,7 +232,7 @@ bash deploy/push-update.sh root@your-vps-ip
 
 ```
 .claude/
-  agents/        47 agent role definitions (YAML frontmatter + instructions)
+  agents/        51 agent role definitions (YAML frontmatter + instructions)
   skills/        21 procedural skill files
   rules/         Guardrails, cost routing, security
   identity/      Soul, user preferences, personality
@@ -246,8 +260,8 @@ ecosystem.config.js  PM2 process manager config
 
 | Tier | Model | Effort | Count | Role |
 |------|-------|--------|-------|------|
-| Strategic | Opus 4.8 | xhigh | 5 | Deep reasoning, architecture, code review |
-| Professional | Opus 4.8 | high | 20 | Research, coding, writing, support, IT |
+| Strategic | Opus 4.8 | xhigh | 6 | Deep reasoning, architecture, code review, legal counsel |
+| Professional | Opus 4.8 | high | 23 | Research, coding, writing, support, IT, legal, compliance |
 | Scout | Opus 4.8 | low | 4 | Fast lookups, triage, routine running |
 | Creative | Gemini Omni | — | 5 | Video, image, audio generation |
 | Economy | DeepSeek V4 | — | 2 | Bulk text processing |
@@ -260,7 +274,7 @@ Keyword Analysis, Technical Audit, Competitor Analysis, Content Analysis, Backli
 
 ## API
 
-70+ endpoints. Key routes:
+80+ endpoints. Key routes:
 
 ```
 GET  /api/health                    Health check
@@ -280,6 +294,12 @@ GET  /api/omni/capabilities         List generation types
 POST /api/youtube/analyze           Launch YouTube video analysis
 GET  /api/youtube/analyses          List all video analyses
 GET  /api/youtube/analysis/:id      Full analysis with frames + transcript
+GET  /api/franchise/info             Franchise program info (public)
+POST /api/franchise/apply            Submit franchise application
+GET  /api/franchise/participants     List all participants (admin)
+PUT  /api/franchise/participant/:id  Update participant status
+POST /api/franchise/checkout/:id     Generate Stripe payment link
+GET  /api/franchise/stats            Franchise revenue dashboard
 POST /api/grok/query                Real-time Grok query
 POST /api/hermes/delegate           Delegate to Hermes
 GET  /api/stripe/checkout?plan=pro  Start Stripe checkout

@@ -84,6 +84,7 @@ function switchView(view) {
     youtube: loadYouTube,
     hq: loadHQ,
     'seo-agency': loadSeoAgency,
+    franchise: loadFranchise,
     settings: loadSettings,
     automations: loadAutomations,
     social: loadSocial,
@@ -5239,6 +5240,146 @@ function renderMarkdown(text) {
     .replace(/^(?!<[hul])/gm, '<p>')
     .replace(/(<p>)+/g, '<p>')
     .replace(/<p><\/p>/g, '');
+}
+
+// --- Franchise Management ---
+async function loadFranchise() {
+  const [stats, participants, info] = await Promise.all([
+    fetchJSON('/api/franchise/stats'),
+    fetchJSON('/api/franchise/participants'),
+    fetchJSON('/api/franchise/info'),
+  ]);
+  renderFranchiseStats(stats);
+  renderFranchiseList(Array.isArray(participants) ? participants : []);
+  renderFranchiseInfo(info);
+}
+
+function renderFranchiseStats(stats) {
+  const container = document.getElementById('franchiseStats');
+  if (!container || !stats) return;
+  const fillColor = stats.fillRate > 75 ? 'var(--error)' : stats.fillRate > 50 ? 'var(--warning)' : 'var(--success)';
+  container.innerHTML = `
+    <div class="hq-stat"><div class="hq-stat-value">${stats.active || 0}</div><div class="hq-stat-label">Active Franchises</div></div>
+    <div class="hq-stat"><div class="hq-stat-value">${stats.byStatus?.pending || 0}</div><div class="hq-stat-label">Pending</div></div>
+    <div class="hq-stat"><div class="hq-stat-value" style="color:${fillColor};">${stats.remaining}</div><div class="hq-stat-label">Remaining / 1,000</div></div>
+    <div class="hq-stat"><div class="hq-stat-value" style="color:var(--success);">$${(stats.totalRevenue || 0).toLocaleString()}</div><div class="hq-stat-label">Revenue</div></div>
+    <div class="hq-stat"><div class="hq-stat-value">$${((stats.projectedRevenue || 0) / 1000000).toFixed(1)}M</div><div class="hq-stat-label">Projected (Full)</div></div>
+    <div class="hq-stat">
+      <div class="hq-stat-value">${stats.fillRate || 0}%</div>
+      <div class="hq-stat-label">Fill Rate</div>
+      <div class="franchise-fill-bar"><div class="franchise-fill" style="width:${stats.fillRate || 0}%; background:${fillColor};"></div></div>
+    </div>
+  `;
+}
+
+function renderFranchiseList(participants) {
+  const container = document.getElementById('franchiseList');
+  if (!container) return;
+
+  if (!participants.length) {
+    container.innerHTML = '<div class="empty-state">No franchise applications yet.</div>';
+    return;
+  }
+
+  container.innerHTML = participants.slice().reverse().map(p => {
+    const statusColors = { pending: '#f59e0b', approved: '#3b82f6', payment: '#8b5cf6', active: '#10b981', suspended: '#ef4444', rejected: '#6b7280' };
+    return `
+      <div class="franchise-card" onclick="viewFranchiseParticipant('${p.id}')">
+        <div class="franchise-card-status" style="background:${statusColors[p.status] || '#6b7280'};">${p.status}</div>
+        <div class="franchise-card-info">
+          <div class="franchise-card-name">${escapeHtml(p.name)}</div>
+          <div class="franchise-card-meta">${escapeHtml(p.email)}${p.company ? ` · ${escapeHtml(p.company)}` : ''}${p.industry ? ` · ${escapeHtml(p.industry)}` : ''}</div>
+        </div>
+        <div class="franchise-card-date">${new Date(p.appliedAt).toLocaleDateString()}</div>
+      </div>
+    `;
+  }).join('');
+}
+
+function renderFranchiseInfo(info) {
+  const container = document.getElementById('franchiseInfo');
+  if (!container || !info) return;
+  container.innerHTML = `
+    <div class="franchise-info-header">
+      <div class="franchise-price">$${(info.fee || 10000).toLocaleString()}</div>
+      <div class="franchise-price-label">One-Time Fee</div>
+    </div>
+    <div class="franchise-availability ${info.available ? 'open' : 'closed'}">
+      ${info.available ? `${info.remaining} of ${info.maxParticipants} spots available` : 'PROGRAM FULL — All 1,000 spots claimed'}
+    </div>
+    <h4 style="margin:16px 0 8px; font-size:13px;">What's Included:</h4>
+    <ul class="franchise-includes">
+      ${(info.includes || []).map(item => `<li>${escapeHtml(item)}</li>`).join('')}
+    </ul>
+  `;
+}
+
+async function viewFranchiseParticipant(id) {
+  const p = await fetchJSON(`/api/franchise/participant/${id}`);
+  if (!p || p.error) return;
+
+  const modal = document.getElementById('franchiseModal');
+  const detail = document.getElementById('franchiseDetail');
+  const statusColors = { pending: '#f59e0b', approved: '#3b82f6', payment: '#8b5cf6', active: '#10b981', suspended: '#ef4444', rejected: '#6b7280' };
+  const nextActions = {
+    pending: [{ label: 'Approve', status: 'approved', cls: 'btn-primary' }, { label: 'Reject', status: 'rejected', cls: 'btn-danger' }],
+    approved: [{ label: 'Send Payment Link', status: 'payment', cls: 'btn-primary' }, { label: 'Reject', status: 'rejected', cls: 'btn-danger' }],
+    payment: [{ label: 'Mark Active', status: 'active', cls: 'btn-primary' }],
+    active: [{ label: 'Suspend', status: 'suspended', cls: 'btn-danger' }],
+    suspended: [{ label: 'Reactivate', status: 'active', cls: 'btn-primary' }],
+    rejected: [{ label: 'Reconsider', status: 'pending', cls: '' }],
+  };
+  const actions = (nextActions[p.status] || []).map(a =>
+    `<button class="btn btn-sm ${a.cls}" onclick="updateFranchise('${p.id}','${a.status}')">${a.label}</button>`
+  ).join(' ');
+
+  detail.innerHTML = `
+    <div class="hq-modal-header">
+      <button class="btn btn-sm" onclick="document.getElementById('franchiseModal').style.display='none';">&times; Close</button>
+    </div>
+    <div class="franchise-detail-header">
+      <h3>${escapeHtml(p.name)}</h3>
+      <span class="franchise-status-badge" style="background:${statusColors[p.status]};">${p.status}</span>
+    </div>
+    <div class="hq-profile-details" style="margin-top:16px;">
+      <div class="hq-detail-row"><span class="hq-detail-key">Email</span><span class="hq-detail-val">${escapeHtml(p.email)}</span></div>
+      <div class="hq-detail-row"><span class="hq-detail-key">Company</span><span class="hq-detail-val">${escapeHtml(p.company || 'N/A')}</span></div>
+      <div class="hq-detail-row"><span class="hq-detail-key">Industry</span><span class="hq-detail-val">${escapeHtml(p.industry || 'N/A')}</span></div>
+      <div class="hq-detail-row"><span class="hq-detail-key">Website</span><span class="hq-detail-val">${p.website ? escapeHtml(p.website) : 'N/A'}</span></div>
+      <div class="hq-detail-row"><span class="hq-detail-key">Applied</span><span class="hq-detail-val">${new Date(p.appliedAt).toLocaleString()}</span></div>
+      <div class="hq-detail-row"><span class="hq-detail-key">Payment ID</span><span class="hq-detail-val">${p.paymentId || 'N/A'}</span></div>
+      <div class="hq-detail-row"><span class="hq-detail-key">Instance URL</span><span class="hq-detail-val">${p.instanceUrl || 'Not deployed'}</span></div>
+      <div class="hq-detail-row"><span class="hq-detail-key">Territory</span><span class="hq-detail-val">${p.territory || 'Unassigned'}</span></div>
+    </div>
+    ${p.message ? `<div class="hq-profile-desc" style="margin-top:12px;"><strong>Message:</strong> ${escapeHtml(p.message)}</div>` : ''}
+    <div style="margin-top:16px;">
+      <h4 style="margin-bottom:8px; font-size:13px;">Admin Notes</h4>
+      <textarea id="franchiseNotes" class="settings-input" rows="3" style="width:100%; font-size:13px;">${escapeHtml(p.notes || '')}</textarea>
+      <button class="btn btn-sm" style="margin-top:6px;" onclick="saveFranchiseNotes('${p.id}')">Save Notes</button>
+    </div>
+    <div style="margin-top:16px; display:flex; gap:8px; flex-wrap:wrap;">
+      ${actions}
+    </div>
+    <div id="franchiseActionResult" style="margin-top:10px;"></div>
+  `;
+  modal.style.display = 'flex';
+}
+
+async function updateFranchise(id, newStatus) {
+  const result = await fetchJSON(`/api/franchise/participant/${id}`, { method: 'PUT', body: { status: newStatus } });
+  const el = document.getElementById('franchiseActionResult');
+  if (result.ok) {
+    el.innerHTML = `<div class="hq-dispatch-success">Status updated to: ${newStatus}</div>`;
+    setTimeout(() => { document.getElementById('franchiseModal').style.display = 'none'; loadFranchise(); }, 1000);
+  } else {
+    el.innerHTML = `<div class="hq-dispatch-error">${result.error || 'Update failed'}</div>`;
+  }
+}
+
+async function saveFranchiseNotes(id) {
+  const notes = document.getElementById('franchiseNotes').value;
+  const result = await fetchJSON(`/api/franchise/participant/${id}`, { method: 'PUT', body: { notes } });
+  if (result.ok) showSettingsToast('Notes saved');
 }
 
 // --- YouTube Video Intelligence ---
