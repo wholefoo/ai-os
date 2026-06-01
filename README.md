@@ -1,6 +1,6 @@
 # AI OS — The Agentic Operating System
 
-A multi-agentic AI operating system built as a Virtual Corporate Headquarters, orchestrating 47 specialized sub-agents across 9 departments and 7 model tiers. Research, create, analyze, and monetize — all from a single dashboard.
+A multi-agentic AI operating system built as a Virtual Corporate Headquarters, orchestrating 47 specialized sub-agents across 9 departments and 7 model tiers. Research, create, analyze, scrape, and monetize — all from a single dashboard.
 
 ## Architecture
 
@@ -66,6 +66,18 @@ Each virtual employee maps to an AI agent with a specific model tier, can receiv
 - **Post-Audit Actions** — Content brief generation, 12-week content calendar, meta tag optimizer
 - **DataForSEO Integration** — Real keyword, backlink, and competitor data
 
+### YouTube Video Intelligence
+- **Visual Frame Analysis** — Extracts frames at configurable intervals and sends to Claude Vision API
+- **Transcript Extraction** — Pulls spoken-word transcripts with timestamps
+- **Cross-Modal Insights** — Identifies what Claude Vision sees that the transcript misses (on-screen code, diagrams, UI demos)
+- **Frame-by-Frame Timeline** — Scene descriptions, detected elements, and OCR text per frame
+- **Full Report** — Summary, key topics, content type classification, technical level, and actionability scoring
+
+### Web Intelligence
+- **Tavily** — AI-optimized search with structured results and citations (1,000 free credits/month)
+- **Apify** — Platform-specific scraping with 25,000+ pre-built actors (YouTube, Google Maps, Amazon, LinkedIn, etc.)
+- **Firecrawl** — Clean single-page markdown extraction, site crawling, and page interaction
+
 ### Creative Studio (Gemini Omni)
 - **Video Generation** — Text/image/audio to video with physics simulation
 - **Image Creation & Editing** — Any-to-image generation and editing
@@ -108,7 +120,8 @@ Each virtual employee maps to an AI agent with a specific model tier, can receiv
 | Runtime | Node.js 20 + Express |
 | Dashboard | Vanilla HTML/CSS/JS with WebSocket live updates |
 | AI Models | Claude Opus 4.8 (effort routing), Gemini Omni Flash, DeepSeek V4, Grok-3 |
-| Web Scraping | Firecrawl API |
+| Web Scraping | Firecrawl, Apify (25K+ actors), Tavily (AI search) |
+| Video Analysis | yt-dlp + ffmpeg + Claude Vision API |
 | SEO Data | DataForSEO API |
 | Payments | Stripe Checkout + Webhooks |
 | Auth | bcryptjs, cookie-parser, session-based + Bearer token |
@@ -188,6 +201,8 @@ bash deploy/push-update.sh root@your-vps-ip
 | `DEEPSEEK_API_KEY` | For AI | DeepSeek V4 economy tier |
 | `XAI_API_KEY` | For AI | Grok-3 realtime tier |
 | `FIRECRAWL_API_KEY` | For AI | Firecrawl web scraping |
+| `TAVILY_API_KEY` | For AI | Tavily AI-optimized search |
+| `APIFY_API_TOKEN` | For AI | Apify platform scraping (YouTube, Maps, etc.) |
 | `DATAFORSEO_LOGIN` | For SEO | DataForSEO account email |
 | `DATAFORSEO_PASSWORD` | For SEO | DataForSEO API password |
 | `STRIPE_SECRET_KEY` | Payments | Stripe secret key |
@@ -245,7 +260,7 @@ Keyword Analysis, Technical Audit, Competitor Analysis, Content Analysis, Backli
 
 ## API
 
-60+ endpoints. Key routes:
+70+ endpoints. Key routes:
 
 ```
 GET  /api/health                    Health check
@@ -262,6 +277,9 @@ POST /api/seo/calendar/:id          Generate content calendar
 POST /api/seo/meta/:id              Optimize meta tags
 POST /api/omni/generate             Gemini Omni creative generation
 GET  /api/omni/capabilities         List generation types
+POST /api/youtube/analyze           Launch YouTube video analysis
+GET  /api/youtube/analyses          List all video analyses
+GET  /api/youtube/analysis/:id      Full analysis with frames + transcript
 POST /api/grok/query                Real-time Grok query
 POST /api/hermes/delegate           Delegate to Hermes
 GET  /api/stripe/checkout?plan=pro  Start Stripe checkout

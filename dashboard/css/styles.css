@@ -5612,6 +5612,151 @@ body {
 .settings-toast.success { background: rgba(16,185,129,0.15); color: var(--success); border: 1px solid rgba(16,185,129,0.3); }
 .settings-toast.error { background: rgba(239,68,68,0.15); color: var(--error); border: 1px solid rgba(239,68,68,0.3); }
 
+/* --- YouTube Video Intelligence --- */
+.yt-card {
+  display: flex;
+  gap: 14px;
+  align-items: center;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 12px;
+  margin-bottom: 10px;
+  transition: border-color 0.2s;
+}
+.yt-card:hover { border-color: #ef4444; }
+.yt-card-thumb {
+  position: relative;
+  flex-shrink: 0;
+  width: 120px;
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+.yt-card-thumb img { width: 100%; display: block; }
+.yt-card-duration {
+  position: absolute;
+  bottom: 4px;
+  right: 4px;
+  background: rgba(0,0,0,0.8);
+  color: #fff;
+  font-size: 10px;
+  font-weight: 700;
+  padding: 1px 5px;
+  border-radius: 3px;
+}
+.yt-card-info { flex: 1; min-width: 0; }
+.yt-card-title { font-weight: 700; font-size: 14px; margin-bottom: 4px; }
+.yt-card-meta { display: flex; gap: 12px; font-size: 11px; color: var(--text-muted); flex-wrap: wrap; }
+.yt-status-complete { color: var(--success); font-weight: 600; }
+.yt-status-processing { color: var(--primary); font-weight: 600; }
+.yt-card-actions { display: flex; gap: 6px; flex-shrink: 0; }
+.yt-progress-fill { background: linear-gradient(90deg, #ef4444, #f59e0b, #10b981) !important; }
+
+/* Report */
+.yt-report-header { display: flex; align-items: center; gap: 14px; margin-bottom: 16px; }
+.yt-report-header h3 { flex: 1; margin: 0; }
+.yt-video-meta { display: flex; gap: 16px; align-items: flex-start; }
+.yt-report-thumb { width: 200px; border-radius: var(--radius); flex-shrink: 0; }
+.yt-meta-details { font-size: 13px; color: var(--text-secondary); }
+.yt-meta-row { margin-bottom: 4px; }
+.yt-summary-text { font-size: 14px; line-height: 1.7; color: var(--text-secondary); }
+.yt-summary-meta { display: flex; gap: 20px; font-size: 13px; color: var(--text-muted); margin-top: 10px; flex-wrap: wrap; }
+.yt-topic-tag {
+  display: inline-block;
+  background: rgba(239,68,68,0.1);
+  color: #ef4444;
+  padding: 3px 10px;
+  border-radius: 3px;
+  font-size: 12px;
+  font-weight: 600;
+  margin: 2px 4px 2px 0;
+}
+
+/* Insights */
+.yt-insight {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--border);
+  font-size: 13px;
+}
+.yt-insight:last-child { border-bottom: none; }
+.yt-insight-icon { font-size: 18px; flex-shrink: 0; }
+.yt-insight-text { flex: 1; line-height: 1.5; color: var(--text-secondary); }
+.yt-insight-confidence {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--success);
+  background: rgba(16,185,129,0.1);
+  padding: 2px 8px;
+  border-radius: 3px;
+  white-space: nowrap;
+}
+
+/* Visual Timeline */
+.yt-timeline { max-height: 500px; overflow-y: auto; }
+.yt-timeline-frame {
+  display: flex;
+  gap: 12px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--border);
+}
+.yt-timeline-frame:last-child { border-bottom: none; }
+.yt-frame-time {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 700;
+  color: #ef4444;
+  min-width: 50px;
+  flex-shrink: 0;
+}
+.yt-frame-scene { font-size: 13px; font-weight: 600; margin-bottom: 4px; }
+.yt-frame-elements { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 4px; }
+.yt-element-tag {
+  background: var(--bg-primary);
+  border: 1px solid var(--border);
+  padding: 1px 8px;
+  border-radius: 3px;
+  font-size: 10px;
+  color: var(--text-muted);
+}
+.yt-frame-ocr {
+  font-size: 12px;
+  color: var(--primary);
+  background: rgba(59,130,246,0.05);
+  padding: 4px 8px;
+  border-radius: 3px;
+  margin-top: 2px;
+}
+.yt-ocr-label { font-weight: 600; font-size: 10px; text-transform: uppercase; }
+
+/* Transcript */
+.yt-transcript { max-height: 400px; overflow-y: auto; }
+.yt-transcript-seg {
+  display: flex;
+  gap: 12px;
+  padding: 6px 0;
+  border-bottom: 1px solid rgba(255,255,255,0.03);
+  font-size: 13px;
+}
+.yt-transcript-time {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-muted);
+  min-width: 45px;
+  flex-shrink: 0;
+  padding-top: 2px;
+}
+.yt-transcript-text { color: var(--text-secondary); line-height: 1.5; }
+
+@media (max-width: 768px) {
+  .yt-card { flex-direction: column; align-items: stretch; }
+  .yt-card-thumb { width: 100%; }
+  .yt-video-meta { flex-direction: column; }
+  .yt-report-thumb { width: 100%; }
+}
+
 /* --- Virtual HQ --- */
 .hq-stats {
   display: grid;

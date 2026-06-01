@@ -118,6 +118,9 @@
         <a href="#" class="nav-item" data-view="hermes">
           <span class="nav-icon">&#9889;</span> Hermes
         </a>
+        <a href="#" class="nav-item" data-view="youtube">
+          <span class="nav-icon">&#127909;</span> YouTube Intel
+        </a>
         <a href="#" class="nav-item" data-view="hq">
           <span class="nav-icon">&#127970;</span> Virtual HQ
         </a>
@@ -1160,6 +1163,49 @@
           </div>
         </div>
 
+        <!-- YouTube Video Analysis View -->
+        <div class="view" id="view-youtube">
+          <div class="radar-header">
+            <div class="radar-header-left">
+              <h2 class="radar-title">YouTube Video Intelligence</h2>
+              <span class="radar-subtitle">Visual analysis + transcript extraction — Claude Vision reads what the speaker shows, not just says</span>
+            </div>
+          </div>
+
+          <section class="panel">
+            <h3 class="panel-title">Analyze Video</h3>
+            <p style="font-size:13px; color:var(--text-secondary); margin-bottom:12px;">Paste a YouTube URL. The pipeline extracts frames at regular intervals, pulls the transcript, and sends both to Claude Vision for combined visual + spoken analysis.</p>
+            <div class="yt-analyze-form">
+              <div class="settings-input-row">
+                <input type="text" class="settings-input" id="ytUrl" placeholder="https://www.youtube.com/watch?v=..." spellcheck="false" autocomplete="off" style="font-family:var(--font-mono); flex:2;">
+                <select id="ytFrameInterval" class="settings-input" style="flex:0 0 auto; width:140px;">
+                  <option value="5">Every 5 sec</option>
+                  <option value="10" selected>Every 10 sec</option>
+                  <option value="15">Every 15 sec</option>
+                  <option value="30">Every 30 sec</option>
+                  <option value="60">Every 60 sec</option>
+                </select>
+                <select id="ytAnalysisType" class="settings-input" style="flex:0 0 auto; width:140px;">
+                  <option value="full">Full Analysis</option>
+                  <option value="visual-only">Visual Only</option>
+                  <option value="transcript-only">Transcript Only</option>
+                </select>
+                <button class="btn btn-primary" id="ytAnalyzeBtn" onclick="startYTAnalysis()">&#127909; Analyze</button>
+              </div>
+            </div>
+            <div id="ytProgress" style="margin-top:12px;"></div>
+          </section>
+
+          <div id="ytAnalysisDetail" style="display:none;"></div>
+
+          <section class="panel" style="margin-top:20px;">
+            <h3 class="panel-title">Analysis History</h3>
+            <div id="ytAnalysisList">
+              <div class="empty-state">No videos analyzed yet. Paste a YouTube URL above to start.</div>
+            </div>
+          </section>
+        </div>
+
         <!-- Virtual HQ View -->
         <div class="view" id="view-hq">
           <div class="radar-header">
@@ -1268,6 +1314,24 @@
                     <button type="button" class="btn btn-sm settings-eye" onclick="toggleKeyVisibility(this)" title="Show/hide">&#128065;</button>
                     <span class="settings-status" id="status-gemini_api_key"></span>
                     <button class="btn btn-sm" onclick="testConnection('gemini')">Test</button>
+                  </div>
+                </div>
+                <div class="settings-field">
+                  <label class="settings-label">Tavily API Key <span class="settings-tier">AI-optimized search + research</span></label>
+                  <div class="settings-input-row">
+                    <input type="text" class="settings-input settings-secret" id="set-tavily_api_key" placeholder="tvly-..." autocomplete="new-password" data-lpignore="true" data-1p-ignore spellcheck="false">
+                    <button type="button" class="btn btn-sm settings-eye" onclick="toggleKeyVisibility(this)" title="Show/hide">&#128065;</button>
+                    <span class="settings-status" id="status-tavily_api_key"></span>
+                    <button class="btn btn-sm" onclick="testConnection('tavily')">Test</button>
+                  </div>
+                </div>
+                <div class="settings-field">
+                  <label class="settings-label">Apify API Token <span class="settings-tier">Platform scraping + 25K actors</span></label>
+                  <div class="settings-input-row">
+                    <input type="text" class="settings-input settings-secret" id="set-apify_api_token" placeholder="apify_api_..." autocomplete="new-password" data-lpignore="true" data-1p-ignore spellcheck="false">
+                    <button type="button" class="btn btn-sm settings-eye" onclick="toggleKeyVisibility(this)" title="Show/hide">&#128065;</button>
+                    <span class="settings-status" id="status-apify_api_token"></span>
+                    <button class="btn btn-sm" onclick="testConnection('apify')">Test</button>
                   </div>
                 </div>
               </div>
@@ -1539,6 +1603,6 @@
     </div>
   </div>
 
-  <script src="js/app.js?v=8"></script>
+  <script src="js/app.js?v=10"></script>
 </body>
 </html>
