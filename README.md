@@ -1,6 +1,6 @@
 # AI OS — The Agentic Operating System
 
-A multi-agentic AI operating system built as a Virtual Corporate Headquarters, orchestrating 51 specialized sub-agents across 10 departments and 7 model tiers. Research, create, analyze, scrape, and monetize — all from a single dashboard. Available as a franchise opportunity — $10,000 one-time fee, limited to 1,000 participants.
+A multi-agentic AI operating system built as a Virtual Corporate Headquarters, orchestrating 51 specialized sub-agents across 10 departments and 7 model tiers. Research, create, analyze, scrape, and monetize — all from a single dashboard. Available as a white-label SaaS license — Pro $99/mo, Business $497/mo, Enterprise $1,997/mo, or Lifetime $9,997 one-time (limited to 200 spots).
 
 ## Architecture
 
@@ -49,7 +49,7 @@ AI OS presents its agent fleet as a virtual company with named employees, depart
 | **Tech Support & IT** | 3 | IT Director, SysAdmin, Help Desk |
 | **Product & Innovation** | 4 | Product Manager, Research Analyst, Data Scientist, Knowledge Manager |
 | **Operations & Hermes** | 6 | Hermes Director, Scheduler, Compliance Officer, Scout, Batch Processor, Intel Analyst |
-| **Legal Department** | 4 | General Counsel (Justice), Compliance Officer (Shield), Franchise Attorney (Covenant), Contract Specialist (Clause) |
+| **Legal Department** | 4 | General Counsel (Justice), Compliance Officer (Shield), Licensing Attorney (Covenant), Contract Specialist (Clause) |
 
 Each virtual employee maps to an AI agent with a specific model tier, can receive dispatched tasks, and reports through a corporate hierarchy.
 
@@ -100,17 +100,18 @@ Each virtual employee maps to an AI agent with a specific model tier, can receiv
 - **Batch Queue** — Mass content production at economy-tier cost
 
 ### Legal Department
-- **General Counsel** — Franchise agreements, IP protection, regulatory compliance, dispute resolution
+- **General Counsel** — License agreements, IP protection, regulatory compliance, dispute resolution
 - **Compliance Officer** — GDPR/CCPA enforcement, audit trails, policy monitoring
-- **Franchise Attorney** — Franchise Disclosure Documents, territorial rights, FTC compliance
+- **Licensing Attorney** — Software license agreements, white-label terms, SaaS licensing
 - **Contract Specialist** — Contract generation, review, lifecycle management, template library
 
-### Franchise Program
-- **$10,000 one-time fee** — limited to 1,000 participants
+### White-Label Licensing
+- **4 tiers** — Pro ($99/mo), Business ($497/mo), Enterprise ($1,997/mo), Lifetime ($9,997 one-time)
 - **Application pipeline** — apply, review, approve, payment, activate
-- **Stripe checkout** — one-time payment integration for franchise fees
-- **Admin management** — status tracking, territory assignment, instance provisioning, admin notes
-- **Revenue dashboard** — active count, fill rate, total and projected revenue
+- **Stripe checkout** — subscription and one-time payment integration
+- **White-label branding** — custom name, logo, colors, domain per licensee
+- **Admin management** — status tracking, tenant provisioning, revenue dashboard
+- **No franchise law** — standard software license, no FDD, no state registration required
 
 ### Hermes Agent (Persistent MCP)
 - **Walkaway Mode** — Delegate tasks that run autonomously in the background
@@ -269,7 +270,7 @@ ecosystem.config.js  PM2 process manager config
 | Tier | Model | Effort | Count | Role |
 |------|-------|--------|-------|------|
 | Strategic | Opus 4.8 | xhigh | 6 | Deep reasoning, architecture, code review, legal counsel |
-| Professional | Opus 4.8 | high | 23 | Research, coding, writing, support, IT, legal, compliance |
+| Professional | Opus 4.8 | high | 23 | Research, coding, writing, support, IT, licensing, compliance |
 | Scout | Opus 4.8 | low | 4 | Fast lookups, triage, routine running |
 | Creative | Gemini Omni | — | 5 | Video, image, audio generation |
 | Economy | DeepSeek V4 | — | 2 | Bulk text processing |
@@ -302,12 +303,18 @@ GET  /api/omni/capabilities         List generation types
 POST /api/youtube/analyze           Launch YouTube video analysis
 GET  /api/youtube/analyses          List all video analyses
 GET  /api/youtube/analysis/:id      Full analysis with frames + transcript
-GET  /api/franchise/info             Franchise program info (public)
-POST /api/franchise/apply            Submit franchise application
-GET  /api/franchise/participants     List all participants (admin)
-PUT  /api/franchise/participant/:id  Update participant status
-POST /api/franchise/checkout/:id     Generate Stripe payment link
-GET  /api/franchise/stats            Franchise revenue dashboard
+GET  /api/license/info               License program info (public)
+POST /api/license/apply              Submit license application
+GET  /api/license/participants       List all licensees (admin)
+PUT  /api/license/participant/:id    Update licensee status
+POST /api/license/checkout/:id       Generate Stripe payment link
+GET  /api/license/stats              License revenue dashboard
+GET  /api/tenants                    List all tenants (admin)
+POST /api/tenants                    Provision new tenant
+GET  /api/tenant/branding            Current tenant branding (public)
+GET  /api/templates                  Industry templates
+POST /api/platform/propose           Self-improvement proposal
+GET  /api/platform/proposals         List proposals
 POST /api/grok/query                Real-time Grok query
 POST /api/hermes/delegate           Delegate to Hermes
 GET  /api/stripe/checkout?plan=pro  Start Stripe checkout

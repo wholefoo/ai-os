@@ -127,8 +127,14 @@
         <a href="#" class="nav-item" data-view="seo-agency">
           <span class="nav-icon">&#128269;</span> SEO Agency
         </a>
-        <a href="#" class="nav-item" data-view="franchise">
-          <span class="nav-icon">&#127968;</span> Franchise
+        <a href="#" class="nav-item" data-view="licensing">
+          <span class="nav-icon">&#127968;</span> Licensing
+        </a>
+        <a href="#" class="nav-item" data-view="tenants">
+          <span class="nav-icon">&#127760;</span> Tenants
+        </a>
+        <a href="#" class="nav-item" data-view="platform">
+          <span class="nav-icon">&#128736;</span> Platform
         </a>
         <a href="#" class="nav-item" data-view="artifacts">
           <span class="nav-icon">&#9776;</span> Artifacts
@@ -1258,34 +1264,88 @@
           </section>
         </div>
 
-        <!-- Franchise Management View -->
-        <div class="view" id="view-franchise">
+        <!-- White-Label License Management View -->
+        <div class="view" id="view-licensing">
           <div class="radar-header">
             <div class="radar-header-left">
-              <h2 class="radar-title">Franchise Management</h2>
-              <span class="radar-subtitle">AI OS Virtual Corporate HQ — $10,000 one-time fee, limited to 1,000 participants</span>
+              <h2 class="radar-title">White-Label Licensing</h2>
+              <span class="radar-subtitle">White-label SaaS licenses — Pro $99/mo, Business $497/mo, Enterprise $1,997/mo, Lifetime $9,997 one-time</span>
             </div>
           </div>
 
-          <div class="franchise-stats" id="franchiseStats"></div>
+          <div class="franchise-stats" id="licenseStats"></div>
 
           <div class="franchise-layout">
             <section class="panel">
-              <h3 class="panel-title">Franchise Applications</h3>
-              <div id="franchiseList">
+              <h3 class="panel-title">License Applications</h3>
+              <div id="licenseList">
                 <div class="empty-state">No applications yet.</div>
               </div>
             </section>
 
             <section class="panel">
               <h3 class="panel-title">Program Details</h3>
-              <div id="franchiseInfo"></div>
+              <div id="licenseInfo"></div>
             </section>
           </div>
 
           <!-- Participant detail modal -->
-          <div id="franchiseModal" class="hq-modal" style="display:none;">
-            <div class="hq-modal-content" id="franchiseDetail" style="max-width:620px;"></div>
+          <div id="licenseModal" class="hq-modal" style="display:none;">
+            <div class="hq-modal-content" id="licenseDetail" style="max-width:620px;"></div>
+          </div>
+        </div>
+
+        <!-- Platform Self-Improvement View -->
+        <div class="view" id="view-platform">
+          <div class="radar-header">
+            <div class="radar-header-left">
+              <h2 class="radar-title">Platform Self-Improvement</h2>
+              <span class="radar-subtitle">Automated proposals for updates, optimizations, and upgrades — approved by you via Telegram, Slack, or dashboard</span>
+            </div>
+            <div class="radar-actions">
+              <button class="btn btn-primary" onclick="showCreateProposal()">+ New Proposal</button>
+            </div>
+          </div>
+
+          <div class="hq-stats" id="platformStats"></div>
+
+          <section class="panel">
+            <h3 class="panel-title">Pending Approvals</h3>
+            <div id="platformPending"><div class="empty-state">No pending proposals.</div></div>
+          </section>
+
+          <section class="panel" style="margin-top:16px;">
+            <h3 class="panel-title">History</h3>
+            <div id="platformHistory"><div class="empty-state">No proposal history.</div></div>
+          </section>
+
+          <div id="platformModal" class="hq-modal" style="display:none;">
+            <div class="hq-modal-content" id="platformModalContent" style="max-width:560px;"></div>
+          </div>
+        </div>
+
+        <!-- Tenant Management View -->
+        <div class="view" id="view-tenants">
+          <div class="radar-header">
+            <div class="radar-header-left">
+              <h2 class="radar-title">Tenant Management</h2>
+              <span class="radar-subtitle">Multi-tenant franchise instances — provision, configure, and monitor</span>
+            </div>
+            <div class="radar-actions">
+              <button class="btn btn-primary" onclick="showProvisionTenantModal()">+ New Tenant</button>
+            </div>
+          </div>
+
+          <div class="hq-stats" id="tenantStats"></div>
+
+          <section class="panel">
+            <h3 class="panel-title">Active Tenants</h3>
+            <div id="tenantList"><div class="empty-state">Loading tenants...</div></div>
+          </section>
+
+          <!-- Provision modal -->
+          <div id="tenantModal" class="hq-modal" style="display:none;">
+            <div class="hq-modal-content" id="tenantModalContent" style="max-width:560px;"></div>
           </div>
         </div>
 
@@ -1637,6 +1697,6 @@
     </div>
   </div>
 
-  <script src="js/app.js?v=11"></script>
+  <script src="js/app.js?v=13"></script>
 </body>
 </html>

@@ -200,7 +200,7 @@
         </div>
       </div>
 
-      <div class="phase-label">Phase 4 — Virtual Corporate HQ &amp; Franchise</div>
+      <div class="phase-label">Phase 4 — Virtual Corporate HQ &amp; White-Label</div>
       <div class="features-grid">
         <div class="feature-card">
           <div class="feature-icon">&#127970;</div>
@@ -210,12 +210,12 @@
         <div class="feature-card">
           <div class="feature-icon">&#9878;</div>
           <h3>Legal Department</h3>
-          <p>General Counsel, Compliance Officer, Franchise Attorney, and Contract Specialist handle agreements, compliance, and IP protection.</p>
+          <p>General Counsel, Compliance Officer, Licensing Attorney, and Contract Specialist handle agreements, compliance, and IP protection.</p>
         </div>
         <div class="feature-card">
           <div class="feature-icon">&#127968;</div>
-          <h3>Franchise Program</h3>
-          <p>$10,000 one-time fee, limited to 1,000 participants. Full platform deployment, white-label branding, lifetime updates.</p>
+          <h3>White-Label Licensing</h3>
+          <p>Monthly or lifetime licenses. Your brand, your domain, your customers. Full platform with white-label branding and lifetime updates.</p>
         </div>
         <div class="feature-card">
           <div class="feature-icon">&#128200;</div>
@@ -323,7 +323,7 @@
         <div class="agent-chip hermes"><span class="agent-dot"></span>Hermes Approval Gate <span class="agent-model">Hermes</span></div>
         <div class="agent-chip legal"><span class="agent-dot"></span>General Counsel <span class="agent-model">xhigh</span></div>
         <div class="agent-chip legal"><span class="agent-dot"></span>Compliance Officer <span class="agent-model">high</span></div>
-        <div class="agent-chip legal"><span class="agent-dot"></span>Franchise Attorney <span class="agent-model">high</span></div>
+        <div class="agent-chip legal"><span class="agent-dot"></span>Licensing Attorney <span class="agent-model">high</span></div>
         <div class="agent-chip legal"><span class="agent-dot"></span>Contract Specialist <span class="agent-model">high</span></div>
       </div>
       <div class="agent-legend">
@@ -380,20 +380,20 @@
           <a href="/api/stripe/checkout?plan=enterprise" class="btn-primary-cta btn-block">Get Enterprise</a>
         </div>
         <div class="pricing-card">
-          <div class="pricing-popular" style="background:linear-gradient(135deg,#10b981,#3b82f6);">Limited — 1,000 spots</div>
-          <div class="pricing-tier">Franchise</div>
-          <div class="pricing-price">$10,000</div>
-          <div class="pricing-period">one-time fee</div>
+          <div class="pricing-popular" style="background:linear-gradient(135deg,#10b981,#3b82f6);">Limited — 200 spots</div>
+          <div class="pricing-tier">Lifetime</div>
+          <div class="pricing-price">$9,997</div>
+          <div class="pricing-period">one-time, forever</div>
           <ul class="pricing-features">
             <li>&#9989; Everything in Enterprise</li>
             <li>&#9989; Your own deployed instance</li>
-            <li>&#9989; White-label branding</li>
+            <li>&#9989; White-label branding (your name, logo, domain)</li>
             <li>&#9989; Stripe integration for your customers</li>
-            <li>&#9989; Legal dept (franchise agreements)</li>
+            <li>&#9989; Legal dept (license agreements)</li>
             <li>&#9989; Lifetime updates &amp; upgrades</li>
             <li>&#9989; 30-day onboarding support</li>
           </ul>
-          <a href="/api/franchise/apply" class="btn-primary-cta btn-block" style="background:linear-gradient(135deg,#10b981,#3b82f6);">Apply for Franchise</a>
+          <a href="/api/license/apply" class="btn-primary-cta btn-block" style="background:linear-gradient(135deg,#10b981,#3b82f6);">Get Lifetime License</a>
         </div>
       </div>
     </div>
@@ -455,7 +455,7 @@
         </div>
         <div class="faq-item">
           <button class="faq-question">What AI models does it support?<span class="faq-toggle">+</span></button>
-          <div class="faq-answer">Seven model tiers: Opus 4.8 with effort routing (xhigh/high/low), Gemini Omni (creative), DeepSeek V4 (economy), Grok-3 (realtime), and Hermes MCP (persistent). 51 agents across 10 departments — including a Legal department with General Counsel, Compliance Officer, Franchise Attorney, and Contract Specialist.</div>
+          <div class="faq-answer">Seven model tiers: Opus 4.8 with effort routing (xhigh/high/low), Gemini Omni (creative), DeepSeek V4 (economy), Grok-3 (realtime), and Hermes MCP (persistent). 51 agents across 10 departments — including a Legal department with General Counsel, Compliance Officer, Licensing Attorney, and Contract Specialist.</div>
         </div>
         <div class="faq-item">
           <button class="faq-question">Can I add custom agents?<span class="faq-toggle">+</span></button>
@@ -593,42 +593,42 @@
         { msg: "AI OS is a Virtual Corporate Headquarters — imagine a full company staffed entirely by AI agents, each with a name, role, and department.", delay: 0 },
         { msg: "We have 10 departments: Executive, Legal, Engineering, Marketing, Creative, Customer Service, IT, Product, Operations, and a Board of Directors.", delay: 2000 },
         { msg: "Every agent runs on one of 7 model tiers — from my strategic Opus 4.8 xhigh brain, down to DeepSeek economy workers for bulk tasks.", delay: 4000 },
-        { msg: "Want to hear about a specific department, or should I tell you about our franchise opportunity?", delay: 6000, options: ['Tell me about SEO Agency', 'Creative Studio', 'The Franchise', 'How does pricing work?'] },
+        { msg: "Want to hear about a specific department, or should I tell you about our licensing options?", delay: 6000, options: ['Tell me about SEO Agency', 'Creative Studio', 'Licensing options', 'How does pricing work?'] },
       ],
       seo: [
         { msg: "Our SEO Agency is one of the most powerful features. When you audit a domain, I dispatch 5 sub-agents simultaneously:", delay: 0 },
         { msg: "Beacon (Keyword Analysis), a Technical Auditor, a Competitor Analyst, a Content Reviewer, and a Backlink Profiler — all running in parallel.", delay: 2000 },
         { msg: "They generate a composite score out of 100, plus content briefs, a 12-week action calendar, and optimized meta tags. It's what agencies charge $5K-$10K/month for.", delay: 4000 },
-        { msg: "Anything else you'd like to know?", delay: 6000, options: ['How does the Virtual HQ work?', 'Tell me about Franchise', 'What about Creative Studio?', 'Show me pricing'] },
+        { msg: "Anything else you'd like to know?", delay: 6000, options: ['How does the Virtual HQ work?', 'Tell me about licensing', 'What about Creative Studio?', 'Show me pricing'] },
       ],
       creative: [
         { msg: "The Creative Studio is powered by Gemini Omni — Google's multimodal generation model. We have 5 creative agents:", delay: 0 },
         { msg: "Muse (Creative Director), Pixel (UI/UX), Reel (Video Producer), Vertex (3D Artist), and Sonance (Audio Engineer). Plus Palette for brand design.", delay: 2000 },
         { msg: "You can generate videos, images, audio, thumbnails, and social clips — all from text prompts. Every output gets SynthID watermarked for provenance.", delay: 4000 },
-        { msg: "We also have YouTube Intelligence — Claude Vision analyzes video frames to extract what speakers show on screen, not just what they say.", delay: 6000, options: ['Tell me about the franchise', 'How about SEO Agency?', 'Show me pricing', 'What models do you use?'] },
+        { msg: "We also have YouTube Intelligence — Claude Vision analyzes video frames to extract what speakers show on screen, not just what they say.", delay: 6000, options: ['Tell me about licensing', 'How about SEO Agency?', 'Show me pricing', 'What models do you use?'] },
       ],
-      franchise: [
-        { msg: "This is the big one. We're offering AI OS as a franchise — your own fully deployed Virtual Corporate HQ.", delay: 0 },
-        { msg: "It's a $10,000 one-time fee. No monthly royalties, no recurring charges. You get the entire platform deployed on your own infrastructure.", delay: 2000 },
-        { msg: "That includes all 51 agents, 10 departments, SEO Agency, Creative Studio, YouTube Intel, white-label branding, Stripe integration for YOUR customers, and lifetime updates.", delay: 4000 },
-        { msg: "We're limiting it to 1,000 participants total. Our Legal department — Justice, Shield, Covenant, and Clause — handles all the franchise agreements and compliance.", delay: 6000 },
-        { msg: "At full capacity, that's $10 million in franchise revenue. Want to learn more?", delay: 8000, options: ['How do I apply?', 'What\'s included exactly?', 'Show me the pricing page', 'Back to overview'] },
+      licensing: [
+        { msg: "This is the big one. We offer AI OS as a white-label SaaS license — your own branded Virtual Corporate HQ.", delay: 0 },
+        { msg: "Three monthly tiers: Pro at $99/mo, Business at $497/mo with white-label branding, and Enterprise at $1,997/mo with dedicated instance and custom domain.", delay: 2000 },
+        { msg: "Or grab a Lifetime License for $9,997 one-time — everything in Enterprise, forever. No monthly fees, no renewals. Limited to 200 spots.", delay: 4000 },
+        { msg: "Every license includes all 51 agents, 10 departments, SEO Agency, Creative Studio, YouTube Intel, and Stripe integration so you can charge your own customers.", delay: 6000 },
+        { msg: "No franchise law, no FDD, no state registration — it's a standard software license. Our Legal department handles all the agreements.", delay: 8000, options: ['How do I apply?', 'What\'s included exactly?', 'Show me the pricing page', 'Back to overview'] },
       ],
       pricing: [
         { msg: "We have three tiers:", delay: 0 },
         { msg: "Pro at $49/month — full dashboard, all 51 agents, Virtual HQ, SEO audits, skills, and cost tracking.", delay: 1500 },
         { msg: "Enterprise at $199/month — everything in Pro plus Gemini Omni Studio, YouTube Intelligence, priority xhigh routing, custom agents, and API access.", delay: 3000 },
-        { msg: "Franchise at $10,000 one-time — everything in Enterprise plus your own deployed instance, white-label branding, Stripe for your customers, and lifetime updates. Limited to 1,000 spots.", delay: 5000, options: ['I want the franchise', 'Tell me more about features', 'Back to overview'] },
+        { msg: "Lifetime License at $9,997 one-time — everything in Enterprise forever, plus your own instance, white-label branding, and Stripe for your customers. Limited to 200 spots.", delay: 5000, options: ['I want a license', 'Tell me more about features', 'Back to overview'] },
       ],
       models: [
         { msg: "We route across 7 model tiers for optimal cost and quality:", delay: 0 },
         { msg: "Strategic (Opus 4.8 xhigh) — that's me and the C-Suite. Deep reasoning for architecture and critical decisions.", delay: 1500 },
         { msg: "Professional (Opus 4.8 high) — 23 agents handle research, coding, writing, legal, and support work.", delay: 3000 },
-        { msg: "Scout (Opus 4.8 low) — fast lookups and triage. Creative (Gemini Omni) — video, image, audio. Economy (DeepSeek V4) — bulk processing. Realtime (Grok-3) — live web search. Persistent (Hermes MCP) — background tasks.", delay: 5000, options: ['Tell me about SEO', 'Creative Studio', 'The Franchise', 'Pricing'] },
+        { msg: "Scout (Opus 4.8 low) — fast lookups and triage. Creative (Gemini Omni) — video, image, audio. Economy (DeepSeek V4) — bulk processing. Realtime (Grok-3) — live web search. Persistent (Hermes MCP) — background tasks.", delay: 5000, options: ['Tell me about SEO', 'Creative Studio', 'Licensing options', 'Pricing'] },
       ],
       apply: [
-        { msg: "To apply for a franchise, scroll down to the pricing section and click 'Apply for Franchise', or I can take you there now.", delay: 0 },
-        { msg: "You'll fill out a short application — name, email, company, and industry. Our team reviews it, and once approved, you'll get a Stripe payment link for the $10,000 fee.", delay: 2000 },
+        { msg: "To get started, scroll down to the pricing section and pick your plan, or I can take you there now.", delay: 0 },
+        { msg: "For monthly plans, you'll go straight to Stripe checkout. For the Lifetime License, fill out a short application and our team provisions your instance.", delay: 2000 },
         { msg: "After payment, we deploy your instance, configure your branding, and give you 30 days of onboarding support.", delay: 4000, options: ['Take me to pricing', 'Back to overview', 'What\'s included?'] },
       ],
     },
@@ -637,8 +637,8 @@
       'How about SEO Agency?': 'seo',
       'Creative Studio': 'creative',
       'What about Creative Studio?': 'creative',
-      'Tell me about the franchise': 'franchise',
-      'The Franchise': 'franchise',
+      'Tell me about licensing': 'licensing',
+      'Licensing options': 'licensing',
       'Tell me more about features': 'overview',
       'How does the Virtual HQ work?': 'overview',
       'Back to overview': 'overview',
@@ -646,16 +646,16 @@
       'Show me pricing': 'pricing',
       'Show me the pricing page': 'pricing',
       'What models do you use?': 'models',
-      'I want the franchise': 'apply',
+      'I want a license': 'apply',
       'How do I apply?': 'apply',
-      'What\'s included exactly?': 'franchise',
-      'What\'s included?': 'franchise',
+      'What\'s included exactly?': 'licensing',
+      'What\'s included?': 'licensing',
       'Take me to pricing': '_scroll_pricing',
     },
     fallbacks: [
       "Great question! I'd love to help with that. For detailed answers, you can log into the dashboard or check our docs at /docs.",
-      "That's a bit outside my tour script, but the full platform has the answer. Want me to tell you about our features, pricing, or franchise instead?",
-      "I'm best at giving tours! Try asking about the SEO Agency, Creative Studio, Virtual HQ, or Franchise opportunity.",
+      "That's a bit outside my tour script, but the full platform has the answer. Want me to tell you about our features, pricing, or licensing instead?",
+      "I'm best at giving tours! Try asking about the SEO Agency, Creative Studio, Virtual HQ, or Licensing options.",
     ],
   };
 
@@ -670,7 +670,7 @@
     fab.classList.toggle('active', tourOpen);
 
     if (tourOpen && document.getElementById('tourMessages').children.length === 0) {
-      addBotMessage(tourGuideData.greeting, ['Give me the tour!', 'Tell me about pricing', 'The Franchise', 'What models do you use?']);
+      addBotMessage(tourGuideData.greeting, ['Give me the tour!', 'Tell me about pricing', 'Licensing options', 'What models do you use?']);
     }
   }
 
@@ -737,7 +737,7 @@
       showTyping();
       setTimeout(() => {
         hideTyping();
-        addBotMessage(fallback, ['Give me the tour!', 'Pricing', 'The Franchise']);
+        addBotMessage(fallback, ['Give me the tour!', 'Pricing', 'Licensing options']);
       }, 1000);
     }
   }
@@ -769,13 +769,13 @@
     let matched = null;
     if (lower.includes('seo') || lower.includes('audit')) matched = 'seo';
     else if (lower.includes('creative') || lower.includes('video') || lower.includes('omni')) matched = 'creative';
-    else if (lower.includes('franchise') || lower.includes('10,000') || lower.includes('10000')) matched = 'franchise';
+    else if (lower.includes('license') || lower.includes('licensing') || lower.includes('white-label') || lower.includes('white label') || lower.includes('9,997') || lower.includes('9997') || lower.includes('lifetime')) matched = 'licensing';
     else if (lower.includes('price') || lower.includes('pricing') || lower.includes('cost') || lower.includes('how much')) matched = 'pricing';
     else if (lower.includes('model') || lower.includes('opus') || lower.includes('tier')) matched = 'models';
     else if (lower.includes('apply') || lower.includes('sign up') || lower.includes('join')) matched = 'apply';
     else if (lower.includes('tour') || lower.includes('overview') || lower.includes('what is') || lower.includes('tell me')) matched = 'overview';
     else if (lower.includes('youtube') || lower.includes('video intel')) matched = 'creative';
-    else if (lower.includes('legal') || lower.includes('compliance') || lower.includes('contract')) matched = 'franchise';
+    else if (lower.includes('legal') || lower.includes('compliance') || lower.includes('contract')) matched = 'licensing';
     else if (lower.includes('hq') || lower.includes('headquarter') || lower.includes('department')) matched = 'overview';
 
     showTyping();
@@ -785,7 +785,7 @@
         playTour(matched);
       } else {
         const fallback = tourGuideData.fallbacks[Math.floor(Math.random() * tourGuideData.fallbacks.length)];
-        addBotMessage(fallback, ['Give me the tour!', 'Pricing', 'The Franchise', 'SEO Agency']);
+        addBotMessage(fallback, ['Give me the tour!', 'Pricing', 'Licensing options', 'SEO Agency']);
       }
     }, 800);
   }
