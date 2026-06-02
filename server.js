@@ -5216,7 +5216,7 @@ const LICENSE_CONFIG = {
     enterprise: { price: 1997, interval: 'month', name: 'Enterprise' },
     lifetime:   { price: 9997, interval: 'one-time', name: 'Lifetime License' },
   },
-  maxLifetime: 200,       // limited lifetime spots
+  maxLifetime: 100,       // limited lifetime spots
   currency: 'usd',
   name: 'AI OS White-Label SaaS License',
   description: 'Complete AI-powered Virtual Corporate HQ with 51 agents, 10 departments, white-label branding, and all integrations.',
