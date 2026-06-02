@@ -5703,6 +5703,16 @@ body {
   line-height: 1.8;
 }
 .franchise-includes li::marker { color: var(--success); }
+.franchise-tier-row {
+  display: flex;
+  justify-content: space-between;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border);
+  font-size: 14px;
+}
+.franchise-tier-row:last-child { border-bottom: none; }
+.franchise-tier-name { font-weight: 600; }
+.franchise-tier-price { font-weight: 700; color: var(--success); font-family: var(--font-mono); }
 .franchise-detail-header { display: flex; align-items: center; gap: 12px; justify-content: space-between; }
 .franchise-detail-header h3 { margin: 0; }
 .franchise-status-badge {

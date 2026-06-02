@@ -5447,17 +5447,17 @@ app.post('/api/license/checkout/:id', async (req, res) => {
   }
 });
 
-// GET /api/license/stats — franchise program stats
+// GET /api/license/stats — license program stats
 app.get('/api/license/stats', requireAdmin, (req, res) => {
   const byStatus = {};
-  franchises.forEach(f => { byStatus[f.status] = (byStatus[f.status] || 0) + 1; });
+  licenses.forEach(f => { byStatus[f.status] = (byStatus[f.status] || 0) + 1; });
 
   const active = byStatus.active || 0;
   const revenue = active * LICENSE_CONFIG.tiers.lifetime.price;
   const remaining = LICENSE_CONFIG.maxLifetime - active - (byStatus.pending || 0) - (byStatus.approved || 0) - (byStatus.payment || 0);
 
   res.json({
-    total: franchises.length,
+    total: licenses.length,
     byStatus,
     active,
     remaining: Math.max(0, remaining),

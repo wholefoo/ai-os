@@ -5301,13 +5301,21 @@ function renderLicenseList(participants) {
 function renderLicenseInfo(info) {
   const container = document.getElementById('licenseInfo');
   if (!container || !info) return;
+  const tiers = info.tiers || {};
+  const tierRows = Object.entries(tiers).map(([key, t]) =>
+    `<div class="franchise-tier-row">
+      <span class="franchise-tier-name">${t.name}</span>
+      <span class="franchise-tier-price">$${t.price.toLocaleString()}${t.interval === 'month' ? '/mo' : ''}</span>
+    </div>`
+  ).join('');
   container.innerHTML = `
     <div class="franchise-info-header">
-      <div class="franchise-price">$${(info.fee || 10000).toLocaleString()}</div>
-      <div class="franchise-price-label">Lifetime License</div>
+      <div class="franchise-price">White-Label SaaS</div>
+      <div class="franchise-price-label">4 License Tiers</div>
     </div>
+    <div class="franchise-tiers" style="margin:12px 0;">${tierRows}</div>
     <div class="franchise-availability ${info.available ? 'open' : 'closed'}">
-      ${info.available ? `${info.remaining} of ${info.maxParticipants} spots available` : 'SOLD OUT — All lifetime spots claimed'}
+      ${info.available ? `${info.remaining} of ${info.maxLifetime} lifetime spots available` : 'SOLD OUT — All lifetime spots claimed'}
     </div>
     <h4 style="margin:16px 0 8px; font-size:13px;">What's Included:</h4>
     <ul class="franchise-includes">
