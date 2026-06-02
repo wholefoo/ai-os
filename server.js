@@ -31,6 +31,354 @@ const STATE_DIR = path.join(MAGENT_DIR, 'state');
 // Ensure state directory exists for persistence
 if (!fs.existsSync(STATE_DIR)) fs.mkdirSync(STATE_DIR, { recursive: true });
 
+// --- Multi-Tenant System ---
+// Each franchise participant gets an isolated tenant with its own state, users, and config.
+// The platform owner (you) is tenant 'master'. Franchise tenants are identified by subdomain or tenant header.
+
+const TENANTS_DIR = path.join(MAGENT_DIR, 'tenants');
+if (!fs.existsSync(TENANTS_DIR)) fs.mkdirSync(TENANTS_DIR, { recursive: true });
+
+const MASTER_TENANT_ID = 'master';
+
+// Tenant registry — loaded from disk, maps tenantId to config
+const tenantRegistry = loadState('tenant_registry', {
+  [MASTER_TENANT_ID]: {
+    id: MASTER_TENANT_ID,
+    name: 'AI OS Corp',
+    domain: process.env.PRIMARY_DOMAIN || 'aiosorchestrationlab.com',
+    subdomain: null,
+    ownerId: process.env.ADMIN_EMAIL || 'wholefoo@gmail.com',
+    plan: 'enterprise',
+    status: 'active',
+    branding: {
+      companyName: 'AI OS Corp',
+      tagline: 'The Agentic Operating System',
+      logo: null,
+      primaryColor: '#3b82f6',
+      accentColor: '#8b5cf6',
+    },
+    industry: null,
+    template: null,
+    createdAt: new Date().toISOString(),
+    franchiseId: null,
+  },
+});
+
+// Ensure each tenant has a state directory
+function ensureTenantDir(tenantId) {
+  const dir = path.join(TENANTS_DIR, tenantId);
+  if (!fs.existsSync(dir)) {
+    fs.mkdirSync(dir, { recursive: true });
+    // Initialize empty state files
+    ['users', 'settings', 'seo_audits', 'yt_analyses', 'franchises'].forEach(f => {
+      const fp = path.join(dir, `${f}.json`);
+      if (!fs.existsSync(fp)) fs.writeFileSync(fp, f === 'users' ? '[]' : '{}');
+    });
+    console.log(`[TENANT] Created state directory for tenant: ${tenantId}`);
+  }
+  return dir;
+}
+
+// Tenant-scoped state read/write
+function saveTenantState(tenantId, key, data) {
+  try {
+    if (tenantId === MASTER_TENANT_ID) return saveState(key, data);
+    const dir = ensureTenantDir(tenantId);
+    fs.writeFileSync(path.join(dir, `${key}.json`), JSON.stringify(data, null, 2));
+  } catch (e) {
+    console.error(`[TENANT] Failed to save ${key} for tenant ${tenantId}:`, e.message);
+  }
+}
+
+function loadTenantState(tenantId, key, fallback) {
+  if (tenantId === MASTER_TENANT_ID) return loadState(key, fallback);
+  const defaults = typeof fallback === 'function' ? fallback() : fallback;
+  try {
+    const fp = path.join(TENANTS_DIR, tenantId, `${key}.json`);
+    if (fs.existsSync(fp)) {
+      const data = JSON.parse(fs.readFileSync(fp, 'utf-8'));
+      // Deep-merge defaults
+      if (defaults && typeof defaults === 'object' && !Array.isArray(defaults)) {
+        for (const [section, vals] of Object.entries(defaults)) {
+          if (typeof vals === 'object' && !Array.isArray(vals) && vals !== null) {
+            if (!data[section]) data[section] = {};
+            for (const [k, v] of Object.entries(vals)) {
+              if (!(k in data[section])) data[section][k] = v;
+            }
+          } else if (!(section in data)) {
+            data[section] = vals;
+          }
+        }
+      }
+      return data;
+    }
+  } catch (e) {
+    console.error(`[TENANT] Failed to load ${key} for tenant ${tenantId}:`, e.message);
+  }
+  return defaults;
+}
+
+// Resolve tenant from request — checks subdomain, header, or defaults to master
+function resolveTenant(req) {
+  // 1. Explicit header (for API clients and testing)
+  const headerTenant = req.headers['x-tenant-id'];
+  if (headerTenant && tenantRegistry[headerTenant]) return tenantRegistry[headerTenant];
+
+  // 2. Subdomain-based (franchise.aiosorchestrationlab.com)
+  const host = req.hostname || req.headers.host || '';
+  const primaryDomain = tenantRegistry[MASTER_TENANT_ID]?.domain || '';
+  if (primaryDomain && host !== primaryDomain && host.endsWith(primaryDomain)) {
+    const subdomain = host.replace(`.${primaryDomain}`, '');
+    const tenant = Object.values(tenantRegistry).find(t => t.subdomain === subdomain && t.status === 'active');
+    if (tenant) return tenant;
+  }
+
+  // 3. Custom domain mapping
+  const byDomain = Object.values(tenantRegistry).find(t => t.domain === host && t.status === 'active');
+  if (byDomain) return byDomain;
+
+  // 4. Default to master
+  return tenantRegistry[MASTER_TENANT_ID];
+}
+
+// Middleware: attach tenant to every request
+app.use((req, res, next) => {
+  req.tenant = resolveTenant(req);
+  req.tenantId = req.tenant?.id || MASTER_TENANT_ID;
+  next();
+});
+
+// --- Tenant Management API ---
+// Note: routes are registered in registerTenantRoutes() after requireAdmin is defined
+
+function registerTenantRoutes() {
+
+// GET /api/tenants — list all tenants
+app.get('/api/tenants', requireAdmin, (req, res) => {
+  res.json(Object.values(tenantRegistry));
+});
+
+// GET /api/tenants/:id — single tenant detail
+app.get('/api/tenants/:id', requireAdmin, (req, res) => {
+  const tenant = tenantRegistry[req.params.id];
+  if (!tenant) return res.status(404).json({ error: 'Tenant not found' });
+  res.json(tenant);
+});
+
+// POST /api/tenants — provision a new tenant (from franchise activation)
+app.post('/api/tenants', requireAdmin, (req, res) => {
+  const { name, subdomain, domain, ownerEmail, plan, industry, template, franchiseId, branding } = req.body;
+  if (!name || !ownerEmail) return res.status(400).json({ error: 'Name and owner email required' });
+
+  // Check subdomain uniqueness
+  if (subdomain && Object.values(tenantRegistry).find(t => t.subdomain === subdomain)) {
+    return res.status(400).json({ error: `Subdomain "${subdomain}" is already taken` });
+  }
+
+  const tenantId = uuidv4().substring(0, 12);
+  const tenant = {
+    id: tenantId,
+    name,
+    domain: domain || null,
+    subdomain: subdomain || null,
+    ownerId: ownerEmail,
+    plan: plan || 'franchise',
+    status: 'active',
+    branding: {
+      companyName: name,
+      tagline: branding?.tagline || 'Powered by AI OS',
+      logo: branding?.logo || null,
+      primaryColor: branding?.primaryColor || '#3b82f6',
+      accentColor: branding?.accentColor || '#8b5cf6',
+    },
+    industry: industry || null,
+    template: template || null,
+    createdAt: new Date().toISOString(),
+    franchiseId: franchiseId || null,
+  };
+
+  // Create tenant directory and seed initial state
+  ensureTenantDir(tenantId);
+
+  // Seed tenant admin user
+  const tenantUsers = [{
+    email: ownerEmail,
+    passwordHash: null, // Owner sets password on first login
+    plan: 'franchise',
+    role: 'admin',
+    tenantId,
+    createdAt: new Date().toISOString(),
+  }];
+  saveTenantState(tenantId, 'users', tenantUsers);
+
+  // Seed tenant settings with defaults
+  const tenantSettings = {
+    ai: { anthropic_api_key: '', deepseek_api_key: '', xai_api_key: '', firecrawl_api_key: '', gemini_api_key: '', tavily_api_key: '', apify_api_token: '' },
+    mcp: { hermes_url: 'http://127.0.0.1:8420', hermes_enabled: false },
+    notifications: { telegram_bot_token: '', telegram_chat_id: '', slack_webhook_url: '' },
+    automation: { n8n_webhook_base: '', n8n_api_key: '', team_webhook_url: '' },
+    stripe: { secret_key: '', webhook_secret: '', pro_price_id: '', enterprise_price_id: '' },
+    seo: { dataforseo_login: '', dataforseo_password: '', default_location: 'United States', default_language: 'en' },
+    general: { demo_mode: true, cors_origin: '*', api_token: '' },
+  };
+  saveTenantState(tenantId, 'settings', tenantSettings);
+
+  // Apply industry template if specified
+  if (template && INDUSTRY_TEMPLATES[template]) {
+    const tmpl = INDUSTRY_TEMPLATES[template];
+    tenant.branding.tagline = tmpl.tagline;
+    if (tmpl.settings) {
+      Object.assign(tenantSettings.general, tmpl.settings);
+      saveTenantState(tenantId, 'settings', tenantSettings);
+    }
+  }
+
+  tenantRegistry[tenantId] = tenant;
+  saveState('tenant_registry', tenantRegistry);
+
+  logActivity('tenant', `Tenant provisioned: ${name} (${tenantId})`, { tenantId, ownerEmail, industry, template });
+  broadcast({ event: 'tenant_provisioned', data: { id: tenantId, name, subdomain } });
+
+  res.json({ ok: true, tenant });
+});
+
+// PUT /api/tenants/:id — update tenant config
+app.put('/api/tenants/:id', requireAdmin, (req, res) => {
+  const tenant = tenantRegistry[req.params.id];
+  if (!tenant) return res.status(404).json({ error: 'Tenant not found' });
+
+  const { name, subdomain, domain, status, branding, industry } = req.body;
+  if (name) tenant.name = name;
+  if (subdomain !== undefined) {
+    if (subdomain && Object.values(tenantRegistry).find(t => t.id !== tenant.id && t.subdomain === subdomain)) {
+      return res.status(400).json({ error: `Subdomain "${subdomain}" is already taken` });
+    }
+    tenant.subdomain = subdomain;
+  }
+  if (domain !== undefined) tenant.domain = domain;
+  if (status) tenant.status = status;
+  if (branding) Object.assign(tenant.branding, branding);
+  if (industry) tenant.industry = industry;
+
+  saveState('tenant_registry', tenantRegistry);
+  res.json({ ok: true, tenant });
+});
+
+// DELETE /api/tenants/:id — deactivate a tenant (soft delete)
+app.delete('/api/tenants/:id', requireAdmin, (req, res) => {
+  const tenant = tenantRegistry[req.params.id];
+  if (!tenant) return res.status(404).json({ error: 'Tenant not found' });
+  if (tenant.id === MASTER_TENANT_ID) return res.status(400).json({ error: 'Cannot delete master tenant' });
+
+  tenant.status = 'deactivated';
+  saveState('tenant_registry', tenantRegistry);
+  logActivity('tenant', `Tenant deactivated: ${tenant.name} (${tenant.id})`, { tenantId: tenant.id });
+  res.json({ ok: true });
+});
+
+// GET /api/tenants/:id/stats — tenant usage stats
+app.get('/api/tenants/:id/stats', requireAdmin, (req, res) => {
+  const tenant = tenantRegistry[req.params.id];
+  if (!tenant) return res.status(404).json({ error: 'Tenant not found' });
+
+  const tenantUsers = loadTenantState(tenant.id, 'users', []);
+  const tenantAudits = loadTenantState(tenant.id, 'seo_audits', []);
+  const tenantSettings = loadTenantState(tenant.id, 'settings', {});
+
+  const configuredKeys = Object.values(tenantSettings.ai || {}).filter(v => !!v).length;
+
+  res.json({
+    tenantId: tenant.id,
+    name: tenant.name,
+    status: tenant.status,
+    users: Array.isArray(tenantUsers) ? tenantUsers.length : 0,
+    seoAudits: Array.isArray(tenantAudits) ? tenantAudits.length : 0,
+    apiKeysConfigured: configuredKeys,
+    createdAt: tenant.createdAt,
+  });
+});
+
+// GET /api/tenant/branding — current tenant's branding (public, no auth)
+app.get('/api/tenant/branding', (req, res) => {
+  const tenant = req.tenant || tenantRegistry[MASTER_TENANT_ID];
+  res.json({
+    tenantId: tenant.id,
+    companyName: tenant.branding?.companyName || 'AI OS Corp',
+    tagline: tenant.branding?.tagline || 'The Agentic Operating System',
+    logo: tenant.branding?.logo || null,
+    primaryColor: tenant.branding?.primaryColor || '#3b82f6',
+    accentColor: tenant.branding?.accentColor || '#8b5cf6',
+    industry: tenant.industry,
+  });
+});
+
+// --- Industry Templates ---
+const INDUSTRY_TEMPLATES = {
+  'digital-agency': {
+    name: 'Digital Marketing Agency',
+    tagline: 'AI-Powered Digital Marketing',
+    description: 'Pre-configured for SEO, content marketing, social media management, and client reporting.',
+    departments: ['marketing', 'creative', 'seo-agency', 'customer-service'],
+    settings: {},
+  },
+  'law-firm': {
+    name: 'Law Firm',
+    tagline: 'AI-Powered Legal Operations',
+    description: 'Contract review, compliance monitoring, legal research, and client communication.',
+    departments: ['legal', 'customer-service', 'product'],
+    settings: {},
+  },
+  'ecommerce': {
+    name: 'E-Commerce Business',
+    tagline: 'AI-Powered Online Retail',
+    description: 'Product listings, inventory management, customer support, and marketing automation.',
+    departments: ['marketing', 'creative', 'customer-service', 'product'],
+    settings: {},
+  },
+  'saas': {
+    name: 'SaaS Company',
+    tagline: 'AI-Powered Software Operations',
+    description: 'Engineering, DevOps, customer support, product management, and growth marketing.',
+    departments: ['engineering', 'tech-support', 'marketing', 'product'],
+    settings: {},
+  },
+  'real-estate': {
+    name: 'Real Estate Agency',
+    tagline: 'AI-Powered Property Sales',
+    description: 'Lead generation, property listing optimization, client communication, and market analysis.',
+    departments: ['marketing', 'customer-service', 'product'],
+    settings: {},
+  },
+  'healthcare': {
+    name: 'Healthcare Practice',
+    tagline: 'AI-Powered Healthcare Admin',
+    description: 'Patient communication, scheduling, compliance, documentation, and billing support.',
+    departments: ['customer-service', 'legal', 'operations'],
+    settings: {},
+  },
+  'consulting': {
+    name: 'Consulting Firm',
+    tagline: 'AI-Powered Consulting',
+    description: 'Research, analysis, report generation, client deliverables, and knowledge management.',
+    departments: ['product', 'creative', 'marketing'],
+    settings: {},
+  },
+  'trades': {
+    name: 'Trades & Home Services',
+    tagline: 'AI-Powered Service Business',
+    description: 'Local SEO, lead generation, scheduling, customer follow-up, and review management.',
+    departments: ['marketing', 'customer-service', 'operations'],
+    settings: {},
+  },
+};
+
+// GET /api/templates — list available industry templates
+app.get('/api/templates', (req, res) => {
+  res.json(Object.entries(INDUSTRY_TEMPLATES).map(([id, t]) => ({ id, ...t })));
+});
+
+} // end registerTenantRoutes
+
 // --- Security & Middleware ---
 app.use(helmet({
   contentSecurityPolicy: {
@@ -4443,6 +4791,9 @@ function requireAdmin(req, res, next) {
   next();
 }
 
+// Register tenant routes now that requireAdmin is defined
+registerTenantRoutes();
+
 // Mask a key for display — show first 4 and last 4 chars
 function capitalize(str) {
   return str.replace(/\b\w/g, c => c.toUpperCase());
@@ -4773,7 +5124,7 @@ const ORG_CHART = {
       employees: [
         { id: 'legal-gc', title: 'General Counsel', name: 'Justice', agent: 'general-counsel', tier: 'strategic', avatar: '⚖️', status: 'active', reportsTo: 'ceo', desc: 'Chief Legal Officer — franchise agreements, IP protection, regulatory compliance, dispute resolution' },
         { id: 'legal-compliance', title: 'Compliance Officer', name: 'Shield', agent: 'compliance-officer', tier: 'professional', avatar: '🛡️', status: 'active', reportsTo: 'legal-gc', desc: 'GDPR/CCPA compliance, audit trails, policy enforcement, regulatory monitoring' },
-        { id: 'legal-franchise', title: 'Franchise Attorney', name: 'Covenant', agent: 'franchise-attorney', tier: 'professional', avatar: '📜', status: 'active', reportsTo: 'legal-gc', desc: 'Franchise Disclosure Documents, participant agreements, territorial rights, FTC compliance' },
+        { id: 'legal-franchise', title: 'Licensing Attorney', name: 'Covenant', agent: 'franchise-attorney', tier: 'professional', avatar: '📜', status: 'active', reportsTo: 'legal-gc', desc: 'Software License Agreements, white-label terms, SaaS licensing, usage rights and restrictions' },
         { id: 'legal-contracts', title: 'Contract Specialist', name: 'Clause', agent: 'contract-specialist', tier: 'professional', avatar: '📝', status: 'active', reportsTo: 'legal-gc', desc: 'Contract generation, review, lifecycle management, template library' },
       ]
     },
@@ -4856,70 +5207,75 @@ app.post('/api/hq/dispatch/:employeeId', requireAdmin, (req, res) => {
   res.json({ ok: true, taskId, employee: employee.name, title: employee.title, department: department.name, model: routing.model });
 });
 
-// --- Franchise Management System ---
+// --- White-Label License Management ---
 
-const FRANCHISE_CONFIG = {
-  fee: 10000,           // $10,000 one-time fee
-  maxParticipants: 1000,
+const LICENSE_CONFIG = {
+  tiers: {
+    pro:        { price: 99,   interval: 'month', name: 'Pro' },
+    business:   { price: 497,  interval: 'month', name: 'Business' },
+    enterprise: { price: 1997, interval: 'month', name: 'Enterprise' },
+    lifetime:   { price: 9997, interval: 'one-time', name: 'Lifetime License' },
+  },
+  maxLifetime: 200,       // limited lifetime spots
   currency: 'usd',
-  name: 'AI OS Virtual Corporate HQ Franchise',
-  description: 'Complete AI-powered Virtual Corporate HQ with 47+ agents, 9 departments, SEO agency, creative studio, and all integrations.',
+  name: 'AI OS White-Label SaaS License',
+  description: 'Complete AI-powered Virtual Corporate HQ with 51 agents, 10 departments, white-label branding, and all integrations.',
   includes: [
-    'Full AI OS platform deployment on dedicated instance',
-    'Virtual Corporate HQ with 47+ AI agents across 9 departments',
-    'SEO Agency with 5 parallel audit sub-agents',
-    'Gemini Omni Creative Studio (video, image, audio)',
+    'Virtual Corporate HQ with 51 AI agents across 10 departments',
+    'SEO Agency with 5 parallel audit sub-agents and post-audit actions',
+    'Gemini Omni Creative Studio (video, image, audio, thumbnails)',
     'YouTube Video Intelligence pipeline',
     'All API integrations (Anthropic, Gemini, DeepSeek, Grok, Firecrawl, Tavily, Apify)',
-    'White-label branding customization',
-    'Admin dashboard with settings management',
-    'Stripe payment integration for your own customers',
-    'VPS deployment scripts and Nginx config',
-    'Documentation hub (14 pages)',
+    'White-label branding (your name, logo, colors, domain)',
+    'Admin dashboard with full settings management',
+    'Stripe integration to charge your own customers',
+    'Industry templates (8 verticals)',
+    'Multi-tenant isolation with dedicated state',
+    'Self-improving platform with Telegram/Slack approval bot',
     'Lifetime updates and platform upgrades',
     '30-day onboarding support',
   ],
 };
 
-const franchises = loadState('franchises', []);
+const licenses = loadState('licenses', []);
 
-// GET /api/franchise/info — public franchise opportunity info
-app.get('/api/franchise/info', (req, res) => {
-  const active = franchises.filter(f => f.status === 'active').length;
-  const remaining = FRANCHISE_CONFIG.maxParticipants - active;
+// GET /api/license/info — public franchise opportunity info
+app.get('/api/license/info', (req, res) => {
+  const active = licenses.filter(f => f.status === 'active').length;
+  const remaining = LICENSE_CONFIG.maxLifetime - active;
   res.json({
-    ...FRANCHISE_CONFIG,
+    ...LICENSE_CONFIG,
     active,
     remaining,
     available: remaining > 0,
-    soldPercentage: Math.round((active / FRANCHISE_CONFIG.maxParticipants) * 100),
+    soldPercentage: Math.round((active / LICENSE_CONFIG.maxLifetime) * 100),
   });
 });
 
-// GET /api/franchise/participants — admin list of all franchise participants
-app.get('/api/franchise/participants', requireAdmin, (req, res) => {
+// GET /api/license/participants — admin list of all franchise participants
+app.get('/api/license/participants', requireAdmin, (req, res) => {
   res.json(franchises);
 });
 
-// GET /api/franchise/participant/:id — single participant detail
-app.get('/api/franchise/participant/:id', requireAdmin, (req, res) => {
-  const f = franchises.find(p => p.id === req.params.id);
+// GET /api/license/participant/:id — single participant detail
+app.get('/api/license/participant/:id', requireAdmin, (req, res) => {
+  const f = licenses.find(p => p.id === req.params.id);
   if (!f) return res.status(404).json({ error: 'Participant not found' });
   res.json(f);
 });
 
-// POST /api/franchise/apply — submit a franchise application
-app.post('/api/franchise/apply', async (req, res) => {
+// POST /api/license/apply — submit a franchise application
+app.post('/api/license/apply', async (req, res) => {
   const { name, email, company, industry, website, phone, message } = req.body;
   if (!name || !email) return res.status(400).json({ error: 'Name and email are required' });
 
-  const active = franchises.filter(f => f.status === 'active' || f.status === 'pending').length;
-  if (active >= FRANCHISE_CONFIG.maxParticipants) {
-    return res.status(400).json({ error: 'Franchise program is currently full (1,000 participants reached)' });
+  const active = licenses.filter(f => f.status === 'active' || f.status === 'pending').length;
+  if (active >= LICENSE_CONFIG.maxLifetime) {
+    return res.status(400).json({ error: 'Lifetime license program is currently full (200 spots claimed)' });
   }
 
   // Check for duplicate email
-  if (franchises.find(f => f.email === email && f.status !== 'rejected')) {
+  if (licenses.find(f => f.email === email && f.status !== 'rejected')) {
     return res.status(400).json({ error: 'An application with this email already exists' });
   }
 
@@ -4942,18 +5298,18 @@ app.post('/api/franchise/apply', async (req, res) => {
     notes: '',
   };
 
-  franchises.push(application);
-  saveState('franchises', franchises);
+  licenses.push(application);
+  saveState('licenses', licenses);
 
-  logActivity('franchise', `New franchise application: ${name} (${email})`, { id: application.id, company });
-  broadcast({ event: 'franchise_application', data: { id: application.id, name, email, company } });
+  logActivity('license', `New license application: ${name} (${email})`, { id: application.id, company });
+  broadcast({ event: 'license_application', data: { id: application.id, name, email, company } });
 
   res.json({ ok: true, id: application.id, message: 'Application received. You will be notified once reviewed.' });
 });
 
-// PUT /api/franchise/participant/:id — admin update participant (approve, reject, activate, notes)
-app.put('/api/franchise/participant/:id', requireAdmin, (req, res) => {
-  const f = franchises.find(p => p.id === req.params.id);
+// PUT /api/license/participant/:id — admin update participant (approve, reject, activate, notes)
+app.put('/api/license/participant/:id', requireAdmin, (req, res) => {
+  const f = licenses.find(p => p.id === req.params.id);
   if (!f) return res.status(404).json({ error: 'Participant not found' });
 
   const { status, notes, territory, instanceUrl } = req.body;
@@ -4972,30 +5328,83 @@ app.put('/api/franchise/participant/:id', requireAdmin, (req, res) => {
     }
     f.status = status;
     if (status === 'approved') f.approvedAt = new Date().toISOString();
-    if (status === 'active') f.activatedAt = new Date().toISOString();
+    if (status === 'active') {
+      f.activatedAt = new Date().toISOString();
+
+      // Auto-provision tenant for newly activated license
+      if (!f.tenantId) {
+        const tenantId = uuidv4().substring(0, 12);
+        const subdomain = (f.company || f.name).toLowerCase().replace(/[^a-z0-9]/g, '-').replace(/-+/g, '-').substring(0, 20);
+        const tenant = {
+          id: tenantId,
+          name: f.company || f.name,
+          domain: null,
+          subdomain,
+          ownerId: f.email,
+          plan: 'franchise',
+          status: 'active',
+          branding: {
+            companyName: f.company || f.name,
+            tagline: 'Powered by AI OS',
+            logo: null,
+            primaryColor: '#3b82f6',
+            accentColor: '#8b5cf6',
+          },
+          industry: f.industry || null,
+          template: null,
+          createdAt: new Date().toISOString(),
+          franchiseId: f.id,
+        };
+
+        ensureTenantDir(tenantId);
+        // Seed tenant admin
+        saveTenantState(tenantId, 'users', [{
+          email: f.email, passwordHash: null, plan: 'franchise', role: 'admin', tenantId, createdAt: new Date().toISOString(),
+        }]);
+        // Seed empty settings
+        saveTenantState(tenantId, 'settings', {
+          ai: { anthropic_api_key: '', deepseek_api_key: '', xai_api_key: '', firecrawl_api_key: '', gemini_api_key: '', tavily_api_key: '', apify_api_token: '' },
+          mcp: { hermes_url: 'http://127.0.0.1:8420', hermes_enabled: false },
+          notifications: { telegram_bot_token: '', telegram_chat_id: '', slack_webhook_url: '' },
+          automation: { n8n_webhook_base: '', n8n_api_key: '', team_webhook_url: '' },
+          stripe: { secret_key: '', webhook_secret: '', pro_price_id: '', enterprise_price_id: '' },
+          seo: { dataforseo_login: '', dataforseo_password: '', default_location: 'United States', default_language: 'en' },
+          general: { demo_mode: true, cors_origin: '*', api_token: '' },
+        });
+
+        tenantRegistry[tenantId] = tenant;
+        saveState('tenant_registry', tenantRegistry);
+
+        f.tenantId = tenantId;
+        f.instanceUrl = `https://${subdomain}.${tenantRegistry[MASTER_TENANT_ID]?.domain || 'aiosorchestrationlab.com'}`;
+
+        logActivity('license', `Tenant auto-provisioned for ${f.name}: ${tenantId} (${subdomain})`, { franchiseId: f.id, tenantId });
+        broadcast({ event: 'tenant_provisioned', data: { id: tenantId, name: tenant.name, subdomain, franchiseId: f.id } });
+      }
+    }
   }
 
   if (notes !== undefined) f.notes = notes;
   if (territory) f.territory = territory;
   if (instanceUrl) f.instanceUrl = instanceUrl;
 
-  saveState('franchises', franchises);
-  logActivity('franchise', `Franchise ${f.status}: ${f.name} (${f.email})`, { id: f.id, status: f.status });
-  broadcast({ event: 'franchise_updated', data: { id: f.id, status: f.status, name: f.name } });
+  saveState('licenses', licenses);
+  logActivity('license', `Franchise ${f.status}: ${f.name} (${f.email})`, { id: f.id, status: f.status });
+  broadcast({ event: 'license_updated', data: { id: f.id, status: f.status, name: f.name } });
 
   res.json({ ok: true, participant: f });
 });
 
-// POST /api/franchise/checkout/:id — generate Stripe checkout for franchise fee
-app.post('/api/franchise/checkout/:id', async (req, res) => {
-  const f = franchises.find(p => p.id === req.params.id);
+// POST /api/license/checkout/:id — generate Stripe checkout for franchise fee
+app.post('/api/license/checkout/:id', async (req, res) => {
+  const f = licenses.find(p => p.id === req.params.id);
   if (!f) return res.status(404).json({ error: 'Participant not found' });
   if (f.status !== 'approved') return res.status(400).json({ error: 'Application must be approved before payment' });
 
   if (DEMO_MODE) {
     f.status = 'payment';
     f.paymentId = `demo_pay_${uuidv4().substring(0, 8)}`;
-    saveState('franchises', franchises);
+    saveState('licenses', licenses);
     return res.json({
       ok: true,
       checkoutUrl: '#demo-checkout',
@@ -5014,23 +5423,23 @@ app.post('/api/franchise/checkout/:id', async (req, res) => {
         price_data: {
           currency: 'usd',
           product_data: {
-            name: FRANCHISE_CONFIG.name,
-            description: `One-time franchise fee — ${FRANCHISE_CONFIG.description}`,
+            name: LICENSE_CONFIG.name,
+            description: `White-label lifetime license — ${LICENSE_CONFIG.description}`,
           },
-          unit_amount: FRANCHISE_CONFIG.fee * 100, // cents
+          unit_amount: LICENSE_CONFIG.tiers.lifetime.price * 100, // cents
         },
         quantity: 1,
       }],
       mode: 'payment',
-      success_url: `https://${req.headers.host}/franchise/success?session_id={CHECKOUT_SESSION_ID}&participant=${f.id}`,
-      cancel_url: `https://${req.headers.host}/franchise/cancel?participant=${f.id}`,
+      success_url: `https://${req.headers.host}/license/success?session_id={CHECKOUT_SESSION_ID}&participant=${f.id}`,
+      cancel_url: `https://${req.headers.host}/license/cancel?participant=${f.id}`,
       customer_email: f.email,
-      metadata: { franchise_id: f.id, participant_name: f.name },
+      metadata: { license_id: f.id, participant_name: f.name },
     });
 
     f.status = 'payment';
     f.paymentId = session.id;
-    saveState('franchises', franchises);
+    saveState('licenses', licenses);
 
     res.json({ ok: true, checkoutUrl: session.url, paymentId: session.id });
   } catch (e) {
@@ -5038,27 +5447,275 @@ app.post('/api/franchise/checkout/:id', async (req, res) => {
   }
 });
 
-// GET /api/franchise/stats — franchise program stats
-app.get('/api/franchise/stats', requireAdmin, (req, res) => {
+// GET /api/license/stats — franchise program stats
+app.get('/api/license/stats', requireAdmin, (req, res) => {
   const byStatus = {};
   franchises.forEach(f => { byStatus[f.status] = (byStatus[f.status] || 0) + 1; });
 
   const active = byStatus.active || 0;
-  const revenue = active * FRANCHISE_CONFIG.fee;
-  const remaining = FRANCHISE_CONFIG.maxParticipants - active - (byStatus.pending || 0) - (byStatus.approved || 0) - (byStatus.payment || 0);
+  const revenue = active * LICENSE_CONFIG.tiers.lifetime.price;
+  const remaining = LICENSE_CONFIG.maxLifetime - active - (byStatus.pending || 0) - (byStatus.approved || 0) - (byStatus.payment || 0);
 
   res.json({
     total: franchises.length,
     byStatus,
     active,
     remaining: Math.max(0, remaining),
-    maxParticipants: FRANCHISE_CONFIG.maxParticipants,
-    fee: FRANCHISE_CONFIG.fee,
+    maxParticipants: LICENSE_CONFIG.maxLifetime,
+    fee: LICENSE_CONFIG.tiers.lifetime.price,
     totalRevenue: revenue,
-    projectedRevenue: FRANCHISE_CONFIG.maxParticipants * FRANCHISE_CONFIG.fee,
-    fillRate: Math.round((active / FRANCHISE_CONFIG.maxParticipants) * 100),
+    projectedRevenue: LICENSE_CONFIG.maxLifetime * LICENSE_CONFIG.tiers.lifetime.price,
+    fillRate: Math.round((active / LICENSE_CONFIG.maxLifetime) * 100),
   });
 });
+
+// --- Self-Improving Platform (Telegram/Slack Approval Bot) ---
+
+const pendingApprovals = loadState('pending_approvals', []);
+
+// Proposal types the platform can generate
+const PROPOSAL_TYPES = {
+  'dependency-update': { icon: '📦', label: 'Dependency Update', risk: 'low' },
+  'model-upgrade': { icon: '🧠', label: 'Model Upgrade', risk: 'medium' },
+  'cost-optimization': { icon: '💰', label: 'Cost Optimization', risk: 'low' },
+  'new-skill': { icon: '✨', label: 'New Skill', risk: 'low' },
+  'bug-fix': { icon: '🔧', label: 'Bug Fix', risk: 'medium' },
+  'security-patch': { icon: '🛡️', label: 'Security Patch', risk: 'high' },
+  'content-refresh': { icon: '📄', label: 'Content Refresh', risk: 'low' },
+  'config-change': { icon: '⚙️', label: 'Config Change', risk: 'medium' },
+  'feature-proposal': { icon: '🚀', label: 'Feature Proposal', risk: 'medium' },
+};
+
+// POST /api/platform/propose — create a self-improvement proposal
+app.post('/api/platform/propose', requireAdmin, (req, res) => {
+  const { type, title, description, diff, autoApply } = req.body;
+  if (!type || !title) return res.status(400).json({ error: 'Type and title required' });
+
+  const proposalType = PROPOSAL_TYPES[type] || { icon: '📋', label: type, risk: 'medium' };
+  const proposal = {
+    id: uuidv4(),
+    type,
+    typeLabel: proposalType.label,
+    icon: proposalType.icon,
+    risk: proposalType.risk,
+    title,
+    description: description || '',
+    diff: diff || null,
+    autoApply: autoApply || false,
+    status: 'pending', // pending → approved → applied | rejected | expired
+    createdAt: new Date().toISOString(),
+    respondedAt: null,
+    appliedAt: null,
+    respondedVia: null, // telegram, slack, dashboard
+    response: null,
+  };
+
+  pendingApprovals.push(proposal);
+  saveState('pending_approvals', pendingApprovals);
+
+  // Send to Telegram if configured
+  sendTelegramApproval(proposal);
+  // Send to Slack if configured
+  sendSlackApproval(proposal);
+
+  broadcast({ event: 'platform_proposal', data: proposal });
+  logActivity('platform', `Self-improvement proposed: ${title}`, { id: proposal.id, type, risk: proposalType.risk });
+
+  res.json({ ok: true, proposal });
+});
+
+// GET /api/platform/proposals — list all proposals
+app.get('/api/platform/proposals', requireAdmin, (req, res) => {
+  res.json(pendingApprovals);
+});
+
+// PUT /api/platform/proposals/:id — approve or reject
+app.put('/api/platform/proposals/:id', requireAdmin, (req, res) => {
+  const proposal = pendingApprovals.find(p => p.id === req.params.id);
+  if (!proposal) return res.status(404).json({ error: 'Proposal not found' });
+
+  const { status, response } = req.body;
+  if (!['approved', 'rejected'].includes(status)) return res.status(400).json({ error: 'Status must be approved or rejected' });
+
+  proposal.status = status;
+  proposal.respondedAt = new Date().toISOString();
+  proposal.respondedVia = 'dashboard';
+  proposal.response = response || null;
+
+  if (status === 'approved' && proposal.autoApply) {
+    proposal.appliedAt = new Date().toISOString();
+    proposal.status = 'applied';
+    logActivity('platform', `Auto-applied: ${proposal.title}`, { id: proposal.id });
+  }
+
+  saveState('pending_approvals', pendingApprovals);
+  broadcast({ event: 'platform_proposal_responded', data: { id: proposal.id, status: proposal.status } });
+
+  // Notify via Telegram/Slack
+  const emoji = status === 'approved' ? '✅' : '❌';
+  sendTelegramMessage(`${emoji} Proposal ${status}: ${proposal.title}`);
+  sendSlackMessage(`${emoji} Proposal ${status}: ${proposal.title}`);
+
+  res.json({ ok: true, proposal });
+});
+
+// GET /api/platform/stats — self-improvement stats
+app.get('/api/platform/stats', requireAdmin, (req, res) => {
+  const byStatus = {};
+  const byType = {};
+  pendingApprovals.forEach(p => {
+    byStatus[p.status] = (byStatus[p.status] || 0) + 1;
+    byType[p.type] = (byType[p.type] || 0) + 1;
+  });
+  res.json({ total: pendingApprovals.length, byStatus, byType });
+});
+
+// --- Telegram Bot Integration ---
+async function sendTelegramMessage(text) {
+  const token = settings.notifications?.telegram_bot_token;
+  const chatId = settings.notifications?.telegram_chat_id;
+  if (!token || !chatId) return;
+
+  try {
+    await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ chat_id: chatId, text, parse_mode: 'HTML' }),
+    });
+  } catch (e) {
+    console.error('[TELEGRAM] Send failed:', e.message);
+  }
+}
+
+async function sendTelegramApproval(proposal) {
+  const token = settings.notifications?.telegram_bot_token;
+  const chatId = settings.notifications?.telegram_chat_id;
+  if (!token || !chatId) return;
+
+  const riskEmoji = proposal.risk === 'high' ? '🔴' : proposal.risk === 'medium' ? '🟡' : '🟢';
+  const text = `${proposal.icon} <b>Platform Update Proposal</b>\n\n` +
+    `<b>${proposal.title}</b>\n` +
+    `Type: ${proposal.typeLabel}\n` +
+    `Risk: ${riskEmoji} ${proposal.risk}\n\n` +
+    (proposal.description ? `${proposal.description}\n\n` : '') +
+    (proposal.diff ? `<pre>${proposal.diff.substring(0, 500)}</pre>\n\n` : '') +
+    `Reply with:\n` +
+    `✅ <code>/approve ${proposal.id.substring(0, 8)}</code>\n` +
+    `❌ <code>/reject ${proposal.id.substring(0, 8)}</code>`;
+
+  try {
+    await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ chat_id: chatId, text, parse_mode: 'HTML' }),
+    });
+  } catch (e) {
+    console.error('[TELEGRAM] Approval send failed:', e.message);
+  }
+}
+
+// POST /api/platform/telegram-webhook — receive Telegram bot responses
+app.post('/api/platform/telegram-webhook', (req, res) => {
+  const update = req.body;
+  const text = update?.message?.text || '';
+  const chatId = String(update?.message?.chat?.id || '');
+
+  // Verify this is from our configured chat
+  const configuredChat = String(settings.notifications?.telegram_chat_id || '');
+  if (!configuredChat || chatId !== configuredChat) return res.json({ ok: true });
+
+  // Parse /approve or /reject commands
+  const approveMatch = text.match(/\/approve\s+(\S+)/i);
+  const rejectMatch = text.match(/\/reject\s+(\S+)/i);
+
+  if (approveMatch || rejectMatch) {
+    const isApprove = !!approveMatch;
+    const shortId = (approveMatch || rejectMatch)[1];
+    const proposal = pendingApprovals.find(p => p.id.startsWith(shortId) && p.status === 'pending');
+
+    if (proposal) {
+      proposal.status = isApprove ? 'approved' : 'rejected';
+      proposal.respondedAt = new Date().toISOString();
+      proposal.respondedVia = 'telegram';
+
+      if (isApprove && proposal.autoApply) {
+        proposal.status = 'applied';
+        proposal.appliedAt = new Date().toISOString();
+      }
+
+      saveState('pending_approvals', pendingApprovals);
+      broadcast({ event: 'platform_proposal_responded', data: { id: proposal.id, status: proposal.status } });
+      logActivity('platform', `Proposal ${proposal.status} via Telegram: ${proposal.title}`, { id: proposal.id });
+
+      const emoji = isApprove ? '✅' : '❌';
+      sendTelegramMessage(`${emoji} <b>${proposal.title}</b> — ${proposal.status}${proposal.status === 'applied' ? ' and auto-applied' : ''}`);
+    } else {
+      sendTelegramMessage(`⚠️ No pending proposal found matching: ${shortId}`);
+    }
+  }
+
+  res.json({ ok: true });
+});
+
+// --- Slack Integration ---
+async function sendSlackMessage(text) {
+  const url = settings.notifications?.slack_webhook_url;
+  if (!url) return;
+
+  try {
+    await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text }),
+    });
+  } catch (e) {
+    console.error('[SLACK] Send failed:', e.message);
+  }
+}
+
+async function sendSlackApproval(proposal) {
+  const url = settings.notifications?.slack_webhook_url;
+  if (!url) return;
+
+  const riskEmoji = proposal.risk === 'high' ? '🔴' : proposal.risk === 'medium' ? '🟡' : '🟢';
+  const text = `${proposal.icon} *Platform Update Proposal*\n\n` +
+    `*${proposal.title}*\n` +
+    `Type: ${proposal.typeLabel} | Risk: ${riskEmoji} ${proposal.risk}\n` +
+    (proposal.description ? `${proposal.description}\n` : '') +
+    `\nApprove/reject in the dashboard → Platform view`;
+
+  try {
+    await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text }),
+    });
+  } catch (e) {
+    console.error('[SLACK] Approval send failed:', e.message);
+  }
+}
+
+// --- Automated Self-Improvement Checks (runs on startup and via CRON) ---
+function checkForSelfImprovements() {
+  // Check for outdated dependencies
+  try {
+    const pkg = JSON.parse(fs.readFileSync(path.join(BASE, 'package.json'), 'utf-8'));
+    const depCount = Object.keys(pkg.dependencies || {}).length;
+    // In production, this would run `npm outdated --json` and propose updates
+    console.log(`[SELF-IMPROVE] Checked ${depCount} dependencies`);
+  } catch (e) {}
+
+  // Check model availability
+  console.log(`[SELF-IMPROVE] Current model: ${OPUS_MODEL}`);
+
+  // Check agent count
+  const agentDir = path.join(CLAUDE_DIR, 'agents');
+  const agentCount = fs.existsSync(agentDir) ? fs.readdirSync(agentDir).filter(f => f.endsWith('.md')).length : 0;
+  console.log(`[SELF-IMPROVE] ${agentCount} agents, ${Object.keys(tenantRegistry).length} tenants`);
+}
+
+// Run on startup
+checkForSelfImprovements();
 
 // --- YouTube Video Analysis ---
 

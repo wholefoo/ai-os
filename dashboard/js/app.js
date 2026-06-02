@@ -84,7 +84,9 @@ function switchView(view) {
     youtube: loadYouTube,
     hq: loadHQ,
     'seo-agency': loadSeoAgency,
-    franchise: loadFranchise,
+    licensing: loadLicensing,
+    tenants: loadTenants,
+    platform: loadPlatform,
     settings: loadSettings,
     automations: loadAutomations,
     social: loadSocial,
@@ -5242,26 +5244,26 @@ function renderMarkdown(text) {
     .replace(/<p><\/p>/g, '');
 }
 
-// --- Franchise Management ---
-async function loadFranchise() {
+// --- White-Label Licensing ---
+async function loadLicensing() {
   const [stats, participants, info] = await Promise.all([
-    fetchJSON('/api/franchise/stats'),
-    fetchJSON('/api/franchise/participants'),
-    fetchJSON('/api/franchise/info'),
+    fetchJSON('/api/license/stats'),
+    fetchJSON('/api/license/participants'),
+    fetchJSON('/api/license/info'),
   ]);
-  renderFranchiseStats(stats);
-  renderFranchiseList(Array.isArray(participants) ? participants : []);
-  renderFranchiseInfo(info);
+  renderLicenseStats(stats);
+  renderLicenseList(Array.isArray(participants) ? participants : []);
+  renderLicenseInfo(info);
 }
 
-function renderFranchiseStats(stats) {
-  const container = document.getElementById('franchiseStats');
+function renderLicenseStats(stats) {
+  const container = document.getElementById('licenseStats');
   if (!container || !stats) return;
   const fillColor = stats.fillRate > 75 ? 'var(--error)' : stats.fillRate > 50 ? 'var(--warning)' : 'var(--success)';
   container.innerHTML = `
-    <div class="hq-stat"><div class="hq-stat-value">${stats.active || 0}</div><div class="hq-stat-label">Active Franchises</div></div>
+    <div class="hq-stat"><div class="hq-stat-value">${stats.active || 0}</div><div class="hq-stat-label">Active Licenses</div></div>
     <div class="hq-stat"><div class="hq-stat-value">${stats.byStatus?.pending || 0}</div><div class="hq-stat-label">Pending</div></div>
-    <div class="hq-stat"><div class="hq-stat-value" style="color:${fillColor};">${stats.remaining}</div><div class="hq-stat-label">Remaining / 1,000</div></div>
+    <div class="hq-stat"><div class="hq-stat-value" style="color:${fillColor};">${stats.remaining}</div><div class="hq-stat-label">Lifetime Remaining</div></div>
     <div class="hq-stat"><div class="hq-stat-value" style="color:var(--success);">$${(stats.totalRevenue || 0).toLocaleString()}</div><div class="hq-stat-label">Revenue</div></div>
     <div class="hq-stat"><div class="hq-stat-value">$${((stats.projectedRevenue || 0) / 1000000).toFixed(1)}M</div><div class="hq-stat-label">Projected (Full)</div></div>
     <div class="hq-stat">
@@ -5272,19 +5274,19 @@ function renderFranchiseStats(stats) {
   `;
 }
 
-function renderFranchiseList(participants) {
-  const container = document.getElementById('franchiseList');
+function renderLicenseList(participants) {
+  const container = document.getElementById('licenseList');
   if (!container) return;
 
   if (!participants.length) {
-    container.innerHTML = '<div class="empty-state">No franchise applications yet.</div>';
+    container.innerHTML = '<div class="empty-state">No license applications yet.</div>';
     return;
   }
 
   container.innerHTML = participants.slice().reverse().map(p => {
     const statusColors = { pending: '#f59e0b', approved: '#3b82f6', payment: '#8b5cf6', active: '#10b981', suspended: '#ef4444', rejected: '#6b7280' };
     return `
-      <div class="franchise-card" onclick="viewFranchiseParticipant('${p.id}')">
+      <div class="franchise-card" onclick="viewLicenseParticipant('${p.id}')">
         <div class="franchise-card-status" style="background:${statusColors[p.status] || '#6b7280'};">${p.status}</div>
         <div class="franchise-card-info">
           <div class="franchise-card-name">${escapeHtml(p.name)}</div>
@@ -5296,16 +5298,16 @@ function renderFranchiseList(participants) {
   }).join('');
 }
 
-function renderFranchiseInfo(info) {
-  const container = document.getElementById('franchiseInfo');
+function renderLicenseInfo(info) {
+  const container = document.getElementById('licenseInfo');
   if (!container || !info) return;
   container.innerHTML = `
     <div class="franchise-info-header">
       <div class="franchise-price">$${(info.fee || 10000).toLocaleString()}</div>
-      <div class="franchise-price-label">One-Time Fee</div>
+      <div class="franchise-price-label">Lifetime License</div>
     </div>
     <div class="franchise-availability ${info.available ? 'open' : 'closed'}">
-      ${info.available ? `${info.remaining} of ${info.maxParticipants} spots available` : 'PROGRAM FULL — All 1,000 spots claimed'}
+      ${info.available ? `${info.remaining} of ${info.maxParticipants} spots available` : 'SOLD OUT — All lifetime spots claimed'}
     </div>
     <h4 style="margin:16px 0 8px; font-size:13px;">What's Included:</h4>
     <ul class="franchise-includes">
@@ -5314,12 +5316,12 @@ function renderFranchiseInfo(info) {
   `;
 }
 
-async function viewFranchiseParticipant(id) {
-  const p = await fetchJSON(`/api/franchise/participant/${id}`);
+async function viewLicenseParticipant(id) {
+  const p = await fetchJSON(`/api/license/participant/${id}`);
   if (!p || p.error) return;
 
-  const modal = document.getElementById('franchiseModal');
-  const detail = document.getElementById('franchiseDetail');
+  const modal = document.getElementById('licenseModal');
+  const detail = document.getElementById('licenseDetail');
   const statusColors = { pending: '#f59e0b', approved: '#3b82f6', payment: '#8b5cf6', active: '#10b981', suspended: '#ef4444', rejected: '#6b7280' };
   const nextActions = {
     pending: [{ label: 'Approve', status: 'approved', cls: 'btn-primary' }, { label: 'Reject', status: 'rejected', cls: 'btn-danger' }],
@@ -5330,12 +5332,12 @@ async function viewFranchiseParticipant(id) {
     rejected: [{ label: 'Reconsider', status: 'pending', cls: '' }],
   };
   const actions = (nextActions[p.status] || []).map(a =>
-    `<button class="btn btn-sm ${a.cls}" onclick="updateFranchise('${p.id}','${a.status}')">${a.label}</button>`
+    `<button class="btn btn-sm ${a.cls}" onclick="updateLicense('${p.id}','${a.status}')">${a.label}</button>`
   ).join(' ');
 
   detail.innerHTML = `
     <div class="hq-modal-header">
-      <button class="btn btn-sm" onclick="document.getElementById('franchiseModal').style.display='none';">&times; Close</button>
+      <button class="btn btn-sm" onclick="document.getElementById('licenseModal').style.display='none';">&times; Close</button>
     </div>
     <div class="franchise-detail-header">
       <h3>${escapeHtml(p.name)}</h3>
@@ -5354,32 +5356,321 @@ async function viewFranchiseParticipant(id) {
     ${p.message ? `<div class="hq-profile-desc" style="margin-top:12px;"><strong>Message:</strong> ${escapeHtml(p.message)}</div>` : ''}
     <div style="margin-top:16px;">
       <h4 style="margin-bottom:8px; font-size:13px;">Admin Notes</h4>
-      <textarea id="franchiseNotes" class="settings-input" rows="3" style="width:100%; font-size:13px;">${escapeHtml(p.notes || '')}</textarea>
-      <button class="btn btn-sm" style="margin-top:6px;" onclick="saveFranchiseNotes('${p.id}')">Save Notes</button>
+      <textarea id="licenseNotes" class="settings-input" rows="3" style="width:100%; font-size:13px;">${escapeHtml(p.notes || '')}</textarea>
+      <button class="btn btn-sm" style="margin-top:6px;" onclick="saveLicenseNotes('${p.id}')">Save Notes</button>
     </div>
     <div style="margin-top:16px; display:flex; gap:8px; flex-wrap:wrap;">
       ${actions}
     </div>
-    <div id="franchiseActionResult" style="margin-top:10px;"></div>
+    <div id="licenseActionResult" style="margin-top:10px;"></div>
   `;
   modal.style.display = 'flex';
 }
 
-async function updateFranchise(id, newStatus) {
-  const result = await fetchJSON(`/api/franchise/participant/${id}`, { method: 'PUT', body: { status: newStatus } });
-  const el = document.getElementById('franchiseActionResult');
+async function updateLicense(id, newStatus) {
+  const result = await fetchJSON(`/api/license/participant/${id}`, { method: 'PUT', body: { status: newStatus } });
+  const el = document.getElementById('licenseActionResult');
   if (result.ok) {
     el.innerHTML = `<div class="hq-dispatch-success">Status updated to: ${newStatus}</div>`;
-    setTimeout(() => { document.getElementById('franchiseModal').style.display = 'none'; loadFranchise(); }, 1000);
+    setTimeout(() => { document.getElementById('licenseModal').style.display = 'none'; loadLicensing(); }, 1000);
   } else {
     el.innerHTML = `<div class="hq-dispatch-error">${result.error || 'Update failed'}</div>`;
   }
 }
 
-async function saveFranchiseNotes(id) {
-  const notes = document.getElementById('franchiseNotes').value;
-  const result = await fetchJSON(`/api/franchise/participant/${id}`, { method: 'PUT', body: { notes } });
+async function saveLicenseNotes(id) {
+  const notes = document.getElementById('licenseNotes').value;
+  const result = await fetchJSON(`/api/license/participant/${id}`, { method: 'PUT', body: { notes } });
   if (result.ok) showSettingsToast('Notes saved');
+}
+
+// --- Platform Self-Improvement ---
+async function loadPlatform() {
+  const [proposals, stats] = await Promise.all([
+    fetchJSON('/api/platform/proposals'),
+    fetchJSON('/api/platform/stats'),
+  ]);
+  const list = Array.isArray(proposals) ? proposals : [];
+  renderPlatformStats(stats);
+  renderPlatformPending(list.filter(p => p.status === 'pending'));
+  renderPlatformHistory(list.filter(p => p.status !== 'pending'));
+}
+
+function renderPlatformStats(stats) {
+  const container = document.getElementById('platformStats');
+  if (!container || !stats) return;
+  container.innerHTML = `
+    <div class="hq-stat"><div class="hq-stat-value">${stats.total || 0}</div><div class="hq-stat-label">Total Proposals</div></div>
+    <div class="hq-stat"><div class="hq-stat-value" style="color:var(--warning);">${stats.byStatus?.pending || 0}</div><div class="hq-stat-label">Pending</div></div>
+    <div class="hq-stat"><div class="hq-stat-value" style="color:var(--success);">${(stats.byStatus?.approved || 0) + (stats.byStatus?.applied || 0)}</div><div class="hq-stat-label">Approved</div></div>
+    <div class="hq-stat"><div class="hq-stat-value" style="color:var(--error);">${stats.byStatus?.rejected || 0}</div><div class="hq-stat-label">Rejected</div></div>
+  `;
+}
+
+function renderPlatformPending(proposals) {
+  const container = document.getElementById('platformPending');
+  if (!container) return;
+  if (!proposals.length) { container.innerHTML = '<div class="empty-state">No pending proposals. The platform is up to date.</div>'; return; }
+
+  container.innerHTML = proposals.map(p => {
+    const riskClass = p.risk === 'high' ? 'critical' : p.risk === 'medium' ? 'warning' : 'info';
+    return `
+      <div class="platform-proposal">
+        <div class="platform-proposal-icon">${p.icon}</div>
+        <div class="platform-proposal-content">
+          <div class="platform-proposal-title">${escapeHtml(p.title)}</div>
+          <div class="platform-proposal-meta">
+            <span class="seo-finding-severity seo-finding-${riskClass}" style="display:inline-block;">${p.risk} risk</span>
+            <span>${p.typeLabel}</span>
+            <span>${new Date(p.createdAt).toLocaleString()}</span>
+            ${p.autoApply ? '<span style="color:var(--primary);">Auto-apply on approve</span>' : ''}
+          </div>
+          ${p.description ? `<div class="platform-proposal-desc">${escapeHtml(p.description)}</div>` : ''}
+          ${p.diff ? `<pre class="platform-diff">${escapeHtml(p.diff.substring(0, 300))}${p.diff.length > 300 ? '...' : ''}</pre>` : ''}
+        </div>
+        <div class="platform-proposal-actions">
+          <button class="btn btn-sm btn-primary" onclick="respondProposal('${p.id}','approved')">Approve</button>
+          <button class="btn btn-sm btn-danger" onclick="respondProposal('${p.id}','rejected')">Reject</button>
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+function renderPlatformHistory(proposals) {
+  const container = document.getElementById('platformHistory');
+  if (!container) return;
+  if (!proposals.length) { container.innerHTML = '<div class="empty-state">No history yet.</div>'; return; }
+
+  container.innerHTML = proposals.slice().reverse().slice(0, 20).map(p => {
+    const statusIcon = p.status === 'approved' || p.status === 'applied' ? '&#9989;' : '&#10060;';
+    const via = p.respondedVia ? ` via ${p.respondedVia}` : '';
+    return `
+      <div class="platform-history-item">
+        <span>${statusIcon} ${p.icon}</span>
+        <span class="platform-history-title">${escapeHtml(p.title)}</span>
+        <span class="platform-history-status">${p.status}${via}</span>
+        <span class="platform-history-date">${p.respondedAt ? new Date(p.respondedAt).toLocaleDateString() : ''}</span>
+      </div>
+    `;
+  }).join('');
+}
+
+async function respondProposal(id, status) {
+  const result = await fetchJSON(`/api/platform/proposals/${id}`, { method: 'PUT', body: { status } });
+  if (result.ok) {
+    showSettingsToast(`Proposal ${status}: ${result.proposal.title}`);
+    loadPlatform();
+  }
+}
+
+function showCreateProposal() {
+  const modal = document.getElementById('platformModal');
+  const content = document.getElementById('platformModalContent');
+  const typeOptions = [
+    ['dependency-update', '📦 Dependency Update'],
+    ['model-upgrade', '🧠 Model Upgrade'],
+    ['cost-optimization', '💰 Cost Optimization'],
+    ['new-skill', '✨ New Skill'],
+    ['bug-fix', '🔧 Bug Fix'],
+    ['security-patch', '🛡️ Security Patch'],
+    ['content-refresh', '📄 Content Refresh'],
+    ['config-change', '⚙️ Config Change'],
+    ['feature-proposal', '🚀 Feature Proposal'],
+  ].map(([v, l]) => `<option value="${v}">${l}</option>`).join('');
+
+  content.innerHTML = `
+    <div class="hq-modal-header"><button class="btn btn-sm" onclick="document.getElementById('platformModal').style.display='none';">&times; Close</button></div>
+    <h3 style="margin-bottom:16px;">Create Proposal</h3>
+    <div class="settings-fields">
+      <div class="settings-field"><label class="settings-label">Type</label><select class="settings-input" id="propType">${typeOptions}</select></div>
+      <div class="settings-field"><label class="settings-label">Title *</label><input type="text" class="settings-input" id="propTitle" placeholder="What should change?"></div>
+      <div class="settings-field"><label class="settings-label">Description</label><textarea class="settings-input" id="propDesc" rows="3" placeholder="Why and how..."></textarea></div>
+      <div class="settings-field"><label class="settings-label">Diff / Code Change (optional)</label><textarea class="settings-input" id="propDiff" rows="3" placeholder="+ added line&#10;- removed line" style="font-family:var(--font-mono);font-size:12px;"></textarea></div>
+      <div class="settings-field"><label class="settings-toggle"><input type="checkbox" id="propAutoApply"><span class="settings-toggle-slider"></span><span class="settings-toggle-label">Auto-apply on approval</span></label></div>
+    </div>
+    <div id="propResult" style="margin-top:10px;"></div>
+    <button class="btn btn-primary" style="margin-top:12px;" onclick="submitProposal()">Submit Proposal</button>
+  `;
+  modal.style.display = 'flex';
+}
+
+async function submitProposal() {
+  const type = document.getElementById('propType').value;
+  const title = document.getElementById('propTitle').value.trim();
+  const description = document.getElementById('propDesc').value.trim();
+  const diff = document.getElementById('propDiff').value.trim();
+  const autoApply = document.getElementById('propAutoApply').checked;
+  const el = document.getElementById('propResult');
+
+  if (!title) { el.innerHTML = '<div class="hq-dispatch-error">Title required</div>'; return; }
+
+  const result = await fetchJSON('/api/platform/propose', { method: 'POST', body: { type, title, description, diff: diff || null, autoApply } });
+  if (result.ok) {
+    el.innerHTML = '<div class="hq-dispatch-success">Proposal submitted — check Telegram/Slack for approval request</div>';
+    setTimeout(() => { document.getElementById('platformModal').style.display = 'none'; loadPlatform(); }, 1500);
+  } else {
+    el.innerHTML = `<div class="hq-dispatch-error">${result.error || 'Failed'}</div>`;
+  }
+}
+
+// --- Tenant Management ---
+async function loadTenants() {
+  const [tenants, templates] = await Promise.all([
+    fetchJSON('/api/tenants'),
+    fetchJSON('/api/templates'),
+  ]);
+  renderTenantStats(Array.isArray(tenants) ? tenants : []);
+  renderTenantList(Array.isArray(tenants) ? tenants : []);
+  window._templates = Array.isArray(templates) ? templates : [];
+}
+
+function renderTenantStats(tenants) {
+  const container = document.getElementById('tenantStats');
+  if (!container) return;
+  const active = tenants.filter(t => t.status === 'active').length;
+  const deactivated = tenants.filter(t => t.status === 'deactivated').length;
+  container.innerHTML = `
+    <div class="hq-stat"><div class="hq-stat-value">${tenants.length}</div><div class="hq-stat-label">Total Tenants</div></div>
+    <div class="hq-stat"><div class="hq-stat-value" style="color:var(--success);">${active}</div><div class="hq-stat-label">Active</div></div>
+    <div class="hq-stat"><div class="hq-stat-value" style="color:var(--text-muted);">${deactivated}</div><div class="hq-stat-label">Deactivated</div></div>
+    <div class="hq-stat"><div class="hq-stat-value">${tenants.filter(t => t.industry).length}</div><div class="hq-stat-label">With Template</div></div>
+  `;
+}
+
+function renderTenantList(tenants) {
+  const container = document.getElementById('tenantList');
+  if (!container) return;
+  if (!tenants.length) { container.innerHTML = '<div class="empty-state">No tenants yet. Provision one from a franchise application.</div>'; return; }
+
+  container.innerHTML = tenants.map(t => {
+    const statusColor = t.status === 'active' ? 'var(--success)' : t.status === 'deactivated' ? 'var(--error)' : 'var(--text-muted)';
+    return `
+      <div class="franchise-card" onclick="viewTenant('${t.id}')">
+        <div class="franchise-card-status" style="background:${statusColor};">${t.status}</div>
+        <div class="franchise-card-info">
+          <div class="franchise-card-name">${escapeHtml(t.name)} ${t.id === 'master' ? '<span style="color:var(--primary);font-size:11px;">(MASTER)</span>' : ''}</div>
+          <div class="franchise-card-meta">
+            ${t.subdomain ? `${escapeHtml(t.subdomain)}.aiosorchestrationlab.com` : t.domain || 'No domain'}
+            ${t.industry ? ` &middot; ${escapeHtml(t.industry)}` : ''}
+            &middot; ${escapeHtml(t.ownerId)}
+          </div>
+        </div>
+        <div style="display:flex;align-items:center;gap:6px;">
+          <div style="width:12px;height:12px;border-radius:50%;background:${t.branding?.primaryColor || '#3b82f6'};"></div>
+          <span style="font-size:11px;color:var(--text-muted);">${new Date(t.createdAt).toLocaleDateString()}</span>
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+async function viewTenant(id) {
+  const [tenant, stats] = await Promise.all([
+    fetchJSON(`/api/tenants/${id}`),
+    fetchJSON(`/api/tenants/${id}/stats`),
+  ]);
+  if (!tenant || tenant.error) return;
+
+  const modal = document.getElementById('tenantModal');
+  const content = document.getElementById('tenantModalContent');
+
+  content.innerHTML = `
+    <div class="hq-modal-header"><button class="btn btn-sm" onclick="document.getElementById('tenantModal').style.display='none';">&times; Close</button></div>
+    <div class="franchise-detail-header">
+      <h3>${escapeHtml(tenant.name)}</h3>
+      <span class="franchise-status-badge" style="background:${tenant.status === 'active' ? 'var(--success)' : 'var(--error)'};">${tenant.status}</span>
+    </div>
+    <div class="hq-profile-details" style="margin-top:16px;">
+      <div class="hq-detail-row"><span class="hq-detail-key">Tenant ID</span><span class="hq-detail-val"><code>${tenant.id}</code></span></div>
+      <div class="hq-detail-row"><span class="hq-detail-key">Owner</span><span class="hq-detail-val">${escapeHtml(tenant.ownerId)}</span></div>
+      <div class="hq-detail-row"><span class="hq-detail-key">Subdomain</span><span class="hq-detail-val">${tenant.subdomain || 'None'}</span></div>
+      <div class="hq-detail-row"><span class="hq-detail-key">Domain</span><span class="hq-detail-val">${tenant.domain || 'None'}</span></div>
+      <div class="hq-detail-row"><span class="hq-detail-key">Industry</span><span class="hq-detail-val">${tenant.industry || 'General'}</span></div>
+      <div class="hq-detail-row"><span class="hq-detail-key">Template</span><span class="hq-detail-val">${tenant.template || 'None'}</span></div>
+      <div class="hq-detail-row"><span class="hq-detail-key">Users</span><span class="hq-detail-val">${stats?.users || 0}</span></div>
+      <div class="hq-detail-row"><span class="hq-detail-key">API Keys Set</span><span class="hq-detail-val">${stats?.apiKeysConfigured || 0} / 7</span></div>
+      <div class="hq-detail-row"><span class="hq-detail-key">SEO Audits</span><span class="hq-detail-val">${stats?.seoAudits || 0}</span></div>
+      <div class="hq-detail-row"><span class="hq-detail-key">Created</span><span class="hq-detail-val">${new Date(tenant.createdAt).toLocaleString()}</span></div>
+    </div>
+    <h4 style="margin:16px 0 8px; font-size:13px;">Branding</h4>
+    <div class="hq-profile-details">
+      <div class="hq-detail-row"><span class="hq-detail-key">Company Name</span><span class="hq-detail-val">${escapeHtml(tenant.branding?.companyName || '')}</span></div>
+      <div class="hq-detail-row"><span class="hq-detail-key">Tagline</span><span class="hq-detail-val">${escapeHtml(tenant.branding?.tagline || '')}</span></div>
+      <div class="hq-detail-row">
+        <span class="hq-detail-key">Colors</span>
+        <span class="hq-detail-val" style="display:flex;gap:8px;align-items:center;">
+          <span style="width:20px;height:20px;border-radius:4px;background:${tenant.branding?.primaryColor};display:inline-block;"></span> ${tenant.branding?.primaryColor}
+          <span style="width:20px;height:20px;border-radius:4px;background:${tenant.branding?.accentColor};display:inline-block;margin-left:8px;"></span> ${tenant.branding?.accentColor}
+        </span>
+      </div>
+    </div>
+    ${tenant.id !== 'master' ? `
+    <div style="margin-top:16px; display:flex; gap:8px;">
+      <button class="btn btn-sm btn-danger" onclick="deactivateTenant('${tenant.id}')">Deactivate</button>
+    </div>` : ''}
+    <div id="tenantActionResult" style="margin-top:10px;"></div>
+  `;
+  modal.style.display = 'flex';
+}
+
+function showProvisionTenantModal() {
+  const modal = document.getElementById('tenantModal');
+  const content = document.getElementById('tenantModalContent');
+  const templateOptions = (window._templates || []).map(t =>
+    `<option value="${t.id}">${escapeHtml(t.name)}</option>`
+  ).join('');
+
+  content.innerHTML = `
+    <div class="hq-modal-header"><button class="btn btn-sm" onclick="document.getElementById('tenantModal').style.display='none';">&times; Close</button></div>
+    <h3 style="margin-bottom:16px;">Provision New Tenant</h3>
+    <div class="settings-fields">
+      <div class="settings-field"><label class="settings-label">Company Name *</label><input type="text" class="settings-input" id="newTenantName" placeholder="Acme Corp"></div>
+      <div class="settings-field"><label class="settings-label">Owner Email *</label><input type="email" class="settings-input" id="newTenantEmail" placeholder="owner@company.com"></div>
+      <div class="settings-field"><label class="settings-label">Subdomain</label><input type="text" class="settings-input" id="newTenantSubdomain" placeholder="acme" style="font-family:var(--font-mono);"><div style="font-size:11px;color:var(--text-muted);margin-top:4px;">.aiosorchestrationlab.com</div></div>
+      <div class="settings-field"><label class="settings-label">Industry Template</label><select class="settings-input" id="newTenantTemplate"><option value="">None (General)</option>${templateOptions}</select></div>
+      <div class="settings-field"><label class="settings-label">Primary Color</label><input type="color" id="newTenantColor" value="#3b82f6" style="width:60px;height:36px;border:none;cursor:pointer;"></div>
+      <div class="settings-field"><label class="settings-label">Franchise ID (optional)</label><input type="text" class="settings-input" id="newTenantFranchise" placeholder="From franchise application"></div>
+    </div>
+    <div id="provisionResult" style="margin-top:10px;"></div>
+    <button class="btn btn-primary" style="margin-top:12px;" onclick="provisionTenant()">Provision Tenant</button>
+  `;
+  modal.style.display = 'flex';
+}
+
+async function provisionTenant() {
+  const name = document.getElementById('newTenantName').value.trim();
+  const ownerEmail = document.getElementById('newTenantEmail').value.trim();
+  const subdomain = document.getElementById('newTenantSubdomain').value.trim();
+  const template = document.getElementById('newTenantTemplate').value;
+  const primaryColor = document.getElementById('newTenantColor').value;
+  const franchiseId = document.getElementById('newTenantFranchise').value.trim();
+  const resultEl = document.getElementById('provisionResult');
+
+  if (!name || !ownerEmail) { resultEl.innerHTML = '<div class="hq-dispatch-error">Name and email required</div>'; return; }
+
+  const result = await fetchJSON('/api/tenants', { method: 'POST', body: {
+    name, ownerEmail, subdomain: subdomain || null, template: template || null,
+    franchiseId: franchiseId || null, branding: { primaryColor },
+  }});
+
+  if (result.ok) {
+    resultEl.innerHTML = `<div class="hq-dispatch-success">Tenant provisioned: ${escapeHtml(result.tenant.name)} (ID: ${result.tenant.id})</div>`;
+    setTimeout(() => { document.getElementById('tenantModal').style.display = 'none'; loadTenants(); }, 1500);
+  } else {
+    resultEl.innerHTML = `<div class="hq-dispatch-error">${result.error || 'Provisioning failed'}</div>`;
+  }
+}
+
+async function deactivateTenant(id) {
+  const result = await fetchJSON(`/api/tenants/${id}`, { method: 'DELETE' });
+  const el = document.getElementById('tenantActionResult');
+  if (result.ok) {
+    el.innerHTML = '<div class="hq-dispatch-success">Tenant deactivated</div>';
+    setTimeout(() => { document.getElementById('tenantModal').style.display = 'none'; loadTenants(); }, 1000);
+  } else {
+    el.innerHTML = `<div class="hq-dispatch-error">${result.error || 'Failed'}</div>`;
+  }
 }
 
 // --- YouTube Video Intelligence ---
