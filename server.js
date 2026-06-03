@@ -669,6 +669,7 @@ app.get('/sitemap.xml', (req, res) => {
   const pages = [
     { url: '/', priority: '1.0', freq: 'weekly' },
     { url: '/about', priority: '0.8', freq: 'monthly' },
+    { url: '/lifetime', priority: '0.8', freq: 'monthly' },
     { url: '/docs', priority: '0.8', freq: 'weekly' },
     { url: '/docs/getting-started', priority: '0.9', freq: 'monthly' },
     { url: '/docs/architecture', priority: '0.7', freq: 'monthly' },
