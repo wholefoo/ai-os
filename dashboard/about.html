@@ -1,0 +1,306 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>About — AI OS</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/css/landing.css">
+  <style>
+    .about-hero {
+      padding: 100px 0 60px;
+      text-align: center;
+    }
+    .about-hero h1 {
+      font-size: 48px;
+      font-weight: 800;
+      margin-bottom: 16px;
+    }
+    .about-hero .gradient-text {
+      background: linear-gradient(135deg, #3b82f6, #8b5cf6, #ec4899);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+    .about-hero p {
+      font-size: 18px;
+      color: var(--text-secondary);
+      max-width: 640px;
+      margin: 0 auto;
+      line-height: 1.7;
+    }
+    .about-section {
+      max-width: 900px;
+      margin: 0 auto;
+      padding: 0 24px 60px;
+    }
+    .about-section h2 {
+      font-size: 28px;
+      font-weight: 700;
+      margin-bottom: 16px;
+      color: var(--text-primary);
+    }
+    .about-section p {
+      font-size: 16px;
+      line-height: 1.8;
+      color: var(--text-secondary);
+      margin-bottom: 16px;
+    }
+    .about-mission {
+      background: rgba(59, 130, 246, 0.05);
+      border: 1px solid rgba(59, 130, 246, 0.15);
+      border-radius: 16px;
+      padding: 40px;
+      margin-bottom: 48px;
+      text-align: center;
+    }
+    .about-mission blockquote {
+      font-size: 22px;
+      font-weight: 600;
+      font-style: italic;
+      color: var(--text-primary);
+      margin: 0;
+      line-height: 1.6;
+    }
+    .about-mission cite {
+      display: block;
+      margin-top: 16px;
+      font-size: 14px;
+      font-style: normal;
+      color: var(--text-muted);
+    }
+    .about-stats {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 24px;
+      margin: 40px 0;
+    }
+    .about-stat {
+      text-align: center;
+      padding: 24px;
+      background: var(--bg-secondary);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+    }
+    .about-stat-value {
+      font-size: 36px;
+      font-weight: 800;
+      background: linear-gradient(135deg, #3b82f6, #8b5cf6);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+    .about-stat-label {
+      font-size: 13px;
+      color: var(--text-muted);
+      margin-top: 6px;
+    }
+    .about-tiers {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+      gap: 16px;
+      margin: 24px 0;
+    }
+    .about-tier {
+      padding: 16px;
+      background: var(--bg-secondary);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      text-align: center;
+    }
+    .about-tier-icon { font-size: 28px; margin-bottom: 8px; }
+    .about-tier-name { font-weight: 700; font-size: 14px; }
+    .about-tier-desc { font-size: 12px; color: var(--text-muted); margin-top: 4px; }
+    .about-values {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 24px;
+      margin: 24px 0;
+    }
+    .about-value {
+      padding: 24px;
+      background: var(--bg-secondary);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+    }
+    .about-value h3 {
+      font-size: 16px;
+      font-weight: 700;
+      margin-bottom: 8px;
+    }
+    .about-value p {
+      font-size: 13px;
+      line-height: 1.6;
+      margin: 0;
+    }
+    .about-cta {
+      text-align: center;
+      padding: 60px 0;
+      margin-top: 20px;
+      border-top: 1px solid var(--border);
+    }
+    .about-cta h2 { margin-bottom: 12px; }
+    .about-cta p { margin-bottom: 24px; }
+    @media (max-width: 768px) {
+      .about-stats { grid-template-columns: repeat(2, 1fr); }
+      .about-values { grid-template-columns: 1fr; }
+      .about-hero h1 { font-size: 32px; }
+    }
+  </style>
+</head>
+<body>
+  <nav class="landing-nav">
+    <div class="nav-container">
+      <a href="/" class="nav-brand">
+        <span class="nav-logo">&#9678;</span>
+        <span class="nav-name">AI OS</span>
+      </a>
+      <div class="nav-links">
+        <a href="/#features">Features</a>
+        <a href="/#pricing">Pricing</a>
+        <a href="/docs">Docs</a>
+        <a href="/about" class="active">About</a>
+      </div>
+      <div class="nav-cta">
+        <a href="/login" class="btn-nav-login">Log In</a>
+      </div>
+    </div>
+  </nav>
+
+  <section class="about-hero">
+    <h1>About <span class="gradient-text">AI OS</span></h1>
+    <p>We build the operating system for AI-native companies. 51 specialized agents, 10 departments, one dashboard — your entire virtual workforce, ready to deploy.</p>
+  </section>
+
+  <div class="about-section">
+    <div class="about-mission">
+      <blockquote>"Every business deserves a full team of AI specialists — not just a chatbot. AI OS makes that possible with a single platform."</blockquote>
+      <cite>The AI OS Vision</cite>
+    </div>
+
+    <h2>What We Do</h2>
+    <p>AI OS is a Virtual Corporate Headquarters — a complete AI-powered company staffed by 51 specialized agents organized into 10 departments. From a CEO who orchestrates strategy to a Legal department that handles licensing, from an SEO Agency that audits domains with 5 parallel sub-agents to a Creative Studio powered by Gemini Omni that generates video, images, and audio.</p>
+    <p>Unlike single-purpose AI tools, AI OS provides an entire organizational structure. Each agent has a name, a role, a department, a reporting line, and a specific model tier optimized for their job. The Orchestrator (Atlas, our CEO) routes work to the right agent at the right cost — strategic decisions go to Opus 4.8 at maximum reasoning depth, routine lookups go to low-effort scouts, creative generation goes to Gemini Omni, and bulk processing goes to DeepSeek economy tier.</p>
+
+    <div class="about-stats">
+      <div class="about-stat">
+        <div class="about-stat-value">51</div>
+        <div class="about-stat-label">AI Agents</div>
+      </div>
+      <div class="about-stat">
+        <div class="about-stat-value">10</div>
+        <div class="about-stat-label">Departments</div>
+      </div>
+      <div class="about-stat">
+        <div class="about-stat-value">7</div>
+        <div class="about-stat-label">Model Tiers</div>
+      </div>
+      <div class="about-stat">
+        <div class="about-stat-value">80+</div>
+        <div class="about-stat-label">API Endpoints</div>
+      </div>
+    </div>
+
+    <h2>The Technology</h2>
+    <p>AI OS routes across seven model tiers, each selected for specific strengths. Rather than one model doing everything, we match the right brain to the right task:</p>
+
+    <div class="about-tiers">
+      <div class="about-tier">
+        <div class="about-tier-icon">&#129504;</div>
+        <div class="about-tier-name">Opus 4.8 (Strategic)</div>
+        <div class="about-tier-desc">Deep reasoning, architecture, legal</div>
+      </div>
+      <div class="about-tier">
+        <div class="about-tier-icon">&#128187;</div>
+        <div class="about-tier-name">Opus 4.8 (Professional)</div>
+        <div class="about-tier-desc">Research, coding, writing, support</div>
+      </div>
+      <div class="about-tier">
+        <div class="about-tier-icon">&#128269;</div>
+        <div class="about-tier-name">Opus 4.8 (Scout)</div>
+        <div class="about-tier-desc">Fast lookups, triage, monitoring</div>
+      </div>
+      <div class="about-tier">
+        <div class="about-tier-icon">&#127912;</div>
+        <div class="about-tier-name">Gemini Omni</div>
+        <div class="about-tier-desc">Video, image, audio generation</div>
+      </div>
+      <div class="about-tier">
+        <div class="about-tier-icon">&#9889;</div>
+        <div class="about-tier-name">DeepSeek V4</div>
+        <div class="about-tier-desc">Economy batch processing</div>
+      </div>
+      <div class="about-tier">
+        <div class="about-tier-icon">&#128640;</div>
+        <div class="about-tier-name">Grok-3</div>
+        <div class="about-tier-desc">Real-time web intelligence</div>
+      </div>
+      <div class="about-tier">
+        <div class="about-tier-icon">&#9883;</div>
+        <div class="about-tier-name">Hermes MCP</div>
+        <div class="about-tier-desc">24/7 background persistence</div>
+      </div>
+    </div>
+
+    <h2>How It Works</h2>
+    <p>Customers sign up, choose a plan, and enter their own API keys. AI OS provides the orchestration layer — the 51-agent fleet, the dashboard, the SEO Agency, the Creative Studio, the Virtual HQ — while customers bring their own model credentials. This means you control your own costs, rate limits, and data.</p>
+    <p>Business and Enterprise customers get white-label branding — your company name, your logo, your colors, your domain. Your customers never see AI OS; they see your brand running on our technology.</p>
+
+    <h2>What Sets Us Apart</h2>
+    <div class="about-values">
+      <div class="about-value">
+        <h3>&#127970; Full Company, Not Just a Chatbot</h3>
+        <p>10 departments with named AI employees, reporting lines, and specialized roles. Dispatch tasks to specific people, not generic agents.</p>
+      </div>
+      <div class="about-value">
+        <h3>&#128176; You Keep Your Keys</h3>
+        <p>BYOK (Bring Your Own Keys) model. You control API spend directly with providers. No markup on token usage, no hidden fees.</p>
+      </div>
+      <div class="about-value">
+        <h3>&#127912; White-Label Ready</h3>
+        <p>Your brand, your domain, your customers. Business and Enterprise plans include full white-label branding with multi-tenant isolation.</p>
+      </div>
+      <div class="about-value">
+        <h3>&#128269; SEO Agency Built In</h3>
+        <p>5 parallel sub-agents audit any domain in seconds. Content briefs, 12-week calendars, and meta tag optimization — what agencies charge $5K/month for.</p>
+      </div>
+      <div class="about-value">
+        <h3>&#129302; Self-Improving Platform</h3>
+        <p>The platform proposes its own updates — dependency patches, model upgrades, cost optimizations — and waits for your approval via Telegram or Slack.</p>
+      </div>
+      <div class="about-value">
+        <h3>&#9878; Legal Department Included</h3>
+        <p>General Counsel, Compliance Officer, Licensing Attorney, and Contract Specialist handle agreements, compliance, and IP protection.</p>
+      </div>
+    </div>
+
+    <h2>The Platform Includes</h2>
+    <p>Every plan gets access to the core platform. Higher tiers unlock white-label branding, dedicated instances, and the Creative Studio:</p>
+    <ul style="font-size: 15px; line-height: 2; color: var(--text-secondary); padding-left: 20px;">
+      <li>Virtual Corporate HQ with 51 agents across 10 departments</li>
+      <li>SEO Agency with automated audits, content briefs, and action plans</li>
+      <li>YouTube Video Intelligence (Claude Vision + transcript analysis)</li>
+      <li>Gemini Omni Creative Studio (video, image, audio, thumbnails, social clips)</li>
+      <li>Knowledge Graph with semantic connections and radial visualization</li>
+      <li>Lead Generation with scraping, enrichment, and outreach</li>
+      <li>Marketing Hub with multi-platform content pipelines</li>
+      <li>Hermes persistent agent (walkaway mode, CRON jobs, approval gates)</li>
+      <li>Cost tracking across all 7 model tiers with budget alerts</li>
+      <li>14-page documentation hub</li>
+      <li>Web scraping via Firecrawl, Tavily, and Apify (25,000+ actors)</li>
+      <li>Self-improving platform with Telegram/Slack approval bot</li>
+    </ul>
+
+    <div class="about-cta">
+      <h2>Ready to meet your AI team?</h2>
+      <p>51 agents are standing by. Choose a plan and your Virtual Corporate HQ goes live in minutes.</p>
+      <a href="/#pricing" class="btn-primary-cta btn-lg">View Plans <span class="btn-arrow">&rarr;</span></a>
+    </div>
+  </div>
+
+  <footer class="site-footer">
+    <div class="footer-bottom">
+      <p>&copy; 2026 AI OS Orchestration Lab. All rights reserved.</p>
+    </div>
+  </footer>
+</body>
+</html>

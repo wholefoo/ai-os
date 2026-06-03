@@ -657,6 +657,10 @@ app.get('/app', (req, res) => {
   res.sendFile(path.join(BASE, 'dashboard', 'app.html'));
 });
 
+app.get('/about', (req, res) => {
+  res.sendFile(path.join(BASE, 'dashboard', 'about.html'));
+});
+
 app.get('/login', (req, res) => {
   // If already logged in with active plan, redirect to app
   const token = req.cookies?.['ai-os-session'];
