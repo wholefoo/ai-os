@@ -30,6 +30,12 @@ desktop.ini
 dist/
 build/
 
+# Exported docs (private reference)
+docs-export/
+
+# Tenant data
+.magent/tenants/
+
 # Temp files
 *.tmp
 *.bak
