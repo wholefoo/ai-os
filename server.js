@@ -657,6 +657,41 @@ app.get('/app', (req, res) => {
   res.sendFile(path.join(BASE, 'dashboard', 'app.html'));
 });
 
+// Sitemap.xml — auto-generated for SEO
+app.get('/sitemap.xml', (req, res) => {
+  const domain = 'https://aiosorchestrationlab.com';
+  const now = new Date().toISOString().split('T')[0];
+  const pages = [
+    { url: '/', priority: '1.0', freq: 'weekly' },
+    { url: '/about', priority: '0.8', freq: 'monthly' },
+    { url: '/docs', priority: '0.8', freq: 'weekly' },
+    { url: '/docs/getting-started', priority: '0.9', freq: 'monthly' },
+    { url: '/docs/architecture', priority: '0.7', freq: 'monthly' },
+    { url: '/docs/agents', priority: '0.7', freq: 'monthly' },
+    { url: '/docs/skills', priority: '0.6', freq: 'monthly' },
+    { url: '/docs/knowledge-graph', priority: '0.6', freq: 'monthly' },
+    { url: '/docs/design-system', priority: '0.6', freq: 'monthly' },
+    { url: '/docs/media-production', priority: '0.6', freq: 'monthly' },
+    { url: '/docs/monetization', priority: '0.6', freq: 'monthly' },
+    { url: '/docs/batch-queue', priority: '0.5', freq: 'monthly' },
+    { url: '/docs/api', priority: '0.7', freq: 'monthly' },
+    { url: '/docs/deployment', priority: '0.5', freq: 'monthly' },
+    { url: '/docs/notifications', priority: '0.5', freq: 'monthly' },
+    { url: '/docs/hermes', priority: '0.7', freq: 'monthly' },
+  ];
+  const xml = `<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+${pages.map(p => `  <url>
+    <loc>${domain}${p.url}</loc>
+    <lastmod>${now}</lastmod>
+    <changefreq>${p.freq}</changefreq>
+    <priority>${p.priority}</priority>
+  </url>`).join('\n')}
+</urlset>`;
+  res.set('Content-Type', 'application/xml');
+  res.send(xml);
+});
+
 app.get('/about', (req, res) => {
   res.sendFile(path.join(BASE, 'dashboard', 'about.html'));
 });
