@@ -697,6 +697,10 @@ ${pages.map(p => `  <url>
   res.send(xml);
 });
 
+app.get('/lifetime', (req, res) => {
+  res.sendFile(path.join(BASE, 'dashboard', 'lifetime.html'));
+});
+
 app.get('/about', (req, res) => {
   res.sendFile(path.join(BASE, 'dashboard', 'about.html'));
 });
