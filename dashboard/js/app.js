@@ -5035,7 +5035,7 @@ const settingsFieldMap = {
   mcp: ['hermes_url', 'hermes_enabled'],
   notifications: ['telegram_bot_token', 'telegram_chat_id', 'slack_webhook_url'],
   automation: ['n8n_webhook_base', 'n8n_api_key', 'team_webhook_url'],
-  stripe: ['secret_key', 'webhook_secret', 'pro_price_id', 'enterprise_price_id'],
+  stripe: ['secret_key', 'webhook_secret', 'pro_price_id', 'business_price_id', 'enterprise_price_id'],
   seo: ['dataforseo_login', 'dataforseo_password', 'default_location', 'default_language'],
   general: ['demo_mode', 'cors_origin', 'api_token'],
 };

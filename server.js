@@ -217,7 +217,7 @@ app.post('/api/tenants', requireAdmin, (req, res) => {
     mcp: { hermes_url: 'http://127.0.0.1:8420', hermes_enabled: false },
     notifications: { telegram_bot_token: '', telegram_chat_id: '', slack_webhook_url: '' },
     automation: { n8n_webhook_base: '', n8n_api_key: '', team_webhook_url: '' },
-    stripe: { secret_key: '', webhook_secret: '', pro_price_id: '', enterprise_price_id: '' },
+    stripe: { secret_key: '', webhook_secret: '', pro_price_id: '', business_price_id: '', enterprise_price_id: '' },
     seo: { dataforseo_login: '', dataforseo_password: '', default_location: 'United States', default_language: 'en' },
     general: { demo_mode: true, cors_origin: '*', api_token: '' },
   };
@@ -450,12 +450,17 @@ const STRIPE_PLANS = {
   pro: {
     name: 'Pro',
     priceId: process.env.STRIPE_PRO_PRICE_ID || 'price_pro_placeholder',
-    amount: 4900, // $49
+    amount: 9900, // $99
+  },
+  business: {
+    name: 'Business',
+    priceId: process.env.STRIPE_BUSINESS_PRICE_ID || 'price_business_placeholder',
+    amount: 49700, // $497
   },
   enterprise: {
     name: 'Enterprise',
     priceId: process.env.STRIPE_ENTERPRISE_PRICE_ID || 'price_enterprise_placeholder',
-    amount: 19900, // $199
+    amount: 199700, // $1,997
   },
 };
 
@@ -4806,6 +4811,7 @@ const settings = loadState('settings', {
     secret_key: process.env.STRIPE_SECRET_KEY || '',
     webhook_secret: process.env.STRIPE_WEBHOOK_SECRET || '',
     pro_price_id: process.env.STRIPE_PRO_PRICE_ID || '',
+    business_price_id: process.env.STRIPE_BUSINESS_PRICE_ID || '',
     enterprise_price_id: process.env.STRIPE_ENTERPRISE_PRICE_ID || '',
   },
   seo: {
@@ -4873,6 +4879,7 @@ app.get('/api/settings', requireAdmin, (req, res) => {
       secret_key: { value: maskKey(settings.stripe.secret_key), configured: !!settings.stripe.secret_key },
       webhook_secret: { value: maskKey(settings.stripe.webhook_secret), configured: !!settings.stripe.webhook_secret },
       pro_price_id: settings.stripe.pro_price_id,
+      business_price_id: settings.stripe.business_price_id,
       enterprise_price_id: settings.stripe.enterprise_price_id,
     },
     seo: {
@@ -5406,7 +5413,7 @@ app.put('/api/license/participant/:id', requireAdmin, (req, res) => {
           mcp: { hermes_url: 'http://127.0.0.1:8420', hermes_enabled: false },
           notifications: { telegram_bot_token: '', telegram_chat_id: '', slack_webhook_url: '' },
           automation: { n8n_webhook_base: '', n8n_api_key: '', team_webhook_url: '' },
-          stripe: { secret_key: '', webhook_secret: '', pro_price_id: '', enterprise_price_id: '' },
+          stripe: { secret_key: '', webhook_secret: '', pro_price_id: '', business_price_id: '', enterprise_price_id: '' },
           seo: { dataforseo_login: '', dataforseo_password: '', default_location: 'United States', default_language: 'en' },
           general: { demo_mode: true, cors_origin: '*', api_token: '' },
         });
