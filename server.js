@@ -674,7 +674,7 @@ app.get('/privacy', (req, res) => res.sendFile(path.join(BASE, 'dashboard', 'pri
 
 // Documentation pages
 app.get('/docs', (req, res) => res.sendFile(path.join(BASE, 'dashboard', 'docs', 'index.html')));
-const docPages = ['getting-started','architecture','agents','skills','knowledge-graph','design-system','media-production','monetization','batch-queue','api','deployment','billing','notifications','hermes'];
+const docPages = ['getting-started','architecture','agents','skills','knowledge-graph','design-system','media-production','monetization','batch-queue','api','deployment','notifications','hermes'];
 docPages.forEach(page => {
   app.get(`/docs/${page}`, (req, res) => res.sendFile(path.join(BASE, 'dashboard', 'docs', `${page}.html`)));
 });
