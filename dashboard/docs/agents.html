@@ -34,7 +34,7 @@
           </div>
 
           <h1>Agent Fleet</h1>
-          <p class="docs-lead">AI OS orchestrates 25+ specialized sub-agents powered by Claude Opus 4.8 with effort-based routing. Instead of separate models, agents are assigned effort levels (xhigh, high, low) that control reasoning depth. Each agent has a defined role, capabilities, and escalation path managed through Markdown files with YAML frontmatter.</p>
+          <p class="docs-lead">AI OS orchestrates 51 specialized sub-agents powered by Claude Opus 4.8 with effort-based routing. Instead of separate models, agents are assigned effort levels (xhigh, high, low) that control reasoning depth. Each agent has a defined role, capabilities, and escalation path managed through Markdown files with YAML frontmatter.</p>
 
           <h2>Strategic Tier — Opus 4.8 (effort: xhigh)</h2>
           <p>Maximum reasoning depth for decisions requiring deep analysis, architectural judgment, and cross-system awareness. Uses adaptive thinking for complex multi-step planning.</p>
@@ -141,15 +141,62 @@ You are a deep research specialist. Your role is to...
           <h3>Frontmatter Fields</h3>
           <ul>
             <li><strong>name</strong> — Unique identifier used in API calls and routing</li>
-            <li><strong>model</strong> — AI model to use (opus-4.8, deepseek, grok)</li>
+            <li><strong>model</strong> — AI model to use (opus-4.8, gemini-omni-flash, deepseek, grok)</li>
             <li><strong>effort</strong> — Opus 4.8 effort level: xhigh (strategic), high (professional), low (scout)</li>
             <li><strong>tier</strong> — Cost/capability tier for routing decisions</li>
             <li><strong>escalates_to</strong> — Agent to escalate to when confidence is low</li>
             <li><strong>tools</strong> — List of tools/capabilities available to this agent</li>
           </ul>
 
-          <h2>Persistent Tier — Hermes (Local MCP)</h2>
-          <p>The always-on background worker tier that runs 24/7 on the same VPS. Hermes connects via MCP and handles tasks that require persistence beyond the active session.</p>
+          <h2>Creative Tier — Gemini Omni</h2>
+          <p>Multimodal creative generation powered by Gemini Omni Flash. Produces video, images, audio, thumbnails, and social clips from text prompts.</p>
+
+          <table class="docs-table">
+            <thead>
+              <tr><th>Agent</th><th>Role</th></tr>
+            </thead>
+            <tbody>
+              <tr><td><strong>Media Producer (Muse)</strong></td><td>Creative pipeline orchestration, production strategy, brand consistency across media.</td></tr>
+              <tr><td><strong>Vibe Designer (Pixel)</strong></td><td>Prompt-driven UI generation, predictive heat maps, interaction flow analysis.</td></tr>
+              <tr><td><strong>Video Creator (Reel)</strong></td><td>Text/image/audio to video with physics simulation. Up to 1080p, 60s.</td></tr>
+              <tr><td><strong>Audio Producer (Sonance)</strong></td><td>Voiceovers, music, sound effects, podcast audio from text prompts.</td></tr>
+              <tr><td><strong>Thumbnail Gen</strong></td><td>Platform-optimized thumbnails with A/B variants for YouTube, social, blog.</td></tr>
+            </tbody>
+          </table>
+
+          <h2>SEO Agency Sub-Agents</h2>
+          <p>Five specialized agents that run in parallel during SEO audits, each analyzing a different dimension of the target domain.</p>
+
+          <table class="docs-table">
+            <thead>
+              <tr><th>Agent</th><th>Role</th></tr>
+            </thead>
+            <tbody>
+              <tr><td><strong>SEO Keyword</strong></td><td>Keyword research, gap analysis, cannibalization detection, local targeting.</td></tr>
+              <tr><td><strong>SEO Technical</strong></td><td>Crawl analysis, Core Web Vitals, HTTP status codes, security, structured data.</td></tr>
+              <tr><td><strong>SEO Competitor</strong></td><td>Top 10 competitor profiling, content velocity, schema adoption, ranking overlap.</td></tr>
+              <tr><td><strong>SEO Content</strong></td><td>Content inventory, thin content detection, topic clusters, meta data quality.</td></tr>
+              <tr><td><strong>SEO Backlink</strong></td><td>Referring domains, toxicity detection, broken link recovery, anchor text analysis.</td></tr>
+            </tbody>
+          </table>
+
+          <h2>Legal Department</h2>
+          <p>Handles licensing agreements, compliance, contracts, and intellectual property protection.</p>
+
+          <table class="docs-table">
+            <thead>
+              <tr><th>Agent</th><th>Role</th></tr>
+            </thead>
+            <tbody>
+              <tr><td><strong>General Counsel (Justice)</strong></td><td>Chief Legal Officer. License agreements, IP protection, regulatory compliance, dispute resolution.</td></tr>
+              <tr><td><strong>Compliance Officer (Shield)</strong></td><td>GDPR/CCPA enforcement, audit trails, policy monitoring, API usage compliance.</td></tr>
+              <tr><td><strong>Licensing Attorney (Covenant)</strong></td><td>Software license agreements, white-label terms, SaaS licensing, usage rights.</td></tr>
+              <tr><td><strong>Contract Specialist (Clause)</strong></td><td>Contract generation, review, lifecycle management, template library.</td></tr>
+            </tbody>
+          </table>
+
+          <h2>Persistent Tier — Hermes MCP</h2>
+          <p>The always-on background worker tier. Hermes runs 24/7 on the platform and handles tasks that require persistence beyond the active session.</p>
 
           <table class="docs-table">
             <thead>
