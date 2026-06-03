@@ -153,59 +153,58 @@ Each virtual employee maps to an AI agent with a specific model tier, can receiv
 | Security | Helmet, CORS, express-rate-limit, compression |
 | Deployment | PM2, Nginx, Let's Encrypt |
 
-## Quick Start
+## For Customers
+
+AI OS is a hosted SaaS platform. Customers do not clone, install, or self-host. They sign up at [aiosorchestrationlab.com](https://aiosorchestrationlab.com), choose a plan, and access their dashboard immediately.
+
+| Plan | Access |
+|---|---|
+| Pro ($99/mo) | Dashboard at aiosorchestrationlab.com |
+| Business ($497/mo) | White-labeled subdomain (yourcompany.aiosorchestrationlab.com) |
+| Enterprise ($1,997/mo) | Custom domain (app.yourcompany.com) |
+| Lifetime ($9,997) | Same as Enterprise, one-time payment |
+
+All infrastructure, updates, and maintenance are handled by AI OS Corp.
+
+---
+
+## Admin Documentation (Private)
+
+> **Everything below is for platform administration only. This repo is private.**
+
+### Local Development
 
 ```bash
-# Clone
+# Clone (requires GitHub access)
 git clone https://github.com/wholefoo/ai-os.git
-cd ai-os
-
-# Install
-npm install
-
-# Configure
-cp .env.example .env
-# Edit .env with your API keys
-
-# Run
-npm start
-# Dashboard at http://localhost:3000
+cd ai-os && npm install
+cp .env.example .env   # Edit with your API keys
+npm start              # http://localhost:3000
 ```
 
-### First Login
+### Admin Login
 
-The admin account is seeded on first run using the credentials in `.env`:
+The admin account is seeded on first run from `.env`:
 
 ```env
 ADMIN_EMAIL=your@email.com
-ADMIN_PASSWORD_HASH=$2b$12$...   # Generate with: node -e "require('bcryptjs').hash('yourpassword',12).then(console.log)"
+ADMIN_PASSWORD_HASH=$2b$12$...   # Generate: node -e "require('bcryptjs').hash('password',12).then(console.log)"
 ```
 
-Navigate to `http://localhost:3000`, click Login, and enter your credentials.
-
-## Production Deployment (PM2 + Nginx)
+### Production Deployment (PM2 + Nginx)
 
 ```bash
 # On your VPS (Ubuntu 22.04/24.04)
 sudo bash deploy/install-vps.sh yourdomain.com
-
-# Edit .env with your API keys
-sudo nano /opt/ai-os/.env
-
-# Get TLS certificate
+sudo nano /opt/ai-os/.env          # Add API keys
 sudo certbot --nginx -d yourdomain.com
-
-# Restart with production config
 sudo -u aios pm2 restart ai-os --update-env
-
-# Verify
 curl -s https://yourdomain.com/api/health | jq .
 ```
 
 ### Push Updates
 
 ```bash
-# From your local machine
 bash deploy/push-update.sh root@your-vps-ip
 ```
 
