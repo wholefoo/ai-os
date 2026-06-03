@@ -701,6 +701,76 @@ app.get('/lifetime', (req, res) => {
   res.sendFile(path.join(BASE, 'dashboard', 'lifetime.html'));
 });
 
+app.get('/lifetime/success', (req, res) => {
+  const licenseId = req.query.license;
+  if (licenseId) {
+    const license = licenses.find(l => l.id === licenseId);
+    if (license && license.status === 'payment') {
+      license.status = 'active';
+      license.activatedAt = new Date().toISOString();
+
+      // Auto-provision tenant
+      if (!license.tenantId) {
+        const tenantId = uuidv4().substring(0, 12);
+        const subdomain = (license.company || license.name).toLowerCase().replace(/[^a-z0-9]/g, '-').replace(/-+/g, '-').substring(0, 20);
+        const tenant = {
+          id: tenantId, name: license.company || license.name, domain: null, subdomain,
+          ownerId: license.email, plan: 'lifetime', status: 'active',
+          branding: { companyName: license.company || license.name, tagline: 'Powered by AI OS', logo: null, primaryColor: '#3b82f6', accentColor: '#8b5cf6' },
+          industry: license.industry || null, template: null, createdAt: new Date().toISOString(), franchiseId: license.id,
+        };
+        ensureTenantDir(tenantId);
+        saveTenantState(tenantId, 'users', [{ email: license.email, passwordHash: null, plan: 'lifetime', role: 'admin', tenantId, createdAt: new Date().toISOString() }]);
+        saveTenantState(tenantId, 'settings', {
+          ai: { anthropic_api_key: '', deepseek_api_key: '', xai_api_key: '', firecrawl_api_key: '', gemini_api_key: '', tavily_api_key: '', apify_api_token: '' },
+          mcp: { hermes_url: 'http://127.0.0.1:8420', hermes_enabled: false },
+          notifications: { telegram_bot_token: '', telegram_chat_id: '', slack_webhook_url: '' },
+          automation: { n8n_webhook_base: '', n8n_api_key: '', team_webhook_url: '' },
+          stripe: { secret_key: '', webhook_secret: '', pro_price_id: '', business_price_id: '', enterprise_price_id: '' },
+          seo: { dataforseo_login: '', dataforseo_password: '', default_location: 'United States', default_language: 'en' },
+          general: { demo_mode: true, cors_origin: '*', api_token: '' },
+        });
+        tenantRegistry[tenantId] = tenant;
+        saveState('tenant_registry', tenantRegistry);
+        license.tenantId = tenantId;
+        license.instanceUrl = `https://${subdomain}.aiosorchestrationlab.com`;
+        logActivity('license', `Lifetime license activated + tenant provisioned: ${license.name} (${tenantId})`, { licenseId, tenantId });
+      }
+      saveState('licenses', licenses);
+    }
+  }
+  res.send(`<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>Welcome to AI OS!</title><link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/css/landing.css">
+<style>.success-page{max-width:600px;margin:0 auto;padding:120px 24px;text-align:center;}
+.success-icon{font-size:80px;margin-bottom:20px;}
+.success-page h1{font-size:36px;font-weight:800;margin-bottom:12px;}
+.success-page p{font-size:16px;color:var(--text-secondary);line-height:1.7;margin-bottom:24px;}
+.success-next{text-align:left;background:var(--bg-secondary);border:1px solid var(--border);border-radius:12px;padding:24px;margin:24px 0;}
+.success-next h3{margin-bottom:12px;font-size:16px;}
+.success-next ol{padding-left:20px;font-size:14px;line-height:2;color:var(--text-secondary);}
+</style></head><body>
+<nav class="landing-nav"><div class="nav-container"><a href="/" class="nav-brand"><span class="nav-logo">&#9678;</span><span class="nav-name">AI OS</span></a></div></nav>
+<div class="success-page">
+<div class="success-icon">&#127881;</div>
+<h1>Welcome to AI OS!</h1>
+<p>Your Lifetime License is now active. Your Virtual Corporate HQ is being provisioned.</p>
+<div class="success-next">
+<h3>Next Steps:</h3>
+<ol>
+<li>Check your email for your login credentials</li>
+<li>Log in to your dashboard and go to <strong>Settings</strong></li>
+<li>Enter your API keys (Anthropic, Gemini, etc.)</li>
+<li>Explore your Virtual HQ — 51 agents are ready</li>
+</ol>
+</div>
+<a href="/login" class="btn-primary-cta btn-lg">Go to Dashboard &rarr;</a>
+</div>
+<footer class="site-footer"><div class="footer-bottom"><p>&copy; 2026 AI OS Orchestration Lab.</p></div></footer>
+</body></html>`);
+});
+
 app.get('/about', (req, res) => {
   res.sendFile(path.join(BASE, 'dashboard', 'about.html'));
 });
@@ -5314,18 +5384,19 @@ app.get('/api/license/participant/:id', requireAdmin, (req, res) => {
   res.json(f);
 });
 
-// POST /api/license/apply — submit a franchise application
+// POST /api/license/apply — submit application and go straight to Stripe checkout
 app.post('/api/license/apply', async (req, res) => {
   const { name, email, company, industry, website, phone, message } = req.body;
   if (!name || !email) return res.status(400).json({ error: 'Name and email are required' });
 
-  const active = licenses.filter(f => f.status === 'active' || f.status === 'pending').length;
+  const active = licenses.filter(f => f.status === 'active' || f.status === 'pending' || f.status === 'payment').length;
   if (active >= LICENSE_CONFIG.maxLifetime) {
-    return res.status(400).json({ error: 'Lifetime license program is currently full (200 spots claimed)' });
+    return res.status(400).json({ error: 'Lifetime license program is full — all 100 spots claimed' });
   }
 
   // Check for duplicate email
-  if (licenses.find(f => f.email === email && f.status !== 'rejected')) {
+  const existing = licenses.find(f => f.email === email && f.status !== 'rejected');
+  if (existing) {
     return res.status(400).json({ error: 'An application with this email already exists' });
   }
 
@@ -5338,23 +5409,62 @@ app.post('/api/license/apply', async (req, res) => {
     website: website || '',
     phone: phone || '',
     message: message || '',
-    status: 'pending',       // pending → approved → payment → active | rejected
+    status: 'payment',       // goes straight to payment
     appliedAt: new Date().toISOString(),
-    approvedAt: null,
+    approvedAt: new Date().toISOString(),
     activatedAt: null,
     paymentId: null,
     instanceUrl: null,
     territory: null,
+    tenantId: null,
     notes: '',
   };
 
   licenses.push(application);
   saveState('licenses', licenses);
 
-  logActivity('license', `New license application: ${name} (${email})`, { id: application.id, company });
+  logActivity('license', `Lifetime license application + checkout: ${name} (${email})`, { id: application.id, company });
   broadcast({ event: 'license_application', data: { id: application.id, name, email, company } });
 
-  res.json({ ok: true, id: application.id, message: 'Application received. You will be notified once reviewed.' });
+  // Create Stripe checkout session immediately
+  if (!stripe) {
+    return res.json({ ok: true, id: application.id, checkoutUrl: null, message: 'Application saved — Stripe not configured. Admin will send payment link.' });
+  }
+
+  try {
+    const session = await stripe.checkout.sessions.create({
+      payment_method_types: ['card'],
+      line_items: [{
+        price_data: {
+          currency: 'usd',
+          product_data: {
+            name: LICENSE_CONFIG.name + ' — Lifetime License',
+            description: 'One-time payment. Everything in Enterprise, forever. ' + LICENSE_CONFIG.description,
+          },
+          unit_amount: LICENSE_CONFIG.tiers.lifetime.price * 100, // cents
+        },
+        quantity: 1,
+      }],
+      mode: 'payment',
+      success_url: `https://${req.headers.host || 'aiosorchestrationlab.com'}/lifetime/success?session_id={CHECKOUT_SESSION_ID}&license=${application.id}`,
+      cancel_url: `https://${req.headers.host || 'aiosorchestrationlab.com'}/lifetime?cancelled=true`,
+      customer_email: email,
+      metadata: {
+        license_id: application.id,
+        participant_name: name,
+        company: company || '',
+        industry: industry || '',
+      },
+    });
+
+    application.paymentId = session.id;
+    saveState('licenses', licenses);
+
+    res.json({ ok: true, id: application.id, checkoutUrl: session.url });
+  } catch (e) {
+    console.error('[STRIPE] Lifetime checkout error:', e.message);
+    res.json({ ok: true, id: application.id, checkoutUrl: null, message: 'Application saved — payment link will be sent separately. Error: ' + e.message });
+  }
 });
 
 // PUT /api/license/participant/:id — admin update participant (approve, reject, activate, notes)
