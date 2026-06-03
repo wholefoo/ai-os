@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Quick Start — AI OS Docs</title>
+  <title>Getting Started — AI OS Docs</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/css/landing.css">
@@ -30,147 +30,105 @@
       <div class="docs-layout">
         <div class="docs-content">
           <div class="docs-breadcrumb">
-            <a href="/docs">Docs</a> <span>/</span> Quick Start
+            <a href="/docs">Docs</a> <span>/</span> Getting Started
           </div>
 
-          <h1>Quick Start</h1>
-          <p class="docs-lead">Get AI OS running locally in under five minutes. This guide covers prerequisites, installation, configuration, and launching the dashboard.</p>
+          <h1>Getting Started</h1>
+          <p class="docs-lead">Get up and running with AI OS in under five minutes. Choose a plan, configure your API keys, and start orchestrating your Virtual Corporate HQ.</p>
 
-          <h2>Prerequisites</h2>
-          <ul>
-            <li><strong>Node.js 20+</strong> — LTS recommended. Verify with <code>node -v</code></li>
-            <li><strong>npm 10+</strong> — Ships with Node.js 20</li>
-            <li><strong>Git</strong> — For cloning the repository</li>
-            <li><strong>Stripe account</strong> — Required for subscription management (test keys work for development)</li>
-            <li><strong>AI API keys</strong> — At least one of: Anthropic (Claude), DeepSeek, or xAI (Grok)</li>
-          </ul>
-
-          <h2>Installation</h2>
-          <p>Clone the repository and install dependencies:</p>
-          <pre><code>git clone https://github.com/wholefoo/ai-os.git
-cd ai-os
-npm install</code></pre>
-
-          <h2>Configuration</h2>
-          <p>Copy the example environment file and fill in your credentials:</p>
-          <pre><code>cp .env.example .env</code></pre>
-
-          <p>Open <code>.env</code> and configure the required variables:</p>
+          <h2>Step 1 — Choose a Plan</h2>
+          <p>Visit <a href="https://aiosorchestrationlab.com/#pricing">aiosorchestrationlab.com</a> and select the plan that fits your needs:</p>
 
           <table class="docs-table">
             <thead>
-              <tr>
-                <th>Variable</th>
-                <th>Required</th>
-                <th>Description</th>
-              </tr>
+              <tr><th>Plan</th><th>Price</th><th>Best For</th></tr>
             </thead>
             <tbody>
-              <tr>
-                <td><code>PORT</code></td>
-                <td>No</td>
-                <td>Server port (default: 3000)</td>
-              </tr>
-              <tr>
-                <td><code>NODE_ENV</code></td>
-                <td>No</td>
-                <td><code>development</code> or <code>production</code></td>
-              </tr>
-              <tr>
-                <td><code>STRIPE_SECRET_KEY</code></td>
-                <td>Yes</td>
-                <td>From Stripe dashboard &rarr; Developers &rarr; API keys</td>
-              </tr>
-              <tr>
-                <td><code>STRIPE_WEBHOOK_SECRET</code></td>
-                <td>Yes</td>
-                <td>From Stripe dashboard &rarr; Webhooks &rarr; Signing secret</td>
-              </tr>
-              <tr>
-                <td><code>STRIPE_PRO_PRICE_ID</code></td>
-                <td>Yes</td>
-                <td>Stripe Price ID for the Pro plan ($49/mo)</td>
-              </tr>
-              <tr>
-                <td><code>STRIPE_ENTERPRISE_PRICE_ID</code></td>
-                <td>Yes</td>
-                <td>Stripe Price ID for the Enterprise plan ($199/mo)</td>
-              </tr>
-              <tr>
-                <td><code>ANTHROPIC_API_KEY</code></td>
-                <td>For AI</td>
-                <td>Claude API key for Opus 4.8 agents (all effort tiers)</td>
-              </tr>
-              <tr>
-                <td><code>API_TOKEN</code></td>
-                <td>Prod</td>
-                <td>Bearer token for API authentication</td>
-              </tr>
+              <tr><td><strong>Free</strong></td><td>$0</td><td>Exploring features, reading docs, viewing the agent roster</td></tr>
+              <tr><td><strong>Pro</strong></td><td>$99/mo</td><td>Full dashboard, 51 agents, SEO Agency, knowledge vault</td></tr>
+              <tr><td><strong>Business</strong></td><td>$497/mo</td><td>+ Gemini Omni Studio, YouTube Intel, white-label branding, subdomain</td></tr>
+              <tr><td><strong>Enterprise</strong></td><td>$1,997/mo</td><td>+ Custom domain, dedicated tenant, API access, priority support</td></tr>
+              <tr><td><strong>Lifetime</strong></td><td>$9,997 one-time</td><td>Everything in Enterprise, forever. Limited to 100 spots.</td></tr>
+            </tbody>
+          </table>
+
+          <h2>Step 2 — Log In</h2>
+          <p>After subscribing, log in to your dashboard at <code>aiosorchestrationlab.com/app</code>. Business and Enterprise customers get their own branded URL (e.g., <code>yourcompany.aiosorchestrationlab.com</code>).</p>
+
+          <h2>Step 3 — Configure Your API Keys</h2>
+          <p>AI OS uses <strong>your own API keys</strong> — you control spend and rate limits. Navigate to <strong>Settings</strong> in the dashboard sidebar and enter your keys:</p>
+
+          <table class="docs-table">
+            <thead>
+              <tr><th>Service</th><th>What It Powers</th><th>Where to Get a Key</th></tr>
+            </thead>
+            <tbody>
+              <tr><td><code>Anthropic</code></td><td>Opus 4.8 agents (Strategic, Professional, Scout tiers)</td><td><a href="https://console.anthropic.com/" target="_blank">console.anthropic.com</a></td></tr>
+              <tr><td><code>Google Gemini</code></td><td>Gemini Omni Creative Studio (video, image, audio)</td><td><a href="https://aistudio.google.com/apikey" target="_blank">aistudio.google.com</a></td></tr>
+              <tr><td><code>DeepSeek</code></td><td>Economy-tier batch processing</td><td><a href="https://platform.deepseek.com/" target="_blank">platform.deepseek.com</a></td></tr>
+              <tr><td><code>xAI (Grok)</code></td><td>Real-time web search and trending topics</td><td><a href="https://console.x.ai/" target="_blank">console.x.ai</a></td></tr>
+              <tr><td><code>Firecrawl</code></td><td>Web scraping and page extraction</td><td><a href="https://firecrawl.dev/" target="_blank">firecrawl.dev</a></td></tr>
+              <tr><td><code>Tavily</code></td><td>AI-optimized search (1,000 free credits/mo)</td><td><a href="https://tavily.com/" target="_blank">tavily.com</a></td></tr>
+              <tr><td><code>Apify</code></td><td>Platform scraping (YouTube, Google Maps, etc.)</td><td><a href="https://apify.com/" target="_blank">apify.com</a></td></tr>
+              <tr><td><code>DataForSEO</code></td><td>SEO Agency audit data (keywords, backlinks)</td><td><a href="https://dataforseo.com/" target="_blank">dataforseo.com</a></td></tr>
             </tbody>
           </table>
 
           <div class="docs-callout info">
-            <strong>Tip:</strong> For local development, use Stripe test keys (prefix <code>sk_test_</code>). No real charges will be processed.
+            <strong>You only need Anthropic to start.</strong> The other keys unlock additional features but are not required. Add them as you need them.
           </div>
 
-          <h2>Launch</h2>
-          <p>Start the server in development mode:</p>
-          <pre><code>npm start
-# Dashboard at http://localhost:3000</code></pre>
+          <p>Each key field has a <strong>Test</strong> button — click it after saving to verify the connection works.</p>
 
-          <p>Or use the dev script with auto-restart:</p>
-          <pre><code>npm run dev</code></pre>
+          <h2>Step 4 — Explore Your Virtual HQ</h2>
+          <p>Click <strong>Virtual HQ</strong> in the sidebar to see your corporate headquarters — 43 named AI employees across 10 departments:</p>
+          <ul>
+            <li><strong>Executive Office</strong> — Atlas (CEO), Nova (CTO), Ledger (CFO), Meridian (COO)</li>
+            <li><strong>Engineering</strong> — Forge, Prism, Flux, Phantom, Relay</li>
+            <li><strong>Marketing &amp; Sales</strong> — Echo, Quill, Beacon, Pulse, Catalyst</li>
+            <li><strong>Creative Studio</strong> — Muse, Pixel, Reel, Vertex, Sonance, Palette</li>
+            <li><strong>Customer Service</strong> — Harbor, Compass, Resolve</li>
+            <li><strong>Tech Support</strong> — Matrix, Root, Guide</li>
+            <li><strong>Legal</strong> — Justice, Shield, Covenant, Clause</li>
+            <li><strong>Product &amp; Innovation</strong> — Horizon, Oracle, Forecast, Archive</li>
+            <li><strong>Operations</strong> — Hermes, Tempo, Gatekeeper, Ranger, Conveyor, Hawkeye</li>
+            <li><strong>Board of Directors</strong> — Sentinel, Aegis, Cipher</li>
+          </ul>
+          <p>Click any employee to view their profile, role description, and dispatch tasks directly.</p>
 
-          <h2>First Steps</h2>
+          <h2>Step 5 — Run Your First SEO Audit</h2>
+          <p>Navigate to <strong>SEO Agency</strong>, enter any domain, and click <strong>Audit</strong>. Five sub-agents run in parallel:</p>
           <ol>
-            <li><strong>Visit the landing page</strong> at <code>http://localhost:3000</code> to see the public site</li>
-            <li><strong>Log in</strong> using the login modal (email + password)</li>
-            <li><strong>Subscribe</strong> via the Stripe checkout flow (use test card <code>4242 4242 4242 4242</code>)</li>
-            <li><strong>Access the dashboard</strong> at <code>/app</code> — all 16+ views are now available</li>
-            <li><strong>Run an agent</strong> from the Agent Fleet view to verify your AI API keys work</li>
+            <li>Keyword Analysis</li>
+            <li>Technical SEO</li>
+            <li>Competitor Analysis</li>
+            <li>Content Analysis</li>
+            <li>Backlink Profile</li>
           </ol>
+          <p>After the audit completes, you get a composite score, executive summary, quick wins, and a phased action plan. Use the post-audit buttons to generate content briefs, a 12-week calendar, or optimized meta tags.</p>
 
-          <h2>Project Structure</h2>
-          <pre><code>.claude/
-  agents/        31 agent role definitions
-  skills/        19 procedural skill files
-  rules/         Guardrails, cost routing, security
-  identity/      Soul, user preferences, personality
-  pipelines/     Declarative YAML skill chains
-  projects/      Per-project context overrides
-.magent/
-  vault/         Knowledge base (raw, wiki, outputs)
-  state/         Persisted runtime state
-  team.yaml      Agent roster and escalation paths
-dashboard/
-  index.html     Public landing page
-  app.html       Authenticated dashboard
-  css/           Landing, legal, docs, and dashboard styles
-  js/            Landing and dashboard scripts
-  docs/          Documentation pages
-deploy/
-  nginx.conf     Reverse proxy config
-  install-vps.sh VPS provisioning script
-server.js        Express + WebSocket backend</code></pre>
-
-          <div class="docs-callout warn">
-            <strong>Note:</strong> The <code>.magent/state/</code> directory is auto-created on first run and excluded from version control. Your runtime state persists between server restarts.
-          </div>
+          <h2>What's Next</h2>
+          <ul>
+            <li><a href="/docs/architecture">Architecture</a> — How the 7-tier model routing works</li>
+            <li><a href="/docs/agents">Agent Fleet</a> — All 51 agents and their roles</li>
+            <li><a href="/docs/skills">Skills Library</a> — 21 procedural skills</li>
+            <li><a href="/docs/hermes">Hermes Agent</a> — Background tasks and walkaway mode</li>
+          </ul>
 
           <div class="docs-page-nav">
-            <span></span>
+            <a href="/docs">&larr; Documentation Hub</a>
             <a href="/docs/architecture">Architecture &rarr;</a>
           </div>
         </div>
 
         <aside class="docs-toc">
           <div class="docs-toc-title">On this page</div>
-          <a href="#prerequisites">Prerequisites</a>
-          <a href="#installation">Installation</a>
-          <a href="#configuration">Configuration</a>
-          <a href="#launch">Launch</a>
-          <a href="#first-steps">First Steps</a>
-          <a href="#project-structure">Project Structure</a>
+          <a href="#">Choose a Plan</a>
+          <a href="#">Log In</a>
+          <a href="#">Configure API Keys</a>
+          <a href="#">Explore Virtual HQ</a>
+          <a href="#">First SEO Audit</a>
+          <a href="#">What's Next</a>
         </aside>
       </div>
     </div>

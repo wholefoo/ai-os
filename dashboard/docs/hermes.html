@@ -34,15 +34,15 @@
           </div>
 
           <h1>Hermes Agent</h1>
-          <p class="docs-lead">Hermes is the persistent background worker tier — an always-on, self-improving MCP bridge that runs 24/7 on the same VPS as AI OS. While Claude is the "brain" (planning and decisions), Hermes is the "hands" (interacting with the real world around the clock).</p>
+          <p class="docs-lead">Hermes is the persistent background worker tier — an always-on, self-improving MCP bridge that runs 24/7 on the AI OS platform. While Claude is the "brain" (planning and decisions), Hermes is the "hands" (interacting with the real world around the clock).</p>
 
           <h2>Architecture</h2>
-          <p>Hermes connects to AI OS as a Model Context Protocol (MCP) server running on the same VPS. The Orchestrator delegates tasks to Hermes for persistent, background execution:</p>
+          <p>Hermes connects to AI OS as a Model Context Protocol (MCP) server. The Orchestrator delegates tasks to Hermes for persistent, background execution:</p>
           <ul>
             <li><strong>Claude (AI OS)</strong> — Planning, decision-making, orchestration, complex reasoning</li>
             <li><strong>Hermes</strong> — 24/7 execution, mobile bridge, cron jobs, approval gating, long-running tasks</li>
           </ul>
-          <p>The MCP connection runs locally at <code>http://127.0.0.1:8420</code> by default, configured via the <code>HERMES_MCP_URL</code> environment variable.</p>
+          <p>The MCP connection is managed by the platform and configured automatically for each tenant.</p>
 
           <h2>Remote Approval Gate</h2>
           <p>When Hermes encounters a destructive or risky operation, it pauses execution and pushes an approval prompt to your phone:</p>
@@ -100,12 +100,12 @@
               <tr><td><strong>AI News Brief</strong></td><td><code>30 7 * * 1-5</code></td><td>Weekday morning AI/tech roundup</td></tr>
               <tr><td><strong>GitHub Backup</strong></td><td><code>0 2 * * *</code></td><td>Nightly repository backup to secondary location</td></tr>
               <tr><td><strong>Comment Monitor</strong></td><td><code>0 */4 * * *</code></td><td>YouTube/social comment tracker every 4 hours</td></tr>
-              <tr><td><strong>Health Check</strong></td><td><code>*/30 * * * *</code></td><td>VPS disk, memory, and service monitoring</td></tr>
+              <tr><td><strong>Health Check</strong></td><td><code>*/30 * * * *</code></td><td>Platform health, memory, and service monitoring</td></tr>
             </tbody>
           </table>
 
           <h2>Self-Improving Skills</h2>
-          <p>Hermes has an autonomous "do, learn, improve" loop. When it solves a complex problem, it extracts the successful patterns and writes them into reusable skill files for faster future execution. These skills are stored locally and available to all agents.</p>
+          <p>Hermes has an autonomous "do, learn, improve" loop. When it solves a complex problem, it extracts the successful patterns and writes them into reusable skill files for faster future execution. These skills are stored on the platform and available to all agents in your tenant.</p>
 
           <h2>API Endpoints</h2>
 
@@ -163,11 +163,11 @@
             </tbody>
           </table>
 
-          <h2>Privacy &amp; Cost Benefits</h2>
+          <h2>Key Benefits</h2>
           <ul>
-            <li><strong>Data privacy</strong> — Hermes runs locally on your VPS. Your data never leaves your infrastructure.</li>
-            <li><strong>Cost savings</strong> — Background and cron tasks run on the free local model, saving API costs.</li>
-            <li><strong>Always available</strong> — Unlike Claude which requires your session, Hermes works 24/7.</li>
+            <li><strong>Tenant isolation</strong> — Each tenant's Hermes tasks are fully isolated from other tenants.</li>
+            <li><strong>Cost efficiency</strong> — Background and cron tasks use your own API keys at standard rates.</li>
+            <li><strong>Always available</strong> — Unlike interactive sessions, Hermes works 24/7 without requiring your browser.</li>
           </ul>
 
           <div class="docs-page-nav">

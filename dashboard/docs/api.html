@@ -185,18 +185,18 @@
             <p class="docs-endpoint-desc">Execute a headless browser task. Heavy rate limited.</p>
           </div>
 
-          <h2>Billing</h2>
+          <h2>Tenant &amp; Branding</h2>
 
           <div class="docs-endpoint">
             <span class="docs-endpoint-method get">GET</span>
-            <span class="docs-endpoint-path">/api/stripe/checkout?plan=pro</span>
-            <p class="docs-endpoint-desc">Create a Stripe Checkout session. Redirects to Stripe's hosted payment page.</p>
+            <span class="docs-endpoint-path">/api/tenant/branding</span>
+            <p class="docs-endpoint-desc">Returns the current tenant's branding (company name, tagline, logo, colors). Public, no auth required.</p>
           </div>
 
           <div class="docs-endpoint">
-            <span class="docs-endpoint-method post">POST</span>
-            <span class="docs-endpoint-path">/api/stripe/webhook</span>
-            <p class="docs-endpoint-desc">Stripe webhook receiver. Requires raw body (not JSON parsed) for signature verification.</p>
+            <span class="docs-endpoint-method get">GET</span>
+            <span class="docs-endpoint-path">/api/templates</span>
+            <p class="docs-endpoint-desc">List available industry templates (digital agency, law firm, ecommerce, SaaS, real estate, healthcare, consulting, trades).</p>
           </div>
 
           <h2>Knowledge Graph</h2>
@@ -248,7 +248,7 @@
           <a href="#design-system">Design System</a>
           <a href="#media-3d">Media &amp; 3D</a>
           <a href="#monetization">Monetization</a>
-          <a href="#billing">Billing</a>
+          <a href="#tenant--branding">Tenant &amp; Branding</a>
           <a href="#error-responses">Error Responses</a>
         </aside>
       </div>
