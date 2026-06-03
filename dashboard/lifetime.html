@@ -188,10 +188,19 @@
         const data = await res.json();
 
         if (data.ok) {
-          resultEl.innerHTML = '<div class="form-msg success">Application received! We\'ll review it and send your payment link within 24 hours. Check your email at <strong>' + email + '</strong>.</div>';
-          btn.textContent = 'Application Submitted';
           // Track conversion
           if (typeof gtag === 'function') gtag('event', 'lifetime_application', { event_category: 'conversion', event_label: email });
+
+          if (data.checkoutUrl) {
+            // Redirect to Stripe checkout immediately
+            resultEl.innerHTML = '<div class="form-msg success">Redirecting to secure payment...</div>';
+            btn.textContent = 'Redirecting...';
+            window.location.href = data.checkoutUrl;
+            return;
+          }
+          // Fallback if Stripe not configured
+          resultEl.innerHTML = '<div class="form-msg success">Application received! We\'ll send your payment link shortly. Check your email at <strong>' + email + '</strong>.</div>';
+          btn.textContent = 'Application Submitted';
         } else {
           resultEl.innerHTML = '<div class="form-msg error">' + (data.error || 'Something went wrong. Please try again.') + '</div>';
           btn.disabled = false;
