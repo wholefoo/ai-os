@@ -4,10 +4,10 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Architecture — AI OS Docs</title>
-  <meta name="description" content="AI OS architecture — 7 model tiers with effort-based routing, Opus 4.8, Gemini Omni, DeepSeek V4, Grok-3, and Hermes MCP. Multi-tenant isolation for white-label SaaS.">
+  <meta name="description" content="AI OS architecture — 10 model tiers with effort-based routing: Opus 4.8, OpenAI, Gemini Omni, DeepSeek, Grok-3, Perplexity, Manus, and Hermes MCP. Multi-tenant white-label SaaS.">
   <link rel="canonical" href="https://aiosorchestrationlab.com/docs/architecture">
   <meta property="og:title" content="Architecture — AI OS Docs">
-  <meta property="og:description" content="7 model tiers with effort-based routing, Opus 4.8, Gemini Omni, DeepSeek V4, Grok-3, and Hermes MCP. Multi-tenant SaaS.">
+  <meta property="og:description" content="10 model tiers: Opus 4.8, OpenAI, Gemini Omni, DeepSeek, Grok-3, Perplexity, Manus, Hermes MCP. Multi-tenant SaaS.">
   <meta name="twitter:card" content="summary">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
@@ -115,6 +115,27 @@
                 <td>—</td>
                 <td>Live data, current events, real-time queries</td>
                 <td>$3/$15 per 1M tokens</td>
+              </tr>
+              <tr>
+                <td><strong>Reasoning</strong></td>
+                <td>OpenAI GPT-4o / o3</td>
+                <td>—</td>
+                <td>Alternative reasoning, code generation, Codex tasks</td>
+                <td>$2.50-$10/$10-$40 per 1M tokens</td>
+              </tr>
+              <tr>
+                <td><strong>Grounded Search</strong></td>
+                <td>Perplexity Sonar</td>
+                <td>—</td>
+                <td>Web search with source citations, research queries</td>
+                <td>$1-$3/$1-$15 per 1M + request fees</td>
+              </tr>
+              <tr>
+                <td><strong>Autonomous</strong></td>
+                <td>Manus</td>
+                <td>—</td>
+                <td>Multi-step agent tasks, autonomous research and web interaction</td>
+                <td>Credit-based ($20-$200/mo)</td>
               </tr>
               <tr>
                 <td><strong>Persistent</strong></td>
