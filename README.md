@@ -1,6 +1,6 @@
 # AI OS — The Agentic Operating System
 
-A multi-agentic AI operating system built as a Virtual Corporate Headquarters, orchestrating 51 specialized sub-agents across 10 departments and 7 model tiers. Research, create, analyze, scrape, and monetize — all from a single dashboard. Available as a white-label SaaS license — Pro $99/mo, Business $497/mo, Enterprise $1,997/mo, or Lifetime $9,997 one-time (limited to 100 spots).
+A multi-agentic AI operating system built as a Virtual Corporate Headquarters, orchestrating 51 specialized sub-agents across 10 departments and 7 model tiers. Research, create, analyze, scrape, and monetize — all from a single dashboard. Available as a white-label SaaS license — Pro $99/mo, Business $497/mo, Enterprise $1,997/mo, or Founders $9,997 Lifetime Enterprise Subscription (limited to 100 spots).
 
 ## Architecture
 
