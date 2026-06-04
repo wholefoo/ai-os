@@ -1376,6 +1376,15 @@
                   </div>
                 </div>
                 <div class="settings-field">
+                  <label class="settings-label">OpenAI API Key <span class="settings-tier">GPT-4o / o3 — reasoning + code</span></label>
+                  <div class="settings-input-row">
+                    <input type="text" class="settings-input settings-secret" id="set-openai_api_key" placeholder="sk-..." autocomplete="new-password" data-lpignore="true" data-1p-ignore spellcheck="false">
+                    <button type="button" class="btn btn-sm settings-eye" onclick="toggleKeyVisibility(this)" title="Show/hide">&#128065;</button>
+                    <span class="settings-status" id="status-openai_api_key"></span>
+                    <button class="btn btn-sm" onclick="testConnection('openai')">Test</button>
+                  </div>
+                </div>
+                <div class="settings-field">
                   <label class="settings-label">DeepSeek API Key <span class="settings-tier">Economy tier</span></label>
                   <div class="settings-input-row">
                     <input type="text" class="settings-input settings-secret" id="set-deepseek_api_key" placeholder="sk-..." autocomplete="new-password" data-lpignore="true" data-1p-ignore spellcheck="false">
@@ -1411,6 +1420,15 @@
                   </div>
                 </div>
                 <div class="settings-field">
+                  <label class="settings-label">Perplexity API Key <span class="settings-tier">Sonar — grounded search with citations</span></label>
+                  <div class="settings-input-row">
+                    <input type="text" class="settings-input settings-secret" id="set-perplexity_api_key" placeholder="pplx-..." autocomplete="new-password" data-lpignore="true" data-1p-ignore spellcheck="false">
+                    <button type="button" class="btn btn-sm settings-eye" onclick="toggleKeyVisibility(this)" title="Show/hide">&#128065;</button>
+                    <span class="settings-status" id="status-perplexity_api_key"></span>
+                    <button class="btn btn-sm" onclick="testConnection('perplexity')">Test</button>
+                  </div>
+                </div>
+                <div class="settings-field">
                   <label class="settings-label">Tavily API Key <span class="settings-tier">AI-optimized search + research</span></label>
                   <div class="settings-input-row">
                     <input type="text" class="settings-input settings-secret" id="set-tavily_api_key" placeholder="tvly-..." autocomplete="new-password" data-lpignore="true" data-1p-ignore spellcheck="false">
@@ -1426,6 +1444,15 @@
                     <button type="button" class="btn btn-sm settings-eye" onclick="toggleKeyVisibility(this)" title="Show/hide">&#128065;</button>
                     <span class="settings-status" id="status-apify_api_token"></span>
                     <button class="btn btn-sm" onclick="testConnection('apify')">Test</button>
+                  </div>
+                </div>
+                <div class="settings-field">
+                  <label class="settings-label">Manus API Key <span class="settings-tier">Autonomous multi-step agent</span></label>
+                  <div class="settings-input-row">
+                    <input type="text" class="settings-input settings-secret" id="set-manus_api_key" placeholder="manus-..." autocomplete="new-password" data-lpignore="true" data-1p-ignore spellcheck="false">
+                    <button type="button" class="btn btn-sm settings-eye" onclick="toggleKeyVisibility(this)" title="Show/hide">&#128065;</button>
+                    <span class="settings-status" id="status-manus_api_key"></span>
+                    <button class="btn btn-sm" onclick="testConnection('manus')">Test</button>
                   </div>
                 </div>
               </div>
@@ -1703,6 +1730,6 @@
     </div>
   </div>
 
-  <script src="js/app.js?v=14"></script>
+  <script src="js/app.js?v=15"></script>
 </body>
 </html>
