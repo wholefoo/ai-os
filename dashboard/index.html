@@ -22,7 +22,7 @@
   <!-- Twitter Card -->
   <meta name="twitter:card" content="summary_large_image">
   <meta name="twitter:title" content="AI OS — Virtual Corporate HQ with 51 AI Agents">
-  <meta name="twitter:description" content="51 AI agents, 10 departments, 7 model tiers. SEO Agency, Creative Studio, YouTube Intel. White-label SaaS licensing from $99/mo.">
+  <meta name="twitter:description" content="51 AI agents, 10 departments, 10 model tiers. SEO Agency, Creative Studio, YouTube Intel. White-label SaaS from $99/mo.">
   <meta name="twitter:image" content="https://aiosorchestrationlab.com/assets/og-share.png">
 
   <!-- AEO: Structured Data -->
@@ -32,7 +32,7 @@
     "@type": "SoftwareApplication",
     "name": "AI OS",
     "alternateName": "AI OS Virtual Corporate HQ",
-    "description": "AI OS is a white-label SaaS platform that provides a Virtual Corporate Headquarters with 51 AI agents organized across 10 departments and 7 model tiers. It includes an SEO Agency with 5 parallel audit sub-agents, Gemini Omni Creative Studio for video/image/audio generation, YouTube Video Intelligence, and a self-improving platform with Telegram/Slack approval bots.",
+    "description": "AI OS is a white-label SaaS platform that provides a Virtual Corporate Headquarters with 51 AI agents organized across 10 departments and 10 model tiers including Claude Opus 4.8, OpenAI GPT-4o, Gemini Omni, DeepSeek V4, Grok-3, Perplexity Sonar, and Manus. It includes an SEO Agency, Creative Studio, YouTube Intelligence, and a self-improving platform.",
     "url": "https://aiosorchestrationlab.com",
     "applicationCategory": "BusinessApplication",
     "operatingSystem": "Web",
@@ -71,7 +71,7 @@
     ],
     "featureList": [
       "51 AI agents across 10 departments",
-      "7 model tiers (Opus 4.8, Gemini Omni, DeepSeek V4, Grok-3, Hermes MCP)",
+      "10 model tiers (Opus 4.8, OpenAI GPT-4o, Gemini Omni, DeepSeek V4, Grok-3, Perplexity Sonar, Manus, Hermes MCP)",
       "SEO Agency with 5 parallel audit sub-agents",
       "Gemini Omni Creative Studio (video, image, audio, thumbnails)",
       "YouTube Video Intelligence with Claude Vision",
@@ -103,7 +103,7 @@
         "name": "What is AI OS?",
         "acceptedAnswer": {
           "@type": "Answer",
-          "text": "AI OS is a Virtual Corporate Headquarters — a white-label SaaS platform with 51 AI agents organized across 10 departments and 7 model tiers. It includes an SEO Agency, Gemini Omni Creative Studio, YouTube Intelligence, and a Legal department. Customers bring their own API keys and get a fully branded dashboard."
+          "text": "AI OS is a Virtual Corporate Headquarters — a white-label SaaS platform with 51 AI agents organized across 10 departments and 10 model tiers including Claude Opus 4.8, OpenAI GPT-4o, Gemini Omni, Perplexity Sonar, and Manus. It includes an SEO Agency, Creative Studio, YouTube Intelligence, and a Legal department. Customers bring their own API keys."
         }
       },
       {
@@ -127,7 +127,7 @@
         "name": "What AI models does AI OS support?",
         "acceptedAnswer": {
           "@type": "Answer",
-          "text": "AI OS routes across 7 model tiers: Claude Opus 4.8 with effort-based routing (xhigh for strategic, high for professional, low for scout), Gemini Omni Flash for creative generation (video, image, audio), DeepSeek V4 for economy batch processing, Grok-3 for real-time web search, and Hermes MCP for persistent background tasks."
+          "text": "AI OS routes across 10 model tiers: Claude Opus 4.8 with effort-based routing (xhigh/high/low), OpenAI GPT-4o for reasoning and code, Gemini Omni for creative generation, DeepSeek V4 for economy batch processing, Grok-3 for real-time web search, Perplexity Sonar for grounded search with citations, Manus for autonomous multi-step tasks, and Hermes MCP for persistent background work."
         }
       },
       {
@@ -805,7 +805,7 @@
       overview: [
         { msg: "AI OS is a Virtual Corporate Headquarters — imagine a full company staffed entirely by AI agents, each with a name, role, and department.", delay: 0 },
         { msg: "We have 10 departments: Executive, Legal, Engineering, Marketing, Creative, Customer Service, IT, Product, Operations, and a Board of Directors.", delay: 2000 },
-        { msg: "Every agent runs on one of 7 model tiers — from my strategic Opus 4.8 xhigh brain, down to DeepSeek economy workers for bulk tasks.", delay: 4000 },
+        { msg: "Every agent runs on one of 10 model tiers — Opus 4.8, OpenAI GPT-4o, Gemini Omni, DeepSeek, Grok-3, Perplexity Sonar, Manus, and Hermes MCP. The orchestrator picks the right brain for each task.", delay: 4000 },
         { msg: "Want to hear about a specific department, or should I tell you about our licensing options?", delay: 6000, options: ['Tell me about SEO Agency', 'Creative Studio', 'Licensing options', 'How does pricing work?'] },
       ],
       seo: [
@@ -834,10 +834,11 @@
         { msg: "Founders plan at $9,997 — Lifetime Enterprise Subscription, plus your own instance, white-label branding, and Stripe for your customers. Limited to 100 spots.", delay: 5000, options: ['I want to be a Founder', 'Tell me more about features', 'Back to overview'] },
       ],
       models: [
-        { msg: "We route across 7 model tiers for optimal cost and quality:", delay: 0 },
+        { msg: "We route across 10 model tiers for optimal cost and quality:", delay: 0 },
         { msg: "Strategic (Opus 4.8 xhigh) — that's me and the C-Suite. Deep reasoning for architecture and critical decisions.", delay: 1500 },
-        { msg: "Professional (Opus 4.8 high) — 23 agents handle research, coding, writing, legal, and support work.", delay: 3000 },
-        { msg: "Scout (Opus 4.8 low) — fast lookups and triage. Creative (Gemini Omni) — video, image, audio. Economy (DeepSeek V4) — bulk processing. Realtime (Grok-3) — live web search. Persistent (Hermes MCP) — background tasks.", delay: 5000, options: ['Tell me about SEO', 'Creative Studio', 'Licensing options', 'Pricing'] },
+        { msg: "Professional (Opus 4.8 high) — 23 agents for research, coding, writing, legal, and support. Plus OpenAI GPT-4o for alternative reasoning and code generation.", delay: 3000 },
+        { msg: "Scout (Opus 4.8 low) — fast lookups. Creative (Gemini Omni) — video, image, audio. Economy (DeepSeek V4) — bulk processing.", delay: 5000 },
+        { msg: "Realtime (Grok-3) — live web search. Grounded Search (Perplexity Sonar) — search with citations. Autonomous (Manus) — multi-step agent tasks. Persistent (Hermes MCP) — 24/7 background work.", delay: 7000, options: ['Tell me about SEO', 'Creative Studio', 'Licensing options', 'Pricing'] },
       ],
       apply: [
         { msg: "To get started, scroll down to the pricing section and pick your plan, or I can take you there now.", delay: 0 },
