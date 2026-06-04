@@ -213,7 +213,7 @@ app.post('/api/tenants', requireAdmin, (req, res) => {
 
   // Seed tenant settings with defaults
   const tenantSettings = {
-    ai: { anthropic_api_key: '', deepseek_api_key: '', xai_api_key: '', firecrawl_api_key: '', gemini_api_key: '', tavily_api_key: '', apify_api_token: '' },
+    ai: { anthropic_api_key: '', openai_api_key: '', deepseek_api_key: '', xai_api_key: '', gemini_api_key: '', perplexity_api_key: '', firecrawl_api_key: '', tavily_api_key: '', apify_api_token: '', manus_api_key: '' },
     mcp: { hermes_url: 'http://127.0.0.1:8420', hermes_enabled: false },
     notifications: { telegram_bot_token: '', telegram_chat_id: '', slack_webhook_url: '' },
     automation: { n8n_webhook_base: '', n8n_api_key: '', team_webhook_url: '' },
@@ -723,7 +723,7 @@ app.get('/lifetime/success', (req, res) => {
         ensureTenantDir(tenantId);
         saveTenantState(tenantId, 'users', [{ email: license.email, passwordHash: null, plan: 'lifetime', role: 'admin', tenantId, createdAt: new Date().toISOString() }]);
         saveTenantState(tenantId, 'settings', {
-          ai: { anthropic_api_key: '', deepseek_api_key: '', xai_api_key: '', firecrawl_api_key: '', gemini_api_key: '', tavily_api_key: '', apify_api_token: '' },
+          ai: { anthropic_api_key: '', openai_api_key: '', deepseek_api_key: '', xai_api_key: '', gemini_api_key: '', perplexity_api_key: '', firecrawl_api_key: '', tavily_api_key: '', apify_api_token: '', manus_api_key: '' },
           mcp: { hermes_url: 'http://127.0.0.1:8420', hermes_enabled: false },
           notifications: { telegram_bot_token: '', telegram_chat_id: '', slack_webhook_url: '' },
           automation: { n8n_webhook_base: '', n8n_api_key: '', team_webhook_url: '' },
@@ -1049,6 +1049,14 @@ const COST_RATES = {
   'grok-3':            { input: 3.00,  output: 15.00 },
   // Gemini Omni — multimodal creative generation (video, image, audio)
   'gemini-omni':       { input: 1.25,  output: 5.00  },   // Omni Flash pricing (text+image input, video output)
+  // OpenAI
+  'openai-gpt4o':      { input: 2.50,  output: 10.00 },
+  'openai-o3':         { input: 10.00, output: 40.00 },
+  // Perplexity — grounded web search with citations
+  'perplexity-sonar':  { input: 1.00,  output: 1.00  },   // + $5/1K request fee
+  'perplexity-pro':    { input: 3.00,  output: 15.00 },   // + $5-14/1K request fee
+  // Manus — autonomous multi-step agent
+  'manus':             { input: 0,     output: 0     },   // credit-based, not per-token
 };
 
 const costLedger = [];   // individual cost entries
@@ -4867,6 +4875,9 @@ const settings = loadState('settings', {
     gemini_api_key: process.env.GEMINI_API_KEY || '',
     tavily_api_key: process.env.TAVILY_API_KEY || '',
     apify_api_token: process.env.APIFY_API_TOKEN || '',
+    openai_api_key: process.env.OPENAI_API_KEY || '',
+    perplexity_api_key: process.env.PERPLEXITY_API_KEY || '',
+    manus_api_key: process.env.MANUS_API_KEY || '',
   },
   mcp: {
     hermes_url: process.env.HERMES_MCP_URL || 'http://127.0.0.1:8420',
@@ -4935,6 +4946,9 @@ app.get('/api/settings', requireAdmin, (req, res) => {
       gemini_api_key: { value: maskKey(settings.ai.gemini_api_key), configured: !!settings.ai.gemini_api_key },
       tavily_api_key: { value: maskKey(settings.ai.tavily_api_key), configured: !!settings.ai.tavily_api_key },
       apify_api_token: { value: maskKey(settings.ai.apify_api_token), configured: !!settings.ai.apify_api_token },
+      openai_api_key: { value: maskKey(settings.ai.openai_api_key), configured: !!settings.ai.openai_api_key },
+      perplexity_api_key: { value: maskKey(settings.ai.perplexity_api_key), configured: !!settings.ai.perplexity_api_key },
+      manus_api_key: { value: maskKey(settings.ai.manus_api_key), configured: !!settings.ai.manus_api_key },
     },
     mcp: {
       hermes_url: settings.mcp.hermes_url,
@@ -5093,6 +5107,51 @@ app.post('/api/settings/test/:service', requireAdmin, async (req, res) => {
         res.json({ ok: true, message: `Gemini API valid — ${data.models.length} models available` + (omniModels.length ? ` (incl. ${omniModels.map(m => m.name.split('/').pop()).join(', ')})` : '') });
       } else {
         res.json({ ok: false, message: data.error?.message || `HTTP ${r.status}` });
+      }
+    } catch (e) {
+      res.json({ ok: false, message: `Connection failed: ${e.message}` });
+    }
+  } else if (service === 'openai') {
+    if (!settings.ai.openai_api_key) return res.json({ ok: false, message: 'No OpenAI API key configured — save your key first' });
+    try {
+      const r = await fetch('https://api.openai.com/v1/models', {
+        headers: { 'Authorization': `Bearer ${settings.ai.openai_api_key}` },
+      });
+      const data = await r.json();
+      if (data.data) {
+        const models = data.data.slice(0, 3).map(m => m.id).join(', ');
+        res.json({ ok: true, message: `OpenAI connected — ${data.data.length} models (incl. ${models})` });
+      } else {
+        res.json({ ok: false, message: data.error?.message || `HTTP ${r.status}` });
+      }
+    } catch (e) {
+      res.json({ ok: false, message: `Connection failed: ${e.message}` });
+    }
+  } else if (service === 'perplexity') {
+    if (!settings.ai.perplexity_api_key) return res.json({ ok: false, message: 'No Perplexity API key configured — save your key first' });
+    try {
+      const r = await fetch('https://api.perplexity.ai/chat/completions', {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${settings.ai.perplexity_api_key}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ model: 'sonar', messages: [{ role: 'user', content: 'ping' }], max_tokens: 5 }),
+      });
+      const ok = r.ok;
+      res.json({ ok, message: ok ? 'Perplexity Sonar API connected' : `HTTP ${r.status} — check your key` });
+    } catch (e) {
+      res.json({ ok: false, message: `Connection failed: ${e.message}` });
+    }
+  } else if (service === 'manus') {
+    if (!settings.ai.manus_api_key) return res.json({ ok: false, message: 'No Manus API key configured — save your key first' });
+    try {
+      const r = await fetch('https://api.manus.im/v1/user/me', {
+        headers: { 'Authorization': `Bearer ${settings.ai.manus_api_key}` },
+      });
+      const ok = r.ok;
+      if (ok) {
+        const data = await r.json();
+        res.json({ ok: true, message: `Manus connected — ${data.username || 'account verified'}` });
+      } else {
+        res.json({ ok: false, message: `HTTP ${r.status} — check your key` });
       }
     } catch (e) {
       res.json({ ok: false, message: `Connection failed: ${e.message}` });
@@ -5524,7 +5583,7 @@ app.put('/api/license/participant/:id', requireAdmin, (req, res) => {
         }]);
         // Seed empty settings
         saveTenantState(tenantId, 'settings', {
-          ai: { anthropic_api_key: '', deepseek_api_key: '', xai_api_key: '', firecrawl_api_key: '', gemini_api_key: '', tavily_api_key: '', apify_api_token: '' },
+          ai: { anthropic_api_key: '', openai_api_key: '', deepseek_api_key: '', xai_api_key: '', gemini_api_key: '', perplexity_api_key: '', firecrawl_api_key: '', tavily_api_key: '', apify_api_token: '', manus_api_key: '' },
           mcp: { hermes_url: 'http://127.0.0.1:8420', hermes_enabled: false },
           notifications: { telegram_bot_token: '', telegram_chat_id: '', slack_webhook_url: '' },
           automation: { n8n_webhook_base: '', n8n_api_key: '', team_webhook_url: '' },
