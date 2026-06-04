@@ -756,7 +756,7 @@ app.get('/lifetime/success', (req, res) => {
 <div class="success-page">
 <div class="success-icon">&#127881;</div>
 <h1>Welcome to AI OS!</h1>
-<p>Your Lifetime License is now active. Your Virtual Corporate HQ is being provisioned.</p>
+<p>Your Founders Plan is now active. Your Virtual Corporate HQ is being provisioned.</p>
 <div class="success-next">
 <h3>Next Steps:</h3>
 <ol>
@@ -5335,7 +5335,7 @@ const LICENSE_CONFIG = {
     pro:        { price: 99,   interval: 'month', name: 'Pro' },
     business:   { price: 497,  interval: 'month', name: 'Business' },
     enterprise: { price: 1997, interval: 'month', name: 'Enterprise' },
-    lifetime:   { price: 9997, interval: 'one-time', name: 'Lifetime License' },
+    lifetime:   { price: 9997, interval: 'one-time', name: 'Founders Plan' },
   },
   maxLifetime: 100,       // limited lifetime spots
   currency: 'usd',
@@ -5439,7 +5439,7 @@ app.post('/api/license/apply', async (req, res) => {
         price_data: {
           currency: 'usd',
           product_data: {
-            name: LICENSE_CONFIG.name + ' — Lifetime License',
+            name: LICENSE_CONFIG.name + ' — Founders Plan',
             description: 'One-time payment. Everything in Enterprise, forever. ' + LICENSE_CONFIG.description,
           },
           unit_amount: LICENSE_CONFIG.tiers.lifetime.price * 100, // cents
