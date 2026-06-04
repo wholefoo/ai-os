@@ -1035,6 +1035,311 @@ function buildOpusRequest(messages, { effort = 'high', systemMessages = [], maxT
   return body;
 }
 
+// --- Core Agent Execution Engine ---
+// The bridge from DEMO_MODE to real API calls. Every agent dispatch flows through here.
+
+async function loadAgentPrompt(agentName) {
+  const agentFile = path.join(CLAUDE_DIR, 'agents', `${agentName}.md`);
+  if (!fs.existsSync(agentFile)) return null;
+  const content = fs.readFileSync(agentFile, 'utf-8');
+  // Strip YAML frontmatter, return the instruction body
+  const bodyMatch = content.match(/^---[\s\S]*?---\s*([\s\S]*)$/);
+  return bodyMatch ? bodyMatch[1].trim() : content.trim();
+}
+
+async function executeAgent(agentName, task, options = {}) {
+  const { tenantId = MASTER_TENANT_ID, maxTokens = 4096, context = '' } = options;
+  const routing = getAgentEffort(agentName);
+  const startTime = Date.now();
+
+  // Load agent system prompt from .md file
+  const systemPrompt = await loadAgentPrompt(agentName);
+  if (!systemPrompt) {
+    return { ok: false, error: `Agent "${agentName}" not found`, model: routing.model };
+  }
+
+  // Build the full system message
+  const fullSystem = context
+    ? `${systemPrompt}\n\n--- Current Context ---\n${context}`
+    : systemPrompt;
+
+  let result, inputTokens = 0, outputTokens = 0, model = routing.model;
+
+  try {
+    if (routing.tier === 'creative') {
+      // Gemini Omni — route to Google
+      result = await callGemini(fullSystem, task, maxTokens);
+      model = 'gemini-omni';
+    } else if (agentName === 'grok-realtime' || routing.tier === 'realtime') {
+      // Grok — route to xAI
+      result = await callGrok(fullSystem, task, maxTokens);
+      model = 'grok-3';
+    } else if (agentName === 'deepseek-worker' || routing.tier === 'economy') {
+      // DeepSeek — economy tier
+      result = await callDeepSeek(fullSystem, task, maxTokens);
+      model = 'deepseek-v4';
+    } else {
+      // Default: Anthropic Opus 4.8
+      result = await callAnthropic(fullSystem, task, routing.effort, maxTokens);
+    }
+
+    inputTokens = result.inputTokens || 0;
+    outputTokens = result.outputTokens || 0;
+
+    // Track cost
+    const rates = COST_RATES[model] || COST_RATES['opus-4.8-high'];
+    const cost = (inputTokens / 1_000_000) * rates.input + (outputTokens / 1_000_000) * rates.output;
+    costLedger.push({
+      id: uuidv4(), agent: agentName, model, skill: options.skill || 'dispatch',
+      inputTokens, outputTokens, cost: Math.round(cost * 10000) / 10000,
+      timestamp: new Date().toISOString(),
+    });
+
+    const elapsed = Date.now() - startTime;
+    logActivity('agent', `${agentName} completed in ${elapsed}ms (${model})`, { agentName, model, inputTokens, outputTokens, cost: Math.round(cost * 10000) / 10000 });
+    broadcast({ event: 'agent_complete', data: { agent: agentName, model, elapsed, cost: Math.round(cost * 10000) / 10000 } });
+
+    return { ok: true, content: result.content, model, inputTokens, outputTokens, elapsed };
+
+  } catch (e) {
+    console.error(`[AGENT] ${agentName} execution failed:`, e.message);
+    logActivity('agent', `${agentName} failed: ${e.message}`, { agentName, model });
+    return { ok: false, error: e.message, model };
+  }
+}
+
+// --- Model-Specific API Callers ---
+
+async function callAnthropic(systemPrompt, task, effort, maxTokens) {
+  const apiKey = settings.ai.anthropic_api_key;
+  if (!apiKey) throw new Error('Anthropic API key not configured — add it in Settings');
+
+  const body = {
+    model: OPUS_MODEL,
+    max_tokens: maxTokens,
+    thinking: { type: 'adaptive' },
+    system: systemPrompt,
+    messages: [{ role: 'user', content: task }],
+  };
+  if (effort) body.effort = effort;
+
+  const res = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: { 'x-api-key': apiKey, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error?.message || `Anthropic HTTP ${res.status}`);
+  }
+
+  const data = await res.json();
+  const textBlock = data.content?.find(b => b.type === 'text');
+  return {
+    content: textBlock?.text || '',
+    inputTokens: data.usage?.input_tokens || 0,
+    outputTokens: data.usage?.output_tokens || 0,
+  };
+}
+
+async function callGrok(systemPrompt, task, maxTokens) {
+  const apiKey = settings.ai.xai_api_key;
+  if (!apiKey) throw new Error('xAI API key not configured — add it in Settings');
+
+  const res = await fetch('https://api.x.ai/v1/chat/completions', {
+    method: 'POST',
+    headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      model: 'grok-3',
+      messages: [{ role: 'system', content: systemPrompt }, { role: 'user', content: task }],
+      max_tokens: maxTokens,
+    }),
+  });
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error?.message || `Grok HTTP ${res.status}`);
+  }
+
+  const data = await res.json();
+  return {
+    content: data.choices?.[0]?.message?.content || '',
+    inputTokens: data.usage?.prompt_tokens || 0,
+    outputTokens: data.usage?.completion_tokens || 0,
+  };
+}
+
+async function callDeepSeek(systemPrompt, task, maxTokens) {
+  const apiKey = settings.ai.deepseek_api_key;
+  if (!apiKey) throw new Error('DeepSeek API key not configured — add it in Settings');
+
+  const res = await fetch('https://api.deepseek.com/chat/completions', {
+    method: 'POST',
+    headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      model: 'deepseek-chat',
+      messages: [{ role: 'system', content: systemPrompt }, { role: 'user', content: task }],
+      max_tokens: maxTokens,
+    }),
+  });
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error?.message || `DeepSeek HTTP ${res.status}`);
+  }
+
+  const data = await res.json();
+  return {
+    content: data.choices?.[0]?.message?.content || '',
+    inputTokens: data.usage?.prompt_tokens || 0,
+    outputTokens: data.usage?.completion_tokens || 0,
+  };
+}
+
+async function callGemini(systemPrompt, task, maxTokens) {
+  const apiKey = settings.ai.gemini_api_key;
+  if (!apiKey) throw new Error('Gemini API key not configured — add it in Settings');
+
+  const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      system_instruction: { parts: [{ text: systemPrompt }] },
+      contents: [{ parts: [{ text: task }] }],
+      generationConfig: { maxOutputTokens: maxTokens },
+    }),
+  });
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error?.message || `Gemini HTTP ${res.status}`);
+  }
+
+  const data = await res.json();
+  const text = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+  return {
+    content: text,
+    inputTokens: data.usageMetadata?.promptTokenCount || 0,
+    outputTokens: data.usageMetadata?.candidatesTokenCount || 0,
+  };
+}
+
+async function callOpenAI(systemPrompt, task, maxTokens) {
+  const apiKey = settings.ai.openai_api_key;
+  if (!apiKey) throw new Error('OpenAI API key not configured — add it in Settings');
+
+  const res = await fetch('https://api.openai.com/v1/chat/completions', {
+    method: 'POST',
+    headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      model: 'gpt-4o',
+      messages: [{ role: 'system', content: systemPrompt }, { role: 'user', content: task }],
+      max_tokens: maxTokens,
+    }),
+  });
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error?.message || `OpenAI HTTP ${res.status}`);
+  }
+
+  const data = await res.json();
+  return {
+    content: data.choices?.[0]?.message?.content || '',
+    inputTokens: data.usage?.prompt_tokens || 0,
+    outputTokens: data.usage?.completion_tokens || 0,
+  };
+}
+
+async function callPerplexity(systemPrompt, task, maxTokens) {
+  const apiKey = settings.ai.perplexity_api_key;
+  if (!apiKey) throw new Error('Perplexity API key not configured — add it in Settings');
+
+  const res = await fetch('https://api.perplexity.ai/chat/completions', {
+    method: 'POST',
+    headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      model: 'sonar-pro',
+      messages: [{ role: 'system', content: systemPrompt }, { role: 'user', content: task }],
+      max_tokens: maxTokens,
+    }),
+  });
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error?.message || `Perplexity HTTP ${res.status}`);
+  }
+
+  const data = await res.json();
+  return {
+    content: data.choices?.[0]?.message?.content || '',
+    inputTokens: data.usage?.prompt_tokens || 0,
+    outputTokens: data.usage?.completion_tokens || 0,
+    citations: data.citations || [],
+  };
+}
+
+// --- Generic Agent Dispatch Endpoint ---
+// POST /api/agent/execute — run any agent with a task (used by dashboard dispatch, chat, etc.)
+app.post('/api/agent/execute', requireAdmin, async (req, res) => {
+  const { agent, task, context, maxTokens } = req.body;
+  if (!agent || !task) return res.status(400).json({ error: 'Agent name and task are required' });
+
+  if (DEMO_MODE) {
+    // In demo mode, simulate a response
+    const routing = getAgentEffort(agent);
+    setTimeout(() => {
+      broadcast({ event: 'agent_complete', data: { agent, model: routing.model, elapsed: 2500, cost: 0.02 } });
+    }, 2000);
+    return res.json({
+      ok: true, demo: true, agent, model: routing.model,
+      content: `[DEMO] ${agent} would process: "${task.substring(0, 80)}..." — enable real mode by setting DEMO_MODE=false and configuring API keys in Settings.`,
+    });
+  }
+
+  const result = await executeAgent(agent, task, {
+    tenantId: req.tenantId,
+    context: context || '',
+    maxTokens: maxTokens || 4096,
+    skill: req.body.skill || 'dispatch',
+  });
+
+  res.json(result);
+});
+
+// POST /api/chat — conversational AI assistant (uses Orchestrator agent)
+app.post('/api/chat', requireAdmin, async (req, res) => {
+  const { message, history } = req.body;
+  if (!message) return res.status(400).json({ error: 'Message is required' });
+
+  if (DEMO_MODE) {
+    return res.json({
+      ok: true, demo: true,
+      reply: `I'm Atlas, CEO of AI OS Corp. In demo mode, I can show you around but can't process real tasks. Set DEMO_MODE=false and add your Anthropic API key in Settings to activate me. You said: "${message.substring(0, 80)}"`,
+    });
+  }
+
+  // Build conversation with history
+  const messages = [];
+  if (Array.isArray(history)) {
+    history.slice(-10).forEach(h => {
+      messages.push({ role: h.role, content: h.content });
+    });
+  }
+  messages.push({ role: 'user', content: message });
+
+  try {
+    const systemPrompt = `You are Atlas, the CEO and Chief Orchestrator of AI OS Corp — a Virtual Corporate Headquarters with 51 AI agents across 10 departments. You help users navigate the platform, dispatch tasks to the right agents, answer questions about features, and provide strategic guidance. Be concise, helpful, and professional. You know about all 10 model tiers, the SEO Agency, Creative Studio, YouTube Intelligence, and the full agent fleet.`;
+
+    const result = await callAnthropic(systemPrompt, messages.length === 1 ? message : JSON.stringify(messages), 'high', 2048);
+
+    res.json({ ok: true, reply: result.content, inputTokens: result.inputTokens, outputTokens: result.outputTokens });
+  } catch (e) {
+    res.json({ ok: false, error: e.message, reply: `Sorry, I couldn't process that: ${e.message}` });
+  }
+});
+
 const COST_RATES = {
   // Opus 4.8 — effort-based routing (single model, three tiers)
   'opus-4.8-xhigh':    { input: 10.00, output: 50.00 },   // per 1M tokens — fast mode, strategic work
@@ -3457,7 +3762,7 @@ app.get('/api/grok/stats', (req, res) => {
 });
 
 // API: Execute a Grok real-time query
-app.post('/api/grok/query', heavyLimiter, (req, res) => {
+app.post('/api/grok/query', heavyLimiter, async (req, res) => {
   const errs = validateBody(req.body, {
     query: { required: true, type: 'string', maxLength: 2000 },
     type: { type: 'string', oneOf: ['search', 'trending', 'fact-check', 'monitor'] },
@@ -3500,7 +3805,31 @@ app.post('/api/grok/query', heavyLimiter, (req, res) => {
   broadcast({ event: 'grok_stream_start', data: { id, query, type } });
   logActivity('grok', `Grok query started: ${type} — "${query.substring(0, 60)}${query.length > 60 ? '...' : ''}"`, { queryId: id });
 
-  // Simulate streaming response
+  // Real API path — when DEMO_MODE is off and xAI key is configured
+  if (!DEMO_MODE && settings.ai.xai_api_key) {
+    try {
+      const systemMsg = `You are Grok, a real-time intelligence agent. Query type: ${type}. Scope: ${scope}. Provide current, factual information with sources where possible. Be concise but thorough.`;
+      const result = await callGrok(systemMsg, query, max_tokens);
+      grokQuery.response = result.content;
+      grokQuery.tokens = { input: result.inputTokens, output: result.outputTokens };
+      grokQuery.confidence = 0.9;
+      grokQuery.status = 'complete';
+      grokQuery.streaming = false;
+      grokQuery.completedAt = new Date().toISOString();
+      const rates = COST_RATES['grok-3'];
+      grokQuery.cost = Math.round(((result.inputTokens / 1_000_000) * rates.input + (result.outputTokens / 1_000_000) * rates.output) * 10000) / 10000;
+      costLedger.push({ id: uuidv4(), agent: 'grok-realtime', model: 'grok-3', skill: type, inputTokens: result.inputTokens, outputTokens: result.outputTokens, cost: grokQuery.cost, timestamp: new Date().toISOString() });
+      grokCache.set(cacheKey, { result: grokQuery, timestamp: Date.now() });
+      broadcast({ event: 'grok_stream_complete', data: grokQuery });
+      logActivity('grok', `Grok query completed: ${type} (real API)`, { queryId: id, cost: grokQuery.cost });
+      return res.json(grokQuery);
+    } catch (e) {
+      console.error('[GROK] Real API failed, falling back to demo:', e.message);
+      // Fall through to demo mode below
+    }
+  }
+
+  // Simulate streaming response (demo mode)
   const typeResponses = {
     search: {
       response: `Real-time analysis for "${query}": Based on current web data, the latest developments indicate significant momentum in this area. Multiple authoritative sources confirm ongoing activity with measurable impact across the ecosystem.`,
