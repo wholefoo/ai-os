@@ -5033,7 +5033,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
 // Map of section → field → input ID
 const settingsFieldMap = {
-  ai: ['anthropic_api_key', 'openai_api_key', 'deepseek_api_key', 'xai_api_key', 'gemini_api_key', 'perplexity_api_key', 'firecrawl_api_key', 'tavily_api_key', 'apify_api_token', 'manus_api_key', 'livekit_api_key', 'livekit_api_secret', 'livekit_url', 'deepgram_api_key', 'cartesia_api_key'],
+  ai: ['anthropic_api_key', 'openai_api_key', 'deepseek_api_key', 'xai_api_key', 'gemini_api_key', 'perplexity_api_key', 'firecrawl_api_key', 'tavily_api_key', 'apify_api_token', 'manus_api_key', 'heygen_api_key', 'livekit_api_key', 'livekit_api_secret', 'livekit_url', 'deepgram_api_key', 'cartesia_api_key'],
   mcp: ['hermes_url', 'hermes_enabled'],
   notifications: ['telegram_bot_token', 'telegram_chat_id', 'slack_webhook_url'],
   automation: ['n8n_webhook_base', 'n8n_api_key', 'team_webhook_url'],
@@ -6095,21 +6095,127 @@ const AVATAR_PROFILES = {
 const AVATAR_AGENTS = Object.fromEntries(Object.entries(AVATAR_PROFILES).map(([k, v]) => [k, v.agent]));
 
 let livekitRoom = null;
+let heygenAvatar = null;
+let heygenSessionActive = false;
 
 async function loadAvatarChat() {
-  initAvatar3D();
   initVoiceSystem();
 
-  // Check LiveKit pipeline status
-  const status = await fetchJSON('/api/livekit/status');
-  avatarState.livekitReady = status.allReady;
+  // Check HeyGen first, then LiveKit, then fallback
+  const heygenStatus = await fetchJSON('/api/heygen/status');
 
-  if (status.allReady) {
-    addAvatarBotMessage("Hello! I'm Atlas, CEO of AI OS Corp. The full voice pipeline is active — Deepgram for listening, Cartesia for my voice, Claude for thinking. Click the microphone to start a real-time voice conversation, or type below.");
-  } else if (status.configured?.anthropic) {
-    addAvatarBotMessage("Hello! I'm Atlas, CEO of AI OS Corp. Voice is powered by OpenAI TTS. For the premium experience with Cartesia natural voice, configure LiveKit + Deepgram + Cartesia keys in Settings. Type or click the mic to start.");
+  if (heygenStatus.configured) {
+    avatarState.heygenReady = true;
+    document.getElementById('heygenStartBtn').style.display = 'inline-block';
+    document.getElementById('avatarPortraitFallback').style.display = 'block';
+    initAvatar3D(); // Show portrait as placeholder
+    addAvatarBotMessage("Hello! I'm Atlas, CEO of AI OS Corp. Click 'Start Video Avatar' to see me in photorealistic video, or type/speak below for text chat.");
   } else {
-    addAvatarBotMessage("Hello! I'm Atlas, CEO of AI OS Corp. Configure API keys in Settings to activate voice. You can type messages and I'll respond.");
+    const lkStatus = await fetchJSON('/api/livekit/status');
+    avatarState.livekitReady = lkStatus.allReady;
+    initAvatar3D();
+    if (lkStatus.allReady) {
+      addAvatarBotMessage("Hello! I'm Atlas. Voice pipeline active. Click the mic to talk, or type below. Add a HeyGen API key in Settings for photorealistic video avatars.");
+    } else {
+      addAvatarBotMessage("Hello! I'm Atlas, CEO of AI OS Corp. Type below to chat. Add API keys in Settings for voice and video avatar features.");
+    }
+  }
+}
+
+// --- HeyGen LiveAvatar ---
+
+async function startHeyGenSession() {
+  const btn = document.getElementById('heygenStartBtn');
+  const stopBtn = document.getElementById('heygenStopBtn');
+  btn.textContent = 'Connecting...';
+  btn.disabled = true;
+  document.getElementById('avatarStatus').textContent = 'Connecting to HeyGen...';
+
+  try {
+    // Get session token from server
+    const tokenData = await fetchJSON('/api/heygen/token', { method: 'POST', body: {} });
+    if (!tokenData.ok) throw new Error(tokenData.error || 'Token request failed');
+
+    const StreamingAvatar = window.StreamingAvatar || window.default;
+    if (!StreamingAvatar) throw new Error('HeyGen SDK not loaded');
+
+    // Create avatar instance
+    heygenAvatar = new StreamingAvatar({ token: tokenData.token });
+
+    // Start session with an avatar
+    const sessionData = await heygenAvatar.createStartAvatar({
+      quality: 'medium',
+      avatarName: 'default',  // HeyGen's default avatar
+      voice: { voiceId: '' }, // Default voice
+      language: 'en',
+      knowledgeBase: AVATAR_PROFILES[avatarState.employee]?.systemPrompt || 'You are a helpful AI assistant.',
+    });
+
+    // Attach video stream
+    const videoEl = document.getElementById('avatarVideo');
+    if (sessionData.stream) {
+      videoEl.srcObject = sessionData.stream;
+      videoEl.style.display = 'block';
+      document.getElementById('avatarPortraitFallback').style.display = 'none';
+    }
+
+    heygenSessionActive = true;
+    btn.style.display = 'none';
+    stopBtn.style.display = 'inline-block';
+    document.getElementById('avatarStatus').textContent = 'Video avatar active — speak or type';
+
+    // Listen for avatar events
+    heygenAvatar.on('avatar_start_talking', () => {
+      avatarState.speaking = true;
+      document.getElementById('avatarStatus').textContent = 'Speaking...';
+    });
+
+    heygenAvatar.on('avatar_stop_talking', () => {
+      avatarState.speaking = false;
+      document.getElementById('avatarStatus').textContent = 'Listening...';
+    });
+
+    addAvatarBotMessage(`Video avatar connected! I'm ${AVATAR_PROFILES[avatarState.employee]?.title || 'Atlas'}. Speak naturally or type below.`);
+
+  } catch (e) {
+    console.error('[HEYGEN] Session failed:', e);
+    btn.textContent = '🎬 Start Video Avatar';
+    btn.disabled = false;
+    document.getElementById('avatarStatus').textContent = 'Connection failed';
+    addAvatarBotMessage(`Video avatar failed to connect: ${e.message}. You can still use text chat below.`);
+  }
+}
+
+async function stopHeyGenSession() {
+  if (heygenAvatar) {
+    try { await heygenAvatar.stopAvatar(); } catch {}
+    heygenAvatar = null;
+  }
+  heygenSessionActive = false;
+
+  const videoEl = document.getElementById('avatarVideo');
+  videoEl.srcObject = null;
+  videoEl.style.display = 'none';
+  document.getElementById('avatarPortraitFallback').style.display = 'block';
+
+  document.getElementById('heygenStartBtn').style.display = 'inline-block';
+  document.getElementById('heygenStartBtn').textContent = '🎬 Start Video Avatar';
+  document.getElementById('heygenStartBtn').disabled = false;
+  document.getElementById('heygenStopBtn').style.display = 'none';
+  document.getElementById('avatarStatus').textContent = 'Idle';
+
+  addAvatarBotMessage('Video session ended. Click Start to reconnect, or keep using text chat.');
+}
+
+// Send text to HeyGen avatar to speak
+async function sendToHeyGen(text) {
+  if (!heygenAvatar || !heygenSessionActive) return false;
+  try {
+    await heygenAvatar.speak({ text, taskType: 'talk' });
+    return true;
+  } catch (e) {
+    console.error('[HEYGEN] Speak failed:', e);
+    return false;
   }
 }
 
@@ -6709,6 +6815,12 @@ async function sendAvatarMessage() {
 
     const reply = result.content || result.error || 'I could not process that request.';
     avatarState.history.push({ role: 'assistant', content: reply });
+
+    // If HeyGen is active, make the avatar speak the reply
+    if (heygenSessionActive) {
+      sendToHeyGen(reply);
+    }
+
     addAvatarBotMessage(reply);
   } catch (e) {
     addAvatarBotMessage('Sorry, something went wrong. Please try again.');

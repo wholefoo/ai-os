@@ -6287,6 +6287,31 @@ body {
   50% { opacity: 0.4; }
 }
 
+/* --- HeyGen Video Avatar --- */
+.avatar-video-wrap {
+  width: 100%;
+  aspect-ratio: 1;
+  max-height: 380px;
+  overflow: hidden;
+  border-radius: 12px 12px 0 0;
+  background: #0a0a0f;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+#avatarVideo {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: none;
+}
+.avatar-heygen-controls {
+  padding: 8px 16px;
+  display: flex;
+  gap: 8px;
+  justify-content: center;
+}
+
 /* --- Avatar Chat Layout + Voice --- */
 .avatar-chat-layout {
   display: grid;
