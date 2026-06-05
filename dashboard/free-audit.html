@@ -1,0 +1,297 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Free SEO Audit — AI OS | 5 AI Agents Analyze Your Site in 60 Seconds</title>
+  <meta name="description" content="Get a free SEO audit powered by 5 parallel AI agents. Keyword analysis, technical check, competitor comparison, content review, and backlink profile — no login required.">
+  <link rel="canonical" href="https://aiosorchestrationlab.com/free-audit">
+  <meta property="og:title" content="Free SEO Audit — 5 AI Agents Analyze Your Site">
+  <meta property="og:description" content="Enter your domain, get a composite score and action plan. No login, no credit card. Powered by AI OS.">
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://aiosorchestrationlab.com/free-audit">
+  <meta property="og:image" content="https://aiosorchestrationlab.com/assets/og-share.png">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:image" content="https://aiosorchestrationlab.com/assets/og-share.png">
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "WebApplication",
+    "name": "AI OS Free SEO Audit",
+    "description": "Free SEO audit powered by 5 parallel AI agents — keyword, technical, competitor, content, and backlink analysis.",
+    "url": "https://aiosorchestrationlab.com/free-audit",
+    "applicationCategory": "SEO Tool",
+    "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" }
+  }
+  </script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/css/landing.css">
+  <script async src="https://www.googletagmanager.com/gtag/js?id=G-SMHYRX8D4P"></script>
+  <script>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}gtag('js',new Date());gtag('config','G-SMHYRX8D4P');</script>
+  <style>
+    .audit-page { max-width: 700px; margin: 0 auto; padding: 100px 24px 60px; }
+    .audit-hero { text-align: center; margin-bottom: 40px; }
+    .audit-hero h1 { font-size: 38px; font-weight: 800; margin-bottom: 12px; line-height: 1.2; }
+    .audit-hero p { font-size: 17px; color: var(--text-secondary); line-height: 1.7; max-width: 560px; margin: 0 auto; }
+    .audit-badges { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; margin: 20px 0; }
+    .audit-badge { background: var(--bg-secondary); border: 1px solid var(--border); padding: 6px 14px; border-radius: 20px; font-size: 12px; font-weight: 600; color: var(--text-secondary); }
+    .audit-form { background: var(--bg-secondary); border: 1px solid var(--border); border-radius: 16px; padding: 32px; }
+    .audit-form h2 { font-size: 20px; margin-bottom: 6px; }
+    .audit-form .sub { font-size: 13px; color: var(--text-muted); margin-bottom: 20px; }
+    .fg { margin-bottom: 16px; }
+    .fg label { display: block; font-size: 13px; font-weight: 600; color: var(--text-secondary); margin-bottom: 6px; }
+    .fg input { width: 100%; padding: 12px 16px; background: var(--bg-primary); border: 1px solid var(--border); border-radius: 10px; font-size: 15px; color: var(--text-primary); font-family: inherit; }
+    .fg input:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 3px rgba(59,130,246,0.15); }
+    .fg input::placeholder { color: var(--text-muted); }
+    .fg-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    .audit-submit { width: 100%; padding: 14px; background: linear-gradient(135deg, #3b82f6, #8b5cf6); color: #fff; border: none; border-radius: 10px; font-size: 16px; font-weight: 700; cursor: pointer; transition: transform 0.2s; }
+    .audit-submit:hover { transform: translateY(-1px); }
+    .audit-submit:disabled { opacity: 0.6; cursor: not-allowed; transform: none; }
+    .audit-agents { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; margin: 20px 0; }
+    .audit-agent { text-align: center; padding: 12px 4px; background: var(--bg-primary); border: 1px solid var(--border); border-radius: 8px; font-size: 11px; transition: all 0.3s; }
+    .audit-agent-icon { font-size: 20px; margin-bottom: 4px; display: block; }
+    .audit-agent.running { border-color: var(--primary); background: rgba(59,130,246,0.05); }
+    .audit-agent.running .audit-agent-icon { animation: agentSpin 1s linear infinite; }
+    .audit-agent.complete { border-color: var(--success); background: rgba(16,185,129,0.05); }
+    @keyframes agentSpin { from { transform: rotate(0); } to { transform: rotate(360deg); } }
+    .audit-progress { margin: 20px 0; }
+    .audit-progress-bar { height: 6px; background: var(--bg-primary); border-radius: 3px; overflow: hidden; }
+    .audit-progress-fill { height: 100%; background: linear-gradient(90deg, #3b82f6, #8b5cf6, #10b981); border-radius: 3px; transition: width 0.5s; width: 0%; }
+    .audit-progress-label { font-size: 12px; color: var(--text-muted); margin-top: 6px; text-align: center; }
+    .audit-result { margin-top: 24px; }
+    .audit-score { text-align: center; margin-bottom: 20px; }
+    .audit-score-num { font-size: 72px; font-weight: 800; line-height: 1; }
+    .audit-score-label { font-size: 14px; color: var(--text-muted); }
+    .score-good { color: #10b981; }
+    .score-warn { color: #f59e0b; }
+    .score-bad { color: #ef4444; }
+    .audit-summary { padding: 16px; background: var(--bg-primary); border-radius: 10px; border-left: 3px solid var(--primary); font-size: 14px; line-height: 1.7; color: var(--text-secondary); margin-bottom: 20px; }
+    .audit-agents-result { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; margin-bottom: 20px; }
+    .audit-agent-result { text-align: center; padding: 14px 6px; background: var(--bg-primary); border: 1px solid var(--border); border-radius: 8px; }
+    .audit-agent-result-score { font-size: 22px; font-weight: 800; }
+    .audit-agent-result-name { font-size: 10px; color: var(--text-muted); margin-top: 4px; text-transform: uppercase; }
+    .audit-wins { margin-bottom: 20px; }
+    .audit-wins h3 { font-size: 16px; margin-bottom: 10px; }
+    .audit-win { display: flex; gap: 10px; padding: 10px; border-bottom: 1px solid var(--border); font-size: 13px; }
+    .audit-win:last-child { border-bottom: none; }
+    .audit-win-num { font-weight: 700; color: var(--primary); min-width: 20px; }
+    .audit-win-impact { font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 3px; margin-left: auto; white-space: nowrap; }
+    .impact-high { background: rgba(239,68,68,0.1); color: #ef4444; }
+    .impact-medium { background: rgba(245,158,11,0.1); color: #f59e0b; }
+    .audit-upgrade { text-align: center; padding: 28px; background: linear-gradient(135deg, rgba(59,130,246,0.05), rgba(139,92,246,0.05)); border: 1px solid rgba(59,130,246,0.2); border-radius: 12px; margin-top: 24px; }
+    .audit-upgrade h3 { margin-bottom: 8px; }
+    .audit-upgrade p { font-size: 14px; color: var(--text-secondary); margin-bottom: 16px; }
+    .audit-finding-peek { font-size: 12px; padding: 8px 10px; background: var(--bg-secondary); border-radius: 6px; margin-top: 6px; color: var(--text-muted); }
+    .audit-trust { text-align: center; margin-top: 24px; font-size: 12px; color: var(--text-muted); }
+    @media (max-width: 600px) { .audit-agents, .audit-agents-result { grid-template-columns: repeat(3, 1fr); } .fg-row { grid-template-columns: 1fr; } }
+  </style>
+</head>
+<body>
+  <nav class="landing-nav">
+    <div class="nav-container">
+      <a href="/" class="nav-brand"><span class="nav-logo">&#9678;</span><span class="nav-name">AI OS</span></a>
+      <div class="nav-links">
+        <a href="/#features">Features</a>
+        <a href="/#pricing">Pricing</a>
+        <a href="/blog">Blog</a>
+        <a href="/about">About</a>
+      </div>
+      <div class="nav-cta"><a href="/login" class="btn-nav-login">Log In</a></div>
+    </div>
+  </nav>
+
+  <div class="audit-page">
+    <div class="audit-hero">
+      <h1>Free SEO Audit</h1>
+      <p>5 AI agents analyze your website in parallel — keyword opportunities, technical health, competitors, content depth, and backlink profile. No login required.</p>
+      <div class="audit-badges">
+        <span class="audit-badge">&#128269; Keyword Analysis</span>
+        <span class="audit-badge">&#128736; Technical Audit</span>
+        <span class="audit-badge">&#128200; Competitor Intel</span>
+        <span class="audit-badge">&#128196; Content Review</span>
+        <span class="audit-badge">&#128279; Backlink Profile</span>
+      </div>
+    </div>
+
+    <div class="audit-form" id="auditForm">
+      <h2>Audit Your Website</h2>
+      <p class="sub">Enter your domain and email. Results appear here in about 60 seconds.</p>
+      <div class="fg">
+        <label>Website Domain *</label>
+        <input type="text" id="faDomain" placeholder="example.com" spellcheck="false" autocomplete="off">
+      </div>
+      <div class="fg-row">
+        <div class="fg">
+          <label>Email *</label>
+          <input type="email" id="faEmail" placeholder="you@company.com">
+        </div>
+        <div class="fg">
+          <label>Name (optional)</label>
+          <input type="text" id="faName" placeholder="Your name">
+        </div>
+      </div>
+      <button class="audit-submit" id="faSubmit" onclick="startFreeAudit()">Run Free SEO Audit</button>
+      <p class="audit-trust">&#128274; Your email is only used to identify your free monthly audit. We don't spam.</p>
+    </div>
+
+    <div id="auditRunning" style="display:none;">
+      <div class="audit-agents" id="auditAgents">
+        <div class="audit-agent" id="fa-keyword"><span class="audit-agent-icon">&#128269;</span>Keyword</div>
+        <div class="audit-agent" id="fa-technical"><span class="audit-agent-icon">&#128736;</span>Technical</div>
+        <div class="audit-agent" id="fa-competitor"><span class="audit-agent-icon">&#128200;</span>Competitor</div>
+        <div class="audit-agent" id="fa-content"><span class="audit-agent-icon">&#128196;</span>Content</div>
+        <div class="audit-agent" id="fa-backlink"><span class="audit-agent-icon">&#128279;</span>Backlink</div>
+      </div>
+      <div class="audit-progress">
+        <div class="audit-progress-bar"><div class="audit-progress-fill" id="faProgressFill"></div></div>
+        <div class="audit-progress-label" id="faProgressLabel">Starting audit...</div>
+      </div>
+    </div>
+
+    <div id="auditResult" style="display:none;"></div>
+  </div>
+
+  <footer class="site-footer">
+    <div class="footer-bottom">
+      <p>&copy; 2026 AI OS Orchestration Lab. All rights reserved.</p>
+    </div>
+  </footer>
+
+  <script>
+    async function startFreeAudit() {
+      const domain = document.getElementById('faDomain').value.trim();
+      const email = document.getElementById('faEmail').value.trim();
+      const name = document.getElementById('faName').value.trim();
+      const btn = document.getElementById('faSubmit');
+
+      if (!domain) { alert('Please enter a domain'); return; }
+      if (!email) { alert('Email is required to use your free monthly audit'); return; }
+
+      btn.disabled = true;
+      btn.textContent = 'Starting audit...';
+
+      const res = await fetch('/api/seo/free-audit', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ domain, email, name }),
+      });
+      const data = await res.json();
+
+      if (!data.ok) {
+        btn.disabled = false;
+        btn.textContent = 'Run Free SEO Audit';
+        if (data.upgradeUrl) {
+          document.getElementById('auditResult').innerHTML = `<div class="audit-upgrade"><h3>Monthly Limit Reached</h3><p>${data.error}</p><a href="${data.upgradeUrl}" class="audit-submit" style="display:inline-block;width:auto;padding:12px 28px;">View Plans</a></div>`;
+          document.getElementById('auditResult').style.display = 'block';
+        } else {
+          alert(data.error);
+        }
+        return;
+      }
+
+      // Track conversion
+      if (typeof gtag === 'function') gtag('event', 'free_audit_started', { event_category: 'conversion', event_label: email });
+
+      // Show running state
+      document.getElementById('auditForm').style.display = 'none';
+      document.getElementById('auditRunning').style.display = 'block';
+
+      // Animate agents
+      const agents = ['keyword', 'technical', 'competitor', 'content', 'backlink'];
+      agents.forEach((a, i) => {
+        setTimeout(() => {
+          document.getElementById('fa-' + a).classList.add('running');
+        }, i * 500);
+      });
+
+      // Poll for completion
+      const auditId = data.auditId;
+      let progress = 10;
+      const fill = document.getElementById('faProgressFill');
+      const label = document.getElementById('faProgressLabel');
+
+      const pollInterval = setInterval(async () => {
+        progress = Math.min(progress + 5, 90);
+        fill.style.width = progress + '%';
+
+        try {
+          const r = await fetch('/api/seo/free-audit/' + auditId);
+          const audit = await r.json();
+
+          // Update agent statuses
+          agents.forEach(a => {
+            const agentData = audit.agents?.[a];
+            const el = document.getElementById('fa-' + a);
+            if (agentData?.status === 'complete' || agentData?.score !== null) {
+              el.classList.remove('running');
+              el.classList.add('complete');
+            }
+          });
+
+          if (audit.status === 'complete') {
+            clearInterval(pollInterval);
+            fill.style.width = '100%';
+            label.textContent = 'Audit complete!';
+
+            setTimeout(() => {
+              document.getElementById('auditRunning').style.display = 'none';
+              renderFreeResult(audit);
+            }, 800);
+          } else {
+            const doneCount = agents.filter(a => audit.agents?.[a]?.status === 'complete' || audit.agents?.[a]?.score !== null).length;
+            label.textContent = `${doneCount}/5 agents complete...`;
+          }
+        } catch {}
+      }, 2000);
+
+      // Timeout after 90 seconds
+      setTimeout(() => { clearInterval(pollInterval); }, 90000);
+    }
+
+    function renderFreeResult(audit) {
+      const scoreClass = audit.compositeScore >= 75 ? 'score-good' : audit.compositeScore >= 50 ? 'score-warn' : 'score-bad';
+      const agents = audit.agents || {};
+      const agentCards = Object.entries(agents).map(([name, data]) => {
+        const sc = (data.score || 0) >= 75 ? 'score-good' : (data.score || 0) >= 50 ? 'score-warn' : 'score-bad';
+        return `<div class="audit-agent-result">
+          <div class="audit-agent-result-score ${sc}">${data.score || '?'}</div>
+          <div class="audit-agent-result-name">${name}</div>
+          ${data.topFinding ? `<div class="audit-finding-peek">${data.topFinding.severity}: ${(data.topFinding.issue || '').substring(0, 60)}...</div>` : ''}
+        </div>`;
+      }).join('');
+
+      const wins = (audit.quickWins || []).slice(0, 4).map(w =>
+        `<div class="audit-win"><span class="audit-win-num">${w.priority}</span><span>${w.action}</span><span class="audit-win-impact impact-${w.impact}">${w.impact}</span></div>`
+      ).join('');
+
+      const el = document.getElementById('auditResult');
+      el.innerHTML = `
+        <div class="audit-score">
+          <div class="audit-score-num ${scoreClass}">${audit.compositeScore || 0}</div>
+          <div class="audit-score-label">Composite SEO Score out of 100</div>
+        </div>
+
+        <div class="audit-summary">${audit.executiveSummary || 'Audit complete.'}</div>
+
+        <div class="audit-agents-result">${agentCards}</div>
+
+        ${wins ? `<div class="audit-wins"><h3>Quick Wins</h3>${wins}</div>` : ''}
+
+        <div class="audit-upgrade">
+          <h3>Want the Full Report?</h3>
+          <p>Upgrade to Pro for all findings, content briefs, 12-week action calendar, and optimized meta tags for every page.</p>
+          <a href="/#pricing" class="audit-submit" style="display:inline-block;width:auto;padding:12px 28px;">View Plans — Starting at $99/mo</a>
+        </div>
+
+        <div style="text-align:center;margin-top:16px;">
+          <a href="/free-audit" style="color:var(--text-muted);font-size:13px;">Run another audit (next month)</a>
+        </div>
+      `;
+      el.style.display = 'block';
+
+      if (typeof gtag === 'function') gtag('event', 'free_audit_complete', { event_category: 'conversion', value: audit.compositeScore });
+    }
+  </script>
+</body>
+</html>

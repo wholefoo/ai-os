@@ -669,6 +669,7 @@ app.get('/sitemap.xml', (req, res) => {
   const pages = [
     { url: '/', priority: '1.0', freq: 'weekly' },
     { url: '/about', priority: '0.8', freq: 'monthly' },
+    { url: '/free-audit', priority: '0.9', freq: 'monthly' },
     { url: '/blog', priority: '0.9', freq: 'weekly' },
     { url: '/blog/what-is-ai-operating-system', priority: '0.8', freq: 'monthly' },
     { url: '/blog/ai-agent-pricing-comparison-2026', priority: '0.8', freq: 'monthly' },
@@ -774,6 +775,10 @@ app.get('/lifetime/success', (req, res) => {
 </div>
 <footer class="site-footer"><div class="footer-bottom"><p>&copy; 2026 AI OS Orchestration Lab.</p></div></footer>
 </body></html>`);
+});
+
+app.get('/free-audit', (req, res) => {
+  res.sendFile(path.join(BASE, 'dashboard', 'free-audit.html'));
 });
 
 // Blog routes
@@ -7099,6 +7104,116 @@ function generateOmniResult(type, prompt) {
 
 // In-memory SEO audit state
 const seoAudits = loadState('seo_audits', []);
+
+// POST /api/seo/free-audit — public endpoint, no auth, email required for results
+const freeAuditLog = loadState('free_audit_log', []);
+
+app.post('/api/seo/free-audit', async (req, res) => {
+  const { domain, email, name } = req.body;
+  if (!domain) return res.status(400).json({ error: 'Domain is required' });
+  if (!email) return res.status(400).json({ error: 'Email is required to receive your audit results' });
+
+  // Rate limit: 1 free audit per email per month
+  const monthAgo = new Date(Date.now() - 30 * 86400000).toISOString();
+  const recentAudit = freeAuditLog.find(a => a.email === email && a.createdAt > monthAgo);
+  if (recentAudit) {
+    return res.status(429).json({ error: 'You have already used your free audit this month. Upgrade to Pro for 5 audits/month.', upgradeUrl: '/#pricing' });
+  }
+
+  // Log the lead
+  const leadEntry = { email, name: name || '', domain, createdAt: new Date().toISOString(), source: 'free-audit' };
+  freeAuditLog.push(leadEntry);
+  saveState('free_audit_log', freeAuditLog);
+  logActivity('leads', `Free audit lead captured: ${email} — ${domain}`, { email, domain });
+
+  // Run the audit (same pipeline as authenticated)
+  const auditId = uuidv4();
+  const cleanDomain = domain.replace(/^https?:\/\//, '').replace(/\/.*$/, '');
+  const audit = {
+    id: auditId,
+    domain: cleanDomain,
+    status: 'running',
+    startedAt: new Date().toISOString(),
+    completedAt: null,
+    compositeScore: null,
+    email,
+    source: 'free',
+    agents: {
+      keyword:    { status: 'running', score: null, findings: [], startedAt: new Date().toISOString() },
+      technical:  { status: 'running', score: null, findings: [], startedAt: new Date().toISOString() },
+      competitor: { status: 'running', score: null, findings: [], startedAt: new Date().toISOString() },
+      content:    { status: 'running', score: null, findings: [], startedAt: new Date().toISOString() },
+      backlink:   { status: 'running', score: null, findings: [], startedAt: new Date().toISOString() },
+    },
+    quickWins: [],
+    actionPlan: [],
+    executiveSummary: '',
+  };
+
+  seoAudits.push(audit);
+  broadcast({ event: 'seo_audit_started', data: { id: auditId, domain: cleanDomain, source: 'free' } });
+
+  // Use real DataForSEO if configured, otherwise demo
+  if (!DEMO_MODE && settings.seo.dataforseo_login && settings.seo.dataforseo_password) {
+    runRealSeoAudit(audit, auditId).catch(e => {
+      console.error('[SEO-FREE] Audit failed:', e.message);
+      audit.status = 'complete';
+      audit.completedAt = new Date().toISOString();
+      audit.compositeScore = 0;
+      audit.executiveSummary = 'Audit encountered an error. Please try again.';
+      saveState('seo_audits', seoAudits);
+      broadcast({ event: 'seo_audit_complete', data: { auditId, compositeScore: 0 } });
+    });
+  } else {
+    // Demo mode fallback
+    const agentNames = ['keyword', 'technical', 'competitor', 'content', 'backlink'];
+    const delays = [2000, 3000, 2500, 3500, 4000];
+    agentNames.forEach((name, i) => {
+      setTimeout(() => {
+        const score = 40 + Math.floor(Math.random() * 50);
+        audit.agents[name].status = 'complete';
+        audit.agents[name].score = score;
+        audit.agents[name].completedAt = new Date().toISOString();
+        audit.agents[name].findings = generateSeoFindings(name, cleanDomain);
+        broadcast({ event: 'seo_agent_complete', data: { auditId, agent: name, score } });
+        const allDone = agentNames.every(n => audit.agents[n].status === 'complete');
+        if (allDone) {
+          const scores = agentNames.map(n => audit.agents[n].score);
+          audit.compositeScore = Math.round(scores.reduce((a, b) => a + b, 0) / scores.length);
+          audit.status = 'complete';
+          audit.completedAt = new Date().toISOString();
+          audit.executiveSummary = generateExecutiveSummary(audit);
+          audit.quickWins = generateQuickWins(audit);
+          audit.actionPlan = generateActionPlan(audit);
+          saveState('seo_audits', seoAudits);
+          broadcast({ event: 'seo_audit_complete', data: { auditId, compositeScore: audit.compositeScore } });
+        }
+      }, delays[i]);
+    });
+  }
+
+  res.json({ ok: true, auditId, domain: cleanDomain });
+});
+
+// GET /api/seo/free-audit/:id — public audit results (no auth)
+app.get('/api/seo/free-audit/:id', (req, res) => {
+  const audit = seoAudits.find(a => a.id === req.params.id);
+  if (!audit) return res.status(404).json({ error: 'Audit not found' });
+  // Return limited results — enough to show value, encourage upgrade
+  res.json({
+    id: audit.id,
+    domain: audit.domain,
+    status: audit.status,
+    compositeScore: audit.compositeScore,
+    executiveSummary: audit.executiveSummary,
+    quickWins: audit.quickWins,
+    agents: Object.fromEntries(
+      Object.entries(audit.agents).map(([k, v]) => [k, { status: v.status, score: v.score, findingCount: v.findings?.length || 0, topFinding: v.findings?.[0] || null }])
+    ),
+    upgradeMessage: 'Get the full report with all findings, content briefs, 12-week calendar, and meta tag optimization — upgrade to Pro ($99/mo).',
+    upgradeUrl: '/#pricing',
+  });
+});
 
 // POST /api/seo/audit — launch a full SEO audit for a domain
 app.post('/api/seo/audit', requireAdmin, async (req, res) => {
