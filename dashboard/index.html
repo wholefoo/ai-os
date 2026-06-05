@@ -144,6 +144,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/css/landing.css">
+  <link rel="stylesheet" href="/css/avatars.css">
   <!-- Google Analytics -->
   <script async src="https://www.googletagmanager.com/gtag/js?id=G-SMHYRX8D4P"></script>
   <script>
@@ -764,7 +765,7 @@
   <div id="tourGuide" class="tour-guide">
     <button class="tour-guide-fab" id="tourFab" onclick="toggleTourGuide()">
       <div class="tour-avatar">
-        <div class="tour-avatar-face">&#129302;</div>
+        <div class="avatar-atlas tour-avatar-custom"><div class="avatar-face"><div class="eye eye-l"></div><div class="eye eye-r"></div><div class="mouth"></div></div></div>
         <div class="tour-avatar-ring"></div>
       </div>
       <span class="tour-fab-label">Meet Atlas</span>
@@ -772,7 +773,7 @@
 
     <div class="tour-panel" id="tourPanel">
       <div class="tour-header">
-        <div class="tour-header-avatar">&#129302;</div>
+        <div class="tour-header-avatar"><div class="avatar-atlas avatar-md"><div class="avatar-face"><div class="eye eye-l"></div><div class="eye eye-r"></div><div class="mouth"></div></div></div></div>
         <div class="tour-header-info">
           <div class="tour-header-name">Atlas — AI Tour Guide</div>
           <div class="tour-header-role">CEO &amp; Chief Orchestrator</div>
@@ -893,7 +894,7 @@
     const container = document.getElementById('tourMessages');
     const bubble = document.createElement('div');
     bubble.className = 'tour-msg tour-msg-bot';
-    bubble.innerHTML = '<span class="tour-msg-avatar">&#129302;</span><div class="tour-msg-text">' + text + '</div>';
+    bubble.innerHTML = '<span class="tour-msg-avatar"><div class="avatar-atlas" style="width:24px;height:24px;"><div class="avatar-face"><div class="eye eye-l"></div><div class="eye eye-r"></div><div class="mouth"></div></div></div></span><div class="tour-msg-text">' + text + '</div>';
     container.appendChild(bubble);
     container.scrollTop = container.scrollHeight;
 
@@ -916,7 +917,7 @@
     const typing = document.createElement('div');
     typing.className = 'tour-msg tour-msg-bot tour-typing';
     typing.id = 'tourTypingIndicator';
-    typing.innerHTML = '<span class="tour-msg-avatar">&#129302;</span><div class="tour-msg-text"><span class="tour-dots"><span>.</span><span>.</span><span>.</span></span></div>';
+    typing.innerHTML = '<span class="tour-msg-avatar"><div class="avatar-atlas" style="width:24px;height:24px;"><div class="avatar-face"><div class="eye eye-l"></div><div class="eye eye-r"></div><div class="mouth"></div></div></div></span><div class="tour-msg-text"><span class="tour-dots"><span>.</span><span>.</span><span>.</span></span></div>';
     container.appendChild(typing);
     container.scrollTop = container.scrollHeight;
   }

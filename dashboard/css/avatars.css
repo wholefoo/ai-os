@@ -1,0 +1,270 @@
+/* ================================================
+   AI OS Avatar Identity System
+   Pure CSS-drawn faces for key virtual employees.
+   Each avatar has a unique color palette, face shape,
+   eye style, and expression conveying their personality.
+   ================================================ */
+
+.avatar-face {
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  position: relative;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* --- Eyes (shared base) --- */
+.avatar-face .eye {
+  position: absolute;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  top: 40%;
+}
+.avatar-face .eye-l { left: 28%; }
+.avatar-face .eye-r { right: 28%; }
+
+/* --- Mouth (shared base) --- */
+.avatar-face .mouth {
+  position: absolute;
+  bottom: 26%;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 12px;
+  height: 6px;
+  border-bottom-left-radius: 10px;
+  border-bottom-right-radius: 10px;
+}
+
+/* --- Glow effect --- */
+.avatar-face::before {
+  content: '';
+  position: absolute;
+  top: 10%;
+  left: 15%;
+  width: 30%;
+  height: 20%;
+  border-radius: 50%;
+  background: rgba(255,255,255,0.15);
+}
+
+/* ================================================
+   ATLAS — CEO / Orchestrator
+   Deep blue-purple, confident, commanding presence
+   ================================================ */
+.avatar-atlas .avatar-face {
+  background: linear-gradient(135deg, #3b52cc, #7c3aed);
+}
+.avatar-atlas .eye { background: #fff; width: 7px; height: 7px; box-shadow: inset 2px 0 0 #1e1b4b; }
+.avatar-atlas .mouth { background: transparent; border: 2px solid rgba(255,255,255,0.7); border-top: none; width: 14px; height: 7px; }
+/* Crown/leadership mark */
+.avatar-atlas .avatar-face::after {
+  content: '';
+  position: absolute;
+  top: 8%;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 0; height: 0;
+  border-left: 5px solid transparent;
+  border-right: 5px solid transparent;
+  border-bottom: 6px solid rgba(250,204,21,0.8);
+}
+
+/* ================================================
+   NOVA — CTO / Architect
+   Electric cyan, sharp analytical look
+   ================================================ */
+.avatar-nova .avatar-face {
+  background: linear-gradient(135deg, #0891b2, #06b6d4);
+}
+.avatar-nova .eye { background: #fff; width: 8px; height: 4px; border-radius: 2px; box-shadow: inset 2px 0 0 #164e63; }
+.avatar-nova .mouth { width: 10px; height: 2px; background: rgba(255,255,255,0.5); border-radius: 1px; }
+/* Circuit pattern */
+.avatar-nova .avatar-face::after {
+  content: '';
+  position: absolute;
+  top: 12%;
+  right: 18%;
+  width: 8px; height: 8px;
+  border: 1.5px solid rgba(255,255,255,0.3);
+  border-radius: 2px;
+}
+
+/* ================================================
+   JUSTICE — General Counsel
+   Warm gray-stone, balanced, dignified
+   ================================================ */
+.avatar-justice .avatar-face {
+  background: linear-gradient(135deg, #57534e, #78716c);
+}
+.avatar-justice .eye { background: #fff; width: 6px; height: 6px; box-shadow: inset 2px 0 0 #292524; }
+.avatar-justice .mouth { width: 10px; height: 1.5px; background: rgba(255,255,255,0.5); border-radius: 1px; }
+/* Scale of justice */
+.avatar-justice .avatar-face::after {
+  content: '';
+  position: absolute;
+  top: 10%;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 14px; height: 1.5px;
+  background: rgba(250,204,21,0.6);
+}
+
+/* ================================================
+   MUSE — Creative Director
+   Pink-magenta, expressive, artistic
+   ================================================ */
+.avatar-muse .avatar-face {
+  background: linear-gradient(135deg, #db2777, #ec4899);
+}
+.avatar-muse .eye { background: #fff; width: 7px; height: 7px; border-radius: 50%; box-shadow: inset 2px 1px 0 #831843; }
+.avatar-muse .mouth { background: transparent; border: 2px solid rgba(255,255,255,0.8); border-top: none; width: 12px; height: 6px; border-radius: 0 0 10px 10px; }
+/* Sparkle */
+.avatar-muse .avatar-face::after {
+  content: '✦';
+  position: absolute;
+  top: 8%;
+  right: 15%;
+  font-size: 8px;
+  color: rgba(255,255,255,0.7);
+  animation: sparkleRotate 3s linear infinite;
+}
+@keyframes sparkleRotate { from { transform: rotate(0); } to { transform: rotate(360deg); } }
+
+/* ================================================
+   FORGE — Engineering Lead
+   Orange-amber, focused, determined
+   ================================================ */
+.avatar-forge .avatar-face {
+  background: linear-gradient(135deg, #d97706, #f59e0b);
+}
+.avatar-forge .eye { background: #fff; width: 6px; height: 5px; border-radius: 2px; box-shadow: inset 2px 0 0 #78350f; }
+.avatar-forge .mouth { width: 8px; height: 1.5px; background: rgba(255,255,255,0.6); border-radius: 1px; }
+/* Gear */
+.avatar-forge .avatar-face::after {
+  content: '';
+  position: absolute;
+  top: 10%;
+  right: 16%;
+  width: 7px; height: 7px;
+  border: 1.5px solid rgba(255,255,255,0.4);
+  border-radius: 50%;
+}
+
+/* ================================================
+   ECHO — Marketing Director
+   Green, energetic, communicative
+   ================================================ */
+.avatar-echo .avatar-face {
+  background: linear-gradient(135deg, #059669, #10b981);
+}
+.avatar-echo .eye { background: #fff; width: 6px; height: 7px; border-radius: 50%; box-shadow: inset 2px 0 0 #064e3b; }
+.avatar-echo .mouth { background: transparent; border: 2px solid rgba(255,255,255,0.7); border-top: none; width: 10px; height: 5px; border-radius: 0 0 8px 8px; }
+
+/* ================================================
+   HERMES — Operations Director
+   Purple-lavender, always-on energy
+   ================================================ */
+.avatar-hermes .avatar-face {
+  background: linear-gradient(135deg, #7c3aed, #a78bfa);
+}
+.avatar-hermes .eye { background: #fff; width: 5px; height: 5px; box-shadow: inset 2px 0 0 #4c1d95; }
+.avatar-hermes .mouth { width: 10px; height: 5px; background: transparent; border: 2px solid rgba(255,255,255,0.6); border-top: none; border-radius: 0 0 8px 8px; }
+/* Lightning bolt */
+.avatar-hermes .avatar-face::after {
+  content: '';
+  position: absolute;
+  top: 10%;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 0; height: 0;
+  border-left: 4px solid transparent;
+  border-right: 4px solid transparent;
+  border-top: 8px solid rgba(250,204,21,0.7);
+}
+
+/* ================================================
+   HARBOR — Customer Service Lead
+   Warm amber, approachable, friendly
+   ================================================ */
+.avatar-harbor .avatar-face {
+  background: linear-gradient(135deg, #b45309, #f59e0b);
+}
+.avatar-harbor .eye { background: #fff; width: 6px; height: 6px; border-radius: 50%; box-shadow: inset 2px 0 0 #78350f; }
+.avatar-harbor .mouth { background: transparent; border: 2px solid rgba(255,255,255,0.8); border-top: none; width: 14px; height: 7px; border-radius: 0 0 12px 12px; }
+
+/* ================================================
+   MATRIX — IT Director
+   Dark teal-green, technical, matrix-like
+   ================================================ */
+.avatar-matrix .avatar-face {
+  background: linear-gradient(135deg, #0f766e, #14b8a6);
+}
+.avatar-matrix .eye { background: #4ade80; width: 6px; height: 3px; border-radius: 1px; box-shadow: 0 0 4px #4ade80; }
+.avatar-matrix .mouth { width: 8px; height: 1px; background: rgba(74,222,128,0.5); border-radius: 1px; }
+
+/* ================================================
+   HAWKEYE — Intelligence Analyst (Grok)
+   Red-crimson, alert, intense
+   ================================================ */
+.avatar-hawkeye .avatar-face {
+  background: linear-gradient(135deg, #b91c1c, #ef4444);
+}
+.avatar-hawkeye .eye { background: #fff; width: 7px; height: 4px; border-radius: 1px; box-shadow: inset 2px 0 0 #7f1d1d; }
+.avatar-hawkeye .mouth { width: 8px; height: 1.5px; background: rgba(255,255,255,0.5); border-radius: 1px; }
+
+/* ================================================
+   LEDGER — CFO
+   Deep green, precise, analytical
+   ================================================ */
+.avatar-ledger .avatar-face {
+  background: linear-gradient(135deg, #15803d, #22c55e);
+}
+.avatar-ledger .eye { background: #fff; width: 5px; height: 6px; border-radius: 50%; box-shadow: inset 2px 0 0 #14532d; }
+.avatar-ledger .mouth { width: 8px; height: 1.5px; background: rgba(255,255,255,0.5); border-radius: 1px; }
+/* Dollar sign */
+.avatar-ledger .avatar-face::after {
+  content: '';
+  position: absolute;
+  top: 10%;
+  right: 18%;
+  width: 1.5px; height: 8px;
+  background: rgba(250,204,21,0.5);
+}
+
+/* ================================================
+   Generic fallback — for employees without unique avatars
+   Uses tier color
+   ================================================ */
+.avatar-generic .avatar-face {
+  background: linear-gradient(135deg, #475569, #64748b);
+}
+.avatar-generic .eye { background: #fff; width: 5px; height: 5px; box-shadow: inset 2px 0 0 #1e293b; }
+.avatar-generic .mouth { width: 8px; height: 4px; background: transparent; border: 1.5px solid rgba(255,255,255,0.5); border-top: none; border-radius: 0 0 6px 6px; }
+
+/* ================================================
+   Size variants
+   ================================================ */
+.avatar-sm { width: 36px; height: 36px; }
+.avatar-md { width: 48px; height: 48px; }
+.avatar-lg { width: 72px; height: 72px; }
+.avatar-xl { width: 96px; height: 96px; }
+
+.avatar-lg .eye, .avatar-xl .eye { width: 10px; height: 10px; }
+.avatar-lg .mouth, .avatar-xl .mouth { width: 16px; height: 8px; }
+.avatar-lg .eye-l, .avatar-xl .eye-l { left: 26%; }
+.avatar-lg .eye-r, .avatar-xl .eye-r { right: 26%; }
+
+/* Tour guide specific */
+.tour-avatar-custom {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  position: relative;
+}
+.tour-avatar-custom .avatar-face::before {
+  background: rgba(255,255,255,0.2);
+}
