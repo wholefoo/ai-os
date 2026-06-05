@@ -6077,18 +6077,19 @@ let avatarState = {
   headRotation: { x: 0, y: 0 },
 };
 
-// Avatar name → agent + appearance + voice mapping
+// Avatar name → agent + portrait + voice mapping
+// OpenAI voices: alloy (neutral), echo (warm male), fable (British), onyx (deep male), nova (bright female), shimmer (soft female)
 const AVATAR_PROFILES = {
-  atlas:   { agent: 'orchestrator',     skin: 0xc68642, hair: 0x2c1b0e, hairStyle: 'short',   eyeColor: 0x3b2507, gender: 'M', voice: 'en-US-Journey-D',  fallbackPitch: 0.9,  fallbackRate: 1.0 },
-  nova:    { agent: 'architect',        skin: 0xf5d0a9, hair: 0x1a1a2e, hairStyle: 'sleek',   eyeColor: 0x1a3a5c, gender: 'F', voice: 'en-US-Journey-F',  fallbackPitch: 1.15, fallbackRate: 1.05 },
-  justice: { agent: 'general-counsel',  skin: 0xd4a574, hair: 0x808080, hairStyle: 'receding', eyeColor: 0x2c3e1b, gender: 'M', voice: 'en-US-Wavenet-B',  fallbackPitch: 0.75, fallbackRate: 0.95 },
-  muse:    { agent: 'media-producer',   skin: 0xffe0bd, hair: 0xb91c1c, hairStyle: 'long',    eyeColor: 0x1b5e20, gender: 'F', voice: 'en-US-Journey-O',  fallbackPitch: 1.2,  fallbackRate: 1.1 },
-  forge:   { agent: 'coder',           skin: 0xc68642, hair: 0x1a1a1a, hairStyle: 'buzz',    eyeColor: 0x3e2507, gender: 'M', voice: 'en-US-Wavenet-D',  fallbackPitch: 0.85, fallbackRate: 1.0 },
-  echo:    { agent: 'marketing-hub',    skin: 0xf5d0a9, hair: 0x5c3317, hairStyle: 'bob',     eyeColor: 0x1565c0, gender: 'F', voice: 'en-US-Wavenet-C',  fallbackPitch: 1.1,  fallbackRate: 1.05 },
-  hermes:  { agent: 'hermes-delegate',  skin: 0xd08b5b, hair: 0x2c1b0e, hairStyle: 'curly',  eyeColor: 0x4a1500, gender: 'M', voice: 'en-US-Wavenet-A',  fallbackPitch: 1.0,  fallbackRate: 1.15 },
-  harbor:  { agent: 'cs-lead',         skin: 0xffe0bd, hair: 0xd4a030, hairStyle: 'medium',  eyeColor: 0x2e7d32, gender: 'F', voice: 'en-US-Wavenet-E',  fallbackPitch: 1.05, fallbackRate: 1.0 },
-  hawkeye: { agent: 'grok-realtime',    skin: 0xc68642, hair: 0x1a1a1a, hairStyle: 'military', eyeColor: 0x1a1a1a, gender: 'M', voice: 'en-US-Wavenet-J',  fallbackPitch: 0.8,  fallbackRate: 0.9 },
-  ledger:  { agent: 'cost-analyst',     skin: 0xd4a574, hair: 0x4a4a4a, hairStyle: 'parted',  eyeColor: 0x1b3a2e, gender: 'M', voice: 'en-US-Wavenet-B',  fallbackPitch: 0.95, fallbackRate: 0.95 },
+  atlas:   { agent: 'orchestrator',    voice: 'onyx',    fallbackPitch: 0.9,  fallbackRate: 1.0,  gender: 'M', title: 'CEO & Orchestrator',      gradient: 'linear-gradient(135deg, #1e3a5f, #3b52cc)', initials: 'AT' },
+  nova:    { agent: 'architect',       voice: 'nova',    fallbackPitch: 1.15, fallbackRate: 1.05, gender: 'F', title: 'CTO & Architect',          gradient: 'linear-gradient(135deg, #0c4a6e, #06b6d4)', initials: 'NV' },
+  justice: { agent: 'general-counsel', voice: 'fable',   fallbackPitch: 0.75, fallbackRate: 0.95, gender: 'M', title: 'General Counsel',          gradient: 'linear-gradient(135deg, #44403c, #78716c)', initials: 'JC' },
+  muse:    { agent: 'media-producer',  voice: 'shimmer', fallbackPitch: 1.2,  fallbackRate: 1.1,  gender: 'F', title: 'Creative Director',        gradient: 'linear-gradient(135deg, #9d174d, #ec4899)', initials: 'MS' },
+  forge:   { agent: 'coder',          voice: 'echo',    fallbackPitch: 0.85, fallbackRate: 1.0,  gender: 'M', title: 'Engineering Lead',         gradient: 'linear-gradient(135deg, #92400e, #f59e0b)', initials: 'FG' },
+  echo:    { agent: 'marketing-hub',   voice: 'nova',    fallbackPitch: 1.1,  fallbackRate: 1.05, gender: 'F', title: 'Marketing Director',       gradient: 'linear-gradient(135deg, #065f46, #10b981)', initials: 'EC' },
+  hermes:  { agent: 'hermes-delegate', voice: 'alloy',   fallbackPitch: 1.0,  fallbackRate: 1.15, gender: 'M', title: 'Operations Director',      gradient: 'linear-gradient(135deg, #5b21b6, #a78bfa)', initials: 'HM' },
+  harbor:  { agent: 'cs-lead',        voice: 'shimmer', fallbackPitch: 1.05, fallbackRate: 1.0,  gender: 'F', title: 'Support Lead',             gradient: 'linear-gradient(135deg, #78350f, #fbbf24)', initials: 'HB' },
+  hawkeye: { agent: 'grok-realtime',   voice: 'onyx',    fallbackPitch: 0.8,  fallbackRate: 0.9,  gender: 'M', title: 'Intelligence Analyst',     gradient: 'linear-gradient(135deg, #7f1d1d, #ef4444)', initials: 'HK' },
+  ledger:  { agent: 'cost-analyst',    voice: 'fable',   fallbackPitch: 0.95, fallbackRate: 0.95, gender: 'M', title: 'Chief Financial Officer',  gradient: 'linear-gradient(135deg, #14532d, #22c55e)', initials: 'LG' },
 };
 
 const AVATAR_AGENTS = Object.fromEntries(Object.entries(AVATAR_PROFILES).map(([k, v]) => [k, v.agent]));
@@ -6099,21 +6100,76 @@ function loadAvatarChat() {
   addAvatarBotMessage("Hello! I'm Atlas, CEO of AI OS Corp. You can type or click the microphone to speak. I'll respond with voice too. Try asking me about the platform, or switch to another employee using the dropdown.");
 }
 
-// --- 3D Avatar Renderer (Three.js WebGL — Human-like) ---
-let avatar3D = {};
+// --- Portrait Avatar System (CSS animated) ---
 
 function initAvatar3D() {
+  // Replace the canvas with a portrait container
   const canvas = document.getElementById('avatarCanvas');
-  if (!canvas || typeof THREE === 'undefined') return;
+  if (!canvas) return;
 
-  // Cleanup previous
-  if (avatar3D.renderer) { avatar3D.renderer.dispose(); }
-  if (avatarState.animationFrame) cancelAnimationFrame(avatarState.animationFrame);
+  // Hide canvas, show portrait
+  canvas.style.display = 'none';
+  let container = document.getElementById('avatarPortrait');
+  if (!container) {
+    container = document.createElement('div');
+    container.id = 'avatarPortrait';
+    container.className = 'portrait-container';
+    canvas.parentElement.insertBefore(container, canvas);
+  }
 
-  buildAvatar3D(canvas, AVATAR_PROFILES[avatarState.employee] || AVATAR_PROFILES.atlas);
+  renderPortrait(container);
 }
 
-function buildAvatar3D(canvas, profile) {
+function renderPortrait(container) {
+  const profile = AVATAR_PROFILES[avatarState.employee] || AVATAR_PROFILES.atlas;
+  const name = avatarState.employee.charAt(0).toUpperCase() + avatarState.employee.slice(1);
+
+  container.innerHTML = `
+    <div class="portrait-frame ${avatarState.speaking ? 'speaking' : ''} ${avatarState.listening ? 'listening' : ''}" id="portraitFrame">
+      <div class="portrait-glow" style="background:${profile.gradient};"></div>
+      <div class="portrait-avatar" style="background:${profile.gradient};">
+        <span class="portrait-initials">${profile.initials}</span>
+      </div>
+      <div class="portrait-ring ${avatarState.speaking ? 'ring-speaking' : avatarState.listening ? 'ring-listening' : 'ring-idle'}"></div>
+      <div class="portrait-speaking-indicator" id="portraitSpeakingBars">
+        <span></span><span></span><span></span><span></span><span></span>
+      </div>
+    </div>
+    <div class="portrait-status-badge" id="portraitBadge">
+      <span class="portrait-status-dot ${avatarState.speaking ? 'dot-speaking' : avatarState.listening ? 'dot-listening' : 'dot-idle'}"></span>
+      <span>${avatarState.speaking ? 'Speaking' : avatarState.listening ? 'Listening' : 'Online'}</span>
+    </div>
+  `;
+
+  // Start animation loop for speaking indicator
+  if (avatarState.portraitInterval) clearInterval(avatarState.portraitInterval);
+  avatarState.portraitInterval = setInterval(() => {
+    const frame = document.getElementById('portraitFrame');
+    const badge = document.getElementById('portraitBadge');
+    if (!frame) return;
+
+    frame.className = `portrait-frame ${avatarState.speaking ? 'speaking' : ''} ${avatarState.listening ? 'listening' : ''}`;
+    const ring = frame.querySelector('.portrait-ring');
+    if (ring) ring.className = `portrait-ring ${avatarState.speaking ? 'ring-speaking' : avatarState.listening ? 'ring-listening' : 'ring-idle'}`;
+
+    const bars = frame.querySelector('.portrait-speaking-indicator');
+    if (bars) bars.style.opacity = avatarState.speaking ? '1' : '0';
+
+    if (badge) {
+      const dot = badge.querySelector('.portrait-status-dot');
+      if (dot) dot.className = `portrait-status-dot ${avatarState.speaking ? 'dot-speaking' : avatarState.listening ? 'dot-listening' : 'dot-idle'}`;
+      badge.querySelector('span:last-child').textContent = avatarState.speaking ? 'Speaking' : avatarState.listening ? 'Listening' : 'Online';
+    }
+  }, 200);
+}
+
+function updateAvatarColor() {
+  const container = document.getElementById('avatarPortrait');
+  if (container) renderPortrait(container);
+}
+
+// Legacy — kept for compatibility but no longer used
+function _buildAvatar3D_legacy(canvas, profile) {
   const w = 400, h = 500;
   canvas.width = w; canvas.height = h;
 
@@ -6331,14 +6387,8 @@ function buildAvatar3D(canvas, profile) {
   animate();
 }
 
-function updateAvatarColor() {
-  const profile = AVATAR_PROFILES[avatarState.employee] || AVATAR_PROFILES.atlas;
-  // Rebuild the entire avatar with new profile
-  const canvas = document.getElementById('avatarCanvas');
-  if (canvas && typeof THREE !== 'undefined') {
-    if (avatarState.animationFrame) cancelAnimationFrame(avatarState.animationFrame);
-    buildAvatar3D(canvas, profile);
-  }
+function _updateAvatarColor_legacy() {
+  // Legacy Three.js update — no longer used
 }
 
 function switchAvatarEmployee() {
@@ -6349,7 +6399,7 @@ function switchAvatarEmployee() {
   avatarState.history = [];
   document.getElementById('avatarName').textContent = option.textContent;
   document.getElementById('avatarMessages').innerHTML = '';
-  if (typeof THREE !== 'undefined') updateAvatarColor();
+  updateAvatarColor();
   addAvatarBotMessage(`Switched to ${option.textContent}. How can I help you?`);
 }
 
@@ -6437,7 +6487,7 @@ async function speakText(text) {
       method: 'POST',
       credentials: 'same-origin',
       headers: { 'Content-Type': 'application/json', ...(token ? { 'Authorization': `Bearer ${token}` } : {}) },
-      body: JSON.stringify({ text: text.substring(0, 2000), voice: profile.voice || 'en-US-Journey-D' }),
+      body: JSON.stringify({ text: text.substring(0, 2000), voice: profile.voice || 'onyx' }),
     });
     const data = await res.json();
 

@@ -6159,7 +6159,135 @@ body {
   .hq-profile-details { grid-template-columns: 1fr; }
 }
 
-/* --- 3D Avatar Chat + Voice --- */
+/* --- Portrait Avatar System --- */
+.portrait-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 40px 20px 20px;
+}
+.portrait-frame {
+  position: relative;
+  width: 200px;
+  height: 200px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.portrait-glow {
+  position: absolute;
+  inset: -20px;
+  border-radius: 50%;
+  opacity: 0.15;
+  filter: blur(30px);
+  transition: opacity 0.5s;
+}
+.portrait-frame.speaking .portrait-glow { opacity: 0.3; }
+.portrait-frame.listening .portrait-glow { opacity: 0.25; }
+
+.portrait-avatar {
+  width: 160px;
+  height: 160px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  z-index: 2;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.3);
+  transition: transform 0.3s;
+}
+.portrait-frame.speaking .portrait-avatar { transform: scale(1.03); }
+
+.portrait-initials {
+  font-size: 54px;
+  font-weight: 800;
+  color: rgba(255,255,255,0.9);
+  text-shadow: 0 2px 8px rgba(0,0,0,0.3);
+  letter-spacing: 2px;
+}
+
+.portrait-ring {
+  position: absolute;
+  inset: -6px;
+  border-radius: 50%;
+  border: 3px solid transparent;
+  z-index: 1;
+  transition: border-color 0.3s;
+}
+.ring-idle {
+  border-color: rgba(16,185,129,0.4);
+  animation: portraitPulse 3s ease infinite;
+}
+.ring-speaking {
+  border-color: rgba(245,158,11,0.6);
+  animation: portraitPulseFast 1s ease infinite;
+}
+.ring-listening {
+  border-color: rgba(239,68,68,0.6);
+  animation: portraitPulseFast 0.8s ease infinite;
+}
+@keyframes portraitPulse {
+  0%, 100% { transform: scale(1); opacity: 0.6; }
+  50% { transform: scale(1.05); opacity: 0.2; }
+}
+@keyframes portraitPulseFast {
+  0%, 100% { transform: scale(1); opacity: 0.8; }
+  50% { transform: scale(1.08); opacity: 0.3; }
+}
+
+/* Speaking audio bars */
+.portrait-speaking-indicator {
+  position: absolute;
+  bottom: 10px;
+  display: flex;
+  gap: 3px;
+  align-items: flex-end;
+  height: 20px;
+  opacity: 0;
+  transition: opacity 0.3s;
+  z-index: 3;
+}
+.portrait-speaking-indicator span {
+  width: 4px;
+  background: #f59e0b;
+  border-radius: 2px;
+  animation: speakBar 0.6s ease-in-out infinite;
+}
+.portrait-speaking-indicator span:nth-child(1) { height: 8px; animation-delay: 0s; }
+.portrait-speaking-indicator span:nth-child(2) { height: 14px; animation-delay: 0.1s; }
+.portrait-speaking-indicator span:nth-child(3) { height: 20px; animation-delay: 0.2s; }
+.portrait-speaking-indicator span:nth-child(4) { height: 12px; animation-delay: 0.3s; }
+.portrait-speaking-indicator span:nth-child(5) { height: 6px; animation-delay: 0.4s; }
+@keyframes speakBar {
+  0%, 100% { transform: scaleY(0.4); }
+  50% { transform: scaleY(1); }
+}
+
+.portrait-status-badge {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 12px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+.portrait-status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+.dot-idle { background: #10b981; }
+.dot-speaking { background: #f59e0b; animation: dotPulse 1s infinite; }
+.dot-listening { background: #ef4444; animation: dotPulse 0.6s infinite; }
+@keyframes dotPulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+
+/* --- Avatar Chat Layout + Voice --- */
 .avatar-chat-layout {
   display: grid;
   grid-template-columns: 400px 1fr;
