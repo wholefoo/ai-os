@@ -7,6 +7,7 @@
   <link rel="stylesheet" href="css/styles.css">
   <link rel="stylesheet" href="css/avatars.css">
   <script src="https://cdn.jsdelivr.net/npm/livekit-client@2/dist/livekit-client.umd.js" defer></script>
+  <script src="https://cdn.jsdelivr.net/npm/@heygen/streaming-avatar@2/dist/index.umd.js" defer></script>
 </head>
 <body>
   <div class="app">
@@ -1343,9 +1344,17 @@
 
           <div class="avatar-chat-layout">
             <div class="avatar-3d-container">
-              <canvas id="avatarCanvas"></canvas>
+              <div id="avatarVideoWrap" class="avatar-video-wrap">
+                <video id="avatarVideo" autoplay playsinline></video>
+                <div id="avatarPortraitFallback" class="portrait-container"></div>
+              </div>
+              <canvas id="avatarCanvas" style="display:none;"></canvas>
               <div class="avatar-3d-name" id="avatarName">Atlas — CEO</div>
               <div class="avatar-3d-status" id="avatarStatus">Idle</div>
+              <div class="avatar-heygen-controls">
+                <button class="btn btn-sm btn-primary" id="heygenStartBtn" onclick="startHeyGenSession()" style="display:none;">&#127909; Start Video Avatar</button>
+                <button class="btn btn-sm btn-danger" id="heygenStopBtn" onclick="stopHeyGenSession()" style="display:none;">Stop Session</button>
+              </div>
               <div class="avatar-employee-select">
                 <select id="avatarSelect" onchange="switchAvatarEmployee()">
                   <option value="atlas" data-color="#3b52cc">Atlas — CEO</option>
@@ -1544,7 +1553,15 @@
                   </div>
                 </div>
                 <div class="settings-field">
-                  <label class="settings-label">LiveKit API Key <span class="settings-tier">Real-time avatar pipeline</span></label>
+                  <label class="settings-label">HeyGen API Key <span class="settings-tier">Photorealistic avatar — LiveAvatar</span></label>
+                  <div class="settings-input-row">
+                    <input type="text" class="settings-input settings-secret" id="set-heygen_api_key" placeholder="heygen-..." autocomplete="new-password" data-lpignore="true" data-1p-ignore spellcheck="false">
+                    <button type="button" class="btn btn-sm settings-eye" onclick="toggleKeyVisibility(this)" title="Show/hide">&#128065;</button>
+                    <span class="settings-status" id="status-heygen_api_key"></span>
+                  </div>
+                </div>
+                <div class="settings-field">
+                  <label class="settings-label">LiveKit API Key <span class="settings-tier">Real-time avatar pipeline (alternative)</span></label>
                   <div class="settings-input-row">
                     <input type="text" class="settings-input settings-secret" id="set-livekit_api_key" placeholder="API..." autocomplete="new-password" data-lpignore="true" data-1p-ignore spellcheck="false">
                     <button type="button" class="btn btn-sm settings-eye" onclick="toggleKeyVisibility(this)" title="Show/hide">&#128065;</button>
@@ -1856,6 +1873,6 @@
     </div>
   </div>
 
-  <script src="js/app.js?v=25"></script>
+  <script src="js/app.js?v=26"></script>
 </body>
 </html>

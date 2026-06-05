@@ -884,6 +884,37 @@ app.get('/api/onboarding/status', requireAdmin, (req, res) => {
   res.json({ steps, completed, total, percentage, allDone: completed === total });
 });
 
+// --- HeyGen LiveAvatar Session ---
+
+app.post('/api/heygen/token', requireAdmin, async (req, res) => {
+  const apiKey = settings.ai.heygen_api_key;
+  if (!apiKey) return res.json({ ok: false, error: 'HeyGen API key not configured — add it in Settings' });
+
+  try {
+    const tokenRes = await fetch('https://api.heygen.com/v1/streaming.create_token', {
+      method: 'POST',
+      headers: { 'x-api-key': apiKey, 'Content-Type': 'application/json' },
+    });
+
+    if (!tokenRes.ok) {
+      const err = await tokenRes.json().catch(() => ({}));
+      return res.json({ ok: false, error: err.message || `HeyGen HTTP ${tokenRes.status}` });
+    }
+
+    const data = await tokenRes.json();
+    res.json({ ok: true, token: data.data?.token || data.token, apiKey });
+  } catch (e) {
+    res.json({ ok: false, error: e.message });
+  }
+});
+
+app.get('/api/heygen/status', requireAdmin, (req, res) => {
+  res.json({
+    configured: !!settings.ai.heygen_api_key,
+    message: settings.ai.heygen_api_key ? 'HeyGen API key configured — photorealistic avatars ready' : 'HeyGen not configured — add API key in Settings',
+  });
+});
+
 // --- LiveKit Voice Agent Token Generation ---
 // Clients connect to LiveKit Cloud via a token; the agent runs server-side
 
@@ -5480,6 +5511,7 @@ const settings = loadState('settings', {
     livekit_url: process.env.LIVEKIT_URL || '',
     deepgram_api_key: process.env.DEEPGRAM_API_KEY || '',
     cartesia_api_key: process.env.CARTESIA_API_KEY || '',
+    heygen_api_key: process.env.HEYGEN_API_KEY || '',
   },
   mcp: {
     hermes_url: process.env.HERMES_MCP_URL || 'http://127.0.0.1:8420',
@@ -5556,6 +5588,7 @@ app.get('/api/settings', requireAdmin, (req, res) => {
       livekit_url: settings.ai.livekit_url || '',
       deepgram_api_key: { value: maskKey(settings.ai.deepgram_api_key), configured: !!settings.ai.deepgram_api_key },
       cartesia_api_key: { value: maskKey(settings.ai.cartesia_api_key), configured: !!settings.ai.cartesia_api_key },
+      heygen_api_key: { value: maskKey(settings.ai.heygen_api_key), configured: !!settings.ai.heygen_api_key },
     },
     mcp: {
       hermes_url: settings.mcp.hermes_url,
