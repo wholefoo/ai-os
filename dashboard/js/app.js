@@ -6091,153 +6091,154 @@ function loadAvatarChat() {
   addAvatarBotMessage("Hello! I'm Atlas, CEO of AI OS Corp. You can type or click the microphone to speak. I'll respond with voice too. Try asking me about the platform, or switch to another employee using the dropdown.");
 }
 
-// --- 3D Avatar Renderer (Canvas-based, no external libs) ---
+// --- 3D Avatar Renderer (Three.js WebGL) ---
+let avatar3D = { scene: null, camera: null, renderer: null, head: null, leftEye: null, rightEye: null, mouth: null, body: null };
+
 function initAvatar3D() {
   const canvas = document.getElementById('avatarCanvas');
-  if (!canvas) return;
-  const ctx = canvas.getContext('2d');
-  canvas.width = 400;
-  canvas.height = 500;
-
-  function drawAvatar() {
-    const w = canvas.width, h = canvas.height;
-    ctx.clearRect(0, 0, w, h);
-
-    const color = avatarState.color;
-    const t = Date.now() / 1000;
-
-    // Background gradient
-    const bgGrad = ctx.createRadialGradient(w/2, h/2, 50, w/2, h/2, 300);
-    bgGrad.addColorStop(0, color + '15');
-    bgGrad.addColorStop(1, 'transparent');
-    ctx.fillStyle = bgGrad;
-    ctx.fillRect(0, 0, w, h);
-
-    // Body/shoulders
-    const bodyY = h * 0.7;
-    ctx.fillStyle = color + 'cc';
-    ctx.beginPath();
-    ctx.ellipse(w/2, bodyY + 60, 100, 50, 0, Math.PI, 0);
-    ctx.fill();
-
-    // Neck
-    ctx.fillStyle = color + 'dd';
-    ctx.fillRect(w/2 - 18, bodyY - 20, 36, 40);
-
-    // Head — gentle sway
-    const headX = w/2 + Math.sin(t * 0.5) * 3 + avatarState.headRotation.x;
-    const headY = h * 0.38 + Math.sin(t * 0.7) * 2 + avatarState.headRotation.y;
-    const headW = 75, headH = 90;
-
-    // Head shadow
-    ctx.fillStyle = color + '40';
-    ctx.beginPath();
-    ctx.ellipse(headX + 3, headY + 3, headW, headH, 0, 0, Math.PI * 2);
-    ctx.fill();
-
-    // Head
-    const headGrad = ctx.createLinearGradient(headX - headW, headY - headH, headX + headW, headY + headH);
-    headGrad.addColorStop(0, color);
-    headGrad.addColorStop(1, shadeColor(color, -30));
-    ctx.fillStyle = headGrad;
-    ctx.beginPath();
-    ctx.ellipse(headX, headY, headW, headH, 0, 0, Math.PI * 2);
-    ctx.fill();
-
-    // Highlight
-    ctx.fillStyle = 'rgba(255,255,255,0.12)';
-    ctx.beginPath();
-    ctx.ellipse(headX - 20, headY - 40, 30, 20, -0.3, 0, Math.PI * 2);
-    ctx.fill();
-
-    // Eyes
-    const eyeY = headY - 10;
-    const eyeSpacing = 28;
-    const blinkFactor = avatarState.eyeBlink > 0 ? avatarState.eyeBlink : (Math.sin(t * 0.3) > 0.97 ? 0.8 : 0);
-    const eyeH = 14 * (1 - blinkFactor);
-
-    // Eye whites
-    ctx.fillStyle = '#fff';
-    ctx.beginPath();
-    ctx.ellipse(headX - eyeSpacing, eyeY, 12, Math.max(eyeH, 1), 0, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.beginPath();
-    ctx.ellipse(headX + eyeSpacing, eyeY, 12, Math.max(eyeH, 1), 0, 0, Math.PI * 2);
-    ctx.fill();
-
-    // Pupils — follow-me effect
-    if (eyeH > 3) {
-      const pupilX = Math.sin(t * 0.2) * 3;
-      ctx.fillStyle = '#1e1b4b';
-      ctx.beginPath();
-      ctx.ellipse(headX - eyeSpacing + pupilX, eyeY, 5, 6, 0, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.beginPath();
-      ctx.ellipse(headX + eyeSpacing + pupilX, eyeY, 5, 6, 0, 0, Math.PI * 2);
-      ctx.fill();
-
-      // Pupil highlights
-      ctx.fillStyle = '#fff';
-      ctx.beginPath();
-      ctx.arc(headX - eyeSpacing + pupilX + 2, eyeY - 2, 2, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.beginPath();
-      ctx.arc(headX + eyeSpacing + pupilX + 2, eyeY - 2, 2, 0, Math.PI * 2);
-      ctx.fill();
-    }
-
-    // Mouth — opens when speaking
-    const mouthY = headY + 30;
-    const mouthOpen = avatarState.mouthOpenness;
-    ctx.strokeStyle = 'rgba(255,255,255,0.8)';
-    ctx.lineWidth = 2.5;
-    ctx.fillStyle = mouthOpen > 0.1 ? 'rgba(30,20,50,0.7)' : 'transparent';
-
-    if (mouthOpen > 0.1) {
-      // Open mouth
-      ctx.beginPath();
-      ctx.ellipse(headX, mouthY, 15 + mouthOpen * 5, 5 + mouthOpen * 12, 0, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.stroke();
-    } else {
-      // Closed — gentle smile
-      ctx.beginPath();
-      ctx.arc(headX, mouthY - 5, 18, 0.1, Math.PI - 0.1);
-      ctx.stroke();
-    }
-
-    // Status indicator
-    const statusColor = avatarState.speaking ? '#f59e0b' : avatarState.listening ? '#ef4444' : '#10b981';
-    ctx.fillStyle = statusColor;
-    ctx.beginPath();
-    ctx.arc(headX + headW - 10, headY - headH + 20, 8, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.strokeStyle = '#0f1117';
-    ctx.lineWidth = 2;
-    ctx.stroke();
-
-    // Pulse ring around status when active
-    if (avatarState.speaking || avatarState.listening) {
-      const pulseScale = 1 + Math.sin(t * 4) * 0.3;
-      ctx.strokeStyle = statusColor + '60';
-      ctx.lineWidth = 2;
-      ctx.beginPath();
-      ctx.arc(headX + headW - 10, headY - headH + 20, 8 * pulseScale + 4, 0, Math.PI * 2);
-      ctx.stroke();
-    }
-
-    avatarState.animationFrame = requestAnimationFrame(drawAvatar);
+  if (!canvas || typeof THREE === 'undefined') {
+    // Fallback if Three.js not loaded
+    console.warn('Three.js not loaded — using static avatar');
+    return;
   }
 
-  drawAvatar();
+  const w = 400, h = 500;
+  canvas.width = w;
+  canvas.height = h;
+
+  // Scene
+  const scene = new THREE.Scene();
+  avatar3D.scene = scene;
+
+  // Camera
+  const camera = new THREE.PerspectiveCamera(35, w / h, 0.1, 100);
+  camera.position.set(0, 0.3, 3.5);
+  camera.lookAt(0, 0, 0);
+  avatar3D.camera = camera;
+
+  // Renderer
+  const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });
+  renderer.setSize(w, h);
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+  renderer.setClearColor(0x000000, 0);
+  avatar3D.renderer = renderer;
+
+  // Lighting
+  const ambient = new THREE.AmbientLight(0xffffff, 0.5);
+  scene.add(ambient);
+  const key = new THREE.DirectionalLight(0xffffff, 0.8);
+  key.position.set(2, 3, 4);
+  scene.add(key);
+  const rim = new THREE.DirectionalLight(0x6366f1, 0.3);
+  rim.position.set(-2, 1, -2);
+  scene.add(rim);
+
+  // Parse color
+  const color = new THREE.Color(avatarState.color);
+
+  // Body (cylinder + sphere shoulders)
+  const bodyMat = new THREE.MeshStandardMaterial({ color, roughness: 0.6, metalness: 0.1 });
+  const body = new THREE.Mesh(new THREE.CylinderGeometry(0.5, 0.6, 0.8, 32), bodyMat);
+  body.position.y = -1.2;
+  scene.add(body);
+  avatar3D.body = body;
+
+  // Neck
+  const neck = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.15, 0.3, 16), bodyMat);
+  neck.position.y = -0.65;
+  scene.add(neck);
+
+  // Head (sphere)
+  const headMat = new THREE.MeshStandardMaterial({ color, roughness: 0.4, metalness: 0.15 });
+  const head = new THREE.Mesh(new THREE.SphereGeometry(0.5, 32, 32), headMat);
+  head.scale.set(1, 1.15, 0.95);
+  head.position.y = 0;
+  scene.add(head);
+  avatar3D.head = head;
+
+  // Eyes (white spheres + dark pupils)
+  const eyeWhiteMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.2 });
+  const pupilMat = new THREE.MeshStandardMaterial({ color: 0x1a1a2e, roughness: 0.1, metalness: 0.3 });
+
+  const leftEyeGroup = new THREE.Group();
+  const leftWhite = new THREE.Mesh(new THREE.SphereGeometry(0.09, 16, 16), eyeWhiteMat);
+  const leftPupil = new THREE.Mesh(new THREE.SphereGeometry(0.045, 12, 12), pupilMat);
+  leftPupil.position.z = 0.06;
+  leftEyeGroup.add(leftWhite, leftPupil);
+  leftEyeGroup.position.set(-0.17, 0.08, 0.4);
+  scene.add(leftEyeGroup);
+  avatar3D.leftEye = leftEyeGroup;
+
+  const rightEyeGroup = new THREE.Group();
+  const rightWhite = new THREE.Mesh(new THREE.SphereGeometry(0.09, 16, 16), eyeWhiteMat);
+  const rightPupil = new THREE.Mesh(new THREE.SphereGeometry(0.045, 12, 12), pupilMat);
+  rightPupil.position.z = 0.06;
+  rightEyeGroup.add(rightWhite, rightPupil);
+  rightEyeGroup.position.set(0.17, 0.08, 0.4);
+  scene.add(rightEyeGroup);
+  avatar3D.rightEye = rightEyeGroup;
+
+  // Mouth (torus for closed, scaled for open)
+  const mouthMat = new THREE.MeshStandardMaterial({ color: 0x2a1a3a, roughness: 0.5 });
+  const mouth = new THREE.Mesh(new THREE.TorusGeometry(0.08, 0.02, 8, 16, Math.PI), mouthMat);
+  mouth.position.set(0, -0.18, 0.42);
+  mouth.rotation.x = Math.PI * 0.1;
+  scene.add(mouth);
+  avatar3D.mouth = mouth;
+
+  // Status light
+  const statusMat = new THREE.MeshBasicMaterial({ color: 0x10b981 });
+  const statusLight = new THREE.Mesh(new THREE.SphereGeometry(0.04, 8, 8), statusMat);
+  statusLight.position.set(0.45, 0.4, 0.2);
+  scene.add(statusLight);
+  avatar3D.statusLight = statusLight;
+  avatar3D.statusMat = statusMat;
+
+  // Animation loop
+  function animate() {
+    avatarState.animationFrame = requestAnimationFrame(animate);
+    const t = Date.now() / 1000;
+
+    // Idle sway
+    if (avatar3D.head) {
+      avatar3D.head.rotation.y = Math.sin(t * 0.4) * 0.05 + avatarState.headRotation.x * 0.01;
+      avatar3D.head.rotation.x = Math.sin(t * 0.3) * 0.02 + avatarState.headRotation.y * 0.01;
+      avatar3D.head.position.y = Math.sin(t * 0.5) * 0.01;
+    }
+
+    // Eye tracking (subtle wander)
+    const eyeX = Math.sin(t * 0.2) * 0.015;
+    if (avatar3D.leftEye) { avatar3D.leftEye.rotation.y = eyeX; avatar3D.leftEye.rotation.x = Math.sin(t * 0.15) * 0.01; }
+    if (avatar3D.rightEye) { avatar3D.rightEye.rotation.y = eyeX; avatar3D.rightEye.rotation.x = Math.sin(t * 0.15) * 0.01; }
+
+    // Blink
+    const blink = Math.sin(t * 0.3) > 0.97;
+    const blinkScale = blink ? 0.1 : 1;
+    if (avatar3D.leftEye) avatar3D.leftEye.scale.y = blinkScale;
+    if (avatar3D.rightEye) avatar3D.rightEye.scale.y = blinkScale;
+
+    // Mouth — open when speaking
+    if (avatar3D.mouth) {
+      const openness = avatarState.mouthOpenness;
+      avatar3D.mouth.scale.set(1, 1 + openness * 3, 1);
+      avatar3D.mouth.position.y = -0.18 - openness * 0.05;
+    }
+
+    // Status light color
+    if (avatar3D.statusMat) {
+      avatar3D.statusMat.color.set(avatarState.speaking ? 0xf59e0b : avatarState.listening ? 0xef4444 : 0x10b981);
+    }
+
+    renderer.render(scene, camera);
+  }
+
+  animate();
 }
 
-function shadeColor(color, percent) {
-  const num = parseInt(color.replace('#', ''), 16);
-  const r = Math.min(255, Math.max(0, (num >> 16) + percent));
-  const g = Math.min(255, Math.max(0, ((num >> 8) & 0x00FF) + percent));
-  const b = Math.min(255, Math.max(0, (num & 0x0000FF) + percent));
-  return `#${(1 << 24 | r << 16 | g << 8 | b).toString(16).slice(1)}`;
+function updateAvatarColor() {
+  const color = new THREE.Color(avatarState.color);
+  if (avatar3D.head) avatar3D.head.material.color.copy(color);
+  if (avatar3D.body) avatar3D.body.material.color.copy(color);
 }
 
 function switchAvatarEmployee() {
@@ -6248,6 +6249,7 @@ function switchAvatarEmployee() {
   avatarState.history = [];
   document.getElementById('avatarName').textContent = option.textContent;
   document.getElementById('avatarMessages').innerHTML = '';
+  if (typeof THREE !== 'undefined') updateAvatarColor();
   addAvatarBotMessage(`Switched to ${option.textContent}. How can I help you?`);
 }
 
@@ -6309,45 +6311,71 @@ function toggleTTS() {
   document.getElementById('speakerIcon').textContent = avatarState.ttsEnabled ? '🔊' : '🔇';
 }
 
-function speakText(text) {
-  if (!avatarState.ttsEnabled || !window.speechSynthesis) return;
+async function speakText(text) {
+  if (!avatarState.ttsEnabled) return;
 
-  // Cancel any current speech
-  window.speechSynthesis.cancel();
-
-  const utterance = new SpeechSynthesisUtterance(text);
-  utterance.rate = 1.0;
-  utterance.pitch = 1.0;
-  utterance.volume = 0.8;
-
-  // Try to select a good voice
-  const voices = window.speechSynthesis.getVoices();
-  const preferred = voices.find(v => v.name.includes('Google') && v.lang.startsWith('en')) ||
-                    voices.find(v => v.lang.startsWith('en-US')) ||
-                    voices[0];
-  if (preferred) utterance.voice = preferred;
-
-  // Animate mouth while speaking
   avatarState.speaking = true;
   document.getElementById('avatarStatus').textContent = 'Speaking...';
 
   // Mouth animation loop
   const mouthInterval = setInterval(() => {
-    avatarState.mouthOpenness = 0.3 + Math.random() * 0.7;
-  }, 100);
+    avatarState.mouthOpenness = 0.2 + Math.random() * 0.6;
+  }, 80);
 
-  utterance.onend = () => {
+  const stopSpeaking = () => {
     clearInterval(mouthInterval);
     avatarState.mouthOpenness = 0;
     avatarState.speaking = false;
     document.getElementById('avatarStatus').textContent = 'Idle';
   };
 
-  utterance.onerror = () => {
-    clearInterval(mouthInterval);
-    avatarState.mouthOpenness = 0;
-    avatarState.speaking = false;
-  };
+  // Try Google Cloud TTS first (natural voice)
+  try {
+    const token = localStorage.getItem('ai-os-token');
+    const res = await fetch('/api/tts', {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json', ...(token ? { 'Authorization': `Bearer ${token}` } : {}) },
+      body: JSON.stringify({ text: text.substring(0, 2000) }),
+    });
+    const data = await res.json();
+
+    if (data.ok && data.audioContent) {
+      // Play the Google TTS audio
+      const audio = new Audio('data:audio/mp3;base64,' + data.audioContent);
+      audio.volume = 0.85;
+      audio.onended = stopSpeaking;
+      audio.onerror = () => { stopSpeaking(); speakTextBrowserFallback(text); };
+      audio.play().catch(() => { stopSpeaking(); speakTextBrowserFallback(text); });
+      return;
+    }
+  } catch {}
+
+  // Fallback to browser Speech Synthesis
+  stopSpeaking();
+  speakTextBrowserFallback(text);
+}
+
+function speakTextBrowserFallback(text) {
+  if (!window.speechSynthesis) return;
+
+  window.speechSynthesis.cancel();
+  const utterance = new SpeechSynthesisUtterance(text);
+  utterance.rate = 1.0;
+  utterance.pitch = 1.0;
+  utterance.volume = 0.8;
+
+  const voices = window.speechSynthesis.getVoices();
+  const preferred = voices.find(v => v.name.includes('Google') && v.lang.startsWith('en')) ||
+                    voices.find(v => v.lang.startsWith('en-US')) || voices[0];
+  if (preferred) utterance.voice = preferred;
+
+  avatarState.speaking = true;
+  document.getElementById('avatarStatus').textContent = 'Speaking...';
+  const mouthInterval = setInterval(() => { avatarState.mouthOpenness = 0.2 + Math.random() * 0.5; }, 100);
+
+  utterance.onend = () => { clearInterval(mouthInterval); avatarState.mouthOpenness = 0; avatarState.speaking = false; document.getElementById('avatarStatus').textContent = 'Idle'; };
+  utterance.onerror = () => { clearInterval(mouthInterval); avatarState.mouthOpenness = 0; avatarState.speaking = false; };
 
   window.speechSynthesis.speak(utterance);
 }

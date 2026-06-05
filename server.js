@@ -473,7 +473,7 @@ app.use(helmet({
   contentSecurityPolicy: {
     directives: {
       defaultSrc: ["'self'"],
-      scriptSrc: ["'self'", "'unsafe-inline'", "https://www.googletagmanager.com", "https://www.google-analytics.com"],
+      scriptSrc: ["'self'", "'unsafe-inline'", "https://www.googletagmanager.com", "https://www.google-analytics.com", "https://cdnjs.cloudflare.com"],
       scriptSrcAttr: ["'unsafe-inline'"],  // Required for onclick handlers in HTML
       styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
       fontSrc: ["'self'", "https://fonts.gstatic.com"],
@@ -882,6 +882,53 @@ app.get('/api/onboarding/status', requireAdmin, (req, res) => {
   const percentage = Math.round((completed / total) * 100);
 
   res.json({ steps, completed, total, percentage, allDone: completed === total });
+});
+
+// Google Cloud TTS endpoint — returns audio for avatar speech
+app.post('/api/tts', requireAdmin, async (req, res) => {
+  const { text, voice } = req.body;
+  if (!text) return res.status(400).json({ error: 'Text is required' });
+
+  const apiKey = settings.ai.gemini_api_key; // Google API key works for Cloud TTS
+  if (!apiKey) return res.status(400).json({ error: 'Google API key not configured — voice will use browser TTS fallback' });
+
+  try {
+    const ttsRes = await fetch(`https://texttospeech.googleapis.com/v1/text:synthesize?key=${apiKey}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        input: { text: text.substring(0, 5000) },
+        voice: { languageCode: 'en-US', name: voice || 'en-US-Journey-D', ssmlGender: 'MALE' },
+        audioConfig: { audioEncoding: 'MP3', speakingRate: 1.0, pitch: 0 },
+      }),
+    });
+
+    if (!ttsRes.ok) {
+      const err = await ttsRes.json().catch(() => ({}));
+      // Fall back to simpler voice if Journey not available
+      if (err.error?.message?.includes('voice')) {
+        const fallbackRes = await fetch(`https://texttospeech.googleapis.com/v1/text:synthesize?key=${apiKey}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            input: { text: text.substring(0, 5000) },
+            voice: { languageCode: 'en-US', name: 'en-US-Wavenet-D', ssmlGender: 'MALE' },
+            audioConfig: { audioEncoding: 'MP3', speakingRate: 1.0, pitch: 0 },
+          }),
+        });
+        if (fallbackRes.ok) {
+          const data = await fallbackRes.json();
+          return res.json({ ok: true, audioContent: data.audioContent, voice: 'en-US-Wavenet-D' });
+        }
+      }
+      return res.json({ ok: false, error: err.error?.message || `TTS HTTP ${ttsRes.status}`, fallback: true });
+    }
+
+    const data = await ttsRes.json();
+    res.json({ ok: true, audioContent: data.audioContent, voice: voice || 'en-US-Journey-D' });
+  } catch (e) {
+    res.json({ ok: false, error: e.message, fallback: true });
+  }
 });
 
 app.get('/free-audit', (req, res) => {
