@@ -5957,6 +5957,25 @@ async function deleteYTAnalysis(id) {
   if (result.ok) { loadYouTube(); showSettingsToast('Analysis deleted'); }
 }
 
+// --- Avatar Identity System ---
+const AVATAR_MAP = {
+  'atlas': 'avatar-atlas', 'nova': 'avatar-nova', 'justice': 'avatar-justice',
+  'muse': 'avatar-muse', 'forge': 'avatar-forge', 'echo': 'avatar-echo',
+  'hermes': 'avatar-hermes', 'harbor': 'avatar-harbor', 'matrix': 'avatar-matrix',
+  'hawkeye': 'avatar-hawkeye', 'ledger': 'avatar-ledger',
+  // Aliases for agent names
+  'orchestrator': 'avatar-atlas', 'architect': 'avatar-nova', 'general-counsel': 'avatar-justice',
+  'media-producer': 'avatar-muse', 'coder': 'avatar-forge', 'marketing-hub': 'avatar-echo',
+  'hermes-delegate': 'avatar-hermes', 'cs-lead': 'avatar-harbor', 'it-director': 'avatar-matrix',
+  'grok-realtime': 'avatar-hawkeye', 'cost-analyst': 'avatar-ledger',
+};
+
+function renderAvatar(name, size = 'sm') {
+  const key = (name || '').toLowerCase();
+  const avatarClass = AVATAR_MAP[key] || 'avatar-generic';
+  return `<div class="${avatarClass} avatar-${size}"><div class="avatar-face"><div class="eye eye-l"></div><div class="eye eye-r"></div><div class="mouth"></div></div></div>`;
+}
+
 // --- Virtual HQ ---
 async function loadHQ() {
   const [org, stats] = await Promise.all([
@@ -5997,7 +6016,7 @@ function renderOrgChart(org) {
       return `
         <div class="hq-employee" onclick="showEmployee('${emp.id}', this)" data-tier="${tierClass}" data-status="${emp.status}">
           <div class="hq-avatar">
-            <span class="hq-avatar-face">${emp.avatar}</span>
+            ${AVATAR_MAP[emp.name.toLowerCase()] ? renderAvatar(emp.name, 'sm') : `<span class="hq-avatar-face">${emp.avatar}</span>`}
             <div class="hq-avatar-typing"><div class="hq-typing-dots"><span></span><span></span><span></span></div></div>
           </div>
           <div class="hq-emp-info">
@@ -6036,7 +6055,7 @@ async function showEmployee(empId, el) {
       <button class="btn btn-sm" onclick="document.getElementById('hqEmployeeModal').style.display='none';">&times; Close</button>
     </div>
     <div class="hq-profile">
-      <div class="hq-profile-avatar">${data.avatar}</div>
+      <div class="hq-profile-avatar">${AVATAR_MAP[(data.name || '').toLowerCase()] ? renderAvatar(data.name, 'lg') : data.avatar}</div>
       <div class="hq-profile-info">
         <h3>${data.name}</h3>
         <div class="hq-profile-title">${data.title}</div>
