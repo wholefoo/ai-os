@@ -669,6 +669,10 @@ app.get('/sitemap.xml', (req, res) => {
   const pages = [
     { url: '/', priority: '1.0', freq: 'weekly' },
     { url: '/about', priority: '0.8', freq: 'monthly' },
+    { url: '/blog', priority: '0.9', freq: 'weekly' },
+    { url: '/blog/what-is-ai-operating-system', priority: '0.8', freq: 'monthly' },
+    { url: '/blog/ai-agent-pricing-comparison-2026', priority: '0.8', freq: 'monthly' },
+    { url: '/blog/how-to-automate-seo-with-ai', priority: '0.8', freq: 'monthly' },
     { url: '/lifetime', priority: '0.8', freq: 'monthly' },
     { url: '/docs', priority: '0.8', freq: 'weekly' },
     { url: '/docs/getting-started', priority: '0.9', freq: 'monthly' },
@@ -770,6 +774,20 @@ app.get('/lifetime/success', (req, res) => {
 </div>
 <footer class="site-footer"><div class="footer-bottom"><p>&copy; 2026 AI OS Orchestration Lab.</p></div></footer>
 </body></html>`);
+});
+
+// Blog routes
+app.get('/blog', (req, res) => {
+  res.sendFile(path.join(BASE, 'dashboard', 'blog', 'index.html'));
+});
+app.get('/blog/:slug', (req, res) => {
+  const slug = req.params.slug.replace(/[^a-z0-9-]/g, '');
+  const filePath = path.join(BASE, 'dashboard', 'blog', `${slug}.html`);
+  if (fs.existsSync(filePath)) {
+    res.sendFile(filePath);
+  } else {
+    res.status(404).sendFile(path.join(BASE, 'dashboard', 'blog', 'index.html'));
+  }
 });
 
 app.get('/about', (req, res) => {
@@ -6559,7 +6577,19 @@ app.post('/api/youtube/analyze', requireAdmin, async (req, res) => {
   broadcast({ event: 'yt_analysis_started', data: { id: analysisId, videoId } });
   logActivity('youtube', `Video analysis started: ${videoId}`, { analysisId, type });
 
-  if (DEMO_MODE) {
+  // Real YouTube analysis pipeline
+  if (!DEMO_MODE && settings.ai.anthropic_api_key) {
+    runRealYouTubeAnalysis(analysis, analysisId, interval, type).catch(e => {
+      console.error('[YOUTUBE] Real analysis failed:', e.message);
+      analysis.status = 'complete';
+      analysis.completedAt = new Date().toISOString();
+      analysis.summary = { overview: `Analysis failed: ${e.message}`, keyTopics: [], contentType: 'Error', technicalLevel: 'N/A', actionability: 'N/A' };
+      analysis.insights = [{ type: 'extraction', insight: `Pipeline error: ${e.message}. Ensure yt-dlp and ffmpeg are installed on the server.`, confidence: 1.0 }];
+      saveState('yt_analyses', ytAnalyses);
+      broadcast({ event: 'yt_analysis_complete', data: { id: analysisId, videoId: analysis.videoId } });
+    });
+  }
+  else if (DEMO_MODE) {
     // Simulate the analysis pipeline
     const steps = [
       { delay: 1500, status: 'fetching_info', msg: 'Fetching video metadata...' },
@@ -6631,6 +6661,211 @@ app.delete('/api/youtube/analysis/:id', requireAdmin, (req, res) => {
   saveState('yt_analyses', ytAnalyses);
   res.json({ ok: true });
 });
+
+// --- Real YouTube Analysis Pipeline ---
+
+async function runRealYouTubeAnalysis(analysis, analysisId, interval, type) {
+  const videoId = analysis.videoId;
+  const videoDir = path.join(YT_ANALYSIS_DIR, videoId);
+  if (!fs.existsSync(videoDir)) fs.mkdirSync(videoDir, { recursive: true });
+
+  // Step 1: Fetch video info via yt-dlp
+  broadcast({ event: 'yt_analysis_progress', data: { id: analysisId, status: 'fetching_info', msg: 'Fetching video metadata...' } });
+  analysis.status = 'fetching_info';
+
+  try {
+    const { execSync } = require('child_process');
+    const infoJson = execSync(`yt-dlp --dump-json --no-download "https://www.youtube.com/watch?v=${videoId}" 2>/dev/null`, { encoding: 'utf-8', timeout: 30000 });
+    const info = JSON.parse(infoJson);
+    analysis.videoInfo = {
+      title: info.title || 'Unknown',
+      channel: info.uploader || info.channel || 'Unknown',
+      duration: `${Math.floor((info.duration || 0) / 60)}:${String((info.duration || 0) % 60).padStart(2, '0')}`,
+      durationSeconds: info.duration || 0,
+      publishedAt: info.upload_date ? `${info.upload_date.substring(0,4)}-${info.upload_date.substring(4,6)}-${info.upload_date.substring(6,8)}` : null,
+      views: info.view_count || 0,
+      likes: info.like_count || 0,
+      thumbnail: info.thumbnail || `https://img.youtube.com/vi/${videoId}/maxresdefault.jpg`,
+      videoId,
+    };
+  } catch (e) {
+    // Fallback to basic info
+    analysis.videoInfo = { title: `Video ${videoId}`, channel: 'Unknown', duration: 'Unknown', durationSeconds: 0, views: 0, likes: 0, thumbnail: `https://img.youtube.com/vi/${videoId}/maxresdefault.jpg`, videoId };
+  }
+
+  // Step 2: Extract frames with ffmpeg
+  if (type !== 'transcript-only') {
+    broadcast({ event: 'yt_analysis_progress', data: { id: analysisId, status: 'extracting_frames', msg: `Downloading and extracting frames every ${interval}s...` } });
+    analysis.status = 'extracting_frames';
+
+    try {
+      const { execSync } = require('child_process');
+      // Download video (low quality for speed)
+      execSync(`yt-dlp -f "worst[ext=mp4]" -o "${path.join(videoDir, 'video.mp4')}" "https://www.youtube.com/watch?v=${videoId}" 2>/dev/null`, { timeout: 120000 });
+      // Extract frames
+      execSync(`ffmpeg -i "${path.join(videoDir, 'video.mp4')}" -vf "fps=1/${interval}" "${path.join(videoDir, 'frame_%04d.jpg')}" -y 2>/dev/null`, { timeout: 120000 });
+
+      const frameFiles = fs.readdirSync(videoDir).filter(f => f.startsWith('frame_') && f.endsWith('.jpg')).sort();
+      analysis.frames = frameFiles.map((f, i) => ({
+        timestamp: i * interval,
+        timecode: `${Math.floor(i * interval / 60)}:${String((i * interval) % 60).padStart(2, '0')}`,
+        file: f,
+      }));
+    } catch (e) {
+      console.error('[YOUTUBE] Frame extraction failed:', e.message);
+      analysis.frames = [];
+    }
+  }
+
+  // Step 3: Extract transcript
+  if (type !== 'visual-only') {
+    broadcast({ event: 'yt_analysis_progress', data: { id: analysisId, status: 'transcribing', msg: 'Extracting transcript...' } });
+    analysis.status = 'transcribing';
+
+    try {
+      const { execSync } = require('child_process');
+      execSync(`yt-dlp --write-auto-sub --sub-lang en --skip-download -o "${path.join(videoDir, 'subs')}" "https://www.youtube.com/watch?v=${videoId}" 2>/dev/null`, { timeout: 30000 });
+
+      // Try to parse the subtitle file
+      const subFiles = fs.readdirSync(videoDir).filter(f => f.includes('subs') && (f.endsWith('.vtt') || f.endsWith('.srt')));
+      if (subFiles.length > 0) {
+        const subContent = fs.readFileSync(path.join(videoDir, subFiles[0]), 'utf-8');
+        // Simple VTT/SRT parser — extract text lines
+        const lines = subContent.split('\n').filter(l => l.trim() && !l.includes('-->') && !l.match(/^\d+$/) && !l.startsWith('WEBVTT') && !l.startsWith('Kind:') && !l.startsWith('Language:'));
+        const fullText = [...new Set(lines.map(l => l.replace(/<[^>]+>/g, '').trim()))].filter(Boolean).join(' ');
+
+        // Build segments (approximate)
+        const words = fullText.split(/\s+/);
+        const wordsPerSegment = Math.ceil(words.length / Math.max(Math.ceil((analysis.videoInfo?.durationSeconds || 300) / 30), 1));
+        const segments = [];
+        for (let i = 0; i < words.length; i += wordsPerSegment) {
+          const segWords = words.slice(i, i + wordsPerSegment);
+          const segIndex = Math.floor(i / wordsPerSegment);
+          segments.push({ start: segIndex * 30, end: (segIndex + 1) * 30, text: segWords.join(' ') });
+        }
+
+        analysis.transcript = { language: 'en', segments, fullText };
+      } else {
+        analysis.transcript = { language: 'en', segments: [], fullText: 'Transcript not available for this video.' };
+      }
+    } catch (e) {
+      analysis.transcript = { language: 'en', segments: [], fullText: 'Failed to extract transcript.' };
+    }
+  }
+
+  // Step 4: Analyze frames with Claude Vision
+  if (type !== 'transcript-only' && analysis.frames.length > 0 && settings.ai.anthropic_api_key) {
+    broadcast({ event: 'yt_analysis_progress', data: { id: analysisId, status: 'analyzing_frames', msg: `Claude Vision analyzing ${analysis.frames.length} frames...` } });
+    analysis.status = 'analyzing_frames';
+
+    const visualAnalysis = [];
+    // Analyze a sample of frames (max 10 to control cost)
+    const sampleFrames = analysis.frames.length <= 10 ? analysis.frames : analysis.frames.filter((_, i) => i % Math.ceil(analysis.frames.length / 10) === 0).slice(0, 10);
+
+    for (const frame of sampleFrames) {
+      try {
+        const imagePath = path.join(videoDir, frame.file);
+        const imageData = fs.readFileSync(imagePath).toString('base64');
+
+        const res = await fetch('https://api.anthropic.com/v1/messages', {
+          method: 'POST',
+          headers: { 'x-api-key': settings.ai.anthropic_api_key, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
+          body: JSON.stringify({
+            model: OPUS_MODEL,
+            max_tokens: 300,
+            messages: [{
+              role: 'user',
+              content: [
+                { type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: imageData } },
+                { type: 'text', text: 'Describe this video frame in one sentence. Note: what scene is shown, what elements are visible (people, screens, text, diagrams, code, UI), and any on-screen text you can read. Format: scene|elements|onScreenText' }
+              ],
+            }],
+          }),
+        });
+
+        if (res.ok) {
+          const data = await res.json();
+          const text = data.content?.[0]?.text || '';
+          const parts = text.split('|').map(s => s.trim());
+          visualAnalysis.push({
+            timestamp: frame.timestamp,
+            timecode: frame.timecode,
+            scene: parts[0] || text,
+            elements: (parts[1] || '').split(',').map(e => e.trim()).filter(Boolean),
+            onScreenText: parts[2] || '',
+          });
+        }
+      } catch (e) {
+        visualAnalysis.push({ timestamp: frame.timestamp, timecode: frame.timecode, scene: 'Analysis failed', elements: [], onScreenText: '' });
+      }
+    }
+
+    analysis.visualAnalysis = visualAnalysis;
+  }
+
+  // Step 5: Synthesize summary using Claude
+  broadcast({ event: 'yt_analysis_progress', data: { id: analysisId, status: 'synthesizing', msg: 'Synthesizing analysis...' } });
+  analysis.status = 'synthesizing';
+
+  try {
+    const transcriptSnippet = (analysis.transcript?.fullText || '').substring(0, 2000);
+    const frameDescriptions = (analysis.visualAnalysis || []).map(v => `[${v.timecode}] ${v.scene}`).join('\n');
+
+    const synthesisResult = await callAnthropic(
+      'You are a video analysis expert. Summarize this YouTube video based on the transcript and visual frame descriptions provided.',
+      `Video: ${analysis.videoInfo?.title || 'Unknown'} by ${analysis.videoInfo?.channel || 'Unknown'}\n\nTranscript excerpt:\n${transcriptSnippet}\n\nFrame descriptions:\n${frameDescriptions}\n\nProvide:\n1. A 2-3 sentence overview\n2. Key topics (comma separated)\n3. Content type (Tutorial, Review, Demo, etc)\n4. Technical level (Beginner, Intermediate, Advanced)\n5. Actionability (High, Medium, Low)\n\nFormat each on its own line labeled: overview: / topics: / type: / level: / actionability:`,
+      'high', 500
+    );
+
+    const lines = synthesisResult.content.split('\n');
+    const getField = (label) => { const l = lines.find(l => l.toLowerCase().startsWith(label)); return l ? l.substring(l.indexOf(':') + 1).trim() : ''; };
+
+    analysis.summary = {
+      overview: getField('overview') || `Analysis of "${analysis.videoInfo?.title}"`,
+      keyTopics: (getField('topics') || '').split(',').map(t => t.trim()).filter(Boolean),
+      contentType: getField('type') || 'Video',
+      technicalLevel: getField('level') || 'N/A',
+      actionability: getField('actionability') || 'N/A',
+    };
+
+    // Generate insights
+    analysis.insights = [];
+    if (analysis.visualAnalysis?.length > 0) {
+      const withText = analysis.visualAnalysis.filter(v => v.onScreenText);
+      if (withText.length > 0) {
+        analysis.insights.push({ type: 'visual', insight: `${withText.length} frames contain on-screen text not captured in the spoken transcript`, confidence: 0.9 });
+      }
+      analysis.insights.push({ type: 'visual', insight: `${analysis.visualAnalysis.length} frames analyzed — visual content adds context beyond audio`, confidence: 0.85 });
+    }
+    if (analysis.transcript?.fullText?.length > 100) {
+      analysis.insights.push({ type: 'content', insight: `Transcript contains ${analysis.transcript.fullText.split(/\s+/).length} words of spoken content`, confidence: 0.95 });
+    }
+  } catch (e) {
+    analysis.summary = { overview: `Video: ${analysis.videoInfo?.title || 'Unknown'}`, keyTopics: [], contentType: 'Video', technicalLevel: 'N/A', actionability: 'N/A' };
+    analysis.insights = [{ type: 'extraction', insight: `Synthesis failed: ${e.message}`, confidence: 1.0 }];
+  }
+
+  // Complete
+  analysis.status = 'complete';
+  analysis.completedAt = new Date().toISOString();
+
+  // Track cost
+  const frameCost = (analysis.visualAnalysis?.length || 0) * 0.01; // ~$0.01 per frame
+  costLedger.push({
+    id: uuidv4(), agent: 'youtube-analyzer', model: 'opus-4.8-high', skill: 'video-analysis',
+    inputTokens: 5000 + (analysis.visualAnalysis?.length || 0) * 1500,
+    outputTokens: 2000 + (analysis.visualAnalysis?.length || 0) * 300,
+    cost: Math.round((0.05 + frameCost) * 10000) / 10000,
+    timestamp: new Date().toISOString(),
+  });
+
+  saveState('yt_analyses', ytAnalyses);
+  broadcast({ event: 'yt_analysis_complete', data: { id: analysisId, videoId } });
+  logActivity('youtube', `Video analysis complete (real): ${analysis.videoInfo?.title || videoId}`, { analysisId });
+
+  // Cleanup video file to save disk space (keep frames and subs)
+  try { fs.unlinkSync(path.join(videoDir, 'video.mp4')); } catch {}
+}
 
 // --- YouTube Demo Data Generators ---
 function generateYTVideoInfo(videoId) {
