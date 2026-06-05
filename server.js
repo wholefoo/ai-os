@@ -898,7 +898,7 @@ app.post('/api/tts', requireAdmin, async (req, res) => {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         input: { text: text.substring(0, 5000) },
-        voice: { languageCode: 'en-US', name: voice || 'en-US-Journey-D', ssmlGender: 'MALE' },
+        voice: { languageCode: 'en-US', name: voice || 'en-US-Journey-D' },
         audioConfig: { audioEncoding: 'MP3', speakingRate: 1.0, pitch: 0 },
       }),
     });

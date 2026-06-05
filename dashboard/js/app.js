@@ -6077,13 +6077,21 @@ let avatarState = {
   headRotation: { x: 0, y: 0 },
 };
 
-// Avatar name → agent mapping
-const AVATAR_AGENTS = {
-  atlas: 'orchestrator', nova: 'architect', justice: 'general-counsel',
-  muse: 'media-producer', forge: 'coder', echo: 'marketing-hub',
-  hermes: 'hermes-delegate', harbor: 'cs-lead', hawkeye: 'grok-realtime',
-  ledger: 'cost-analyst',
+// Avatar name → agent + appearance + voice mapping
+const AVATAR_PROFILES = {
+  atlas:   { agent: 'orchestrator',     skin: 0xc68642, hair: 0x2c1b0e, hairStyle: 'short',   eyeColor: 0x3b2507, gender: 'M', voice: 'en-US-Journey-D',  fallbackPitch: 0.9,  fallbackRate: 1.0 },
+  nova:    { agent: 'architect',        skin: 0xf5d0a9, hair: 0x1a1a2e, hairStyle: 'sleek',   eyeColor: 0x1a3a5c, gender: 'F', voice: 'en-US-Journey-F',  fallbackPitch: 1.15, fallbackRate: 1.05 },
+  justice: { agent: 'general-counsel',  skin: 0xd4a574, hair: 0x808080, hairStyle: 'receding', eyeColor: 0x2c3e1b, gender: 'M', voice: 'en-US-Wavenet-B',  fallbackPitch: 0.75, fallbackRate: 0.95 },
+  muse:    { agent: 'media-producer',   skin: 0xffe0bd, hair: 0xb91c1c, hairStyle: 'long',    eyeColor: 0x1b5e20, gender: 'F', voice: 'en-US-Journey-O',  fallbackPitch: 1.2,  fallbackRate: 1.1 },
+  forge:   { agent: 'coder',           skin: 0xc68642, hair: 0x1a1a1a, hairStyle: 'buzz',    eyeColor: 0x3e2507, gender: 'M', voice: 'en-US-Wavenet-D',  fallbackPitch: 0.85, fallbackRate: 1.0 },
+  echo:    { agent: 'marketing-hub',    skin: 0xf5d0a9, hair: 0x5c3317, hairStyle: 'bob',     eyeColor: 0x1565c0, gender: 'F', voice: 'en-US-Wavenet-C',  fallbackPitch: 1.1,  fallbackRate: 1.05 },
+  hermes:  { agent: 'hermes-delegate',  skin: 0xd08b5b, hair: 0x2c1b0e, hairStyle: 'curly',  eyeColor: 0x4a1500, gender: 'M', voice: 'en-US-Wavenet-A',  fallbackPitch: 1.0,  fallbackRate: 1.15 },
+  harbor:  { agent: 'cs-lead',         skin: 0xffe0bd, hair: 0xd4a030, hairStyle: 'medium',  eyeColor: 0x2e7d32, gender: 'F', voice: 'en-US-Wavenet-E',  fallbackPitch: 1.05, fallbackRate: 1.0 },
+  hawkeye: { agent: 'grok-realtime',    skin: 0xc68642, hair: 0x1a1a1a, hairStyle: 'military', eyeColor: 0x1a1a1a, gender: 'M', voice: 'en-US-Wavenet-J',  fallbackPitch: 0.8,  fallbackRate: 0.9 },
+  ledger:  { agent: 'cost-analyst',     skin: 0xd4a574, hair: 0x4a4a4a, hairStyle: 'parted',  eyeColor: 0x1b3a2e, gender: 'M', voice: 'en-US-Wavenet-B',  fallbackPitch: 0.95, fallbackRate: 0.95 },
 };
+
+const AVATAR_AGENTS = Object.fromEntries(Object.entries(AVATAR_PROFILES).map(([k, v]) => [k, v.agent]));
 
 function loadAvatarChat() {
   initAvatar3D();
@@ -6091,154 +6099,246 @@ function loadAvatarChat() {
   addAvatarBotMessage("Hello! I'm Atlas, CEO of AI OS Corp. You can type or click the microphone to speak. I'll respond with voice too. Try asking me about the platform, or switch to another employee using the dropdown.");
 }
 
-// --- 3D Avatar Renderer (Three.js WebGL) ---
-let avatar3D = { scene: null, camera: null, renderer: null, head: null, leftEye: null, rightEye: null, mouth: null, body: null };
+// --- 3D Avatar Renderer (Three.js WebGL — Human-like) ---
+let avatar3D = {};
 
 function initAvatar3D() {
   const canvas = document.getElementById('avatarCanvas');
-  if (!canvas || typeof THREE === 'undefined') {
-    // Fallback if Three.js not loaded
-    console.warn('Three.js not loaded — using static avatar');
-    return;
-  }
+  if (!canvas || typeof THREE === 'undefined') return;
 
+  // Cleanup previous
+  if (avatar3D.renderer) { avatar3D.renderer.dispose(); }
+  if (avatarState.animationFrame) cancelAnimationFrame(avatarState.animationFrame);
+
+  buildAvatar3D(canvas, AVATAR_PROFILES[avatarState.employee] || AVATAR_PROFILES.atlas);
+}
+
+function buildAvatar3D(canvas, profile) {
   const w = 400, h = 500;
-  canvas.width = w;
-  canvas.height = h;
+  canvas.width = w; canvas.height = h;
 
-  // Scene
   const scene = new THREE.Scene();
-  avatar3D.scene = scene;
+  const camera = new THREE.PerspectiveCamera(30, w / h, 0.1, 100);
+  camera.position.set(0, 0.15, 3.2);
+  camera.lookAt(0, -0.1, 0);
 
-  // Camera
-  const camera = new THREE.PerspectiveCamera(35, w / h, 0.1, 100);
-  camera.position.set(0, 0.3, 3.5);
-  camera.lookAt(0, 0, 0);
-  avatar3D.camera = camera;
-
-  // Renderer
   const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });
   renderer.setSize(w, h);
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
   renderer.setClearColor(0x000000, 0);
-  avatar3D.renderer = renderer;
+  renderer.toneMapping = THREE.ACESFilmicToneMapping;
+  renderer.toneMappingExposure = 1.2;
 
-  // Lighting
-  const ambient = new THREE.AmbientLight(0xffffff, 0.5);
-  scene.add(ambient);
-  const key = new THREE.DirectionalLight(0xffffff, 0.8);
-  key.position.set(2, 3, 4);
+  // Lighting — warm key, cool fill, soft ambient
+  scene.add(new THREE.AmbientLight(0xfff0e0, 0.55));
+  const key = new THREE.DirectionalLight(0xfff5e8, 0.9);
+  key.position.set(2, 3, 3);
   scene.add(key);
-  const rim = new THREE.DirectionalLight(0x6366f1, 0.3);
-  rim.position.set(-2, 1, -2);
+  const fill = new THREE.DirectionalLight(0xc0d8ff, 0.3);
+  fill.position.set(-2, 1, 2);
+  scene.add(fill);
+  const rim = new THREE.DirectionalLight(0xffffff, 0.2);
+  rim.position.set(0, 2, -3);
   scene.add(rim);
 
-  // Parse color
-  const color = new THREE.Color(avatarState.color);
+  const skinMat = new THREE.MeshStandardMaterial({ color: profile.skin, roughness: 0.65, metalness: 0.02 });
+  const hairMat = new THREE.MeshStandardMaterial({ color: profile.hair, roughness: 0.8, metalness: 0.05 });
+  const lipMat = new THREE.MeshStandardMaterial({ color: new THREE.Color(profile.skin).multiplyScalar(0.7), roughness: 0.5 });
+  const eyeWhiteMat = new THREE.MeshStandardMaterial({ color: 0xf8f8f0, roughness: 0.15 });
+  const irisMat = new THREE.MeshStandardMaterial({ color: profile.eyeColor, roughness: 0.2, metalness: 0.1 });
+  const pupilMat = new THREE.MeshStandardMaterial({ color: 0x0a0a0a, roughness: 0.1 });
+  const clothMat = new THREE.MeshStandardMaterial({ color: 0x2c3e50, roughness: 0.7 });
 
-  // Body (cylinder + sphere shoulders)
-  const bodyMat = new THREE.MeshStandardMaterial({ color, roughness: 0.6, metalness: 0.1 });
-  const body = new THREE.Mesh(new THREE.CylinderGeometry(0.5, 0.6, 0.8, 32), bodyMat);
-  body.position.y = -1.2;
-  scene.add(body);
-  avatar3D.body = body;
+  // Head group (everything moves together)
+  const headGroup = new THREE.Group();
+  scene.add(headGroup);
+
+  // Head
+  const head = new THREE.Mesh(new THREE.SphereGeometry(0.48, 32, 32), skinMat);
+  head.scale.set(1, 1.12, 0.92);
+  headGroup.add(head);
+
+  // Nose
+  const nose = new THREE.Mesh(new THREE.ConeGeometry(0.06, 0.14, 8), skinMat);
+  nose.position.set(0, -0.04, 0.46);
+  nose.rotation.x = -0.3;
+  headGroup.add(nose);
+
+  // Eyebrows
+  const browMat = new THREE.MeshStandardMaterial({ color: profile.hair, roughness: 0.9 });
+  const leftBrow = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.02, 0.03), browMat);
+  leftBrow.position.set(-0.16, 0.2, 0.42);
+  leftBrow.rotation.z = 0.1;
+  headGroup.add(leftBrow);
+  const rightBrow = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.02, 0.03), browMat);
+  rightBrow.position.set(0.16, 0.2, 0.42);
+  rightBrow.rotation.z = -0.1;
+  headGroup.add(rightBrow);
+
+  // Eyes
+  const makeEye = (x) => {
+    const group = new THREE.Group();
+    const white = new THREE.Mesh(new THREE.SphereGeometry(0.075, 16, 16), eyeWhiteMat);
+    const iris = new THREE.Mesh(new THREE.SphereGeometry(0.04, 12, 12), irisMat);
+    iris.position.z = 0.05;
+    const pupil = new THREE.Mesh(new THREE.SphereGeometry(0.02, 8, 8), pupilMat);
+    pupil.position.z = 0.065;
+    const highlight = new THREE.Mesh(new THREE.SphereGeometry(0.008, 6, 6), new THREE.MeshBasicMaterial({ color: 0xffffff }));
+    highlight.position.set(0.02, 0.02, 0.075);
+    group.add(white, iris, pupil, highlight);
+    group.position.set(x, 0.08, 0.38);
+    return group;
+  };
+  const leftEye = makeEye(-0.16);
+  const rightEye = makeEye(0.16);
+  headGroup.add(leftEye, rightEye);
+
+  // Mouth (lips)
+  const upperLip = new THREE.Mesh(new THREE.TorusGeometry(0.07, 0.018, 8, 16, Math.PI), lipMat);
+  upperLip.position.set(0, -0.16, 0.41);
+  upperLip.rotation.z = Math.PI;
+  headGroup.add(upperLip);
+  const lowerLip = new THREE.Mesh(new THREE.TorusGeometry(0.065, 0.02, 8, 16, Math.PI), lipMat);
+  lowerLip.position.set(0, -0.18, 0.41);
+  headGroup.add(lowerLip);
+  // Mouth interior (dark)
+  const mouthInner = new THREE.Mesh(new THREE.PlaneGeometry(0.1, 0.01), new THREE.MeshBasicMaterial({ color: 0x1a0a0a, side: THREE.DoubleSide }));
+  mouthInner.position.set(0, -0.17, 0.415);
+  headGroup.add(mouthInner);
+
+  // Ears
+  const earGeo = new THREE.SphereGeometry(0.06, 8, 8);
+  const leftEar = new THREE.Mesh(earGeo, skinMat);
+  leftEar.position.set(-0.46, 0.02, 0);
+  leftEar.scale.set(0.5, 1, 0.7);
+  headGroup.add(leftEar);
+  const rightEar = new THREE.Mesh(earGeo, skinMat);
+  rightEar.position.set(0.46, 0.02, 0);
+  rightEar.scale.set(0.5, 1, 0.7);
+  headGroup.add(rightEar);
+
+  // Hair
+  const hairGroup = new THREE.Group();
+  if (profile.hairStyle === 'short' || profile.hairStyle === 'buzz' || profile.hairStyle === 'military') {
+    const cap = new THREE.Mesh(new THREE.SphereGeometry(0.5, 32, 32), hairMat);
+    cap.scale.set(1.02, 0.55, 0.95);
+    cap.position.y = 0.25;
+    hairGroup.add(cap);
+  } else if (profile.hairStyle === 'long' || profile.hairStyle === 'bob') {
+    const cap = new THREE.Mesh(new THREE.SphereGeometry(0.52, 32, 32), hairMat);
+    cap.scale.set(1.05, 0.6, 1);
+    cap.position.y = 0.22;
+    hairGroup.add(cap);
+    // Side hair
+    const sideL = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.08, profile.hairStyle === 'long' ? 0.6 : 0.3, 8), hairMat);
+    sideL.position.set(-0.4, profile.hairStyle === 'long' ? -0.2 : -0.05, 0);
+    hairGroup.add(sideL);
+    const sideR = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.08, profile.hairStyle === 'long' ? 0.6 : 0.3, 8), hairMat);
+    sideR.position.set(0.4, profile.hairStyle === 'long' ? -0.2 : -0.05, 0);
+    hairGroup.add(sideR);
+  } else if (profile.hairStyle === 'sleek') {
+    const cap = new THREE.Mesh(new THREE.SphereGeometry(0.51, 32, 32), hairMat);
+    cap.scale.set(1.03, 0.5, 0.98);
+    cap.position.y = 0.27;
+    hairGroup.add(cap);
+  } else if (profile.hairStyle === 'curly') {
+    for (let i = 0; i < 12; i++) {
+      const curl = new THREE.Mesh(new THREE.SphereGeometry(0.08, 8, 8), hairMat);
+      const angle = (i / 12) * Math.PI * 2;
+      curl.position.set(Math.cos(angle) * 0.38, 0.25 + Math.sin(i) * 0.05, Math.sin(angle) * 0.35);
+      hairGroup.add(curl);
+    }
+  } else if (profile.hairStyle === 'receding') {
+    const cap = new THREE.Mesh(new THREE.SphereGeometry(0.49, 32, 32), hairMat);
+    cap.scale.set(1, 0.35, 0.9);
+    cap.position.set(0, 0.32, -0.05);
+    hairGroup.add(cap);
+  } else {
+    const cap = new THREE.Mesh(new THREE.SphereGeometry(0.5, 32, 32), hairMat);
+    cap.scale.set(1.02, 0.5, 0.95);
+    cap.position.y = 0.25;
+    hairGroup.add(cap);
+  }
+  headGroup.add(hairGroup);
 
   // Neck
-  const neck = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.15, 0.3, 16), bodyMat);
-  neck.position.y = -0.65;
+  const neck = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.12, 0.2, 16), skinMat);
+  neck.position.y = -0.6;
   scene.add(neck);
 
-  // Head (sphere)
-  const headMat = new THREE.MeshStandardMaterial({ color, roughness: 0.4, metalness: 0.15 });
-  const head = new THREE.Mesh(new THREE.SphereGeometry(0.5, 32, 32), headMat);
-  head.scale.set(1, 1.15, 0.95);
-  head.position.y = 0;
-  scene.add(head);
-  avatar3D.head = head;
+  // Body/shoulders (clothing)
+  const body = new THREE.Mesh(new THREE.CylinderGeometry(0.45, 0.5, 0.7, 32), clothMat);
+  body.position.y = -1.1;
+  scene.add(body);
+  // Shoulder curves
+  const shoulderL = new THREE.Mesh(new THREE.SphereGeometry(0.18, 16, 16), clothMat);
+  shoulderL.position.set(-0.4, -0.8, 0);
+  scene.add(shoulderL);
+  const shoulderR = new THREE.Mesh(new THREE.SphereGeometry(0.18, 16, 16), clothMat);
+  shoulderR.position.set(0.4, -0.8, 0);
+  scene.add(shoulderR);
 
-  // Eyes (white spheres + dark pupils)
-  const eyeWhiteMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.2 });
-  const pupilMat = new THREE.MeshStandardMaterial({ color: 0x1a1a2e, roughness: 0.1, metalness: 0.3 });
+  // Collar detail
+  const collar = new THREE.Mesh(new THREE.TorusGeometry(0.14, 0.02, 8, 16, Math.PI), clothMat);
+  collar.position.set(0, -0.72, 0.1);
+  collar.rotation.x = 0.3;
+  scene.add(collar);
 
-  const leftEyeGroup = new THREE.Group();
-  const leftWhite = new THREE.Mesh(new THREE.SphereGeometry(0.09, 16, 16), eyeWhiteMat);
-  const leftPupil = new THREE.Mesh(new THREE.SphereGeometry(0.045, 12, 12), pupilMat);
-  leftPupil.position.z = 0.06;
-  leftEyeGroup.add(leftWhite, leftPupil);
-  leftEyeGroup.position.set(-0.17, 0.08, 0.4);
-  scene.add(leftEyeGroup);
-  avatar3D.leftEye = leftEyeGroup;
-
-  const rightEyeGroup = new THREE.Group();
-  const rightWhite = new THREE.Mesh(new THREE.SphereGeometry(0.09, 16, 16), eyeWhiteMat);
-  const rightPupil = new THREE.Mesh(new THREE.SphereGeometry(0.045, 12, 12), pupilMat);
-  rightPupil.position.z = 0.06;
-  rightEyeGroup.add(rightWhite, rightPupil);
-  rightEyeGroup.position.set(0.17, 0.08, 0.4);
-  scene.add(rightEyeGroup);
-  avatar3D.rightEye = rightEyeGroup;
-
-  // Mouth (torus for closed, scaled for open)
-  const mouthMat = new THREE.MeshStandardMaterial({ color: 0x2a1a3a, roughness: 0.5 });
-  const mouth = new THREE.Mesh(new THREE.TorusGeometry(0.08, 0.02, 8, 16, Math.PI), mouthMat);
-  mouth.position.set(0, -0.18, 0.42);
-  mouth.rotation.x = Math.PI * 0.1;
-  scene.add(mouth);
-  avatar3D.mouth = mouth;
-
-  // Status light
-  const statusMat = new THREE.MeshBasicMaterial({ color: 0x10b981 });
-  const statusLight = new THREE.Mesh(new THREE.SphereGeometry(0.04, 8, 8), statusMat);
-  statusLight.position.set(0.45, 0.4, 0.2);
-  scene.add(statusLight);
-  avatar3D.statusLight = statusLight;
-  avatar3D.statusMat = statusMat;
+  // Store references
+  avatar3D = { scene, camera, renderer, headGroup, leftEye, rightEye, upperLip, lowerLip, mouthInner, leftBrow, rightBrow, body };
 
   // Animation loop
   function animate() {
     avatarState.animationFrame = requestAnimationFrame(animate);
     const t = Date.now() / 1000;
 
-    // Idle sway
-    if (avatar3D.head) {
-      avatar3D.head.rotation.y = Math.sin(t * 0.4) * 0.05 + avatarState.headRotation.x * 0.01;
-      avatar3D.head.rotation.x = Math.sin(t * 0.3) * 0.02 + avatarState.headRotation.y * 0.01;
-      avatar3D.head.position.y = Math.sin(t * 0.5) * 0.01;
+    // Idle head sway
+    headGroup.rotation.y = Math.sin(t * 0.4) * 0.04 + avatarState.headRotation.x * 0.008;
+    headGroup.rotation.x = Math.sin(t * 0.3) * 0.015 + avatarState.headRotation.y * 0.005;
+    headGroup.position.y = Math.sin(t * 0.5) * 0.005;
+
+    // Eye tracking
+    const eyeX = Math.sin(t * 0.2) * 0.02;
+    const eyeY = Math.sin(t * 0.15) * 0.01;
+    leftEye.rotation.y = eyeX;
+    leftEye.rotation.x = eyeY;
+    rightEye.rotation.y = eyeX;
+    rightEye.rotation.x = eyeY;
+
+    // Natural blink (every ~3-5 seconds)
+    const blinkCycle = t % 4;
+    const blink = blinkCycle > 3.85 && blinkCycle < 3.95;
+    leftEye.scale.y = blink ? 0.05 : 1;
+    rightEye.scale.y = blink ? 0.05 : 1;
+
+    // Eyebrow raise when speaking
+    if (avatarState.speaking) {
+      leftBrow.position.y = 0.22 + Math.sin(t * 3) * 0.01;
+      rightBrow.position.y = 0.22 + Math.sin(t * 3 + 0.5) * 0.01;
+    } else {
+      leftBrow.position.y = 0.2;
+      rightBrow.position.y = 0.2;
     }
-
-    // Eye tracking (subtle wander)
-    const eyeX = Math.sin(t * 0.2) * 0.015;
-    if (avatar3D.leftEye) { avatar3D.leftEye.rotation.y = eyeX; avatar3D.leftEye.rotation.x = Math.sin(t * 0.15) * 0.01; }
-    if (avatar3D.rightEye) { avatar3D.rightEye.rotation.y = eyeX; avatar3D.rightEye.rotation.x = Math.sin(t * 0.15) * 0.01; }
-
-    // Blink
-    const blink = Math.sin(t * 0.3) > 0.97;
-    const blinkScale = blink ? 0.1 : 1;
-    if (avatar3D.leftEye) avatar3D.leftEye.scale.y = blinkScale;
-    if (avatar3D.rightEye) avatar3D.rightEye.scale.y = blinkScale;
 
     // Mouth — open when speaking
-    if (avatar3D.mouth) {
-      const openness = avatarState.mouthOpenness;
-      avatar3D.mouth.scale.set(1, 1 + openness * 3, 1);
-      avatar3D.mouth.position.y = -0.18 - openness * 0.05;
-    }
-
-    // Status light color
-    if (avatar3D.statusMat) {
-      avatar3D.statusMat.color.set(avatarState.speaking ? 0xf59e0b : avatarState.listening ? 0xef4444 : 0x10b981);
-    }
+    const open = avatarState.mouthOpenness;
+    lowerLip.position.y = -0.18 - open * 0.06;
+    mouthInner.scale.y = 1 + open * 8;
+    mouthInner.position.y = -0.17 - open * 0.03;
 
     renderer.render(scene, camera);
   }
-
   animate();
 }
 
 function updateAvatarColor() {
-  const color = new THREE.Color(avatarState.color);
-  if (avatar3D.head) avatar3D.head.material.color.copy(color);
-  if (avatar3D.body) avatar3D.body.material.color.copy(color);
+  const profile = AVATAR_PROFILES[avatarState.employee] || AVATAR_PROFILES.atlas;
+  // Rebuild the entire avatar with new profile
+  const canvas = document.getElementById('avatarCanvas');
+  if (canvas && typeof THREE !== 'undefined') {
+    if (avatarState.animationFrame) cancelAnimationFrame(avatarState.animationFrame);
+    buildAvatar3D(canvas, profile);
+  }
 }
 
 function switchAvatarEmployee() {
@@ -6332,11 +6432,12 @@ async function speakText(text) {
   // Try Google Cloud TTS first (natural voice)
   try {
     const token = localStorage.getItem('ai-os-token');
+    const profile = AVATAR_PROFILES[avatarState.employee] || {};
     const res = await fetch('/api/tts', {
       method: 'POST',
       credentials: 'same-origin',
       headers: { 'Content-Type': 'application/json', ...(token ? { 'Authorization': `Bearer ${token}` } : {}) },
-      body: JSON.stringify({ text: text.substring(0, 2000) }),
+      body: JSON.stringify({ text: text.substring(0, 2000), voice: profile.voice || 'en-US-Journey-D' }),
     });
     const data = await res.json();
 
@@ -6359,14 +6460,20 @@ async function speakText(text) {
 function speakTextBrowserFallback(text) {
   if (!window.speechSynthesis) return;
 
+  const profile = AVATAR_PROFILES[avatarState.employee] || {};
   window.speechSynthesis.cancel();
   const utterance = new SpeechSynthesisUtterance(text);
-  utterance.rate = 1.0;
-  utterance.pitch = 1.0;
+  utterance.rate = profile.fallbackRate || 1.0;
+  utterance.pitch = profile.fallbackPitch || 1.0;
   utterance.volume = 0.8;
 
   const voices = window.speechSynthesis.getVoices();
-  const preferred = voices.find(v => v.name.includes('Google') && v.lang.startsWith('en')) ||
+  // Try to match gender
+  const genderFilter = profile.gender === 'F'
+    ? v => (v.name.toLowerCase().includes('female') || v.name.includes('Samantha') || v.name.includes('Victoria') || v.name.includes('Karen'))
+    : v => (v.name.toLowerCase().includes('male') || v.name.includes('Daniel') || v.name.includes('James') || v.name.includes('David'));
+  const preferred = voices.find(v => v.lang.startsWith('en') && genderFilter(v)) ||
+                    voices.find(v => v.name.includes('Google') && v.lang.startsWith('en')) ||
                     voices.find(v => v.lang.startsWith('en-US')) || voices[0];
   if (preferred) utterance.voice = preferred;
 
