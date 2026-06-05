@@ -140,6 +140,9 @@
         <a href="#" class="nav-item" data-view="monitoring">
           <span class="nav-icon">&#128200;</span> Monitoring
         </a>
+        <a href="#" class="nav-item" data-view="avatar-chat">
+          <span class="nav-icon">&#129489;</span> Avatar Chat
+        </a>
         <a href="#" class="nav-item" data-view="artifacts">
           <span class="nav-icon">&#9776;</span> Artifacts
         </a>
@@ -1328,6 +1331,55 @@
           </div>
         </div>
 
+        <!-- Avatar Chat View -->
+        <div class="view" id="view-avatar-chat">
+          <div class="radar-header">
+            <div class="radar-header-left">
+              <h2 class="radar-title">Avatar Chat</h2>
+              <span class="radar-subtitle">Talk to your AI employees — 3D avatars with voice interaction</span>
+            </div>
+          </div>
+
+          <div class="avatar-chat-layout">
+            <div class="avatar-3d-container">
+              <canvas id="avatarCanvas"></canvas>
+              <div class="avatar-3d-name" id="avatarName">Atlas — CEO</div>
+              <div class="avatar-3d-status" id="avatarStatus">Idle</div>
+              <div class="avatar-employee-select">
+                <select id="avatarSelect" onchange="switchAvatarEmployee()">
+                  <option value="atlas" data-color="#3b52cc">Atlas — CEO</option>
+                  <option value="nova" data-color="#0891b2">Nova — CTO</option>
+                  <option value="justice" data-color="#57534e">Justice — General Counsel</option>
+                  <option value="muse" data-color="#db2777">Muse — Creative Director</option>
+                  <option value="forge" data-color="#d97706">Forge — Engineering Lead</option>
+                  <option value="echo" data-color="#059669">Echo — Marketing Director</option>
+                  <option value="hermes" data-color="#7c3aed">Hermes — Operations</option>
+                  <option value="harbor" data-color="#b45309">Harbor — Support Lead</option>
+                  <option value="hawkeye" data-color="#b91c1c">Hawkeye — Intel Analyst</option>
+                  <option value="ledger" data-color="#15803d">Ledger — CFO</option>
+                </select>
+              </div>
+            </div>
+
+            <div class="avatar-chat-panel">
+              <div class="avatar-messages" id="avatarMessages"></div>
+
+              <div class="avatar-input-area">
+                <div class="avatar-voice-controls">
+                  <button class="avatar-mic-btn" id="avatarMicBtn" onclick="toggleVoiceInput()" title="Click to speak">
+                    <span id="micIcon">&#127908;</span>
+                  </button>
+                  <button class="avatar-speaker-btn" id="avatarSpeakerBtn" onclick="toggleTTS()" title="Toggle voice output">
+                    <span id="speakerIcon">&#128264;</span>
+                  </button>
+                </div>
+                <input type="text" class="avatar-text-input" id="avatarInput" placeholder="Type or click the mic to speak..." onkeydown="if(event.key==='Enter')sendAvatarMessage()">
+                <button class="avatar-send-btn" onclick="sendAvatarMessage()">&#10148;</button>
+              </div>
+            </div>
+          </div>
+        </div>
+
         <!-- Monitoring & Analytics View -->
         <div class="view" id="view-monitoring">
           <div class="radar-header">
@@ -1765,6 +1817,6 @@
     </div>
   </div>
 
-  <script src="js/app.js?v=19"></script>
+  <script src="js/app.js?v=20"></script>
 </body>
 </html>
