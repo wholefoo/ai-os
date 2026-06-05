@@ -1543,6 +1543,44 @@
                     <button class="btn btn-sm" onclick="testConnection('manus')">Test</button>
                   </div>
                 </div>
+                <div class="settings-field">
+                  <label class="settings-label">LiveKit API Key <span class="settings-tier">Real-time avatar pipeline</span></label>
+                  <div class="settings-input-row">
+                    <input type="text" class="settings-input settings-secret" id="set-livekit_api_key" placeholder="API..." autocomplete="new-password" data-lpignore="true" data-1p-ignore spellcheck="false">
+                    <button type="button" class="btn btn-sm settings-eye" onclick="toggleKeyVisibility(this)" title="Show/hide">&#128065;</button>
+                    <span class="settings-status" id="status-livekit_api_key"></span>
+                  </div>
+                </div>
+                <div class="settings-field">
+                  <label class="settings-label">LiveKit API Secret</label>
+                  <div class="settings-input-row">
+                    <input type="text" class="settings-input settings-secret" id="set-livekit_api_secret" placeholder="Secret..." autocomplete="new-password" data-lpignore="true" data-1p-ignore spellcheck="false">
+                    <button type="button" class="btn btn-sm settings-eye" onclick="toggleKeyVisibility(this)" title="Show/hide">&#128065;</button>
+                    <span class="settings-status" id="status-livekit_api_secret"></span>
+                  </div>
+                </div>
+                <div class="settings-field">
+                  <label class="settings-label">LiveKit WebSocket URL</label>
+                  <div class="settings-input-row">
+                    <input type="text" class="settings-input" id="set-livekit_url" placeholder="wss://your-project.livekit.cloud" autocomplete="off" spellcheck="false">
+                  </div>
+                </div>
+                <div class="settings-field">
+                  <label class="settings-label">Deepgram API Key <span class="settings-tier">Speech-to-text (Nova-3)</span></label>
+                  <div class="settings-input-row">
+                    <input type="text" class="settings-input settings-secret" id="set-deepgram_api_key" placeholder="dg-..." autocomplete="new-password" data-lpignore="true" data-1p-ignore spellcheck="false">
+                    <button type="button" class="btn btn-sm settings-eye" onclick="toggleKeyVisibility(this)" title="Show/hide">&#128065;</button>
+                    <span class="settings-status" id="status-deepgram_api_key"></span>
+                  </div>
+                </div>
+                <div class="settings-field">
+                  <label class="settings-label">Cartesia API Key <span class="settings-tier">TTS — Sonic 3 (sub-100ms)</span></label>
+                  <div class="settings-input-row">
+                    <input type="text" class="settings-input settings-secret" id="set-cartesia_api_key" placeholder="sk_car_..." autocomplete="new-password" data-lpignore="true" data-1p-ignore spellcheck="false">
+                    <button type="button" class="btn btn-sm settings-eye" onclick="toggleKeyVisibility(this)" title="Show/hide">&#128065;</button>
+                    <span class="settings-status" id="status-cartesia_api_key"></span>
+                  </div>
+                </div>
               </div>
               <div id="settings-ai-debug" style="font-size:11px; color: var(--text-secondary); margin-bottom:8px;"></div>
               <button class="btn btn-primary settings-save" onclick="saveSettings('ai')">Save AI Keys</button>
@@ -1818,6 +1856,6 @@
     </div>
   </div>
 
-  <script src="js/app.js?v=23"></script>
+  <script src="js/app.js?v=24"></script>
 </body>
 </html>
