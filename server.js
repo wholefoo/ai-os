@@ -6894,8 +6894,31 @@ app.post('/api/seo/audit', requireAdmin, async (req, res) => {
   broadcast({ event: 'seo_audit_started', data: { id: auditId, domain: audit.domain } });
   logActivity('seo', `SEO audit started: ${audit.domain}`, { auditId });
 
+  // Real DataForSEO audit path
+  if (!DEMO_MODE && settings.seo.dataforseo_login && settings.seo.dataforseo_password) {
+    runRealSeoAudit(audit, auditId).catch(e => {
+      console.error('[SEO] Real audit failed:', e.message);
+      // Mark failed agents and complete with partial data
+      const agentNames = ['keyword', 'technical', 'competitor', 'content', 'backlink'];
+      agentNames.forEach(name => {
+        if (audit.agents[name].status === 'running') {
+          audit.agents[name].status = 'error';
+          audit.agents[name].findings = [{ severity: 'critical', issue: `DataForSEO error: ${e.message}`, recommendation: 'Check DataForSEO credentials in Settings and ensure sufficient API credits.' }];
+        }
+      });
+      audit.status = 'complete';
+      audit.completedAt = new Date().toISOString();
+      const scores = agentNames.map(n => audit.agents[n].score || 0);
+      audit.compositeScore = Math.round(scores.reduce((a, b) => a + b, 0) / Math.max(scores.filter(s => s > 0).length, 1));
+      audit.executiveSummary = `Audit partially completed with errors. ${e.message}`;
+      audit.quickWins = generateQuickWins(audit);
+      audit.actionPlan = generateActionPlan(audit);
+      saveState('seo_audits', seoAudits);
+      broadcast({ event: 'seo_audit_complete', data: { auditId, compositeScore: audit.compositeScore } });
+    });
+  }
   // Simulate parallel agent execution (demo mode)
-  if (DEMO_MODE) {
+  else if (DEMO_MODE) {
     const agentNames = ['keyword', 'technical', 'competitor', 'content', 'backlink'];
     const delays = [2000, 3000, 2500, 3500, 4000];
 
@@ -7051,6 +7074,361 @@ app.post('/api/seo/meta/:id', requireAdmin, (req, res) => {
   logActivity('seo', `Meta tags optimized: ${audit.domain} (${pages.length} pages)`, { auditId: audit.id });
   res.json({ ok: true, domain: audit.domain, pages });
 });
+
+// --- Real DataForSEO Integration ---
+
+function dfsAuthHeader() {
+  return 'Basic ' + Buffer.from(`${settings.seo.dataforseo_login}:${settings.seo.dataforseo_password}`).toString('base64');
+}
+
+async function dfsRequest(endpoint, body) {
+  const res = await fetch(`https://api.dataforseo.com/v3/${endpoint}`, {
+    method: 'POST',
+    headers: { 'Authorization': dfsAuthHeader(), 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) throw new Error(`DataForSEO HTTP ${res.status}`);
+  const data = await res.json();
+  if (data.status_code !== 20000) throw new Error(data.status_message || `DataForSEO error ${data.status_code}`);
+  return data;
+}
+
+async function runRealSeoAudit(audit, auditId) {
+  const domain = audit.domain;
+  const location = settings.seo.default_location || 'United States';
+  const language = settings.seo.default_language || 'en';
+  const agentNames = ['keyword', 'technical', 'competitor', 'content', 'backlink'];
+
+  // Run all 5 agents in parallel
+  const results = await Promise.allSettled([
+    runKeywordAgent(domain, location, language),
+    runTechnicalAgent(domain),
+    runCompetitorAgent(domain, location, language),
+    runContentAgent(domain),
+    runBacklinkAgent(domain),
+  ]);
+
+  // Process results
+  results.forEach((result, i) => {
+    const name = agentNames[i];
+    if (result.status === 'fulfilled' && result.value) {
+      audit.agents[name] = { ...audit.agents[name], ...result.value, status: 'complete', completedAt: new Date().toISOString() };
+    } else {
+      audit.agents[name].status = 'error';
+      audit.agents[name].score = 0;
+      audit.agents[name].findings = [{ severity: 'critical', issue: `Agent failed: ${result.reason?.message || 'Unknown error'}`, recommendation: 'Check API credits and try again.' }];
+      audit.agents[name].completedAt = new Date().toISOString();
+    }
+    broadcast({ event: 'seo_agent_complete', data: { auditId, agent: name, score: audit.agents[name].score } });
+  });
+
+  // Composite score
+  const scores = agentNames.map(n => audit.agents[n].score || 0);
+  const validScores = scores.filter(s => s > 0);
+  audit.compositeScore = validScores.length ? Math.round(validScores.reduce((a, b) => a + b, 0) / validScores.length) : 0;
+  audit.status = 'complete';
+  audit.completedAt = new Date().toISOString();
+  audit.executiveSummary = generateExecutiveSummary(audit);
+  audit.quickWins = generateQuickWins(audit);
+  audit.actionPlan = generateActionPlan(audit);
+
+  // Track cost (~$0.10-0.30 per audit)
+  costLedger.push({
+    id: uuidv4(), agent: 'seo-audit', model: 'dataforseo', skill: 'seo-audit',
+    inputTokens: 0, outputTokens: 0, cost: 0.20,
+    timestamp: new Date().toISOString(),
+  });
+
+  saveState('seo_audits', seoAudits);
+  broadcast({ event: 'seo_audit_complete', data: { auditId, compositeScore: audit.compositeScore } });
+  logActivity('seo', `SEO audit complete (real): ${audit.domain} — score ${audit.compositeScore}/100`, { auditId });
+}
+
+// --- Keyword Agent (DataForSEO Labs) ---
+async function runKeywordAgent(domain, location, language) {
+  const findings = [];
+  let score = 50;
+
+  try {
+    // Get ranked keywords for the domain
+    const ranked = await dfsRequest('dataforseo_labs/google/ranked_keywords/live', [{
+      target: domain, location_name: location, language_name: language === 'en' ? 'English' : language, limit: 50,
+    }]);
+
+    const keywords = ranked.tasks?.[0]?.result?.[0]?.items || [];
+    const totalRanked = ranked.tasks?.[0]?.result?.[0]?.total_count || 0;
+
+    if (totalRanked === 0) {
+      findings.push({ severity: 'critical', issue: `No organic rankings found for ${domain}`, recommendation: 'The domain has no search visibility. Start with keyword research and create content targeting low-competition terms.' });
+      score = 15;
+    } else {
+      score = Math.min(90, 30 + Math.floor(totalRanked / 5));
+
+      // Top 10 keywords
+      const top10 = keywords.filter(k => k.keyword_data?.keyword_info?.search_volume > 0).slice(0, 10);
+      if (top10.length > 0) {
+        findings.push({ severity: 'info', issue: `Ranking for ${totalRanked} keywords. Top: ${top10.map(k => k.keyword_data?.keyword).join(', ')}`, recommendation: 'Focus on improving positions for high-volume keywords currently ranking 4-20.' });
+      }
+
+      // Find keywords ranking 11-20 (opportunity zone)
+      const nearFirst = keywords.filter(k => k.ranked_serp_element?.serp_item?.rank_absolute >= 11 && k.ranked_serp_element?.serp_item?.rank_absolute <= 20);
+      if (nearFirst.length > 0) {
+        findings.push({ severity: 'high', issue: `${nearFirst.length} keywords ranking on page 2 (positions 11-20) — close to first page`, recommendation: `Optimize content for: ${nearFirst.slice(0, 5).map(k => k.keyword_data?.keyword).join(', ')}. Small improvements could push these to page 1.` });
+      }
+    }
+
+    // Get keyword suggestions
+    try {
+      const suggestions = await dfsRequest('dataforseo_labs/google/keyword_suggestions/live', [{
+        target: domain, location_name: location, language_name: language === 'en' ? 'English' : language, limit: 20,
+      }]);
+      const sugItems = suggestions.tasks?.[0]?.result?.[0]?.items || [];
+      if (sugItems.length > 0) {
+        const topSuggestions = sugItems.slice(0, 5).map(s => s.keyword).join(', ');
+        findings.push({ severity: 'medium', issue: `Keyword opportunities found: ${topSuggestions}`, recommendation: 'Create dedicated content targeting these suggested keywords to expand search visibility.' });
+      }
+    } catch {}
+
+  } catch (e) {
+    findings.push({ severity: 'critical', issue: `Keyword research failed: ${e.message}`, recommendation: 'Verify DataForSEO credentials and API credits.' });
+    score = 0;
+  }
+
+  return { score, findings };
+}
+
+// --- Technical Agent (OnPage) ---
+async function runTechnicalAgent(domain) {
+  const findings = [];
+  let score = 50;
+
+  try {
+    // Use instant pages for quick technical check
+    const result = await dfsRequest('on_page/instant_pages', [{
+      url: `https://${domain}`, limit: 10, enable_javascript: true,
+    }]);
+
+    const pages = result.tasks?.[0]?.result || [];
+    if (pages.length === 0) {
+      findings.push({ severity: 'critical', issue: 'Could not crawl the domain', recommendation: 'Ensure the domain is accessible and not blocking crawlers.' });
+      score = 10;
+      return { score, findings };
+    }
+
+    let issues = 0;
+    for (const page of pages) {
+      const item = page.items?.[0] || page;
+      const statusCode = item.status_code || item.resource_errors?.status_code;
+
+      if (statusCode && statusCode >= 400) {
+        findings.push({ severity: 'high', issue: `Page returns HTTP ${statusCode}: ${item.url || domain}`, recommendation: `Fix the ${statusCode} error. If the page was removed, set up a 301 redirect.` });
+        issues++;
+      }
+
+      if (item.meta?.title && item.meta.title.length > 60) {
+        findings.push({ severity: 'medium', issue: `Title tag too long (${item.meta.title.length} chars): "${item.meta.title.substring(0, 50)}..."`, recommendation: 'Shorten to under 60 characters while keeping the primary keyword.' });
+        issues++;
+      }
+
+      if (!item.meta?.description) {
+        findings.push({ severity: 'high', issue: `Missing meta description: ${item.url || domain}`, recommendation: 'Add a compelling meta description under 155 characters with a call to action.' });
+        issues++;
+      }
+
+      if (item.page_timing?.time_to_interactive > 5000) {
+        findings.push({ severity: 'high', issue: `Slow page load: ${Math.round(item.page_timing.time_to_interactive / 1000)}s time-to-interactive`, recommendation: 'Optimize images, defer non-critical JS, enable compression.' });
+        issues++;
+      }
+
+      if (!item.meta?.htags?.h1 || item.meta.htags.h1.length === 0) {
+        findings.push({ severity: 'high', issue: `Missing H1 tag: ${item.url || domain}`, recommendation: 'Add a single H1 tag containing the primary keyword for the page.' });
+        issues++;
+      }
+    }
+
+    // Score based on issues found
+    score = Math.max(10, 90 - (issues * 8));
+
+    if (issues === 0) {
+      findings.push({ severity: 'info', issue: 'No critical technical issues detected on sampled pages', recommendation: 'Continue monitoring. Consider a deeper crawl with more pages.' });
+    }
+
+  } catch (e) {
+    findings.push({ severity: 'critical', issue: `Technical audit failed: ${e.message}`, recommendation: 'Verify DataForSEO credentials.' });
+    score = 0;
+  }
+
+  return { score, findings };
+}
+
+// --- Competitor Agent (DataForSEO Labs) ---
+async function runCompetitorAgent(domain, location, language) {
+  const findings = [];
+  let score = 50;
+
+  try {
+    const result = await dfsRequest('dataforseo_labs/google/competitors_domain/live', [{
+      target: domain, location_name: location, language_name: language === 'en' ? 'English' : language, limit: 10,
+    }]);
+
+    const competitors = result.tasks?.[0]?.result?.[0]?.items || [];
+    if (competitors.length === 0) {
+      findings.push({ severity: 'medium', issue: 'No organic competitors found', recommendation: 'The domain may be too new or have insufficient rankings for competitor comparison.' });
+      score = 30;
+    } else {
+      score = 60;
+      const topCompetitors = competitors.slice(0, 5);
+      findings.push({
+        severity: 'info',
+        issue: `Top ${topCompetitors.length} competitors: ${topCompetitors.map(c => c.domain).join(', ')}`,
+        recommendation: 'Analyze these competitors for content gaps and link building opportunities.',
+      });
+
+      // Check competitor keyword overlap
+      for (const comp of topCompetitors.slice(0, 3)) {
+        const overlap = comp.avg_position;
+        const compKeywords = comp.relevant_serp_items || 0;
+        if (compKeywords > 0) {
+          findings.push({
+            severity: 'medium',
+            issue: `${comp.domain} ranks for ${compKeywords} overlapping keywords (avg position: ${Math.round(overlap || 0)})`,
+            recommendation: `Analyze ${comp.domain}'s top content and create competing pages for shared keywords where you rank lower.`,
+          });
+        }
+      }
+
+      if (competitors.length >= 5) score = 70;
+    }
+
+  } catch (e) {
+    findings.push({ severity: 'critical', issue: `Competitor analysis failed: ${e.message}`, recommendation: 'Verify DataForSEO credentials.' });
+    score = 0;
+  }
+
+  return { score, findings };
+}
+
+// --- Content Agent (OnPage + Content Parsing) ---
+async function runContentAgent(domain) {
+  const findings = [];
+  let score = 50;
+
+  try {
+    const result = await dfsRequest('on_page/instant_pages', [{
+      url: `https://${domain}`, limit: 5, enable_javascript: true,
+    }]);
+
+    const pages = result.tasks?.[0]?.result || [];
+    let thinPages = 0, missingMeta = 0, totalWordCount = 0, pageCount = 0;
+
+    for (const page of pages) {
+      const item = page.items?.[0] || page;
+      const wordCount = item.meta?.content?.plain_text_word_count || 0;
+      totalWordCount += wordCount;
+      pageCount++;
+
+      if (wordCount < 300 && wordCount > 0) {
+        findings.push({ severity: 'high', issue: `Thin content (${wordCount} words): ${item.url || domain}`, recommendation: 'Expand to at least 800 words with unique, valuable content addressing user intent.' });
+        thinPages++;
+      }
+
+      if (item.meta?.description && item.meta.description.length < 50) {
+        findings.push({ severity: 'medium', issue: `Weak meta description (${item.meta.description.length} chars)`, recommendation: 'Write a compelling description of 120-155 characters with a call to action.' });
+        missingMeta++;
+      }
+
+      // Check for duplicate titles
+      if (item.meta?.title) {
+        const dupes = pages.filter(p => (p.items?.[0] || p).meta?.title === item.meta.title);
+        if (dupes.length > 1) {
+          findings.push({ severity: 'medium', issue: `Duplicate title tag found across ${dupes.length} pages`, recommendation: 'Each page needs a unique title tag targeting different keywords.' });
+        }
+      }
+    }
+
+    const avgWords = pageCount > 0 ? Math.round(totalWordCount / pageCount) : 0;
+    if (avgWords < 300) {
+      findings.push({ severity: 'high', issue: `Low average word count across pages: ${avgWords} words`, recommendation: 'Most pages need significantly more content. Aim for 800-1500 words on service/landing pages.' });
+    }
+
+    score = Math.max(10, 80 - (thinPages * 12) - (missingMeta * 5));
+    if (thinPages === 0 && missingMeta === 0) {
+      findings.push({ severity: 'info', issue: `Content looks healthy. Average ${avgWords} words per page.`, recommendation: 'Consider adding a blog for long-tail keyword coverage.' });
+      score = Math.max(score, 75);
+    }
+
+  } catch (e) {
+    findings.push({ severity: 'critical', issue: `Content analysis failed: ${e.message}`, recommendation: 'Verify DataForSEO credentials.' });
+    score = 0;
+  }
+
+  return { score, findings };
+}
+
+// --- Backlink Agent ---
+async function runBacklinkAgent(domain) {
+  const findings = [];
+  let score = 50;
+
+  try {
+    // Get backlink overview
+    const result = await dfsRequest('backlinks/summary/live', [{
+      target: domain, internal_list_limit: 0, backlinks_filters: ['dofollow', '=', 'true'],
+    }]);
+
+    const summary = result.tasks?.[0]?.result?.[0] || {};
+    const referringDomains = summary.referring_domains || 0;
+    const totalBacklinks = summary.backlinks || 0;
+    const brokenBacklinks = summary.broken_backlinks || 0;
+    const spamScore = summary.rank || 0;
+
+    if (referringDomains === 0) {
+      findings.push({ severity: 'critical', issue: 'No referring domains detected', recommendation: 'Start a link building campaign: submit to directories, guest post on industry blogs, create link-worthy content.' });
+      score = 10;
+    } else {
+      score = Math.min(90, 20 + Math.floor(referringDomains * 1.5));
+
+      findings.push({
+        severity: 'info',
+        issue: `Backlink profile: ${referringDomains} referring domains, ${totalBacklinks} total backlinks`,
+        recommendation: referringDomains < 20
+          ? 'Backlink profile is thin. Prioritize building quality referring domains over raw link count.'
+          : 'Solid foundation. Focus on acquiring links from high-authority domains in your industry.',
+      });
+
+      if (brokenBacklinks > 0) {
+        findings.push({
+          severity: 'high',
+          issue: `${brokenBacklinks} broken backlinks detected (link equity lost)`,
+          recommendation: 'Set up 301 redirects for URLs with incoming backlinks that now return 404 to recapture link equity.',
+        });
+        score -= 5;
+      }
+    }
+
+    // Get backlink competitors
+    try {
+      const compResult = await dfsRequest('backlinks/competitors/live', [{
+        target: domain, limit: 5,
+      }]);
+      const blCompetitors = compResult.tasks?.[0]?.result || [];
+      if (blCompetitors.length > 0) {
+        const topBLComp = blCompetitors.slice(0, 3).map(c => c.target).join(', ');
+        findings.push({
+          severity: 'medium',
+          issue: `Backlink competitors: ${topBLComp}`,
+          recommendation: 'Analyze where these competitors get links and pursue similar opportunities.',
+        });
+      }
+    } catch {}
+
+  } catch (e) {
+    findings.push({ severity: 'critical', issue: `Backlink analysis failed: ${e.message}`, recommendation: 'Verify DataForSEO credentials.' });
+    score = 0;
+  }
+
+  return { score, findings };
+}
 
 // --- SEO Demo Data Generators ---
 function generateSeoFindings(agentName, domain) {
