@@ -5651,6 +5651,7 @@ body {
 .platform-history-title { flex: 1; }
 .platform-history-status { font-size: 11px; color: var(--text-muted); font-weight: 600; text-transform: uppercase; }
 .platform-history-date { font-size: 11px; color: var(--text-muted); min-width: 80px; text-align: right; }
+.platform-history-steps { font-size: 10px; color: var(--success); background: rgba(16,185,129,0.1); padding: 2px 8px; border-radius: 3px; cursor: help; }
 
 /* --- White-Label Licensing --- */
 .franchise-stats { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 12px; margin-bottom: 20px; }
