@@ -473,11 +473,11 @@ app.use(helmet({
   contentSecurityPolicy: {
     directives: {
       defaultSrc: ["'self'"],
-      scriptSrc: ["'self'", "'unsafe-inline'", "https://www.googletagmanager.com", "https://www.google-analytics.com", "https://cdnjs.cloudflare.com"],
+      scriptSrc: ["'self'", "'unsafe-inline'", "https://www.googletagmanager.com", "https://www.google-analytics.com", "https://cdn.jsdelivr.net"],
       scriptSrcAttr: ["'unsafe-inline'"],  // Required for onclick handlers in HTML
       styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
       fontSrc: ["'self'", "https://fonts.gstatic.com"],
-      connectSrc: ["'self'", "ws:", "wss:", "https://www.google-analytics.com", "https://analytics.google.com", "https://*.google-analytics.com", "https://*.analytics.google.com"],
+      connectSrc: ["'self'", "ws:", "wss:", "https://www.google-analytics.com", "https://analytics.google.com", "https://*.google-analytics.com", "https://*.analytics.google.com", "wss://*.livekit.cloud"],
       imgSrc: ["'self'", "data:", "blob:", "https://www.google-analytics.com", "https://www.googletagmanager.com"],
     }
   }
@@ -887,7 +887,7 @@ app.get('/api/onboarding/status', requireAdmin, (req, res) => {
 // --- LiveKit Voice Agent Token Generation ---
 // Clients connect to LiveKit Cloud via a token; the agent runs server-side
 
-app.post('/api/livekit/token', requireAdmin, (req, res) => {
+app.post('/api/livekit/token', requireAdmin, async (req, res) => {
   const { employee } = req.body;
   const lkKey = settings.ai.livekit_api_key;
   const lkSecret = settings.ai.livekit_api_secret;
@@ -897,25 +897,41 @@ app.post('/api/livekit/token', requireAdmin, (req, res) => {
     return res.json({ ok: false, error: 'LiveKit not configured — add API Key, Secret, and URL in Settings', fallback: true });
   }
 
-  // Generate a simple JWT token for LiveKit room access
-  // In production, use the @livekit/server-sdk package. For now, return config for client-side connection.
   const roomName = `avatar-${employee || 'atlas'}-${Date.now()}`;
+  const identity = `user-${uuidv4().substring(0, 8)}`;
+
+  // Generate JWT token for room access
+  // Simple JWT without the full @livekit/server-sdk (avoids extra dependency on main server)
+  const header = Buffer.from(JSON.stringify({ alg: 'HS256', typ: 'JWT' })).toString('base64url');
+  const now = Math.floor(Date.now() / 1000);
+  const payload = Buffer.from(JSON.stringify({
+    iss: lkKey,
+    sub: identity,
+    iat: now,
+    nbf: now,
+    exp: now + 3600, // 1 hour
+    jti: identity,
+    video: {
+      room: roomName,
+      roomJoin: true,
+      canPublish: true,
+      canSubscribe: true,
+      canPublishData: true,
+    },
+    metadata: JSON.stringify({ employee: employee || 'atlas' }),
+  })).toString('base64url');
+
+  const crypto = require('crypto');
+  const signature = crypto.createHmac('sha256', lkSecret).update(`${header}.${payload}`).digest('base64url');
+  const token = `${header}.${payload}.${signature}`;
 
   res.json({
     ok: true,
-    livekit: {
-      url: lkUrl,
-      roomName,
-      employee: employee || 'atlas',
-    },
-    // Return service keys for the client to use directly in the LiveKit JS SDK
-    // (In production, generate proper JWT tokens server-side)
-    config: {
-      deepgramKey: settings.ai.deepgram_api_key ? true : false,
-      cartesiaKey: settings.ai.cartesia_api_key ? true : false,
-      anthropicKey: settings.ai.anthropic_api_key ? true : false,
-    },
-    message: 'LiveKit avatar pipeline ready. Connect via the LiveKit Client SDK.',
+    token,
+    url: lkUrl,
+    roomName,
+    identity,
+    employee: employee || 'atlas',
   });
 });
 

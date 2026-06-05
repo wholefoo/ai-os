@@ -6094,19 +6094,108 @@ const AVATAR_PROFILES = {
 
 const AVATAR_AGENTS = Object.fromEntries(Object.entries(AVATAR_PROFILES).map(([k, v]) => [k, v.agent]));
 
+let livekitRoom = null;
+
 async function loadAvatarChat() {
   initAvatar3D();
   initVoiceSystem();
 
   // Check LiveKit pipeline status
   const status = await fetchJSON('/api/livekit/status');
+  avatarState.livekitReady = status.allReady;
+
   if (status.allReady) {
-    addAvatarBotMessage("Hello! I'm Atlas, CEO of AI OS Corp. The full voice pipeline is active — Deepgram for listening, Cartesia for my voice, and Claude for thinking. Speak or type — I'm ready.");
+    addAvatarBotMessage("Hello! I'm Atlas, CEO of AI OS Corp. The full voice pipeline is active — Deepgram for listening, Cartesia for my voice, Claude for thinking. Click the microphone to start a real-time voice conversation, or type below.");
   } else if (status.configured?.anthropic) {
-    addAvatarBotMessage("Hello! I'm Atlas, CEO of AI OS Corp. Voice is powered by OpenAI TTS. For the premium experience (Deepgram STT + Cartesia Sonic 3), configure LiveKit, Deepgram, and Cartesia keys in Settings. Type or click the mic to start.");
+    addAvatarBotMessage("Hello! I'm Atlas, CEO of AI OS Corp. Voice is powered by OpenAI TTS. For the premium experience with Cartesia natural voice, configure LiveKit + Deepgram + Cartesia keys in Settings. Type or click the mic to start.");
   } else {
-    addAvatarBotMessage("Hello! I'm Atlas, CEO of AI OS Corp. Configure your API keys in Settings to activate voice. For now, you can type messages and I'll respond.");
+    addAvatarBotMessage("Hello! I'm Atlas, CEO of AI OS Corp. Configure API keys in Settings to activate voice. You can type messages and I'll respond.");
   }
+}
+
+async function connectLiveKit() {
+  if (!avatarState.livekitReady || typeof LivekitClient === 'undefined') return false;
+
+  try {
+    const tokenData = await fetchJSON('/api/livekit/token', {
+      method: 'POST',
+      body: { employee: avatarState.employee },
+    });
+
+    if (!tokenData.ok) return false;
+
+    const room = new LivekitClient.Room({
+      audioCaptureDefaults: { echoCancellation: true, noiseSuppression: true },
+      adaptiveStream: true,
+    });
+
+    room.on(LivekitClient.RoomEvent.TrackSubscribed, (track) => {
+      if (track.kind === 'audio') {
+        // Agent's voice audio — attach to page
+        const el = track.attach();
+        el.id = 'livekit-agent-audio';
+        document.body.appendChild(el);
+
+        // Animate portrait when agent speaks
+        avatarState.speaking = true;
+        document.getElementById('avatarStatus').textContent = 'Speaking...';
+        const mouthInterval = setInterval(() => { avatarState.mouthOpenness = 0.2 + Math.random() * 0.6; }, 80);
+
+        track.on('ended', () => {
+          clearInterval(mouthInterval);
+          avatarState.mouthOpenness = 0;
+          avatarState.speaking = false;
+          document.getElementById('avatarStatus').textContent = 'Idle';
+        });
+      }
+    });
+
+    room.on(LivekitClient.RoomEvent.DataReceived, (data, participant) => {
+      // Agent can send text data (transcript of what it said)
+      try {
+        const msg = JSON.parse(new TextDecoder().decode(data));
+        if (msg.type === 'transcript' && msg.text) {
+          addAvatarBotMessage(msg.text);
+        }
+      } catch {}
+    });
+
+    room.on(LivekitClient.RoomEvent.Disconnected, () => {
+      avatarState.speaking = false;
+      avatarState.listening = false;
+      document.getElementById('avatarStatus').textContent = 'Disconnected';
+      livekitRoom = null;
+    });
+
+    await room.connect(tokenData.url, tokenData.token);
+    livekitRoom = room;
+
+    // Enable microphone
+    await room.localParticipant.setMicrophoneEnabled(true);
+    avatarState.listening = true;
+    document.getElementById('avatarStatus').textContent = 'Connected — speak naturally';
+    document.getElementById('micIcon').textContent = '🔴';
+
+    logActivity && console.log('[LIVEKIT] Connected to room:', tokenData.roomName);
+    return true;
+  } catch (e) {
+    console.error('[LIVEKIT] Connection failed:', e);
+    return false;
+  }
+}
+
+function disconnectLiveKit() {
+  if (livekitRoom) {
+    livekitRoom.disconnect();
+    livekitRoom = null;
+  }
+  avatarState.listening = false;
+  avatarState.speaking = false;
+  document.getElementById('avatarStatus').textContent = 'Idle';
+  document.getElementById('micIcon').textContent = '🎤';
+  // Remove agent audio element
+  const audioEl = document.getElementById('livekit-agent-audio');
+  if (audioEl) audioEl.remove();
 }
 
 // --- Portrait Avatar System (CSS animated) ---
@@ -6401,6 +6490,9 @@ function _updateAvatarColor_legacy() {
 }
 
 function switchAvatarEmployee() {
+  // Disconnect LiveKit if active (need new room for new employee)
+  if (livekitRoom) disconnectLiveKit();
+
   const select = document.getElementById('avatarSelect');
   const option = select.options[select.selectedIndex];
   avatarState.employee = select.value;
@@ -6446,12 +6538,38 @@ function initVoiceSystem() {
   }
 }
 
-function toggleVoiceInput() {
+async function toggleVoiceInput() {
+  // If LiveKit is ready, use real-time voice pipeline
+  if (avatarState.livekitReady && typeof LivekitClient !== 'undefined') {
+    if (livekitRoom) {
+      disconnectLiveKit();
+      addAvatarBotMessage('Voice session ended. Click the mic to start again, or type below.');
+    } else {
+      document.getElementById('avatarStatus').textContent = 'Connecting...';
+      document.getElementById('micIcon').textContent = '⏳';
+      const connected = await connectLiveKit();
+      if (connected) {
+        addAvatarBotMessage('Voice pipeline connected! Speak naturally — I can hear you.');
+      } else {
+        document.getElementById('micIcon').textContent = '🎤';
+        document.getElementById('avatarStatus').textContent = 'Idle';
+        showSettingsToast('LiveKit connection failed — falling back to browser STT', true);
+        // Fall through to browser STT
+        startBrowserSTT();
+      }
+    }
+    return;
+  }
+
+  // Fallback: browser Speech Recognition
+  startBrowserSTT();
+}
+
+function startBrowserSTT() {
   if (!avatarState.recognition) {
     showSettingsToast('Speech recognition not supported in this browser', true);
     return;
   }
-
   if (avatarState.listening) {
     avatarState.recognition.stop();
     avatarState.listening = false;
