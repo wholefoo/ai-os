@@ -8,11 +8,11 @@
     "dev": "node --watch agent.js"
   },
   "dependencies": {
-    "@livekit/agents": "^1.0.0",
-    "@livekit/agents-plugin-deepgram": "^1.0.0",
-    "@livekit/agents-plugin-cartesia": "^1.0.0",
-    "@livekit/agents-plugin-anthropic": "^1.0.0",
-    "@livekit/agents-plugin-silero": "^1.0.0",
+    "@livekit/agents": "latest",
+    "@livekit/agents-plugin-deepgram": "latest",
+    "@livekit/agents-plugin-cartesia": "latest",
+    "@livekit/agents-plugin-openai": "latest",
+    "@livekit/agents-plugin-silero": "latest",
     "dotenv": "^16.4.0"
   }
 }
