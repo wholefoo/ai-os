@@ -86,6 +86,7 @@ function switchView(view) {
     'seo-agency': loadSeoAgency,
     licensing: loadLicensing,
     tenants: loadTenants,
+    monitoring: loadMonitoring,
     platform: loadPlatform,
     settings: loadSettings,
     automations: loadAutomations,
@@ -5590,6 +5591,109 @@ loadHQ = async function() {
   setupHQAnimations();
   startAmbientHQLife();
 };
+
+// --- Monitoring & Analytics ---
+async function loadMonitoring() {
+  const [analytics, monitoring, onboarding] = await Promise.all([
+    fetchJSON('/api/tenants/analytics'),
+    fetchJSON('/api/tenants/monitoring'),
+    fetchJSON('/api/onboarding/status'),
+  ]);
+  renderOnboarding(onboarding);
+  renderMonitoringStats(analytics, monitoring);
+  renderByModel(analytics?.byModel || []);
+  renderByAgent(analytics?.byAgent || []);
+  renderTenantHealth(monitoring?.tenants || []);
+}
+
+function renderOnboarding(data) {
+  const container = document.getElementById('onboardingWizard');
+  if (!container || !data || data.allDone) { if (container) container.style.display = 'none'; return; }
+
+  container.style.display = 'block';
+  container.innerHTML = `
+    <section class="panel" style="margin-bottom:16px; border-left:3px solid var(--primary);">
+      <h3 class="panel-title" style="display:flex;justify-content:space-between;">
+        <span>&#128640; Setup Wizard — ${data.percentage}% Complete</span>
+        <span style="font-size:13px;color:var(--text-muted);">${data.completed}/${data.total} steps</span>
+      </h3>
+      <div style="height:6px;background:var(--bg-primary);border-radius:3px;margin:12px 0;overflow:hidden;">
+        <div style="height:100%;width:${data.percentage}%;background:linear-gradient(90deg,var(--primary),#10b981);border-radius:3px;transition:width 0.5s;"></div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+        ${data.steps.map(s => `
+          <div style="display:flex;gap:8px;align-items:center;padding:8px 12px;background:var(--bg-primary);border-radius:var(--radius);font-size:13px;">
+            <span style="font-size:16px;">${s.done ? '&#9989;' : '&#11036;'}</span>
+            <span style="color:${s.done ? 'var(--text-muted)' : 'var(--text-primary)'};${s.done ? 'text-decoration:line-through;' : ''}">${s.label}</span>
+          </div>
+        `).join('')}
+      </div>
+    </section>
+  `;
+}
+
+function renderMonitoringStats(analytics, monitoring) {
+  const container = document.getElementById('monitoringStats');
+  if (!container) return;
+  const a = analytics || {};
+  const m = monitoring?.summary || {};
+  container.innerHTML = `
+    <div class="hq-stat"><div class="hq-stat-value">${m.activeTenants || 0}</div><div class="hq-stat-label">Active Tenants</div></div>
+    <div class="hq-stat"><div class="hq-stat-value">${m.totalUsers || 0}</div><div class="hq-stat-label">Total Users</div></div>
+    <div class="hq-stat"><div class="hq-stat-value">${m.totalAudits || 0}</div><div class="hq-stat-label">SEO Audits</div></div>
+    <div class="hq-stat"><div class="hq-stat-value">${a.leads?.total || 0}</div><div class="hq-stat-label">Free Audit Leads</div></div>
+    <div class="hq-stat"><div class="hq-stat-value" style="color:var(--success);">$${(a.cost?.daily || 0).toFixed(2)}</div><div class="hq-stat-label">Cost Today</div></div>
+    <div class="hq-stat"><div class="hq-stat-value">$${(a.cost?.weekly || 0).toFixed(2)}</div><div class="hq-stat-label">Cost This Week</div></div>
+    <div class="hq-stat"><div class="hq-stat-value">$${(a.cost?.monthly || 0).toFixed(2)}</div><div class="hq-stat-label">Cost This Month</div></div>
+    <div class="hq-stat"><div class="hq-stat-value">${a.totalApiCalls || 0}</div><div class="hq-stat-label">API Calls</div></div>
+  `;
+}
+
+function renderByModel(models) {
+  const container = document.getElementById('monitoringByModel');
+  if (!container) return;
+  if (!models.length) { container.innerHTML = '<div class="empty-state">No API calls recorded yet.</div>'; return; }
+  container.innerHTML = models.map(m => `
+    <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--border);font-size:13px;">
+      <span style="font-weight:600;">${m.model}</span>
+      <span style="color:var(--text-muted);">${m.calls} calls</span>
+      <span style="color:var(--success);font-weight:700;">$${m.cost.toFixed(2)}</span>
+    </div>
+  `).join('');
+}
+
+function renderByAgent(agents) {
+  const container = document.getElementById('monitoringByAgent');
+  if (!container) return;
+  if (!agents.length) { container.innerHTML = '<div class="empty-state">No agent activity yet.</div>'; return; }
+  container.innerHTML = agents.slice(0, 10).map(a => `
+    <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--border);font-size:13px;">
+      <span style="font-weight:600;">${a.agent}</span>
+      <span style="color:var(--text-muted);">${a.calls} calls</span>
+      <span style="color:var(--success);font-weight:700;">$${a.cost.toFixed(2)}</span>
+    </div>
+  `).join('');
+}
+
+function renderTenantHealth(tenants) {
+  const container = document.getElementById('monitoringTenants');
+  if (!container) return;
+  if (!tenants.length) { container.innerHTML = '<div class="empty-state">No tenants.</div>'; return; }
+  container.innerHTML = tenants.map(t => {
+    const healthColor = t.health === 'ready' ? 'var(--success)' : 'var(--warning)';
+    return `
+      <div style="display:flex;align-items:center;gap:12px;padding:10px 0;border-bottom:1px solid var(--border);font-size:13px;">
+        <span style="width:10px;height:10px;border-radius:50%;background:${healthColor};flex-shrink:0;"></span>
+        <span style="font-weight:600;min-width:120px;">${escapeHtml(t.name)}</span>
+        <span style="color:var(--text-muted);">${t.subdomain || t.domain || 'no domain'}</span>
+        <span style="color:var(--text-muted);">${t.users} users</span>
+        <span style="color:var(--text-muted);">${t.audits} audits</span>
+        <span style="color:var(--text-muted);">Keys: ${t.apiKeys}</span>
+        <span style="margin-left:auto;font-size:11px;font-weight:600;text-transform:uppercase;color:${healthColor};">${t.health}</span>
+      </div>
+    `;
+  }).join('');
+}
 
 // --- Tenant Management ---
 async function loadTenants() {

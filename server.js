@@ -298,6 +298,95 @@ app.get('/api/tenants/:id/stats', requireAdmin, (req, res) => {
   });
 });
 
+// GET /api/tenants/monitoring — central monitoring dashboard across all tenants
+app.get('/api/tenants/monitoring', requireAdmin, (req, res) => {
+  const tenants = Object.values(tenantRegistry);
+  const monitoring = tenants.map(t => {
+    const tenantUsers = t.id === MASTER_TENANT_ID ? users : loadTenantState(t.id, 'users', []);
+    const tenantAudits = t.id === MASTER_TENANT_ID ? seoAudits : loadTenantState(t.id, 'seo_audits', []);
+    const tenantSettings = t.id === MASTER_TENANT_ID ? settings : loadTenantState(t.id, 'settings', {});
+
+    const configuredKeys = Object.values(tenantSettings.ai || {}).filter(v => !!v).length;
+    const totalKeys = Object.keys(tenantSettings.ai || {}).length;
+
+    return {
+      id: t.id,
+      name: t.name,
+      status: t.status,
+      plan: t.plan,
+      subdomain: t.subdomain,
+      domain: t.domain,
+      industry: t.industry,
+      ownerId: t.ownerId,
+      createdAt: t.createdAt,
+      users: Array.isArray(tenantUsers) ? tenantUsers.length : 0,
+      audits: Array.isArray(tenantAudits) ? tenantAudits.length : 0,
+      apiKeys: `${configuredKeys}/${totalKeys}`,
+      apiKeysConfigured: configuredKeys,
+      branding: t.branding,
+      health: configuredKeys > 0 ? 'ready' : 'needs-setup',
+    };
+  });
+
+  // Aggregate stats
+  const activeTenants = monitoring.filter(t => t.status === 'active').length;
+  const totalUsers = monitoring.reduce((sum, t) => sum + t.users, 0);
+  const totalAudits = monitoring.reduce((sum, t) => sum + t.audits, 0);
+  const readyTenants = monitoring.filter(t => t.health === 'ready').length;
+
+  res.json({
+    summary: { totalTenants: tenants.length, activeTenants, totalUsers, totalAudits, readyTenants },
+    tenants: monitoring,
+  });
+});
+
+// GET /api/tenants/analytics — usage analytics across all tenants
+app.get('/api/tenants/analytics', requireAdmin, (req, res) => {
+  const now = Date.now();
+  const dayAgo = now - 86400000;
+  const weekAgo = now - 7 * 86400000;
+  const monthAgo = now - 30 * 86400000;
+
+  // Cost analytics from ledger
+  const dailyCost = costLedger.filter(e => new Date(e.timestamp) > dayAgo).reduce((sum, e) => sum + (e.cost || 0), 0);
+  const weeklyCost = costLedger.filter(e => new Date(e.timestamp) > weekAgo).reduce((sum, e) => sum + (e.cost || 0), 0);
+  const monthlyCost = costLedger.filter(e => new Date(e.timestamp) > monthAgo).reduce((sum, e) => sum + (e.cost || 0), 0);
+
+  // Usage by model
+  const byModel = {};
+  costLedger.forEach(e => {
+    if (!byModel[e.model]) byModel[e.model] = { calls: 0, cost: 0, tokens: 0 };
+    byModel[e.model].calls++;
+    byModel[e.model].cost += e.cost || 0;
+    byModel[e.model].tokens += (e.inputTokens || 0) + (e.outputTokens || 0);
+  });
+
+  // Usage by agent
+  const byAgent = {};
+  costLedger.forEach(e => {
+    if (!byAgent[e.agent]) byAgent[e.agent] = { calls: 0, cost: 0 };
+    byAgent[e.agent].calls++;
+    byAgent[e.agent].cost += e.cost || 0;
+  });
+
+  // Free audit leads
+  const freeLeads = freeAuditLog.length;
+  const recentLeads = freeAuditLog.filter(l => new Date(l.createdAt) > weekAgo).length;
+
+  // License stats
+  const activeLicenses = licenses.filter(l => l.status === 'active').length;
+  const pendingLicenses = licenses.filter(l => l.status === 'pending' || l.status === 'payment').length;
+
+  res.json({
+    cost: { daily: Math.round(dailyCost * 100) / 100, weekly: Math.round(weeklyCost * 100) / 100, monthly: Math.round(monthlyCost * 100) / 100 },
+    byModel: Object.entries(byModel).map(([model, data]) => ({ model, ...data, cost: Math.round(data.cost * 100) / 100 })).sort((a, b) => b.cost - a.cost),
+    byAgent: Object.entries(byAgent).map(([agent, data]) => ({ agent, ...data, cost: Math.round(data.cost * 100) / 100 })).sort((a, b) => b.calls - a.calls).slice(0, 20),
+    leads: { total: freeLeads, thisWeek: recentLeads },
+    licenses: { active: activeLicenses, pending: pendingLicenses },
+    totalApiCalls: costLedger.length,
+  });
+});
+
 // GET /api/tenant/branding — current tenant's branding (public, no auth)
 app.get('/api/tenant/branding', (req, res) => {
   const tenant = req.tenant || tenantRegistry[MASTER_TENANT_ID];
@@ -775,6 +864,24 @@ app.get('/lifetime/success', (req, res) => {
 </div>
 <footer class="site-footer"><div class="footer-bottom"><p>&copy; 2026 AI OS Orchestration Lab.</p></div></footer>
 </body></html>`);
+});
+
+// Onboarding wizard — tracks setup progress for new users
+app.get('/api/onboarding/status', requireAdmin, (req, res) => {
+  const steps = [
+    { id: 'api-key', label: 'Configure at least one AI model API key', done: !!(settings.ai.anthropic_api_key || settings.ai.openai_api_key || settings.ai.gemini_api_key) },
+    { id: 'seo-audit', label: 'Run your first SEO audit', done: seoAudits.length > 0 },
+    { id: 'hq-visit', label: 'Visit Virtual Corporate HQ', done: true }, // always done once they see this
+    { id: 'settings', label: 'Review your Settings page', done: !!(settings.ai.anthropic_api_key) },
+    { id: 'grok-key', label: 'Add Grok API key for real-time search', done: !!settings.ai.xai_api_key },
+    { id: 'notifications', label: 'Set up Telegram or Slack notifications', done: !!(settings.notifications.telegram_bot_token || settings.notifications.slack_webhook_url) },
+  ];
+
+  const completed = steps.filter(s => s.done).length;
+  const total = steps.length;
+  const percentage = Math.round((completed / total) * 100);
+
+  res.json({ steps, completed, total, percentage, allDone: completed === total });
 });
 
 app.get('/free-audit', (req, res) => {
@@ -4983,19 +5090,52 @@ app.post('/api/batch', heavyLimiter, (req, res) => {
   };
   batchQueue.batches.unshift(batch);
   broadcast({ event: 'batch_update', data: batch });
-  // Simulate processing
-  setTimeout(() => {
-    batch.status = 'running';
-    batch.startedAt = new Date().toISOString();
-    broadcast({ event: 'batch_update', data: batch });
-  }, 2000);
-  setTimeout(() => {
-    batch.status = 'done';
-    batch.completed = batch.count;
-    batch.completedAt = new Date().toISOString();
-    batch.cost = +(batch.count * 0.008).toFixed(3);
-    broadcast({ event: 'batch_update', data: batch });
-  }, 8000);
+
+  if (!DEMO_MODE && (settings.ai.deepseek_api_key || settings.ai.anthropic_api_key)) {
+    // Real batch processing
+    (async () => {
+      batch.status = 'running';
+      batch.startedAt = new Date().toISOString();
+      broadcast({ event: 'batch_update', data: batch });
+
+      const results = [];
+      for (let i = 0; i < batch.count; i++) {
+        try {
+          const prompt = `Generate ${batch.type} item ${i + 1} of ${batch.count}. Name: "${batch.name}". Be concise and professional.`;
+          const result = await executeAgent(batch.agent || 'deepseek-worker', prompt, { skill: 'batch-' + batch.type });
+          results.push(result.content);
+          batch.completed = i + 1;
+          broadcast({ event: 'batch_update', data: batch });
+        } catch (e) {
+          results.push(`Error: ${e.message}`);
+          batch.completed = i + 1;
+        }
+      }
+
+      batch.status = 'done';
+      batch.completedAt = new Date().toISOString();
+      // Save results to vault
+      const outDir = path.join(BASE, batch.outputPath);
+      if (!fs.existsSync(outDir)) fs.mkdirSync(outDir, { recursive: true });
+      fs.writeFileSync(path.join(outDir, 'results.json'), JSON.stringify(results, null, 2));
+      broadcast({ event: 'batch_update', data: batch });
+      logActivity('batch', `Batch complete: ${batch.name} (${batch.count} items)`, { batchId: batch.id });
+    })().catch(e => console.error('[BATCH] Failed:', e.message));
+  } else {
+    // Demo mode simulation
+    setTimeout(() => {
+      batch.status = 'running';
+      batch.startedAt = new Date().toISOString();
+      broadcast({ event: 'batch_update', data: batch });
+    }, 2000);
+    setTimeout(() => {
+      batch.status = 'done';
+      batch.completed = batch.count;
+      batch.completedAt = new Date().toISOString();
+      batch.cost = +(batch.count * 0.008).toFixed(3);
+      broadcast({ event: 'batch_update', data: batch });
+    }, 8000);
+  }
   res.json(batch);
 });
 
@@ -5727,11 +5867,25 @@ app.post('/api/hq/dispatch/:employeeId', requireAdmin, (req, res) => {
     department: department.name, task, model: routing.model, tier: routing.tier,
   }});
 
-  if (DEMO_MODE) {
+  if (!DEMO_MODE && settings.ai.anthropic_api_key) {
+    // Real agent execution
+    executeAgent(employee.agent, task, { skill: 'hq-dispatch', tenantId: req.tenantId }).then(result => {
+      broadcast({ event: 'hq_task_complete', data: {
+        taskId, employee: employee.id, name: employee.name,
+        result: result.ok ? result.content : `${employee.name} encountered an error: ${result.error}`,
+        model: result.model, cost: result.cost,
+      }});
+    }).catch(e => {
+      broadcast({ event: 'hq_task_complete', data: {
+        taskId, employee: employee.id, name: employee.name,
+        result: `${employee.name} failed: ${e.message}`,
+      }});
+    });
+  } else {
     setTimeout(() => {
       broadcast({ event: 'hq_task_complete', data: {
         taskId, employee: employee.id, name: employee.name,
-        result: `${employee.name} completed the task: "${task.substring(0, 60)}" — output ready for review.`,
+        result: `[DEMO] ${employee.name} completed: "${task.substring(0, 60)}" — set DEMO_MODE=false for real execution.`,
       }});
     }, 3000 + Math.random() * 4000);
   }
@@ -7014,7 +7168,39 @@ app.post('/api/omni/generate', requireAdmin, async (req, res) => {
   logActivity('omni', `Omni ${outputType} generation started`, { jobId, prompt: prompt.substring(0, 80) });
   broadcast({ event: 'omni_job_started', data: { id: jobId, type: outputType } });
 
-  if (DEMO_MODE) {
+  if (!DEMO_MODE && settings.ai.gemini_api_key) {
+    // Real Gemini generation
+    (async () => {
+      broadcast({ event: 'omni_job_progress', data: { id: jobId, progress: 30, status: 'generating', msg: `Sending to Gemini Omni for ${outputType} generation...` } });
+      try {
+        const result = await callGemini(
+          `You are a creative content generator. Generate a detailed ${outputType} concept based on the user's prompt. Describe what the ${outputType} would contain, its structure, style, and key elements. Be specific and production-ready.`,
+          prompt, 2048
+        );
+        broadcast({ event: 'omni_job_progress', data: { id: jobId, progress: 80, status: 'finalizing', msg: 'Finalizing output...' } });
+
+        job.progress = 100;
+        job.status = 'complete';
+        job.completedAt = new Date().toISOString();
+        job.result = {
+          prompt, model: GEMINI_OMNI_MODEL, watermark: 'SynthID', generatedAt: new Date().toISOString(),
+          content: result.content,
+          preview: `Generated ${outputType} concept — ${result.content.substring(0, 100)}...`,
+          inputTokens: result.inputTokens, outputTokens: result.outputTokens,
+        };
+
+        const rates = COST_RATES['gemini-omni'];
+        const cost = (result.inputTokens / 1_000_000) * rates.input + (result.outputTokens / 1_000_000) * rates.output;
+        costLedger.push({ id: uuidv4(), agent: `omni-${outputType}`, model: 'gemini-omni', skill: `${outputType}-generation`, inputTokens: result.inputTokens, outputTokens: result.outputTokens, cost: Math.round(cost * 10000) / 10000, timestamp: new Date().toISOString() });
+
+        broadcast({ event: 'omni_job_complete', data: { id: jobId, type: outputType, result: job.result } });
+        logActivity('omni', `Omni ${outputType} complete (real)`, { jobId });
+      } catch (e) {
+        job.status = 'error';
+        broadcast({ event: 'omni_job_complete', data: { id: jobId, type: outputType, result: { preview: `Error: ${e.message}`, prompt } } });
+      }
+    })();
+  } else if (DEMO_MODE) {
     // Simulate progressive generation
     const steps = [
       { progress: 20, status: 'analyzing', msg: 'Analyzing input modalities...' },

@@ -137,6 +137,9 @@
         <a href="#" class="nav-item" data-view="platform">
           <span class="nav-icon">&#128736;</span> Platform
         </a>
+        <a href="#" class="nav-item" data-view="monitoring">
+          <span class="nav-icon">&#128200;</span> Monitoring
+        </a>
         <a href="#" class="nav-item" data-view="artifacts">
           <span class="nav-icon">&#9776;</span> Artifacts
         </a>
@@ -1325,6 +1328,37 @@
           </div>
         </div>
 
+        <!-- Monitoring & Analytics View -->
+        <div class="view" id="view-monitoring">
+          <div class="radar-header">
+            <div class="radar-header-left">
+              <h2 class="radar-title">Monitoring &amp; Analytics</h2>
+              <span class="radar-subtitle">Cross-tenant monitoring, usage analytics, cost tracking, and lead metrics</span>
+            </div>
+          </div>
+
+          <!-- Onboarding wizard (shows if not all done) -->
+          <div id="onboardingWizard" style="display:none;"></div>
+
+          <div class="hq-stats" id="monitoringStats"></div>
+
+          <div style="display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-bottom:16px;">
+            <section class="panel">
+              <h3 class="panel-title">Cost by Model</h3>
+              <div id="monitoringByModel"><div class="empty-state">Loading...</div></div>
+            </section>
+            <section class="panel">
+              <h3 class="panel-title">Top Agents by Usage</h3>
+              <div id="monitoringByAgent"><div class="empty-state">Loading...</div></div>
+            </section>
+          </div>
+
+          <section class="panel">
+            <h3 class="panel-title">Tenant Health</h3>
+            <div id="monitoringTenants"><div class="empty-state">Loading...</div></div>
+          </section>
+        </div>
+
         <!-- Tenant Management View -->
         <div class="view" id="view-tenants">
           <div class="radar-header">
@@ -1731,6 +1765,6 @@
     </div>
   </div>
 
-  <script src="js/app.js?v=18"></script>
+  <script src="js/app.js?v=19"></script>
 </body>
 </html>
