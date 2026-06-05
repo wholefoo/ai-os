@@ -6035,6 +6035,220 @@ const PROPOSAL_TYPES = {
   'feature-proposal': { icon: '🚀', label: 'Feature Proposal', risk: 'medium' },
 };
 
+// --- Auto-Apply Execution Engine ---
+// Safety: git commit before every change, blocked files list, rollback support
+
+const BLOCKED_PATHS = [
+  'server.js',            // Don't let it modify itself (except config sections)
+  '.env',                 // Never touch credentials directly
+  '.magent/state/users.json',  // Never modify auth
+  'node_modules/',
+];
+
+const SAFE_OPERATIONS = {
+  'dependency-update': true,
+  'model-upgrade': true,
+  'cost-optimization': true,
+  'config-change': true,
+  'content-refresh': true,
+  'new-skill': true,
+  'security-patch': true,
+  'bug-fix': false,        // Requires manual review of diff
+  'feature-proposal': false, // Too broad for auto-apply
+};
+
+async function applyProposal(proposal) {
+  const results = { steps: [], success: false, rollbackCommit: null };
+
+  // Safety check: is this type allowed for auto-apply?
+  if (!SAFE_OPERATIONS[proposal.type]) {
+    results.steps.push({ action: 'blocked', reason: `Type "${proposal.type}" requires manual application` });
+    return results;
+  }
+
+  try {
+    // Step 1: Git snapshot before changes (for rollback)
+    try {
+      const { execSync } = require('child_process');
+      const gitStatus = execSync('git status --porcelain', { cwd: BASE, encoding: 'utf-8' }).trim();
+      if (gitStatus) {
+        execSync('git add -A && git commit -m "Auto-save before platform self-improvement"', { cwd: BASE, encoding: 'utf-8' });
+      }
+      const commitHash = execSync('git rev-parse HEAD', { cwd: BASE, encoding: 'utf-8' }).trim();
+      results.rollbackCommit = commitHash;
+      results.steps.push({ action: 'git-snapshot', commit: commitHash });
+    } catch (gitErr) {
+      results.steps.push({ action: 'git-snapshot', warning: 'Git snapshot failed — proceeding without rollback point' });
+    }
+
+    // Step 2: Execute based on type
+    switch (proposal.type) {
+      case 'dependency-update': {
+        const { execSync } = require('child_process');
+        // Parse package name from title or description
+        const pkgMatch = (proposal.title + ' ' + proposal.description).match(/(?:update|upgrade)\s+(\S+)/i);
+        if (pkgMatch) {
+          const pkg = pkgMatch[1].replace(/[^a-zA-Z0-9@/_-]/g, '');
+          execSync(`npm update ${pkg}`, { cwd: BASE, encoding: 'utf-8', timeout: 60000 });
+          results.steps.push({ action: 'npm-update', package: pkg, success: true });
+        } else {
+          execSync('npm update', { cwd: BASE, encoding: 'utf-8', timeout: 120000 });
+          results.steps.push({ action: 'npm-update', package: 'all', success: true });
+        }
+        break;
+      }
+
+      case 'security-patch': {
+        const { execSync } = require('child_process');
+        const output = execSync('npm audit fix --force 2>&1 || true', { cwd: BASE, encoding: 'utf-8', timeout: 120000 });
+        results.steps.push({ action: 'npm-audit-fix', output: output.substring(0, 500), success: true });
+        break;
+      }
+
+      case 'model-upgrade': {
+        // Update model ID in the config — only touches the OPUS_MODEL constant
+        if (proposal.diff && proposal.diff.includes('const OPUS_MODEL')) {
+          const newModelMatch = proposal.diff.match(/const OPUS_MODEL\s*=\s*'([^']+)'/);
+          if (newModelMatch) {
+            const serverContent = fs.readFileSync(path.join(BASE, 'server.js'), 'utf-8');
+            const updated = serverContent.replace(/const OPUS_MODEL\s*=\s*'[^']+'/, `const OPUS_MODEL = '${newModelMatch[1]}'`);
+            fs.writeFileSync(path.join(BASE, 'server.js'), updated);
+            results.steps.push({ action: 'model-update', newModel: newModelMatch[1], success: true });
+          }
+        } else {
+          results.steps.push({ action: 'model-update', warning: 'No model ID found in diff — provide diff with const OPUS_MODEL line' });
+        }
+        break;
+      }
+
+      case 'cost-optimization': {
+        // Update effort routing or cost rates in settings
+        if (proposal.diff) {
+          results.steps.push({ action: 'cost-optimization', note: 'Config change applied via settings update', success: true });
+          // Parse key=value pairs from description
+          const kvMatches = proposal.description.matchAll(/(\w+)\s*[=:]\s*(\w+)/g);
+          for (const m of kvMatches) {
+            if (m[1] === 'demo_mode') {
+              settings.general.demo_mode = m[2] === 'true';
+              saveState('settings', settings);
+              results.steps.push({ action: 'config-set', key: m[1], value: m[2], success: true });
+            }
+          }
+        }
+        break;
+      }
+
+      case 'config-change': {
+        // Apply key-value config changes to settings
+        if (proposal.diff) {
+          const lines = proposal.diff.split('\n');
+          for (const line of lines) {
+            const kvMatch = line.match(/^\+?\s*(\w+)\.(\w+)\s*[=:]\s*(.+)$/);
+            if (kvMatch) {
+              const [, section, key, value] = kvMatch;
+              if (settings[section] && key in settings[section]) {
+                const parsedVal = value.trim() === 'true' ? true : value.trim() === 'false' ? false : value.trim().replace(/['"]/g, '');
+                settings[section][key] = parsedVal;
+                results.steps.push({ action: 'config-set', key: `${section}.${key}`, value: parsedVal, success: true });
+              }
+            }
+          }
+          saveState('settings', settings);
+        }
+        break;
+      }
+
+      case 'content-refresh': {
+        // Update a specific file if target path is provided and not blocked
+        const targetMatch = (proposal.description + ' ' + (proposal.diff || '')).match(/(?:file|target|path):\s*(\S+)/i);
+        if (targetMatch) {
+          const targetFile = targetMatch[1];
+          // Safety: check blocked paths
+          if (BLOCKED_PATHS.some(bp => targetFile.includes(bp))) {
+            results.steps.push({ action: 'file-update', blocked: true, reason: `Path "${targetFile}" is protected` });
+            break;
+          }
+          const fullPath = path.join(BASE, targetFile);
+          if (fs.existsSync(fullPath) && proposal.diff) {
+            // Apply simple replacements from diff format
+            let content = fs.readFileSync(fullPath, 'utf-8');
+            const removals = proposal.diff.match(/^- (.+)$/gm) || [];
+            const additions = proposal.diff.match(/^\+ (.+)$/gm) || [];
+            removals.forEach((r, i) => {
+              const oldText = r.substring(2);
+              const newText = additions[i] ? additions[i].substring(2) : '';
+              content = content.replace(oldText, newText);
+            });
+            fs.writeFileSync(fullPath, content);
+            results.steps.push({ action: 'file-update', file: targetFile, success: true });
+          }
+        }
+        break;
+      }
+
+      case 'new-skill': {
+        // Create a new skill file in .claude/skills/
+        const nameMatch = (proposal.title + ' ' + proposal.description).match(/skill:\s*(\S+)/i) ||
+                          proposal.title.match(/(?:add|create|new)\s+(\S+)\s+skill/i);
+        if (nameMatch && proposal.diff) {
+          const skillName = nameMatch[1].toLowerCase().replace(/[^a-z0-9-]/g, '');
+          const skillPath = path.join(CLAUDE_DIR, 'skills', `${skillName}.md`);
+          if (!fs.existsSync(skillPath)) {
+            fs.writeFileSync(skillPath, proposal.diff);
+            results.steps.push({ action: 'new-skill', file: `${skillName}.md`, success: true });
+          } else {
+            results.steps.push({ action: 'new-skill', warning: `Skill "${skillName}" already exists` });
+          }
+        }
+        break;
+      }
+
+      default:
+        results.steps.push({ action: 'unknown-type', type: proposal.type });
+    }
+
+    // Step 3: Git commit the changes
+    try {
+      const { execSync } = require('child_process');
+      const gitStatus = execSync('git status --porcelain', { cwd: BASE, encoding: 'utf-8' }).trim();
+      if (gitStatus) {
+        execSync(`git add -A && git commit -m "Self-improvement: ${proposal.title.replace(/"/g, '\\"').substring(0, 60)}"`, { cwd: BASE, encoding: 'utf-8' });
+        results.steps.push({ action: 'git-commit', success: true });
+      }
+    } catch (gitErr) {
+      results.steps.push({ action: 'git-commit', warning: 'Git commit failed' });
+    }
+
+    // Step 4: Restart PM2 if needed
+    const needsRestart = ['dependency-update', 'security-patch', 'model-upgrade', 'config-change'].includes(proposal.type);
+    if (needsRestart) {
+      try {
+        const { execSync } = require('child_process');
+        execSync('pm2 restart ai-os --update-env 2>/dev/null || true', { encoding: 'utf-8', timeout: 10000 });
+        results.steps.push({ action: 'pm2-restart', success: true });
+      } catch (restartErr) {
+        results.steps.push({ action: 'pm2-restart', warning: 'Restart failed — may need manual restart' });
+      }
+    }
+
+    results.success = true;
+  } catch (e) {
+    results.steps.push({ action: 'error', message: e.message });
+    // Attempt rollback
+    if (results.rollbackCommit) {
+      try {
+        const { execSync } = require('child_process');
+        execSync(`git reset --hard ${results.rollbackCommit}`, { cwd: BASE, encoding: 'utf-8' });
+        results.steps.push({ action: 'rollback', commit: results.rollbackCommit, success: true });
+      } catch (rollbackErr) {
+        results.steps.push({ action: 'rollback', error: 'Rollback failed — manual intervention required' });
+      }
+    }
+  }
+
+  return results;
+}
+
 // POST /api/platform/propose — create a self-improvement proposal
 app.post('/api/platform/propose', requireAdmin, (req, res) => {
   const { type, title, description, diff, autoApply } = req.body;
@@ -6079,7 +6293,7 @@ app.get('/api/platform/proposals', requireAdmin, (req, res) => {
 });
 
 // PUT /api/platform/proposals/:id — approve or reject
-app.put('/api/platform/proposals/:id', requireAdmin, (req, res) => {
+app.put('/api/platform/proposals/:id', requireAdmin, async (req, res) => {
   const proposal = pendingApprovals.find(p => p.id === req.params.id);
   if (!proposal) return res.status(404).json({ error: 'Proposal not found' });
 
@@ -6092,9 +6306,19 @@ app.put('/api/platform/proposals/:id', requireAdmin, (req, res) => {
   proposal.response = response || null;
 
   if (status === 'approved' && proposal.autoApply) {
-    proposal.appliedAt = new Date().toISOString();
-    proposal.status = 'applied';
-    logActivity('platform', `Auto-applied: ${proposal.title}`, { id: proposal.id });
+    const applyResult = await applyProposal(proposal);
+    if (applyResult.success) {
+      proposal.status = 'applied';
+      proposal.appliedAt = new Date().toISOString();
+      proposal.applyResult = applyResult;
+      logActivity('platform', `Auto-applied: ${proposal.title}`, { id: proposal.id, steps: applyResult.steps });
+      sendTelegramMessage(`✅ Auto-applied: ${proposal.title}\nSteps: ${applyResult.steps.map(s => s.action).join(' → ')}`);
+    } else {
+      proposal.status = 'approved'; // stays approved but not applied
+      proposal.applyResult = applyResult;
+      logActivity('platform', `Auto-apply failed: ${proposal.title}`, { id: proposal.id, steps: applyResult.steps });
+      sendTelegramMessage(`⚠️ Auto-apply failed: ${proposal.title}\nReason: ${applyResult.steps.map(s => s.reason || s.warning || s.action).join(', ')}`);
+    }
   }
 
   saveState('pending_approvals', pendingApprovals);
@@ -6106,6 +6330,28 @@ app.put('/api/platform/proposals/:id', requireAdmin, (req, res) => {
   sendSlackMessage(`${emoji} Proposal ${status}: ${proposal.title}`);
 
   res.json({ ok: true, proposal });
+});
+
+// POST /api/platform/proposals/:id/apply — manually trigger apply on an approved proposal
+app.post('/api/platform/proposals/:id/apply', requireAdmin, async (req, res) => {
+  const proposal = pendingApprovals.find(p => p.id === req.params.id);
+  if (!proposal) return res.status(404).json({ error: 'Proposal not found' });
+  if (proposal.status !== 'approved') return res.status(400).json({ error: `Cannot apply — status is "${proposal.status}", must be "approved"` });
+
+  const applyResult = await applyProposal(proposal);
+  if (applyResult.success) {
+    proposal.status = 'applied';
+    proposal.appliedAt = new Date().toISOString();
+    proposal.applyResult = applyResult;
+    saveState('pending_approvals', pendingApprovals);
+    logActivity('platform', `Manually applied: ${proposal.title}`, { id: proposal.id, steps: applyResult.steps });
+    sendTelegramMessage(`✅ Applied: ${proposal.title}`);
+    res.json({ ok: true, proposal, applyResult });
+  } else {
+    proposal.applyResult = applyResult;
+    saveState('pending_approvals', pendingApprovals);
+    res.json({ ok: false, error: 'Apply failed', applyResult });
+  }
 });
 
 // GET /api/platform/stats — self-improvement stats
@@ -6164,7 +6410,7 @@ async function sendTelegramApproval(proposal) {
 }
 
 // POST /api/platform/telegram-webhook — receive Telegram bot responses
-app.post('/api/platform/telegram-webhook', (req, res) => {
+app.post('/api/platform/telegram-webhook', async (req, res) => {
   const update = req.body;
   const text = update?.message?.text || '';
   const chatId = String(update?.message?.chat?.id || '');
@@ -6188,8 +6434,12 @@ app.post('/api/platform/telegram-webhook', (req, res) => {
       proposal.respondedVia = 'telegram';
 
       if (isApprove && proposal.autoApply) {
-        proposal.status = 'applied';
-        proposal.appliedAt = new Date().toISOString();
+        const applyResult = await applyProposal(proposal);
+        if (applyResult.success) {
+          proposal.status = 'applied';
+          proposal.appliedAt = new Date().toISOString();
+          proposal.applyResult = applyResult;
+        }
       }
 
       saveState('pending_approvals', pendingApprovals);

@@ -5451,17 +5451,32 @@ function renderPlatformHistory(proposals) {
   if (!proposals.length) { container.innerHTML = '<div class="empty-state">No history yet.</div>'; return; }
 
   container.innerHTML = proposals.slice().reverse().slice(0, 20).map(p => {
-    const statusIcon = p.status === 'approved' || p.status === 'applied' ? '&#9989;' : '&#10060;';
+    const statusIcon = p.status === 'applied' ? '&#9989;' : p.status === 'approved' ? '&#128993;' : '&#10060;';
     const via = p.respondedVia ? ` via ${p.respondedVia}` : '';
+    const applyBtn = p.status === 'approved' ? `<button class="btn btn-sm btn-primary" onclick="manualApplyProposal('${p.id}')">Apply Now</button>` : '';
+    const appliedInfo = p.applyResult ? `<span class="platform-history-steps" title="${(p.applyResult.steps || []).map(s => s.action).join(' → ')}">${p.applyResult.steps?.length || 0} steps</span>` : '';
     return `
       <div class="platform-history-item">
         <span>${statusIcon} ${p.icon}</span>
         <span class="platform-history-title">${escapeHtml(p.title)}</span>
         <span class="platform-history-status">${p.status}${via}</span>
+        ${appliedInfo}
+        ${applyBtn}
         <span class="platform-history-date">${p.respondedAt ? new Date(p.respondedAt).toLocaleDateString() : ''}</span>
       </div>
     `;
   }).join('');
+}
+
+async function manualApplyProposal(id) {
+  const result = await fetchJSON(`/api/platform/proposals/${id}/apply`, { method: 'POST', body: {} });
+  if (result.ok) {
+    const steps = (result.applyResult?.steps || []).map(s => s.action).join(' → ');
+    showSettingsToast(`Applied: ${result.proposal.title} (${steps})`);
+    loadPlatform();
+  } else {
+    showSettingsToast(result.error || 'Apply failed', true);
+  }
 }
 
 async function respondProposal(id, status) {
