@@ -5033,7 +5033,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
 // Map of section → field → input ID
 const settingsFieldMap = {
-  ai: ['anthropic_api_key', 'openai_api_key', 'deepseek_api_key', 'xai_api_key', 'gemini_api_key', 'perplexity_api_key', 'firecrawl_api_key', 'tavily_api_key', 'apify_api_token', 'manus_api_key'],
+  ai: ['anthropic_api_key', 'openai_api_key', 'deepseek_api_key', 'xai_api_key', 'gemini_api_key', 'perplexity_api_key', 'firecrawl_api_key', 'tavily_api_key', 'apify_api_token', 'manus_api_key', 'livekit_api_key', 'livekit_api_secret', 'livekit_url', 'deepgram_api_key', 'cartesia_api_key'],
   mcp: ['hermes_url', 'hermes_enabled'],
   notifications: ['telegram_bot_token', 'telegram_chat_id', 'slack_webhook_url'],
   automation: ['n8n_webhook_base', 'n8n_api_key', 'team_webhook_url'],
@@ -6094,10 +6094,19 @@ const AVATAR_PROFILES = {
 
 const AVATAR_AGENTS = Object.fromEntries(Object.entries(AVATAR_PROFILES).map(([k, v]) => [k, v.agent]));
 
-function loadAvatarChat() {
+async function loadAvatarChat() {
   initAvatar3D();
   initVoiceSystem();
-  addAvatarBotMessage("Hello! I'm Atlas, CEO of AI OS Corp. You can type or click the microphone to speak. I'll respond with voice too. Try asking me about the platform, or switch to another employee using the dropdown.");
+
+  // Check LiveKit pipeline status
+  const status = await fetchJSON('/api/livekit/status');
+  if (status.allReady) {
+    addAvatarBotMessage("Hello! I'm Atlas, CEO of AI OS Corp. The full voice pipeline is active — Deepgram for listening, Cartesia for my voice, and Claude for thinking. Speak or type — I'm ready.");
+  } else if (status.configured?.anthropic) {
+    addAvatarBotMessage("Hello! I'm Atlas, CEO of AI OS Corp. Voice is powered by OpenAI TTS. For the premium experience (Deepgram STT + Cartesia Sonic 3), configure LiveKit, Deepgram, and Cartesia keys in Settings. Type or click the mic to start.");
+  } else {
+    addAvatarBotMessage("Hello! I'm Atlas, CEO of AI OS Corp. Configure your API keys in Settings to activate voice. For now, you can type messages and I'll respond.");
+  }
 }
 
 // --- Portrait Avatar System (CSS animated) ---

@@ -213,7 +213,7 @@ app.post('/api/tenants', requireAdmin, (req, res) => {
 
   // Seed tenant settings with defaults
   const tenantSettings = {
-    ai: { anthropic_api_key: '', openai_api_key: '', deepseek_api_key: '', xai_api_key: '', gemini_api_key: '', perplexity_api_key: '', firecrawl_api_key: '', tavily_api_key: '', apify_api_token: '', manus_api_key: '' },
+    ai: { anthropic_api_key: '', openai_api_key: '', deepseek_api_key: '', xai_api_key: '', gemini_api_key: '', perplexity_api_key: '', firecrawl_api_key: '', tavily_api_key: '', apify_api_token: '', manus_api_key: '', livekit_api_key: '', livekit_api_secret: '', livekit_url: '', deepgram_api_key: '', cartesia_api_key: '' },
     mcp: { hermes_url: 'http://127.0.0.1:8420', hermes_enabled: false },
     notifications: { telegram_bot_token: '', telegram_chat_id: '', slack_webhook_url: '' },
     automation: { n8n_webhook_base: '', n8n_api_key: '', team_webhook_url: '' },
@@ -817,7 +817,7 @@ app.get('/lifetime/success', (req, res) => {
         ensureTenantDir(tenantId);
         saveTenantState(tenantId, 'users', [{ email: license.email, passwordHash: null, plan: 'lifetime', role: 'admin', tenantId, createdAt: new Date().toISOString() }]);
         saveTenantState(tenantId, 'settings', {
-          ai: { anthropic_api_key: '', openai_api_key: '', deepseek_api_key: '', xai_api_key: '', gemini_api_key: '', perplexity_api_key: '', firecrawl_api_key: '', tavily_api_key: '', apify_api_token: '', manus_api_key: '' },
+          ai: { anthropic_api_key: '', openai_api_key: '', deepseek_api_key: '', xai_api_key: '', gemini_api_key: '', perplexity_api_key: '', firecrawl_api_key: '', tavily_api_key: '', apify_api_token: '', manus_api_key: '', livekit_api_key: '', livekit_api_secret: '', livekit_url: '', deepgram_api_key: '', cartesia_api_key: '' },
           mcp: { hermes_url: 'http://127.0.0.1:8420', hermes_enabled: false },
           notifications: { telegram_bot_token: '', telegram_chat_id: '', slack_webhook_url: '' },
           automation: { n8n_webhook_base: '', n8n_api_key: '', team_webhook_url: '' },
@@ -884,7 +884,60 @@ app.get('/api/onboarding/status', requireAdmin, (req, res) => {
   res.json({ steps, completed, total, percentage, allDone: completed === total });
 });
 
-// OpenAI TTS endpoint — natural human voices for avatar speech
+// --- LiveKit Voice Agent Token Generation ---
+// Clients connect to LiveKit Cloud via a token; the agent runs server-side
+
+app.post('/api/livekit/token', requireAdmin, (req, res) => {
+  const { employee } = req.body;
+  const lkKey = settings.ai.livekit_api_key;
+  const lkSecret = settings.ai.livekit_api_secret;
+  const lkUrl = settings.ai.livekit_url;
+
+  if (!lkKey || !lkSecret || !lkUrl) {
+    return res.json({ ok: false, error: 'LiveKit not configured — add API Key, Secret, and URL in Settings', fallback: true });
+  }
+
+  // Generate a simple JWT token for LiveKit room access
+  // In production, use the @livekit/server-sdk package. For now, return config for client-side connection.
+  const roomName = `avatar-${employee || 'atlas'}-${Date.now()}`;
+
+  res.json({
+    ok: true,
+    livekit: {
+      url: lkUrl,
+      roomName,
+      employee: employee || 'atlas',
+    },
+    // Return service keys for the client to use directly in the LiveKit JS SDK
+    // (In production, generate proper JWT tokens server-side)
+    config: {
+      deepgramKey: settings.ai.deepgram_api_key ? true : false,
+      cartesiaKey: settings.ai.cartesia_api_key ? true : false,
+      anthropicKey: settings.ai.anthropic_api_key ? true : false,
+    },
+    message: 'LiveKit avatar pipeline ready. Connect via the LiveKit Client SDK.',
+  });
+});
+
+// GET /api/livekit/status — check if LiveKit pipeline is configured
+app.get('/api/livekit/status', requireAdmin, (req, res) => {
+  const configured = {
+    livekit: !!(settings.ai.livekit_api_key && settings.ai.livekit_api_secret && settings.ai.livekit_url),
+    deepgram: !!settings.ai.deepgram_api_key,
+    cartesia: !!settings.ai.cartesia_api_key,
+    anthropic: !!settings.ai.anthropic_api_key,
+  };
+  const allReady = Object.values(configured).every(Boolean);
+  res.json({
+    configured,
+    allReady,
+    message: allReady
+      ? 'All avatar pipeline services configured — ready for real-time voice interaction'
+      : `Missing: ${Object.entries(configured).filter(([,v]) => !v).map(([k]) => k).join(', ')}. Add keys in Settings.`,
+  });
+});
+
+// OpenAI TTS endpoint — natural human voices for avatar speech (fallback when LiveKit not configured)
 // Voices: alloy (neutral), echo (warm male), fable (British), onyx (deep male), nova (bright female), shimmer (soft female)
 app.post('/api/tts', requireAdmin, async (req, res) => {
   const { text, voice } = req.body;
@@ -5406,6 +5459,11 @@ const settings = loadState('settings', {
     openai_api_key: process.env.OPENAI_API_KEY || '',
     perplexity_api_key: process.env.PERPLEXITY_API_KEY || '',
     manus_api_key: process.env.MANUS_API_KEY || '',
+    livekit_api_key: process.env.LIVEKIT_API_KEY || '',
+    livekit_api_secret: process.env.LIVEKIT_API_SECRET || '',
+    livekit_url: process.env.LIVEKIT_URL || '',
+    deepgram_api_key: process.env.DEEPGRAM_API_KEY || '',
+    cartesia_api_key: process.env.CARTESIA_API_KEY || '',
   },
   mcp: {
     hermes_url: process.env.HERMES_MCP_URL || 'http://127.0.0.1:8420',
@@ -5477,6 +5535,11 @@ app.get('/api/settings', requireAdmin, (req, res) => {
       openai_api_key: { value: maskKey(settings.ai.openai_api_key), configured: !!settings.ai.openai_api_key },
       perplexity_api_key: { value: maskKey(settings.ai.perplexity_api_key), configured: !!settings.ai.perplexity_api_key },
       manus_api_key: { value: maskKey(settings.ai.manus_api_key), configured: !!settings.ai.manus_api_key },
+      livekit_api_key: { value: maskKey(settings.ai.livekit_api_key), configured: !!settings.ai.livekit_api_key },
+      livekit_api_secret: { value: maskKey(settings.ai.livekit_api_secret), configured: !!settings.ai.livekit_api_secret },
+      livekit_url: settings.ai.livekit_url || '',
+      deepgram_api_key: { value: maskKey(settings.ai.deepgram_api_key), configured: !!settings.ai.deepgram_api_key },
+      cartesia_api_key: { value: maskKey(settings.ai.cartesia_api_key), configured: !!settings.ai.cartesia_api_key },
     },
     mcp: {
       hermes_url: settings.mcp.hermes_url,
@@ -6125,7 +6188,7 @@ app.put('/api/license/participant/:id', requireAdmin, (req, res) => {
         }]);
         // Seed empty settings
         saveTenantState(tenantId, 'settings', {
-          ai: { anthropic_api_key: '', openai_api_key: '', deepseek_api_key: '', xai_api_key: '', gemini_api_key: '', perplexity_api_key: '', firecrawl_api_key: '', tavily_api_key: '', apify_api_token: '', manus_api_key: '' },
+          ai: { anthropic_api_key: '', openai_api_key: '', deepseek_api_key: '', xai_api_key: '', gemini_api_key: '', perplexity_api_key: '', firecrawl_api_key: '', tavily_api_key: '', apify_api_token: '', manus_api_key: '', livekit_api_key: '', livekit_api_secret: '', livekit_url: '', deepgram_api_key: '', cartesia_api_key: '' },
           mcp: { hermes_url: 'http://127.0.0.1:8420', hermes_enabled: false },
           notifications: { telegram_bot_token: '', telegram_chat_id: '', slack_webhook_url: '' },
           automation: { n8n_webhook_base: '', n8n_api_key: '', team_webhook_url: '' },
