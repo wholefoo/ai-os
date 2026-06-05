@@ -5537,6 +5537,60 @@ async function submitProposal() {
   }
 }
 
+// --- HQ Avatar Animations ---
+// Listen for agent execution events and animate the corresponding employee
+function setupHQAnimations() {
+  if (!ws) return;
+  const origOnMessage = ws.onmessage;
+  ws.addEventListener('message', (event) => {
+    try {
+      const data = JSON.parse(event.data);
+
+      if (data.event === 'hq_task_dispatched') {
+        // Set employee to busy with typing animation
+        const empEl = document.querySelector(`.hq-employee[onclick*="'${data.data.employee}'"]`);
+        if (empEl) {
+          empEl.dataset.status = 'busy';
+        }
+      }
+
+      if (data.event === 'hq_task_complete' || data.event === 'agent_complete') {
+        // Return to active after task completes
+        const agentName = data.data.employee || data.data.agent;
+        const empEl = document.querySelector(`.hq-employee[onclick*="'${agentName}'"]`);
+        if (empEl) {
+          empEl.dataset.status = 'active';
+        }
+      }
+    } catch {}
+  });
+}
+
+// Ambient animation — randomly pulse a few employees to show "life"
+function startAmbientHQLife() {
+  setInterval(() => {
+    const employees = document.querySelectorAll('.hq-employee[data-status="active"]');
+    if (employees.length < 3) return;
+    // Pick 1-2 random active employees and briefly make them "busy"
+    const count = Math.random() > 0.6 ? 2 : 1;
+    for (let i = 0; i < count; i++) {
+      const emp = employees[Math.floor(Math.random() * employees.length)];
+      if (emp.dataset.status === 'active') {
+        emp.dataset.status = 'busy';
+        setTimeout(() => { emp.dataset.status = 'active'; }, 3000 + Math.random() * 5000);
+      }
+    }
+  }, 8000);
+}
+
+// Initialize when HQ view loads
+const _origLoadHQ = loadHQ;
+loadHQ = async function() {
+  await _origLoadHQ();
+  setupHQAnimations();
+  startAmbientHQLife();
+};
+
 // --- Tenant Management ---
 async function loadTenants() {
   const [tenants, templates] = await Promise.all([
@@ -5941,8 +5995,11 @@ function renderOrgChart(org) {
       const tierClass = emp.tier === 'strategic' ? 'opus' : emp.tier === 'creative' ? 'omni' : emp.tier === 'scout' ? 'haiku' : emp.tier === 'persistent' ? 'hermes' : emp.tier === 'economy' ? 'economy' : emp.tier === 'realtime' ? 'grok' : 'sonnet';
       const statusDot = emp.status === 'active' ? '🟢' : emp.status === 'busy' ? '🟡' : '⚪';
       return `
-        <div class="hq-employee" onclick="showEmployee('${emp.id}', this)" data-tier="${tierClass}">
-          <div class="hq-avatar">${emp.avatar}</div>
+        <div class="hq-employee" onclick="showEmployee('${emp.id}', this)" data-tier="${tierClass}" data-status="${emp.status}">
+          <div class="hq-avatar">
+            <span class="hq-avatar-face">${emp.avatar}</span>
+            <div class="hq-avatar-typing"><div class="hq-typing-dots"><span></span><span></span><span></span></div></div>
+          </div>
           <div class="hq-emp-info">
             <div class="hq-emp-name">${statusDot} ${emp.name}</div>
             <div class="hq-emp-title">${emp.title}</div>
