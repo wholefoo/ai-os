@@ -6287,23 +6287,122 @@ body {
   50% { opacity: 0.4; }
 }
 
-/* --- HeyGen Video Avatar --- */
+/* --- Avatar Video & Photo Display --- */
 .avatar-video-wrap {
   width: 100%;
   aspect-ratio: 1;
   max-height: 380px;
   overflow: hidden;
-  border-radius: 12px 12px 0 0;
-  background: #0a0a0f;
+  border-radius: 16px 16px 0 0;
+  background: linear-gradient(135deg, #0a0a1a, #111128);
   display: flex;
   align-items: center;
   justify-content: center;
+  position: relative;
 }
 #avatarVideo {
   width: 100%;
   height: 100%;
   object-fit: cover;
   display: none;
+}
+
+/* Photo Avatar Layer */
+.avatar-photo-layer {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.avatar-photo-img {
+  width: 220px;
+  height: 220px;
+  border-radius: 50%;
+  object-fit: cover;
+  border: 3px solid rgba(99, 102, 241, 0.5);
+  box-shadow: 0 0 30px rgba(99, 102, 241, 0.15), 0 8px 32px rgba(0,0,0,0.3);
+  transition: border-color 0.3s, box-shadow 0.3s;
+  z-index: 2;
+}
+.avatar-photo-speaking-ring {
+  position: absolute;
+  width: 240px;
+  height: 240px;
+  border-radius: 50%;
+  border: 3px solid transparent;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  transition: border-color 0.3s, box-shadow 0.3s;
+  z-index: 1;
+}
+.avatar-photo-speaking-ring.speaking {
+  border-color: rgba(99, 241, 130, 0.7);
+  box-shadow: 0 0 40px rgba(99, 241, 130, 0.3);
+  animation: photoRingSpeaking 1.2s ease-in-out infinite;
+}
+.avatar-photo-speaking-ring.listening {
+  border-color: rgba(99, 180, 241, 0.7);
+  box-shadow: 0 0 30px rgba(99, 180, 241, 0.2);
+  animation: photoRingListening 2s ease-in-out infinite;
+}
+@keyframes photoRingSpeaking {
+  0%, 100% { transform: translate(-50%, -50%) scale(1); opacity: 1; }
+  50% { transform: translate(-50%, -50%) scale(1.06); opacity: 0.7; }
+}
+@keyframes photoRingListening {
+  0%, 100% { transform: translate(-50%, -50%) scale(1); opacity: 0.8; }
+  50% { transform: translate(-50%, -50%) scale(1.03); opacity: 0.5; }
+}
+
+/* Photo speaking bars */
+.avatar-photo-bars {
+  position: absolute;
+  bottom: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  gap: 4px;
+  opacity: 0;
+  transition: opacity 0.3s;
+  z-index: 3;
+}
+.avatar-photo-bars span {
+  width: 4px;
+  height: 16px;
+  background: rgba(99, 241, 130, 0.8);
+  border-radius: 2px;
+  animation: photoBars 0.6s ease-in-out infinite;
+}
+.avatar-photo-bars span:nth-child(1) { animation-delay: 0s; height: 12px; }
+.avatar-photo-bars span:nth-child(2) { animation-delay: 0.1s; height: 18px; }
+.avatar-photo-bars span:nth-child(3) { animation-delay: 0.2s; height: 24px; }
+.avatar-photo-bars span:nth-child(4) { animation-delay: 0.1s; height: 18px; }
+.avatar-photo-bars span:nth-child(5) { animation-delay: 0s; height: 12px; }
+@keyframes photoBars {
+  0%, 100% { transform: scaleY(0.4); }
+  50% { transform: scaleY(1); }
+}
+
+/* Upload controls */
+.avatar-upload-controls {
+  display: flex;
+  align-items: center;
+  padding: 4px 16px;
+}
+.btn-outline {
+  border: 1px solid rgba(99, 102, 241, 0.4);
+  background: transparent;
+  color: #a5b4fc;
+  padding: 4px 12px;
+  border-radius: 6px;
+  transition: all 0.2s;
+}
+.btn-outline:hover {
+  background: rgba(99, 102, 241, 0.1);
+  border-color: rgba(99, 102, 241, 0.7);
 }
 .avatar-heygen-controls {
   padding: 8px 16px;

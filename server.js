@@ -477,10 +477,10 @@ app.use(helmet({
       scriptSrcAttr: ["'unsafe-inline'"],  // Required for onclick handlers in HTML
       styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
       fontSrc: ["'self'", "https://fonts.gstatic.com"],
-      connectSrc: ["'self'", "ws:", "wss:", "https://www.google-analytics.com", "https://analytics.google.com", "https://*.google-analytics.com", "https://*.analytics.google.com", "wss://*.livekit.cloud", "https://*.heygen.com", "https://*.liveavatar.com", "wss://*.heygen.com", "wss://*.liveavatar.com", "https://cdn.jsdelivr.net"],
+      connectSrc: ["'self'", "ws:", "wss:", "https://www.google-analytics.com", "https://analytics.google.com", "https://*.google-analytics.com", "https://*.analytics.google.com", "wss://*.livekit.cloud", "https://*.heygen.com", "https://*.liveavatar.com", "wss://*.heygen.com", "wss://*.liveavatar.com", "https://cdn.jsdelivr.net", "https://api.d-id.com", "https://*.d-id.com"],
       frameSrc: ["'self'", "https://*.heygen.com", "https://*.liveavatar.com"],
-      imgSrc: ["'self'", "data:", "blob:", "https://www.google-analytics.com", "https://www.googletagmanager.com", "https://*.heygen.com", "https://*.liveavatar.com"],
-      mediaSrc: ["'self'", "data:", "blob:", "https://*.heygen.com", "https://*.liveavatar.com"],
+      imgSrc: ["'self'", "data:", "blob:", "https://www.google-analytics.com", "https://www.googletagmanager.com", "https://*.heygen.com", "https://*.liveavatar.com", "https://*.d-id.com"],
+      mediaSrc: ["'self'", "data:", "blob:", "https://*.heygen.com", "https://*.liveavatar.com", "https://*.d-id.com"],
     }
   }
 }));
@@ -925,6 +925,129 @@ app.get('/api/heygen/status', requireAdmin, (req, res) => {
     configured: !!settings.ai.heygen_api_key,
     message: settings.ai.heygen_api_key ? 'HeyGen API key configured — photorealistic avatars ready' : 'HeyGen not configured — add API key in Settings',
   });
+});
+
+// --- D-ID Talking Avatar API ---
+// Creates lip-synced talking head videos from a photo + text/audio
+// Flow: POST /api/did/talk → poll GET /api/did/talk/:id → play video
+
+app.get('/api/did/status', requireAdmin, (req, res) => {
+  res.json({
+    configured: !!settings.ai.did_api_key,
+    message: settings.ai.did_api_key ? 'D-ID API configured — interactive talking avatars ready' : 'D-ID not configured — add API key in Settings for talking avatars',
+  });
+});
+
+app.post('/api/did/talk', requireAdmin, async (req, res) => {
+  const apiKey = settings.ai.did_api_key;
+  if (!apiKey) return res.json({ ok: false, error: 'D-ID API key not configured — add it in Settings' });
+
+  const { text, photoUrl, voice, employee } = req.body;
+  if (!text) return res.status(400).json({ ok: false, error: 'Text is required' });
+
+  try {
+    // Use the employee's custom photo if uploaded, otherwise D-ID's stock presenter
+    const sourceUrl = photoUrl || 'https://d-id-public-bucket.s3.us-west-2.amazonaws.com/alice.jpg';
+
+    const talkRes = await fetch('https://api.d-id.com/talks', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Basic ${apiKey}`,
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+      },
+      body: JSON.stringify({
+        script: {
+          type: 'text',
+          input: text.substring(0, 3000),
+          provider: { type: 'microsoft', voice_id: voice || 'en-US-JennyNeural' },
+        },
+        source_url: sourceUrl,
+        config: { fluent: true, pad_audio: 0.5 },
+      }),
+    });
+
+    if (!talkRes.ok) {
+      const err = await talkRes.json().catch(() => ({}));
+      return res.json({ ok: false, error: err.description || err.message || `D-ID HTTP ${talkRes.status}` });
+    }
+
+    const data = await talkRes.json();
+    res.json({ ok: true, talkId: data.id, status: data.status || 'created' });
+  } catch (e) {
+    res.json({ ok: false, error: e.message });
+  }
+});
+
+// Poll for talk completion — returns video URL when ready
+app.get('/api/did/talk/:id', requireAdmin, async (req, res) => {
+  const apiKey = settings.ai.did_api_key;
+  if (!apiKey) return res.json({ ok: false, error: 'D-ID not configured' });
+
+  try {
+    const pollRes = await fetch(`https://api.d-id.com/talks/${req.params.id}`, {
+      headers: {
+        'Authorization': `Basic ${apiKey}`,
+        'Accept': 'application/json',
+      },
+    });
+
+    if (!pollRes.ok) {
+      return res.json({ ok: false, error: `D-ID poll HTTP ${pollRes.status}` });
+    }
+
+    const data = await pollRes.json();
+    res.json({
+      ok: true,
+      status: data.status,
+      resultUrl: data.result_url || null,
+      duration: data.duration || null,
+    });
+  } catch (e) {
+    res.json({ ok: false, error: e.message });
+  }
+});
+
+// Upload a custom avatar photo to D-ID
+app.post('/api/did/upload-photo', requireAdmin, async (req, res) => {
+  const apiKey = settings.ai.did_api_key;
+  if (!apiKey) return res.json({ ok: false, error: 'D-ID not configured' });
+
+  const { imageBase64, employee } = req.body;
+  if (!imageBase64) return res.status(400).json({ ok: false, error: 'Image data required' });
+
+  try {
+    // Convert base64 to buffer and upload to D-ID
+    const imageBuffer = Buffer.from(imageBase64.replace(/^data:image\/\w+;base64,/, ''), 'base64');
+    const uploadRes = await fetch('https://api.d-id.com/images', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Basic ${apiKey}`,
+        'Content-Type': 'image/png',
+        'Accept': 'application/json',
+      },
+      body: imageBuffer,
+    });
+
+    if (!uploadRes.ok) {
+      const err = await uploadRes.json().catch(() => ({}));
+      return res.json({ ok: false, error: err.description || `Upload failed HTTP ${uploadRes.status}` });
+    }
+
+    const data = await uploadRes.json();
+    // Store the D-ID image URL for this employee
+    if (!settings._didPhotos) settings._didPhotos = {};
+    settings._didPhotos[employee || 'atlas'] = data.url;
+
+    res.json({ ok: true, url: data.url, id: data.id });
+  } catch (e) {
+    res.json({ ok: false, error: e.message });
+  }
+});
+
+// Get stored D-ID photo URLs for all employees
+app.get('/api/did/photos', requireAdmin, (req, res) => {
+  res.json({ ok: true, photos: settings._didPhotos || {} });
 });
 
 // --- LiveKit Voice Agent Token Generation ---
@@ -5524,6 +5647,7 @@ const settings = loadState('settings', {
     deepgram_api_key: process.env.DEEPGRAM_API_KEY || '',
     cartesia_api_key: process.env.CARTESIA_API_KEY || '',
     heygen_api_key: process.env.HEYGEN_API_KEY || '',
+    did_api_key: process.env.DID_API_KEY || '',
   },
   mcp: {
     hermes_url: process.env.HERMES_MCP_URL || 'http://127.0.0.1:8420',
@@ -5854,6 +5978,22 @@ app.post('/api/settings/test/:service', requireAdmin, async (req, res) => {
       const data = await r.json();
       const ok = data.status_code === 20000;
       res.json({ ok, message: ok ? `DataForSEO connected — balance: $${data.cost || 'N/A'}` : (data.status_message || `HTTP ${r.status}`) });
+    } catch (e) {
+      res.json({ ok: false, message: `Connection failed: ${e.message}` });
+    }
+  } else if (service === 'did') {
+    if (!settings.ai.did_api_key) return res.json({ ok: false, message: 'No D-ID API key configured — save your key first' });
+    try {
+      const r = await fetch('https://api.d-id.com/credits', {
+        headers: { 'Authorization': `Basic ${settings.ai.did_api_key}`, 'Accept': 'application/json' },
+      });
+      if (r.ok) {
+        const data = await r.json();
+        const remaining = data.remaining || 'unknown';
+        res.json({ ok: true, message: `D-ID connected — ${remaining} credits remaining` });
+      } else {
+        res.json({ ok: false, message: `HTTP ${r.status} — check your D-ID API key` });
+      }
     } catch (e) {
       res.json({ ok: false, message: `Connection failed: ${e.message}` });
     }
