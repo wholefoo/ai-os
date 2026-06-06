@@ -5033,7 +5033,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
 // Map of section → field → input ID
 const settingsFieldMap = {
-  ai: ['anthropic_api_key', 'openai_api_key', 'deepseek_api_key', 'xai_api_key', 'gemini_api_key', 'perplexity_api_key', 'firecrawl_api_key', 'tavily_api_key', 'apify_api_token', 'manus_api_key', 'heygen_api_key', 'livekit_api_key', 'livekit_api_secret', 'livekit_url', 'deepgram_api_key', 'cartesia_api_key'],
+  ai: ['anthropic_api_key', 'openai_api_key', 'deepseek_api_key', 'xai_api_key', 'gemini_api_key', 'perplexity_api_key', 'firecrawl_api_key', 'tavily_api_key', 'apify_api_token', 'manus_api_key', 'heygen_api_key', 'did_api_key', 'livekit_api_key', 'livekit_api_secret', 'livekit_url', 'deepgram_api_key', 'cartesia_api_key'],
   mcp: ['hermes_url', 'hermes_enabled'],
   notifications: ['telegram_bot_token', 'telegram_chat_id', 'slack_webhook_url'],
   automation: ['n8n_webhook_base', 'n8n_api_key', 'team_webhook_url'],
@@ -6079,17 +6079,19 @@ let avatarState = {
 
 // Avatar name → agent + portrait + voice mapping
 // OpenAI voices: alloy (neutral), echo (warm male), fable (British), onyx (deep male), nova (bright female), shimmer (soft female)
+// D-ID Microsoft voices: en-US-GuyNeural (male), en-US-JennyNeural (female), en-US-AriaNeural (F), en-US-DavisNeural (M), en-GB-RyanNeural (M-British)
+// photo: path to imported headshot image (set via upload or manual placement in assets/avatars/)
 const AVATAR_PROFILES = {
-  atlas:   { agent: 'orchestrator',    voice: 'onyx',    fallbackPitch: 0.9,  fallbackRate: 1.0,  gender: 'M', title: 'CEO & Orchestrator',      gradient: 'linear-gradient(135deg, #1e3a5f, #3b52cc)', initials: 'AT' },
-  nova:    { agent: 'architect',       voice: 'nova',    fallbackPitch: 1.15, fallbackRate: 1.05, gender: 'F', title: 'CTO & Architect',          gradient: 'linear-gradient(135deg, #0c4a6e, #06b6d4)', initials: 'NV' },
-  justice: { agent: 'general-counsel', voice: 'fable',   fallbackPitch: 0.75, fallbackRate: 0.95, gender: 'M', title: 'General Counsel',          gradient: 'linear-gradient(135deg, #44403c, #78716c)', initials: 'JC' },
-  muse:    { agent: 'media-producer',  voice: 'shimmer', fallbackPitch: 1.2,  fallbackRate: 1.1,  gender: 'F', title: 'Creative Director',        gradient: 'linear-gradient(135deg, #9d174d, #ec4899)', initials: 'MS' },
-  forge:   { agent: 'coder',          voice: 'echo',    fallbackPitch: 0.85, fallbackRate: 1.0,  gender: 'M', title: 'Engineering Lead',         gradient: 'linear-gradient(135deg, #92400e, #f59e0b)', initials: 'FG' },
-  echo:    { agent: 'marketing-hub',   voice: 'nova',    fallbackPitch: 1.1,  fallbackRate: 1.05, gender: 'F', title: 'Marketing Director',       gradient: 'linear-gradient(135deg, #065f46, #10b981)', initials: 'EC' },
-  hermes:  { agent: 'hermes-delegate', voice: 'alloy',   fallbackPitch: 1.0,  fallbackRate: 1.15, gender: 'M', title: 'Operations Director',      gradient: 'linear-gradient(135deg, #5b21b6, #a78bfa)', initials: 'HM' },
-  harbor:  { agent: 'cs-lead',        voice: 'shimmer', fallbackPitch: 1.05, fallbackRate: 1.0,  gender: 'F', title: 'Support Lead',             gradient: 'linear-gradient(135deg, #78350f, #fbbf24)', initials: 'HB' },
-  hawkeye: { agent: 'grok-realtime',   voice: 'onyx',    fallbackPitch: 0.8,  fallbackRate: 0.9,  gender: 'M', title: 'Intelligence Analyst',     gradient: 'linear-gradient(135deg, #7f1d1d, #ef4444)', initials: 'HK' },
-  ledger:  { agent: 'cost-analyst',    voice: 'fable',   fallbackPitch: 0.95, fallbackRate: 0.95, gender: 'M', title: 'Chief Financial Officer',  gradient: 'linear-gradient(135deg, #14532d, #22c55e)', initials: 'LG' },
+  atlas:   { agent: 'orchestrator',    voice: 'onyx',    didVoice: 'en-US-DavisNeural',  fallbackPitch: 0.9,  fallbackRate: 1.0,  gender: 'M', title: 'CEO & Orchestrator',      gradient: 'linear-gradient(135deg, #1e3a5f, #3b52cc)', initials: 'AT', photo: '' },
+  nova:    { agent: 'architect',       voice: 'nova',    didVoice: 'en-US-AriaNeural',   fallbackPitch: 1.15, fallbackRate: 1.05, gender: 'F', title: 'CTO & Architect',          gradient: 'linear-gradient(135deg, #0c4a6e, #06b6d4)', initials: 'NV', photo: '' },
+  justice: { agent: 'general-counsel', voice: 'fable',   didVoice: 'en-GB-RyanNeural',   fallbackPitch: 0.75, fallbackRate: 0.95, gender: 'M', title: 'General Counsel',          gradient: 'linear-gradient(135deg, #44403c, #78716c)', initials: 'JC', photo: '' },
+  muse:    { agent: 'media-producer',  voice: 'shimmer', didVoice: 'en-US-JennyNeural',  fallbackPitch: 1.2,  fallbackRate: 1.1,  gender: 'F', title: 'Creative Director',        gradient: 'linear-gradient(135deg, #9d174d, #ec4899)', initials: 'MS', photo: '' },
+  forge:   { agent: 'coder',          voice: 'echo',    didVoice: 'en-US-GuyNeural',    fallbackPitch: 0.85, fallbackRate: 1.0,  gender: 'M', title: 'Engineering Lead',         gradient: 'linear-gradient(135deg, #92400e, #f59e0b)', initials: 'FG', photo: '' },
+  echo:    { agent: 'marketing-hub',   voice: 'nova',    didVoice: 'en-US-AriaNeural',   fallbackPitch: 1.1,  fallbackRate: 1.05, gender: 'F', title: 'Marketing Director',       gradient: 'linear-gradient(135deg, #065f46, #10b981)', initials: 'EC', photo: '' },
+  hermes:  { agent: 'hermes-delegate', voice: 'alloy',   didVoice: 'en-US-DavisNeural',  fallbackPitch: 1.0,  fallbackRate: 1.15, gender: 'M', title: 'Operations Director',      gradient: 'linear-gradient(135deg, #5b21b6, #a78bfa)', initials: 'HM', photo: '' },
+  harbor:  { agent: 'cs-lead',        voice: 'shimmer', didVoice: 'en-US-JennyNeural',  fallbackPitch: 1.05, fallbackRate: 1.0,  gender: 'F', title: 'Support Lead',             gradient: 'linear-gradient(135deg, #78350f, #fbbf24)', initials: 'HB', photo: '' },
+  hawkeye: { agent: 'grok-realtime',   voice: 'onyx',    didVoice: 'en-US-GuyNeural',    fallbackPitch: 0.8,  fallbackRate: 0.9,  gender: 'M', title: 'Intelligence Analyst',     gradient: 'linear-gradient(135deg, #7f1d1d, #ef4444)', initials: 'HK', photo: '' },
+  ledger:  { agent: 'cost-analyst',    voice: 'fable',   didVoice: 'en-GB-RyanNeural',   fallbackPitch: 0.95, fallbackRate: 0.95, gender: 'M', title: 'Chief Financial Officer',  gradient: 'linear-gradient(135deg, #14532d, #22c55e)', initials: 'LG', photo: '' },
 };
 
 const AVATAR_AGENTS = Object.fromEntries(Object.entries(AVATAR_PROFILES).map(([k, v]) => [k, v.agent]));
@@ -6097,29 +6099,155 @@ const AVATAR_AGENTS = Object.fromEntries(Object.entries(AVATAR_PROFILES).map(([k
 let livekitRoom = null;
 let heygenAvatar = null;
 let heygenSessionActive = false;
+let didTalkingActive = false;
+let avatarPhotos = {}; // employee -> local photo path or D-ID URL
 
 async function loadAvatarChat() {
   initVoiceSystem();
 
-  // Check HeyGen first, then LiveKit, then fallback
-  const heygenStatus = await fetchJSON('/api/heygen/status');
+  // Load any saved avatar photos from localStorage
+  try {
+    const saved = localStorage.getItem('ai-os-avatar-photos');
+    if (saved) avatarPhotos = JSON.parse(saved);
+  } catch {}
 
+  // Also load photos from any existing files in assets/avatars/
+  await detectAvatarPhotos();
+
+  // Check D-ID, HeyGen, LiveKit in priority order
+  const [didStatus, heygenStatus, lkStatus] = await Promise.all([
+    fetchJSON('/api/did/status'),
+    fetchJSON('/api/heygen/status'),
+    fetchJSON('/api/livekit/status'),
+  ]);
+
+  avatarState.didReady = didStatus.configured;
+  avatarState.heygenReady = heygenStatus.configured;
+  avatarState.livekitReady = lkStatus.allReady;
+
+  // Show HeyGen button if configured
   if (heygenStatus.configured) {
-    avatarState.heygenReady = true;
     document.getElementById('heygenStartBtn').style.display = 'inline-block';
-    document.getElementById('avatarPortraitFallback').style.display = 'block';
-    initAvatar3D(); // Show portrait as placeholder
-    addAvatarBotMessage("Hello! I'm Atlas, CEO of AI OS Corp. Click 'Start Video Avatar' to see me in photorealistic video, or type/speak below for text chat.");
+  }
+
+  // Initialize the avatar display (photo or portrait fallback)
+  initAvatarDisplay();
+
+  // Welcome message based on capabilities
+  const name = avatarState.employee.charAt(0).toUpperCase() + avatarState.employee.slice(1);
+  const profile = AVATAR_PROFILES[avatarState.employee];
+  const hasPhoto = getAvatarPhoto(avatarState.employee);
+
+  if (didStatus.configured && hasPhoto) {
+    addAvatarBotMessage(`Hello! I'm ${name}, ${profile.title}. I have a photorealistic avatar ready. When I respond, you'll see me speak with lip-synced video. Type or click the mic to start.`);
+  } else if (didStatus.configured) {
+    addAvatarBotMessage(`Hello! I'm ${name}, ${profile.title}. D-ID talking avatars are ready. Upload a headshot photo below to see me come alive with lip-synced speech!`);
+  } else if (hasPhoto) {
+    addAvatarBotMessage(`Hello! I'm ${name}, ${profile.title}. My photo avatar is active. Add a D-ID API key in Settings to make me talk with lip-synced video!`);
   } else {
-    const lkStatus = await fetchJSON('/api/livekit/status');
-    avatarState.livekitReady = lkStatus.allReady;
-    initAvatar3D();
-    if (lkStatus.allReady) {
-      addAvatarBotMessage("Hello! I'm Atlas. Voice pipeline active. Click the mic to talk, or type below. Add a HeyGen API key in Settings for photorealistic video avatars.");
-    } else {
-      addAvatarBotMessage("Hello! I'm Atlas, CEO of AI OS Corp. Type below to chat. Add API keys in Settings for voice and video avatar features.");
+    addAvatarBotMessage(`Hello! I'm ${name}, ${profile.title}. Type below to chat. Upload a headshot and add a D-ID key in Settings for interactive talking avatars.`);
+  }
+}
+
+// Detect avatar photos placed in assets/avatars/ directory
+async function detectAvatarPhotos() {
+  const employees = Object.keys(AVATAR_PROFILES);
+  for (const emp of employees) {
+    // Check common image extensions
+    for (const ext of ['png', 'jpg', 'jpeg', 'webp']) {
+      const path = `assets/avatars/${emp}.${ext}`;
+      try {
+        const resp = await fetch(path, { method: 'HEAD' });
+        if (resp.ok) {
+          avatarPhotos[emp] = path;
+          AVATAR_PROFILES[emp].photo = path;
+          break;
+        }
+      } catch {}
     }
   }
+}
+
+// Get the avatar photo URL for an employee
+function getAvatarPhoto(employee) {
+  return avatarPhotos[employee] || AVATAR_PROFILES[employee]?.photo || '';
+}
+
+// Initialize the avatar display — photo if available, portrait fallback otherwise
+function initAvatarDisplay() {
+  const photo = getAvatarPhoto(avatarState.employee);
+  const photoLayer = document.getElementById('avatarPhotoLayer');
+  const portraitFallback = document.getElementById('avatarPortraitFallback');
+
+  if (photo && photoLayer) {
+    document.getElementById('avatarPhotoImg').src = photo;
+    photoLayer.style.display = 'flex';
+    portraitFallback.style.display = 'none';
+    document.getElementById('avatarUploadHint').textContent = 'Photo loaded';
+  } else {
+    if (photoLayer) photoLayer.style.display = 'none';
+    portraitFallback.style.display = 'block';
+    initAvatar3D();
+  }
+
+  // Update name display
+  const profile = AVATAR_PROFILES[avatarState.employee];
+  const name = avatarState.employee.charAt(0).toUpperCase() + avatarState.employee.slice(1);
+  document.getElementById('avatarName').textContent = `${name} — ${profile.title}`;
+
+  // Start status animation loop
+  startAvatarStatusLoop();
+}
+
+// Photo speaking animation loop
+function startAvatarStatusLoop() {
+  if (avatarState._statusInterval) clearInterval(avatarState._statusInterval);
+  avatarState._statusInterval = setInterval(() => {
+    const ring = document.getElementById('avatarPhotoRing');
+    const bars = document.getElementById('avatarPhotoBars');
+    if (ring) {
+      ring.classList.toggle('speaking', avatarState.speaking);
+      ring.classList.toggle('listening', avatarState.listening);
+    }
+    if (bars) {
+      bars.style.opacity = avatarState.speaking ? '1' : '0';
+    }
+  }, 150);
+}
+
+// Handle photo upload from the file input
+async function handleAvatarPhotoUpload(event) {
+  const file = event.target.files[0];
+  if (!file) return;
+
+  const reader = new FileReader();
+  reader.onload = async function(e) {
+    const dataUrl = e.target.result;
+    const employee = avatarState.employee;
+
+    // Store locally
+    avatarPhotos[employee] = dataUrl;
+    AVATAR_PROFILES[employee].photo = dataUrl;
+    localStorage.setItem('ai-os-avatar-photos', JSON.stringify(avatarPhotos));
+
+    // Update display immediately
+    initAvatarDisplay();
+    showSettingsToast(`Photo uploaded for ${employee.charAt(0).toUpperCase() + employee.slice(1)}`);
+
+    // If D-ID is configured, upload to D-ID for talking avatar
+    if (avatarState.didReady) {
+      const uploadResult = await fetchJSON('/api/did/upload-photo', {
+        method: 'POST',
+        body: { imageBase64: dataUrl, employee },
+      });
+      if (uploadResult.ok) {
+        avatarPhotos[employee + '_did'] = uploadResult.url;
+        localStorage.setItem('ai-os-avatar-photos', JSON.stringify(avatarPhotos));
+        showSettingsToast('Photo also uploaded to D-ID for talking avatar');
+      }
+    }
+  };
+  reader.readAsDataURL(file);
 }
 
 // --- HeyGen LiveAvatar ---
@@ -6611,14 +6739,19 @@ function switchAvatarEmployee() {
   // Disconnect LiveKit if active (need new room for new employee)
   if (livekitRoom) disconnectLiveKit();
 
+  // Stop any playing D-ID video
+  const talkingVideo = document.getElementById('avatarTalkingVideo');
+  if (talkingVideo) { talkingVideo.pause(); talkingVideo.style.display = 'none'; }
+
   const select = document.getElementById('avatarSelect');
   const option = select.options[select.selectedIndex];
   avatarState.employee = select.value;
   avatarState.color = option.dataset.color || '#3b82f6';
   avatarState.history = [];
-  document.getElementById('avatarName').textContent = option.textContent;
   document.getElementById('avatarMessages').innerHTML = '';
-  updateAvatarColor();
+
+  // Re-initialize avatar display for new employee (photo or portrait)
+  initAvatarDisplay();
   addAvatarBotMessage(`Switched to ${option.textContent}. How can I help you?`);
 }
 
@@ -6814,10 +6947,6 @@ async function sendAvatarMessage() {
   avatarState.history.push({ role: 'user', content: text });
   document.getElementById('avatarStatus').textContent = 'Thinking...';
 
-  // Thinking animation — slight head tilt
-  avatarState.headRotation.x = -5;
-  setTimeout(() => { avatarState.headRotation.x = 0; }, 2000);
-
   try {
     const agentName = AVATAR_AGENTS[avatarState.employee] || 'orchestrator';
     const result = await fetchJSON('/api/agent/execute', {
@@ -6828,17 +6957,146 @@ async function sendAvatarMessage() {
     const reply = result.content || result.error || 'I could not process that request.';
     avatarState.history.push({ role: 'assistant', content: reply });
 
-    // If HeyGen is active, make the avatar speak the reply
-    if (heygenSessionActive) {
+    // Priority: D-ID talking video > HeyGen streaming > OpenAI TTS > browser TTS
+    const didTriggered = await triggerDIDTalk(reply);
+
+    if (!didTriggered && heygenSessionActive) {
       sendToHeyGen(reply);
     }
 
-    addAvatarBotMessage(reply);
+    // addAvatarBotMessage handles text display + TTS fallback
+    // If D-ID is handling video, skip TTS to avoid double audio
+    if (didTriggered) {
+      addAvatarBotMessageNoSpeak(reply);
+    } else {
+      addAvatarBotMessage(reply);
+    }
   } catch (e) {
     addAvatarBotMessage('Sorry, something went wrong. Please try again.');
   }
 
   document.getElementById('avatarStatus').textContent = 'Idle';
+}
+
+// Add bot message without speaking (used when D-ID handles audio)
+function addAvatarBotMessageNoSpeak(text) {
+  const container = document.getElementById('avatarMessages');
+  if (!container) return;
+  const div = document.createElement('div');
+  div.className = 'avatar-msg avatar-msg-bot';
+  div.innerHTML = `<div class="avatar-msg-face">${renderAvatar(avatarState.employee, 'sm')}</div><div class="avatar-msg-text">${escapeHtml(text)}</div>`;
+  container.appendChild(div);
+  container.scrollTop = container.scrollHeight;
+}
+
+// --- D-ID Interactive Talking Avatar ---
+
+async function triggerDIDTalk(text) {
+  if (!avatarState.didReady || !avatarState.ttsEnabled) return false;
+
+  const employee = avatarState.employee;
+  const profile = AVATAR_PROFILES[employee];
+  const photoUrl = avatarPhotos[employee + '_did'] || ''; // D-ID uploaded photo URL
+
+  // Need either a D-ID photo URL or fall back to stock
+  document.getElementById('avatarStatus').textContent = 'Generating video...';
+  avatarState.speaking = true;
+
+  try {
+    const result = await fetchJSON('/api/did/talk', {
+      method: 'POST',
+      body: {
+        text: text.substring(0, 1500),
+        photoUrl: photoUrl,
+        voice: profile.didVoice || 'en-US-JennyNeural',
+        employee,
+      },
+    });
+
+    if (!result.ok) {
+      console.warn('[D-ID] Talk creation failed:', result.error);
+      avatarState.speaking = false;
+      return false;
+    }
+
+    // Poll for completion
+    const videoUrl = await pollDIDTalk(result.talkId);
+    if (videoUrl) {
+      await playDIDVideo(videoUrl);
+      return true;
+    }
+
+    avatarState.speaking = false;
+    return false;
+  } catch (e) {
+    console.error('[D-ID] Error:', e);
+    avatarState.speaking = false;
+    return false;
+  }
+}
+
+async function pollDIDTalk(talkId, maxAttempts = 30) {
+  for (let i = 0; i < maxAttempts; i++) {
+    await new Promise(r => setTimeout(r, 1000)); // Poll every 1s
+
+    const status = await fetchJSON(`/api/did/talk/${talkId}`);
+    if (!status.ok) continue;
+
+    if (status.status === 'done' && status.resultUrl) {
+      return status.resultUrl;
+    }
+
+    if (status.status === 'error' || status.status === 'rejected') {
+      console.warn('[D-ID] Talk failed:', status);
+      return null;
+    }
+
+    // Update status display with progress
+    document.getElementById('avatarStatus').textContent = `Generating video... ${Math.round((i / maxAttempts) * 100)}%`;
+  }
+
+  console.warn('[D-ID] Talk timed out');
+  return null;
+}
+
+async function playDIDVideo(videoUrl) {
+  const videoEl = document.getElementById('avatarTalkingVideo');
+  const photoLayer = document.getElementById('avatarPhotoLayer');
+  const portraitFallback = document.getElementById('avatarPortraitFallback');
+
+  if (!videoEl) return;
+
+  videoEl.src = videoUrl;
+  videoEl.style.display = 'block';
+  if (photoLayer) photoLayer.style.display = 'none';
+  if (portraitFallback) portraitFallback.style.display = 'none';
+
+  avatarState.speaking = true;
+  document.getElementById('avatarStatus').textContent = 'Speaking...';
+
+  return new Promise((resolve) => {
+    videoEl.onended = () => {
+      avatarState.speaking = false;
+      document.getElementById('avatarStatus').textContent = 'Idle';
+      videoEl.style.display = 'none';
+      // Show photo or portrait again
+      initAvatarDisplay();
+      resolve();
+    };
+
+    videoEl.onerror = () => {
+      avatarState.speaking = false;
+      videoEl.style.display = 'none';
+      initAvatarDisplay();
+      resolve();
+    };
+
+    videoEl.play().catch(() => {
+      videoEl.style.display = 'none';
+      initAvatarDisplay();
+      resolve();
+    });
+  });
 }
 
 // --- Avatar Identity System ---

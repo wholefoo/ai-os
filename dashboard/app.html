@@ -1338,14 +1338,26 @@
           <div class="radar-header">
             <div class="radar-header-left">
               <h2 class="radar-title">Avatar Chat</h2>
-              <span class="radar-subtitle">Talk to your AI employees — 3D avatars with voice interaction</span>
+              <span class="radar-subtitle">Interactive AI employees — photorealistic talking avatars</span>
             </div>
           </div>
 
           <div class="avatar-chat-layout">
             <div class="avatar-3d-container">
               <div id="avatarVideoWrap" class="avatar-video-wrap">
-                <video id="avatarVideo" autoplay playsinline></video>
+                <!-- D-ID talking video layer -->
+                <video id="avatarTalkingVideo" autoplay playsinline style="display:none;width:100%;height:100%;object-fit:cover;border-radius:16px;"></video>
+                <!-- HeyGen streaming layer -->
+                <video id="avatarVideo" autoplay playsinline style="display:none;"></video>
+                <!-- Photo avatar layer -->
+                <div id="avatarPhotoLayer" class="avatar-photo-layer" style="display:none;">
+                  <img id="avatarPhotoImg" class="avatar-photo-img" alt="Avatar">
+                  <div class="avatar-photo-speaking-ring" id="avatarPhotoRing"></div>
+                  <div class="avatar-photo-bars" id="avatarPhotoBars">
+                    <span></span><span></span><span></span><span></span><span></span>
+                  </div>
+                </div>
+                <!-- Portrait fallback (gradient + initials) -->
                 <div id="avatarPortraitFallback" class="portrait-container"></div>
               </div>
               <canvas id="avatarCanvas" style="display:none;"></canvas>
@@ -1354,6 +1366,13 @@
               <div class="avatar-heygen-controls">
                 <button class="btn btn-sm btn-primary" id="heygenStartBtn" onclick="startHeyGenSession()" style="display:none;">&#127909; Start Video Avatar</button>
                 <button class="btn btn-sm btn-danger" id="heygenStopBtn" onclick="stopHeyGenSession()" style="display:none;">Stop Session</button>
+              </div>
+              <div class="avatar-upload-controls" style="margin-top:8px;">
+                <label class="btn btn-sm btn-outline" id="avatarUploadLabel" style="cursor:pointer;font-size:12px;">
+                  &#128247; Upload Photo
+                  <input type="file" id="avatarPhotoUpload" accept="image/png,image/jpeg,image/webp" style="display:none;" onchange="handleAvatarPhotoUpload(event)">
+                </label>
+                <span class="avatar-upload-hint" id="avatarUploadHint" style="font-size:11px;color:#888;margin-left:8px;">Upload a headshot for this employee</span>
               </div>
               <div class="avatar-employee-select">
                 <select id="avatarSelect" onchange="switchAvatarEmployee()">
@@ -1558,6 +1577,15 @@
                     <input type="text" class="settings-input settings-secret" id="set-heygen_api_key" placeholder="heygen-..." autocomplete="new-password" data-lpignore="true" data-1p-ignore spellcheck="false">
                     <button type="button" class="btn btn-sm settings-eye" onclick="toggleKeyVisibility(this)" title="Show/hide">&#128065;</button>
                     <span class="settings-status" id="status-heygen_api_key"></span>
+                  </div>
+                </div>
+                <div class="settings-field">
+                  <label class="settings-label">D-ID API Key <span class="settings-tier">Interactive talking avatars — lip-synced video</span></label>
+                  <div class="settings-input-row">
+                    <input type="text" class="settings-input settings-secret" id="set-did_api_key" placeholder="Basic auth key from d-id.com..." autocomplete="new-password" data-lpignore="true" data-1p-ignore spellcheck="false">
+                    <button type="button" class="btn btn-sm settings-eye" onclick="toggleKeyVisibility(this)" title="Show/hide">&#128065;</button>
+                    <span class="settings-status" id="status-did_api_key"></span>
+                    <button class="btn btn-sm" onclick="testConnection('did')">Test</button>
                   </div>
                 </div>
                 <div class="settings-field">
@@ -1873,6 +1901,6 @@
     </div>
   </div>
 
-  <script src="js/app.js?v=28"></script>
+  <script src="js/app.js?v=29"></script>
 </body>
 </html>
