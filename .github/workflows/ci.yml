@@ -1,0 +1,99 @@
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+
+jobs:
+  lint-and-boot:
+    name: Lint & Boot Check
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Check for syntax errors
+        run: node --check server.js
+
+      - name: Verify commercial loader
+        run: |
+          node -e "
+            const c = require('./commercial/loader');
+            console.log('Tier:', c.tier);
+            console.log('Features:', Object.keys(c.features).length);
+            console.log('RegisterRoutes:', typeof c.registerRoutes);
+            if (c.tier !== 'community') { process.exit(1); }
+            if (typeof c.registerRoutes !== 'function') { process.exit(1); }
+            console.log('Commercial loader OK');
+          "
+
+      - name: Boot server (smoke test)
+        run: |
+          timeout 10 node -e "
+            const http = require('http');
+            process.env.DEMO_MODE = 'true';
+            process.env.PORT = '3333';
+            require('./server.js');
+            setTimeout(() => {
+              http.get('http://localhost:3333/api/health', (res) => {
+                let data = '';
+                res.on('data', chunk => data += chunk);
+                res.on('end', () => {
+                  const health = JSON.parse(data);
+                  console.log('Health:', JSON.stringify(health));
+                  if (!health.status) {
+                    console.error('Missing status in health response');
+                    process.exit(1);
+                  }
+                  console.log('Boot test PASSED');
+                  process.exit(0);
+                });
+              }).on('error', (err) => {
+                console.error('Health check failed:', err.message);
+                process.exit(1);
+              });
+            }, 3000);
+          " || if [ $? -eq 124 ]; then echo "Server boot timed out"; exit 1; fi
+
+  security:
+    name: Security Audit
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Audit dependencies
+        run: npm audit --audit-level=high
+        continue-on-error: true
+
+      - name: Check for secrets in code
+        run: |
+          # Fail if real API keys are committed (not placeholders)
+          if grep -rn "sk_live_" --include="*.js" --include="*.json" --include="*.env" .; then
+            echo "ERROR: Live Stripe key found in source"
+            exit 1
+          fi
+          if grep -rn "sk-[a-zA-Z0-9]\{20,\}" --include="*.js" --include="*.json" . | grep -v node_modules | grep -v ".example"; then
+            echo "WARNING: Possible API key in source"
+          fi
+          echo "Secret scan passed"

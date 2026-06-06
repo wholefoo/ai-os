@@ -14,6 +14,7 @@
     "docker:build": "docker build -t ai-os .",
     "docker:up": "docker compose up -d",
     "docker:down": "docker compose down",
+    "test": "node --check server.js && node -e \"const c = require('./commercial/loader'); if(c.tier !== 'community') process.exit(1); console.log('All checks passed')\"",
     "audit": "npm audit"
   },
   "dependencies": {
