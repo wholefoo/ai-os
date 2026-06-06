@@ -1,48 +1,31 @@
-// commercial/loader.js — Commercial module detection and loading
-// This file ships with the public repo. It detects whether the ai-os-commercial
-// package is installed and loads it. If not found, returns community defaults.
-
-const path = require('path');
-const fs = require('fs');
-
-const COMMERCIAL_PATHS = [
-  path.join(__dirname, 'modules'),                                    // manual drop-in: commercial/modules/
-  path.join(__dirname, '..', 'node_modules', 'ai-os-commercial'),     // npm install
-  process.env.AIOS_COMMERCIAL_PATH,                                   // env override
-].filter(Boolean);
+// commercial/loader.js — Commercial module loader
+// Loads the commercial module (index.js) and validates the license key.
+// Without AIOS_LICENSE_KEY + AIOS_SIGNING_SECRET env vars, falls back to community defaults.
 
 let commercial = null;
 
-for (const p of COMMERCIAL_PATHS) {
-  const entry = path.join(p, 'index.js');
-  if (fs.existsSync(entry)) {
-    try {
-      commercial = require(entry);
-      console.log(`[COMMERCIAL] Loaded commercial module from: ${p}`);
-      break;
-    } catch (err) {
-      console.error(`[COMMERCIAL] Failed to load module from ${p}:`, err.message);
-    }
+try {
+  commercial = require('./index');
+  if (commercial.valid) {
+    console.log(`[COMMERCIAL] Loaded — ${commercial.tier.toUpperCase()} license active`);
+  } else {
+    console.log(`[COMMERCIAL] Loaded — no valid license key, running in Community mode`);
   }
+} catch (err) {
+  console.error(`[COMMERCIAL] Failed to load module:`, err.message);
 }
 
-if (!commercial) {
-  console.log('[COMMERCIAL] No commercial module found — running in Community mode');
-}
-
-// Export either the loaded commercial module or community defaults
-module.exports = commercial || {
+// Community defaults — used when no license key is present or module fails to load
+const COMMUNITY_DEFAULTS = {
   tier: 'community',
   valid: true,
   licenseKey: null,
 
-  // Community org chart extension — no additional departments
   orgChartExtension: {
     departments: [],
-    additionalAgents: {},  // keyed by department id, arrays of agents to add
+    additionalAgents: {},
   },
 
-  // Feature flags
   features: {
     multiTenant: false,
     creativeStudio: false,
@@ -66,7 +49,6 @@ module.exports = commercial || {
     prioritySupport: false,    // enterprise
   },
 
-  // Limits for community tier
   limits: {
     seoAuditsPerMonth: 1,
     memoryEntries: 100,
@@ -79,9 +61,16 @@ module.exports = commercial || {
     customDocs: 0,
   },
 
-  // No-op route registration
   registerRoutes: () => {},
-
-  // No-op module accessors
   modules: {},
 };
+
+// If commercial module loaded but no valid license, use community defaults
+// but keep registerRoutes so the module can still register routes if tier is sufficient
+if (commercial && !commercial.valid) {
+  module.exports = { ...COMMUNITY_DEFAULTS, registerRoutes: commercial.registerRoutes };
+} else if (commercial && commercial.valid) {
+  module.exports = commercial;
+} else {
+  module.exports = COMMUNITY_DEFAULTS;
+}
