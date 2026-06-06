@@ -1,0 +1,9 @@
+{
+  "name": "ai-os-commercial",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Commercial modules for AI OS — Business and Enterprise licenses",
+  "main": "index.js",
+  "author": "AI OS Orchestration Lab",
+  "license": "SEE LICENSE FILE"
+}
