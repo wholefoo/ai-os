@@ -322,6 +322,16 @@ POST /api/hermes/delegate           Delegate to Hermes
 GET  /api/stripe/checkout?plan=pro  Start Stripe checkout
 ```
 
+## Roadmap (Phase 5 — Platform Expansion)
+
+| Feature | Description | Status |
+|---------|-------------|--------|
+| Mobile App / PWA | Progressive Web App with offline support, push notifications, native-feel on iOS and Android | Planned |
+| Webhook Integrations Marketplace | Browse and install pre-built webhook integrations (Zapier, Make, Slack, HubSpot, Salesforce, etc.) | Planned |
+| Plugin / Extension System | Typed SDK for building custom agent tools — extend any agent with new capabilities and data sources | Planned |
+| White-Label Mobile App | Fully branded mobile app for Enterprise tenants — custom icon, colors, App Store listing | Planned |
+| Advanced Reporting | Scheduled PDF/CSV reports, custom dashboards, date-range comparisons, executive summaries | Planned |
+
 ## Documentation
 
 Full documentation at `/docs` when the server is running, covering architecture, agents, skills, deployment, billing, and all subsystems.
