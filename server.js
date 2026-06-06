@@ -770,6 +770,12 @@ app.get('/sitemap.xml', (req, res) => {
     { url: '/blog/what-is-ai-operating-system', priority: '0.8', freq: 'monthly' },
     { url: '/blog/ai-agent-pricing-comparison-2026', priority: '0.8', freq: 'monthly' },
     { url: '/blog/how-to-automate-seo-with-ai', priority: '0.8', freq: 'monthly' },
+    { url: '/compare', priority: '0.8', freq: 'monthly' },
+    { url: '/compare/ai-os-vs-relevance-ai', priority: '0.7', freq: 'monthly' },
+    { url: '/compare/ai-os-vs-crewai', priority: '0.7', freq: 'monthly' },
+    { url: '/compare/ai-os-vs-lindy-ai', priority: '0.7', freq: 'monthly' },
+    { url: '/compare/ai-os-vs-taskade', priority: '0.7', freq: 'monthly' },
+    { url: '/compare/ai-os-vs-langchain', priority: '0.7', freq: 'monthly' },
     { url: '/lifetime', priority: '0.8', freq: 'monthly' },
     { url: '/docs', priority: '0.8', freq: 'weekly' },
     { url: '/docs/getting-started', priority: '0.9', freq: 'monthly' },
@@ -1180,6 +1186,20 @@ app.get('/blog/:slug', (req, res) => {
 
 app.get('/about', (req, res) => {
   res.sendFile(path.join(BASE, 'dashboard', 'about.html'));
+});
+
+// Compare routes
+app.get('/compare', (req, res) => {
+  res.sendFile(path.join(BASE, 'dashboard', 'compare', 'index.html'));
+});
+app.get('/compare/:slug', (req, res) => {
+  const slug = req.params.slug.replace(/[^a-z0-9-]/g, '');
+  const filePath = path.join(BASE, 'dashboard', 'compare', `${slug}.html`);
+  if (fs.existsSync(filePath)) {
+    res.sendFile(filePath);
+  } else {
+    res.status(404).sendFile(path.join(BASE, 'dashboard', 'compare', 'index.html'));
+  }
 });
 
 app.get('/login', (req, res) => {
