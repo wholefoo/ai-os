@@ -6531,6 +6531,10 @@ body {
 }
 .avatar-mic-btn:hover { border-color: #ef4444; background: rgba(239,68,68,0.1); }
 .avatar-speaker-btn:hover { border-color: var(--primary); background: rgba(59,130,246,0.1); }
+.avatar-continuous-btn { width: 40px; height: 40px; border-radius: 50%; border: 1px solid var(--border); background: var(--bg-primary); display: flex; align-items: center; justify-content: center; cursor: pointer; font-size: 16px; transition: all 0.3s; }
+.avatar-continuous-btn:hover { border-color: #22c55e; background: rgba(34,197,94,0.1); }
+.avatar-continuous-btn.active { border-color: #22c55e; background: rgba(34,197,94,0.15); box-shadow: 0 0 8px rgba(34,197,94,0.4); animation: pulse-glow 2s ease-in-out infinite; }
+@keyframes pulse-glow { 0%, 100% { box-shadow: 0 0 8px rgba(34,197,94,0.3); } 50% { box-shadow: 0 0 16px rgba(34,197,94,0.6); } }
 .avatar-text-input {
   flex: 1;
   padding: 10px 16px;
