@@ -86,6 +86,7 @@ function switchView(view) {
     'seo-agency': loadSeoAgency,
     licensing: loadLicensing,
     tenants: loadTenants,
+    training: loadTraining,
     monitoring: loadMonitoring,
     'avatar-chat': loadAvatarChat,
     platform: loadPlatform,
@@ -5855,6 +5856,303 @@ async function deactivateTenant(id) {
   }
 }
 
+// --- AI Training Center ---
+let trainingConfig = null;
+
+async function loadTraining() {
+  try {
+    const data = await fetchJSON('/api/training');
+    if (data.ok === false && data.error?.includes('Requires')) {
+      document.getElementById('view-training').innerHTML = `
+        <div class="empty-state" style="padding:60px 20px; text-align:center;">
+          <div style="font-size:48px; margin-bottom:16px;">&#128274;</div>
+          <h3>AI Training requires Business plan or higher</h3>
+          <p style="color:var(--text-muted); margin-top:8px;">Custom instructions, knowledge base, and custom agents are available on Business ($497/mo) and Enterprise ($997/mo) plans.</p>
+          <a href="/#pricing" class="btn btn-primary" style="margin-top:16px;">Upgrade Plan</a>
+        </div>`;
+      return;
+    }
+    trainingConfig = data;
+    renderTrainingInstructions();
+    renderTrainingKB();
+    renderTrainingAgents();
+  } catch (e) {
+    console.error('[TRAINING] Load failed:', e);
+  }
+}
+
+function renderTrainingInstructions() {
+  if (!trainingConfig) return;
+  const ins = trainingConfig.instructions || {};
+  document.getElementById('trainingGlobal').value = ins.global || '';
+  document.getElementById('trainingBrandVoice').value = ins.brandVoice || '';
+  document.getElementById('trainingIndustry').value = ins.industry || '';
+  renderTrainingRules(ins.rules || []);
+}
+
+function renderTrainingRules(rules) {
+  const container = document.getElementById('trainingRulesList');
+  if (!rules.length) {
+    container.innerHTML = '<div class="text-muted" style="font-size:13px;">No rules defined yet.</div>';
+    return;
+  }
+  container.innerHTML = rules.map((r, i) => `
+    <div style="display:flex; align-items:center; gap:8px; padding:6px 0; border-bottom:1px solid var(--border);">
+      <span style="flex:1; font-size:13px;">${i + 1}. ${escapeHtml(r)}</span>
+      <button class="btn btn-sm btn-ghost" onclick="removeTrainingRule(${i})" title="Remove">&#10005;</button>
+    </div>
+  `).join('');
+}
+
+function addTrainingRule() {
+  const input = document.getElementById('trainingNewRule');
+  const rule = input.value.trim();
+  if (!rule) return;
+  if (!trainingConfig.instructions.rules) trainingConfig.instructions.rules = [];
+  trainingConfig.instructions.rules.push(rule);
+  renderTrainingRules(trainingConfig.instructions.rules);
+  input.value = '';
+}
+
+function removeTrainingRule(idx) {
+  trainingConfig.instructions.rules.splice(idx, 1);
+  renderTrainingRules(trainingConfig.instructions.rules);
+}
+
+async function saveTrainingInstructions() {
+  const instructions = {
+    global: document.getElementById('trainingGlobal').value,
+    brandVoice: document.getElementById('trainingBrandVoice').value,
+    industry: document.getElementById('trainingIndustry').value,
+    rules: trainingConfig?.instructions?.rules || [],
+  };
+  const result = await fetchJSON('/api/training/instructions', {
+    method: 'PUT',
+    body: instructions,
+  });
+  if (result.ok !== false) {
+    showSettingsToast('Custom instructions saved');
+    trainingConfig.instructions = result.instructions || instructions;
+  } else {
+    showSettingsToast(result.error || 'Failed to save', true);
+  }
+}
+
+// --- Knowledge Base UI ---
+
+function renderTrainingKB() {
+  const docs = trainingConfig?.knowledgeBase || [];
+  document.getElementById('trainingKBCount').textContent = `${docs.length} document${docs.length !== 1 ? 's' : ''}`;
+
+  if (!docs.length) {
+    document.getElementById('trainingKBList').innerHTML = '<div class="empty-state">No knowledge documents yet. Add your first one above.</div>';
+    return;
+  }
+
+  document.getElementById('trainingKBList').innerHTML = docs.map(doc => `
+    <div class="panel" style="padding:16px; margin-bottom:8px;">
+      <div style="display:flex; justify-content:space-between; align-items:center;">
+        <div>
+          <strong>${escapeHtml(doc.title)}</strong>
+          <span class="badge" style="margin-left:8px; font-size:11px;">${escapeHtml(doc.category)}</span>
+        </div>
+        <div style="display:flex; gap:8px;">
+          <button class="btn btn-sm" onclick="editKnowledgeDoc('${doc.id}')">Edit</button>
+          <button class="btn btn-sm btn-ghost" onclick="deleteKnowledgeDoc('${doc.id}')">Delete</button>
+        </div>
+      </div>
+      <p style="font-size:13px; color:var(--text-muted); margin-top:8px; white-space:pre-wrap; max-height:80px; overflow:hidden;">${escapeHtml(doc.content.substring(0, 300))}${doc.content.length > 300 ? '...' : ''}</p>
+    </div>
+  `).join('');
+}
+
+function showAddKnowledgeModal() {
+  const modal = document.getElementById('trainingModal');
+  document.getElementById('trainingModalContent').innerHTML = `
+    <h3>Add Knowledge Document</h3>
+    <div class="settings-field"><label>Title</label><input type="text" id="kbTitle" placeholder="e.g., Product FAQ, Sales Playbook"></div>
+    <div class="settings-field"><label>Category</label><input type="text" id="kbCategory" value="general" placeholder="e.g., product, sales, support"></div>
+    <div class="settings-field"><label>Content</label><textarea id="kbContent" rows="10" placeholder="Paste your document content here. Markdown supported."></textarea></div>
+    <div style="display:flex; gap:8px; margin-top:16px;">
+      <button class="btn btn-primary" onclick="submitKnowledgeDoc()">Add Document</button>
+      <button class="btn btn-ghost" onclick="document.getElementById('trainingModal').style.display='none'">Cancel</button>
+    </div>
+  `;
+  modal.style.display = 'flex';
+}
+
+async function submitKnowledgeDoc(editId) {
+  const title = document.getElementById('kbTitle').value.trim();
+  const content = document.getElementById('kbContent').value.trim();
+  const category = document.getElementById('kbCategory').value.trim() || 'general';
+
+  if (!title || !content) return showSettingsToast('Title and content required', true);
+
+  const url = editId ? `/api/training/knowledge/${editId}` : '/api/training/knowledge';
+  const method = editId ? 'PUT' : 'POST';
+
+  const result = await fetchJSON(url, { method, body: { title, content, category } });
+  if (result.ok !== false) {
+    document.getElementById('trainingModal').style.display = 'none';
+    showSettingsToast(editId ? 'Document updated' : 'Document added');
+    await loadTraining();
+  } else {
+    showSettingsToast(result.error || 'Failed', true);
+  }
+}
+
+function editKnowledgeDoc(id) {
+  const doc = trainingConfig.knowledgeBase.find(d => d.id === id);
+  if (!doc) return;
+  showAddKnowledgeModal();
+  document.getElementById('kbTitle').value = doc.title;
+  document.getElementById('kbCategory').value = doc.category;
+  document.getElementById('kbContent').value = doc.content;
+  // Replace submit to update
+  document.querySelector('#trainingModalContent .btn-primary').setAttribute('onclick', `submitKnowledgeDoc('${id}')`);
+  document.querySelector('#trainingModalContent h3').textContent = 'Edit Knowledge Document';
+}
+
+async function deleteKnowledgeDoc(id) {
+  if (!confirm('Delete this knowledge document?')) return;
+  const result = await fetchJSON(`/api/training/knowledge/${id}`, { method: 'DELETE' });
+  if (result.ok !== false) {
+    showSettingsToast('Document deleted');
+    await loadTraining();
+  }
+}
+
+// --- Custom Agent Personas UI ---
+
+function renderTrainingAgents() {
+  const agents = trainingConfig?.customAgents || [];
+  document.getElementById('trainingAgentCount').textContent = `${agents.length} custom agent${agents.length !== 1 ? 's' : ''}`;
+
+  if (!agents.length) {
+    document.getElementById('trainingAgentList').innerHTML = '<div class="empty-state">No custom agents yet. Create your first one above.</div>';
+    return;
+  }
+
+  const tierColors = { strategic: '#ef4444', professional: '#3b82f6', scout: '#10b981', creative: '#ec4899', economy: '#f59e0b', realtime: '#8b5cf6' };
+
+  document.getElementById('trainingAgentList').innerHTML = agents.map(agent => `
+    <div class="panel" style="padding:16px; margin-bottom:8px;">
+      <div style="display:flex; justify-content:space-between; align-items:center;">
+        <div style="display:flex; align-items:center; gap:12px;">
+          <span style="font-size:24px;">${agent.avatar || '&#129302;'}</span>
+          <div>
+            <strong>${escapeHtml(agent.displayName)}</strong> — <span class="text-muted">${escapeHtml(agent.title)}</span>
+            <div style="margin-top:4px;">
+              <span class="badge" style="background:${tierColors[agent.modelTier] || '#666'}; color:#fff; font-size:11px;">${agent.modelTier}</span>
+              <span class="badge" style="font-size:11px; margin-left:4px;">${escapeHtml(agent.department)}</span>
+            </div>
+          </div>
+        </div>
+        <div style="display:flex; gap:8px;">
+          <button class="btn btn-sm" onclick="testCustomAgent('${agent.id}')">Test</button>
+          <button class="btn btn-sm" onclick="editCustomAgent('${agent.id}')">Edit</button>
+          <button class="btn btn-sm btn-ghost" onclick="deleteCustomAgent('${agent.id}')">Delete</button>
+        </div>
+      </div>
+      <p style="font-size:13px; color:var(--text-muted); margin-top:8px; white-space:pre-wrap; max-height:60px; overflow:hidden;">${escapeHtml(agent.prompt.substring(0, 200))}${agent.prompt.length > 200 ? '...' : ''}</p>
+    </div>
+  `).join('');
+}
+
+function showAddAgentModal() {
+  const modal = document.getElementById('trainingModal');
+  document.getElementById('trainingModalContent').innerHTML = `
+    <h3>Create Custom Agent</h3>
+    <div class="settings-field"><label>Agent Name</label><input type="text" id="caName" placeholder="e.g., Sales Closer, Onboarding Guide"></div>
+    <div class="settings-field"><label>Title / Role</label><input type="text" id="caTitle" placeholder="e.g., Senior Sales Agent"></div>
+    <div class="settings-field"><label>Department</label><input type="text" id="caDept" value="Custom" placeholder="e.g., Sales, Support, Ops"></div>
+    <div class="settings-field">
+      <label>Model Tier</label>
+      <select id="caTier">
+        <option value="professional">Professional (Opus 4.8 high) — balanced</option>
+        <option value="strategic">Strategic (Opus 4.8 xhigh) — deep reasoning</option>
+        <option value="scout">Scout (Opus 4.8 low) — fast, lightweight</option>
+        <option value="creative">Creative (Gemini Omni) — multimodal</option>
+        <option value="economy">Economy (DeepSeek) — bulk processing</option>
+        <option value="realtime">Realtime (Grok-3) — live web search</option>
+      </select>
+    </div>
+    <div class="settings-field"><label>Avatar Emoji</label><input type="text" id="caAvatar" placeholder="e.g., &#129302; or &#128187;" maxlength="4"></div>
+    <div class="settings-field"><label>System Prompt</label><textarea id="caPrompt" rows="8" placeholder="You are a specialized agent for... Define the agent's expertise, behavior, constraints, and output format."></textarea></div>
+    <div style="display:flex; gap:8px; margin-top:16px;">
+      <button class="btn btn-primary" onclick="submitCustomAgent()">Create Agent</button>
+      <button class="btn btn-ghost" onclick="document.getElementById('trainingModal').style.display='none'">Cancel</button>
+    </div>
+  `;
+  modal.style.display = 'flex';
+}
+
+async function submitCustomAgent(editId) {
+  const name = document.getElementById('caName').value.trim();
+  const title = document.getElementById('caTitle').value.trim();
+  const department = document.getElementById('caDept').value.trim();
+  const modelTier = document.getElementById('caTier').value;
+  const avatar = document.getElementById('caAvatar').value.trim();
+  const prompt = document.getElementById('caPrompt').value.trim();
+
+  if (!name || !prompt) return showSettingsToast('Name and prompt required', true);
+
+  const url = editId ? `/api/training/agents/${editId}` : '/api/training/agents';
+  const method = editId ? 'PUT' : 'POST';
+
+  const result = await fetchJSON(url, { method, body: { name, title, department, modelTier, avatar, prompt, displayName: name } });
+  if (result.ok !== false) {
+    document.getElementById('trainingModal').style.display = 'none';
+    showSettingsToast(editId ? 'Agent updated' : 'Agent created');
+    await loadTraining();
+  } else {
+    showSettingsToast(result.error || 'Failed', true);
+  }
+}
+
+function editCustomAgent(id) {
+  const agent = trainingConfig.customAgents.find(a => a.id === id);
+  if (!agent) return;
+  showAddAgentModal();
+  document.getElementById('caName').value = agent.displayName;
+  document.getElementById('caTitle').value = agent.title;
+  document.getElementById('caDept').value = agent.department;
+  document.getElementById('caTier').value = agent.modelTier;
+  document.getElementById('caAvatar').value = agent.avatar || '';
+  document.getElementById('caPrompt').value = agent.prompt;
+  document.querySelector('#trainingModalContent .btn-primary').setAttribute('onclick', `submitCustomAgent('${id}')`);
+  document.querySelector('#trainingModalContent h3').textContent = 'Edit Custom Agent';
+}
+
+async function deleteCustomAgent(id) {
+  if (!confirm('Delete this custom agent?')) return;
+  const result = await fetchJSON(`/api/training/agents/${id}`, { method: 'DELETE' });
+  if (result.ok !== false) {
+    showSettingsToast('Agent deleted');
+    await loadTraining();
+  }
+}
+
+async function testCustomAgent(id) {
+  const task = prompt('Enter a test task for this agent:');
+  if (!task) return;
+
+  showSettingsToast('Running test...');
+  const result = await fetchJSON(`/api/training/agents/${id}/test`, { method: 'POST', body: { task } });
+  if (result.ok !== false) {
+    const modal = document.getElementById('trainingModal');
+    document.getElementById('trainingModalContent').innerHTML = `
+      <h3>Agent Test Result</h3>
+      <div style="font-size:12px; color:var(--text-muted); margin-bottom:12px;">Model: ${result.model} | In: ${result.inputTokens} | Out: ${result.outputTokens}</div>
+      <div style="background:var(--bg-primary); border:1px solid var(--border); border-radius:8px; padding:16px; white-space:pre-wrap; font-size:14px; max-height:400px; overflow-y:auto;">${escapeHtml(result.response)}</div>
+      <button class="btn btn-ghost" style="margin-top:16px;" onclick="document.getElementById('trainingModal').style.display='none'">Close</button>
+    `;
+    modal.style.display = 'flex';
+  } else {
+    showSettingsToast(result.error || 'Test failed', true);
+  }
+}
+
 // --- YouTube Video Intelligence ---
 let ytAnalyses = [];
 
@@ -6684,47 +6982,172 @@ function _buildAvatar3D_legacy(canvas, profile) {
   collar.rotation.x = 0.3;
   scene.add(collar);
 
+  // Jaw (separate mesh for open/close)
+  const jaw = new THREE.Mesh(new THREE.SphereGeometry(0.3, 16, 12, 0, Math.PI * 2, Math.PI * 0.55, Math.PI * 0.3), skinMat);
+  jaw.position.set(0, -0.28, 0.05);
+  jaw.scale.set(1.6, 0.4, 1.5);
+  headGroup.add(jaw);
+
+  // Tongue (visible during open-mouth visemes)
+  const tongue = new THREE.Mesh(new THREE.SphereGeometry(0.03, 8, 6), new THREE.MeshStandardMaterial({ color: 0xcc6666, roughness: 0.6 }));
+  tongue.position.set(0, -0.2, 0.38);
+  tongue.scale.set(1.5, 0.5, 1);
+  tongue.visible = false;
+  headGroup.add(tongue);
+
+  // Teeth (upper row, visible when mouth opens)
+  const teethMat = new THREE.MeshStandardMaterial({ color: 0xf0ece0, roughness: 0.3 });
+  const upperTeeth = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.015, 0.02), teethMat);
+  upperTeeth.position.set(0, -0.155, 0.42);
+  upperTeeth.visible = false;
+  headGroup.add(upperTeeth);
+
   // Store references
-  avatar3D = { scene, camera, renderer, headGroup, leftEye, rightEye, upperLip, lowerLip, mouthInner, leftBrow, rightBrow, body };
+  avatar3D = { scene, camera, renderer, headGroup, leftEye, rightEye, upperLip, lowerLip, mouthInner, leftBrow, rightBrow, body, jaw, tongue, upperTeeth };
+
+  // --- Viseme system ---
+  // Maps viseme IDs to mouth shape parameters: { jawOpen, lipWidth, lipRound, tongueUp }
+  const VISEME_SHAPES = {
+    sil:  { jawOpen: 0, lipWidth: 0, lipRound: 0, tongueUp: false },     // Silence
+    aa:   { jawOpen: 0.8, lipWidth: 0.3, lipRound: 0, tongueUp: false },  // "ah" as in father
+    ae:   { jawOpen: 0.6, lipWidth: 0.5, lipRound: 0, tongueUp: false },  // "ae" as in cat
+    ah:   { jawOpen: 0.5, lipWidth: 0.2, lipRound: 0, tongueUp: false },  // "uh" as in but
+    ao:   { jawOpen: 0.7, lipWidth: 0, lipRound: 0.5, tongueUp: false },  // "aw" as in law
+    eh:   { jawOpen: 0.4, lipWidth: 0.4, lipRound: 0, tongueUp: false },  // "e" as in bed
+    er:   { jawOpen: 0.3, lipWidth: 0.1, lipRound: 0.3, tongueUp: true }, // "er" as in bird
+    ih:   { jawOpen: 0.2, lipWidth: 0.5, lipRound: 0, tongueUp: false },  // "i" as in bit
+    iy:   { jawOpen: 0.15, lipWidth: 0.6, lipRound: 0, tongueUp: false }, // "ee" as in see
+    ow:   { jawOpen: 0.4, lipWidth: 0, lipRound: 0.8, tongueUp: false },  // "o" as in go
+    uw:   { jawOpen: 0.2, lipWidth: 0, lipRound: 0.9, tongueUp: false },  // "oo" as in too
+    pp:   { jawOpen: 0, lipWidth: 0, lipRound: 0.1, tongueUp: false },    // p/b/m — lips pressed
+    ff:   { jawOpen: 0.1, lipWidth: 0.2, lipRound: 0, tongueUp: false },  // f/v — lower lip tuck
+    th:   { jawOpen: 0.15, lipWidth: 0.3, lipRound: 0, tongueUp: true },  // th — tongue tip
+    dd:   { jawOpen: 0.2, lipWidth: 0.3, lipRound: 0, tongueUp: true },   // d/t/n — tongue tap
+    kk:   { jawOpen: 0.3, lipWidth: 0.2, lipRound: 0, tongueUp: false },  // k/g — back of tongue
+    ss:   { jawOpen: 0.1, lipWidth: 0.4, lipRound: 0, tongueUp: false },  // s/z — hiss
+    sh:   { jawOpen: 0.15, lipWidth: 0, lipRound: 0.4, tongueUp: false }, // sh/ch/j
+    rr:   { jawOpen: 0.2, lipWidth: 0, lipRound: 0.3, tongueUp: true },  // r
+  };
+
+  // Current and target viseme (for smooth interpolation)
+  let currentViseme = { jawOpen: 0, lipWidth: 0, lipRound: 0, tongueUp: false };
+  let targetViseme = { ...currentViseme };
+  avatarState._visemeQueue = [];
+  avatarState._currentVisemeKey = 'sil';
+
+  // Set target viseme from audio energy or explicit viseme key
+  avatarState.setViseme = function(key) {
+    const shape = VISEME_SHAPES[key] || VISEME_SHAPES.sil;
+    targetViseme = { ...shape };
+    avatarState._currentVisemeKey = key;
+  };
+
+  // Drive visemes from audio energy level (0-1)
+  avatarState.setAudioEnergy = function(energy) {
+    if (energy < 0.05) {
+      targetViseme = { ...VISEME_SHAPES.sil };
+      return;
+    }
+    // Map energy to a blend of open-mouth visemes
+    const vowels = ['ah', 'ae', 'eh', 'ow', 'aa', 'iy'];
+    const idx = Math.floor(energy * 10 + Date.now() * 0.003) % vowels.length;
+    const shape = VISEME_SHAPES[vowels[idx]];
+    targetViseme = {
+      jawOpen: shape.jawOpen * energy,
+      lipWidth: shape.lipWidth * (0.5 + energy * 0.5),
+      lipRound: shape.lipRound * energy,
+      tongueUp: false,
+    };
+  };
 
   // Animation loop
   function animate() {
     avatarState.animationFrame = requestAnimationFrame(animate);
     const t = Date.now() / 1000;
+    const dt = 0.016; // ~60fps
 
-    // Idle head sway
-    headGroup.rotation.y = Math.sin(t * 0.4) * 0.04 + avatarState.headRotation.x * 0.008;
-    headGroup.rotation.x = Math.sin(t * 0.3) * 0.015 + avatarState.headRotation.y * 0.005;
+    // Idle head sway (more natural with multiple frequencies)
+    headGroup.rotation.y = Math.sin(t * 0.4) * 0.04 + Math.sin(t * 0.17) * 0.02 + avatarState.headRotation.x * 0.008;
+    headGroup.rotation.x = Math.sin(t * 0.3) * 0.015 + Math.sin(t * 0.11) * 0.008 + avatarState.headRotation.y * 0.005;
     headGroup.position.y = Math.sin(t * 0.5) * 0.005;
 
-    // Eye tracking
-    const eyeX = Math.sin(t * 0.2) * 0.02;
-    const eyeY = Math.sin(t * 0.15) * 0.01;
-    leftEye.rotation.y = eyeX;
-    leftEye.rotation.x = eyeY;
-    rightEye.rotation.y = eyeX;
-    rightEye.rotation.x = eyeY;
-
-    // Natural blink (every ~3-5 seconds)
-    const blinkCycle = t % 4;
-    const blink = blinkCycle > 3.85 && blinkCycle < 3.95;
-    leftEye.scale.y = blink ? 0.05 : 1;
-    rightEye.scale.y = blink ? 0.05 : 1;
-
-    // Eyebrow raise when speaking
+    // Subtle head movement when speaking
     if (avatarState.speaking) {
-      leftBrow.position.y = 0.22 + Math.sin(t * 3) * 0.01;
-      rightBrow.position.y = 0.22 + Math.sin(t * 3 + 0.5) * 0.01;
+      headGroup.rotation.y += Math.sin(t * 2.1) * 0.015;
+      headGroup.rotation.x += Math.sin(t * 1.7) * 0.008;
+      headGroup.rotation.z = Math.sin(t * 1.3) * 0.01;
     } else {
-      leftBrow.position.y = 0.2;
-      rightBrow.position.y = 0.2;
+      headGroup.rotation.z *= 0.95;
     }
 
-    // Mouth — open when speaking
-    const open = avatarState.mouthOpenness;
-    lowerLip.position.y = -0.18 - open * 0.06;
-    mouthInner.scale.y = 1 + open * 8;
-    mouthInner.position.y = -0.17 - open * 0.03;
+    // Eye tracking with saccades
+    const saccade = Math.floor(t * 0.5) !== Math.floor((t - dt) * 0.5);
+    const eyeTargetX = saccade ? (Math.random() - 0.5) * 0.06 : Math.sin(t * 0.2) * 0.02;
+    const eyeTargetY = Math.sin(t * 0.15) * 0.01;
+    leftEye.rotation.y += (eyeTargetX - leftEye.rotation.y) * 0.1;
+    leftEye.rotation.x += (eyeTargetY - leftEye.rotation.x) * 0.1;
+    rightEye.rotation.y = leftEye.rotation.y;
+    rightEye.rotation.x = leftEye.rotation.x;
+
+    // Natural blink (variable interval 2-5 seconds)
+    const blinkPhase = (t * 1.1 + Math.sin(t * 0.37) * 0.5) % 4;
+    const blink = blinkPhase > 3.85 && blinkPhase < 3.95;
+    const blinkAmount = blink ? 0.05 : 1;
+    leftEye.scale.y += (blinkAmount - leftEye.scale.y) * 0.4;
+    rightEye.scale.y = leftEye.scale.y;
+
+    // Eyebrow animation
+    if (avatarState.speaking) {
+      leftBrow.position.y = 0.22 + Math.sin(t * 2.5) * 0.012;
+      rightBrow.position.y = 0.22 + Math.sin(t * 2.5 + 0.7) * 0.012;
+    } else if (avatarState.listening) {
+      leftBrow.position.y = 0.23;
+      rightBrow.position.y = 0.23;
+    } else {
+      leftBrow.position.y += (0.2 - leftBrow.position.y) * 0.05;
+      rightBrow.position.y += (0.2 - rightBrow.position.y) * 0.05;
+    }
+
+    // --- Viseme-driven mouth animation ---
+    const lerpSpeed = 0.18; // Smooth interpolation speed
+    currentViseme.jawOpen += (targetViseme.jawOpen - currentViseme.jawOpen) * lerpSpeed;
+    currentViseme.lipWidth += (targetViseme.lipWidth - currentViseme.lipWidth) * lerpSpeed;
+    currentViseme.lipRound += (targetViseme.lipRound - currentViseme.lipRound) * lerpSpeed;
+
+    const jOpen = currentViseme.jawOpen;
+    const lWidth = currentViseme.lipWidth;
+    const lRound = currentViseme.lipRound;
+
+    // Jaw — drops down when open
+    jaw.position.y = -0.28 - jOpen * 0.04;
+
+    // Lower lip follows jaw
+    lowerLip.position.y = -0.18 - jOpen * 0.06;
+    lowerLip.scale.x = 1 + lWidth * 0.3 - lRound * 0.2;
+
+    // Upper lip — slight movement, width changes
+    upperLip.scale.x = 1 + lWidth * 0.2 - lRound * 0.15;
+    upperLip.position.y = -0.16 - jOpen * 0.005;
+
+    // Mouth interior — scales with jaw opening
+    mouthInner.scale.y = 1 + jOpen * 10;
+    mouthInner.scale.x = 1 + lWidth * 0.3 - lRound * 0.3;
+    mouthInner.position.y = -0.17 - jOpen * 0.03;
+
+    // Teeth visible when mouth opens enough
+    upperTeeth.visible = jOpen > 0.15;
+    upperTeeth.scale.x = 1 + lWidth * 0.2;
+
+    // Tongue visible during certain visemes
+    tongue.visible = targetViseme.tongueUp && jOpen > 0.1;
+    tongue.position.y = -0.19 - jOpen * 0.02;
+
+    // Lip rounding — push lips forward for "oo"/"oh" shapes
+    upperLip.position.z = 0.41 + lRound * 0.02;
+    lowerLip.position.z = 0.41 + lRound * 0.02;
+
+    // Also drive the legacy mouthOpenness for photo avatar sync
+    avatarState.mouthOpenness = jOpen;
 
     renderer.render(scene, camera);
   }
@@ -6757,6 +7180,10 @@ function switchAvatarEmployee() {
 
 // --- Voice System ---
 function initVoiceSystem() {
+  avatarState.continuousMode = false;
+  avatarState.vadStream = null;
+  avatarState.vadAnimFrame = null;
+
   // Check for Speech Recognition support
   const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
   if (SpeechRecognition) {
@@ -6839,25 +7266,93 @@ function toggleTTS() {
   document.getElementById('speakerIcon').textContent = avatarState.ttsEnabled ? '🔊' : '🔇';
 }
 
+// --- Web Audio API for Lip-Sync ---
+let audioContext = null;
+let audioAnalyser = null;
+let audioFreqData = null;
+let lipSyncAnimFrame = null;
+
+function getAudioContext() {
+  if (!audioContext || audioContext.state === 'closed') {
+    audioContext = new (window.AudioContext || window.webkitAudioContext)();
+  }
+  if (audioContext.state === 'suspended') audioContext.resume();
+  return audioContext;
+}
+
+function startLipSyncFromAudio(sourceNode) {
+  const ctx = getAudioContext();
+  audioAnalyser = ctx.createAnalyser();
+  audioAnalyser.fftSize = 256;
+  audioAnalyser.smoothingTimeConstant = 0.7;
+  audioFreqData = new Uint8Array(audioAnalyser.frequencyBinCount);
+
+  sourceNode.connect(audioAnalyser);
+  audioAnalyser.connect(ctx.destination);
+
+  // Drive visemes from frequency data
+  function updateLipSync() {
+    lipSyncAnimFrame = requestAnimationFrame(updateLipSync);
+    audioAnalyser.getByteFrequencyData(audioFreqData);
+
+    // Calculate energy bands
+    const bins = audioFreqData.length;
+    let lowEnergy = 0, midEnergy = 0, highEnergy = 0, totalEnergy = 0;
+    for (let i = 0; i < bins; i++) {
+      const v = audioFreqData[i] / 255;
+      totalEnergy += v;
+      if (i < bins * 0.15) lowEnergy += v;       // 0-1200 Hz (vowels, fundamentals)
+      else if (i < bins * 0.4) midEnergy += v;    // 1200-3200 Hz (consonants, formants)
+      else highEnergy += v;                        // 3200+ Hz (sibilants, fricatives)
+    }
+    lowEnergy /= (bins * 0.15);
+    midEnergy /= (bins * 0.25);
+    highEnergy /= (bins * 0.6);
+    totalEnergy /= bins;
+
+    if (avatarState.setAudioEnergy) {
+      // Enhanced: use frequency bands to select better viseme shapes
+      const energy = Math.min(1, totalEnergy * 3);
+      if (energy < 0.03) {
+        avatarState.setViseme('sil');
+      } else if (highEnergy > midEnergy * 1.5 && highEnergy > 0.15) {
+        // Sibilant — "s", "sh", "f" sounds
+        avatarState.setViseme(highEnergy > 0.3 ? 'ss' : 'ff');
+      } else if (lowEnergy > midEnergy * 1.3 && lowEnergy > 0.2) {
+        // Strong low = open vowels
+        const vowelIdx = Math.floor(Date.now() * 0.004) % 3;
+        avatarState.setViseme(['aa', 'ao', 'ah'][vowelIdx]);
+      } else if (midEnergy > 0.15) {
+        // Mid-range = consonants or mid vowels
+        const midIdx = Math.floor(Date.now() * 0.005) % 4;
+        avatarState.setViseme(['eh', 'ih', 'dd', 'kk'][midIdx]);
+      } else {
+        avatarState.setAudioEnergy(energy);
+      }
+    }
+  }
+  updateLipSync();
+}
+
+function stopLipSync() {
+  if (lipSyncAnimFrame) {
+    cancelAnimationFrame(lipSyncAnimFrame);
+    lipSyncAnimFrame = null;
+  }
+  if (avatarState.setViseme) avatarState.setViseme('sil');
+  avatarState.mouthOpenness = 0;
+  avatarState.speaking = false;
+  const statusEl = document.getElementById('avatarStatus');
+  if (statusEl) statusEl.textContent = avatarState.continuousMode ? 'Listening...' : 'Idle';
+}
+
 async function speakText(text) {
   if (!avatarState.ttsEnabled) return;
 
   avatarState.speaking = true;
   document.getElementById('avatarStatus').textContent = 'Speaking...';
 
-  // Mouth animation loop
-  const mouthInterval = setInterval(() => {
-    avatarState.mouthOpenness = 0.2 + Math.random() * 0.6;
-  }, 80);
-
-  const stopSpeaking = () => {
-    clearInterval(mouthInterval);
-    avatarState.mouthOpenness = 0;
-    avatarState.speaking = false;
-    document.getElementById('avatarStatus').textContent = 'Idle';
-  };
-
-  // Try Google Cloud TTS first (natural voice)
+  // Try OpenAI TTS with Web Audio API lip-sync
   try {
     const token = localStorage.getItem('ai-os-token');
     const profile = AVATAR_PROFILES[avatarState.employee] || {};
@@ -6870,18 +7365,37 @@ async function speakText(text) {
     const data = await res.json();
 
     if (data.ok && data.audioContent) {
-      // Play the Google TTS audio
-      const audio = new Audio('data:audio/mp3;base64,' + data.audioContent);
-      audio.volume = 0.85;
-      audio.onended = stopSpeaking;
-      audio.onerror = () => { stopSpeaking(); speakTextBrowserFallback(text); };
-      audio.play().catch(() => { stopSpeaking(); speakTextBrowserFallback(text); });
+      const ctx = getAudioContext();
+
+      // Decode base64 audio into AudioBuffer for AnalyserNode
+      const binaryStr = atob(data.audioContent);
+      const bytes = new Uint8Array(binaryStr.length);
+      for (let i = 0; i < binaryStr.length; i++) bytes[i] = binaryStr.charCodeAt(i);
+      const audioBuffer = await ctx.decodeAudioData(bytes.buffer);
+
+      // Create buffer source and pipe through analyser for lip-sync
+      const source = ctx.createBufferSource();
+      source.buffer = audioBuffer;
+      startLipSyncFromAudio(source);
+
+      source.onended = () => {
+        stopLipSync();
+        // In continuous mode, resume listening after speaking
+        if (avatarState.continuousMode && avatarState.recognition) {
+          setTimeout(() => {
+            if (avatarState.continuousMode) startContinuousSTT();
+          }, 300);
+        }
+      };
+      source.start(0);
       return;
     }
-  } catch {}
+  } catch (e) {
+    console.warn('TTS with lip-sync failed:', e);
+  }
 
-  // Fallback to browser Speech Synthesis
-  stopSpeaking();
+  // Fallback to browser Speech Synthesis with lip-sync
+  avatarState.speaking = false;
   speakTextBrowserFallback(text);
 }
 
@@ -6907,12 +7421,218 @@ function speakTextBrowserFallback(text) {
 
   avatarState.speaking = true;
   document.getElementById('avatarStatus').textContent = 'Speaking...';
-  const mouthInterval = setInterval(() => { avatarState.mouthOpenness = 0.2 + Math.random() * 0.5; }, 100);
 
-  utterance.onend = () => { clearInterval(mouthInterval); avatarState.mouthOpenness = 0; avatarState.speaking = false; document.getElementById('avatarStatus').textContent = 'Idle'; };
-  utterance.onerror = () => { clearInterval(mouthInterval); avatarState.mouthOpenness = 0; avatarState.speaking = false; };
+  // Use browser SpeechSynthesis boundary events for lip-sync
+  const vowelVisemes = ['aa', 'eh', 'ih', 'ow', 'ae', 'ah'];
+  const consonantVisemes = ['dd', 'kk', 'pp', 'ff', 'ss'];
+  let wordIdx = 0;
+  utterance.onboundary = (e) => {
+    if (e.name === 'word') {
+      // Cycle through viseme shapes on each word boundary
+      wordIdx++;
+      const v = wordIdx % 3 === 0 ? consonantVisemes[wordIdx % consonantVisemes.length] : vowelVisemes[wordIdx % vowelVisemes.length];
+      if (avatarState.setViseme) avatarState.setViseme(v);
+    }
+  };
+
+  // Between word boundaries, animate with simple energy
+  const mouthInterval = setInterval(() => {
+    if (avatarState.setAudioEnergy) {
+      avatarState.setAudioEnergy(0.3 + Math.random() * 0.4);
+    }
+  }, 100);
+
+  utterance.onend = () => {
+    clearInterval(mouthInterval);
+    stopLipSync();
+    // In continuous mode, resume listening
+    if (avatarState.continuousMode && avatarState.recognition) {
+      setTimeout(() => {
+        if (avatarState.continuousMode) startContinuousSTT();
+      }, 300);
+    }
+  };
+  utterance.onerror = () => { clearInterval(mouthInterval); stopLipSync(); };
 
   window.speechSynthesis.speak(utterance);
+}
+
+// --- Continuous Voice Chat Mode ---
+// Always-on microphone with voice activity detection (VAD)
+// Auto-sends on silence, auto-resumes after agent speaks
+
+function toggleContinuousVoice() {
+  if (avatarState.continuousMode) {
+    stopContinuousVoice();
+  } else {
+    startContinuousVoice();
+  }
+}
+
+function startContinuousVoice() {
+  avatarState.continuousMode = true;
+  const btn = document.getElementById('continuousVoiceBtn');
+  if (btn) {
+    btn.classList.add('active');
+    btn.title = 'Stop continuous voice chat';
+  }
+  document.getElementById('avatarStatus').textContent = 'Voice chat active';
+  document.getElementById('micIcon').textContent = '🟢';
+
+  // Start microphone for VAD
+  startVADMicrophone();
+  startContinuousSTT();
+  showSettingsToast('Continuous voice chat active — speak naturally');
+}
+
+function stopContinuousVoice() {
+  avatarState.continuousMode = false;
+  const btn = document.getElementById('continuousVoiceBtn');
+  if (btn) {
+    btn.classList.remove('active');
+    btn.title = 'Start continuous voice chat';
+  }
+
+  // Stop VAD microphone
+  if (avatarState.vadStream) {
+    avatarState.vadStream.getTracks().forEach(t => t.stop());
+    avatarState.vadStream = null;
+  }
+  if (avatarState.vadAnimFrame) {
+    cancelAnimationFrame(avatarState.vadAnimFrame);
+    avatarState.vadAnimFrame = null;
+  }
+
+  if (avatarState.recognition) {
+    try { avatarState.recognition.stop(); } catch {}
+  }
+  avatarState.listening = false;
+  document.getElementById('micIcon').textContent = '🎤';
+  document.getElementById('avatarStatus').textContent = 'Idle';
+  showSettingsToast('Voice chat ended');
+}
+
+async function startVADMicrophone() {
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    avatarState.vadStream = stream;
+    const ctx = getAudioContext();
+    const source = ctx.createMediaStreamSource(stream);
+    const analyser = ctx.createAnalyser();
+    analyser.fftSize = 512;
+    analyser.smoothingTimeConstant = 0.8;
+    source.connect(analyser);
+    const data = new Uint8Array(analyser.frequencyBinCount);
+
+    avatarState.vadSilenceStart = null;
+    avatarState.vadSpeechDetected = false;
+
+    // Visual feedback: show input level on the listening indicator
+    function vadLoop() {
+      avatarState.vadAnimFrame = requestAnimationFrame(vadLoop);
+      analyser.getByteFrequencyData(data);
+      let energy = 0;
+      for (let i = 0; i < data.length; i++) energy += data[i];
+      energy /= (data.length * 255);
+
+      // Voice activity threshold
+      const threshold = 0.04;
+      const statusEl = document.getElementById('avatarStatus');
+      if (energy > threshold) {
+        avatarState.vadSilenceStart = null;
+        if (!avatarState.vadSpeechDetected) {
+          avatarState.vadSpeechDetected = true;
+        }
+        if (statusEl && avatarState.listening && !avatarState.speaking) {
+          statusEl.textContent = 'Hearing you...';
+        }
+      } else if (avatarState.vadSpeechDetected) {
+        if (!avatarState.vadSilenceStart) {
+          avatarState.vadSilenceStart = Date.now();
+        }
+        // After 1.5s of silence following speech, trigger send
+        if (Date.now() - avatarState.vadSilenceStart > 1500) {
+          avatarState.vadSpeechDetected = false;
+          avatarState.vadSilenceStart = null;
+          // The recognition.onresult with isFinal handles the actual send
+        }
+      }
+    }
+    vadLoop();
+  } catch (e) {
+    console.warn('VAD microphone access denied:', e);
+  }
+}
+
+function startContinuousSTT() {
+  if (!avatarState.recognition || avatarState.speaking) return;
+  if (avatarState.listening) return;
+
+  // Re-configure for continuous mode
+  avatarState.recognition.continuous = true;
+  avatarState.recognition.interimResults = true;
+
+  // Override handlers for continuous mode
+  avatarState.recognition.onresult = (event) => {
+    let interimTranscript = '';
+    let finalTranscript = '';
+    for (let i = event.resultIndex; i < event.results.length; i++) {
+      const transcript = event.results[i][0].transcript;
+      if (event.results[i].isFinal) {
+        finalTranscript += transcript;
+      } else {
+        interimTranscript += transcript;
+      }
+    }
+
+    const input = document.getElementById('avatarInput');
+    if (interimTranscript) {
+      input.value = interimTranscript;
+      document.getElementById('avatarStatus').textContent = 'Hearing you...';
+    }
+    if (finalTranscript.trim()) {
+      input.value = finalTranscript.trim();
+      // Stop listening while processing
+      try { avatarState.recognition.stop(); } catch {}
+      avatarState.listening = false;
+      document.getElementById('avatarStatus').textContent = 'Processing...';
+      sendAvatarMessage();
+    }
+  };
+
+  avatarState.recognition.onend = () => {
+    avatarState.listening = false;
+    // Auto-restart if in continuous mode and not speaking
+    if (avatarState.continuousMode && !avatarState.speaking) {
+      setTimeout(() => {
+        if (avatarState.continuousMode && !avatarState.speaking) {
+          startContinuousSTT();
+        }
+      }, 200);
+    }
+  };
+
+  avatarState.recognition.onerror = (e) => {
+    avatarState.listening = false;
+    if (e.error === 'no-speech' && avatarState.continuousMode) {
+      // Silently restart on no-speech in continuous mode
+      setTimeout(() => {
+        if (avatarState.continuousMode && !avatarState.speaking) startContinuousSTT();
+      }, 500);
+    } else if (e.error !== 'aborted') {
+      console.warn('Continuous STT error:', e.error);
+    }
+  };
+
+  try {
+    avatarState.recognition.start();
+    avatarState.listening = true;
+    if (!avatarState.speaking) {
+      document.getElementById('avatarStatus').textContent = 'Listening...';
+    }
+  } catch (e) {
+    // Already started
+  }
 }
 
 // --- Avatar Chat Messages ---

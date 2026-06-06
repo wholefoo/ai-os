@@ -1478,16 +1478,35 @@ async function executeAgent(agentName, task, options = {}) {
   const routing = getAgentEffort(agentName);
   const startTime = Date.now();
 
-  // Load agent system prompt from .md file
-  const systemPrompt = await loadAgentPrompt(agentName);
+  // Check if this is a custom tenant agent first
+  let systemPrompt = null;
+  let isCustomAgent = false;
+  if (tenantId !== MASTER_TENANT_ID) {
+    try {
+      const trainingConfig = loadTrainingConfig(tenantId);
+      const customAgent = trainingConfig.customAgents?.find(a => a.name === agentName);
+      if (customAgent) {
+        systemPrompt = customAgent.prompt;
+        isCustomAgent = true;
+      }
+    } catch {}
+  }
+
+  // Fall back to built-in agent prompt from .md file
+  if (!systemPrompt) {
+    systemPrompt = await loadAgentPrompt(agentName);
+  }
   if (!systemPrompt) {
     return { ok: false, error: `Agent "${agentName}" not found`, model: routing.model };
   }
 
+  // Inject tenant-specific training context (custom instructions, brand voice, knowledge base)
+  const tenantContext = buildTenantContext(tenantId);
+
   // Build the full system message
-  const fullSystem = context
-    ? `${systemPrompt}\n\n--- Current Context ---\n${context}`
-    : systemPrompt;
+  let fullSystem = systemPrompt;
+  if (tenantContext) fullSystem += tenantContext;
+  if (context) fullSystem += `\n\n--- Current Context ---\n${context}`;
 
   let result, inputTokens = 0, outputTokens = 0, model = routing.model;
 
@@ -5718,8 +5737,284 @@ function requireAdmin(req, res, next) {
   next();
 }
 
+// Plan hierarchy for feature gating
+const PLAN_LEVELS = { free: 0, starter: 1, pro: 2, business: 3, enterprise: 4, founders: 5 };
+
+function requirePlan(minPlan) {
+  return (req, res, next) => {
+    const token = req.cookies?.['ai-os-session'] || req.headers.authorization?.replace('Bearer ', '');
+    const session = isValidSession(token);
+    if (!session) return res.status(401).json({ error: 'Not authenticated' });
+    const userLevel = PLAN_LEVELS[session.plan] || 0;
+    const requiredLevel = PLAN_LEVELS[minPlan] || 0;
+    if (userLevel < requiredLevel) {
+      return res.status(403).json({ error: `Requires ${minPlan} plan or higher`, currentPlan: session.plan, requiredPlan: minPlan });
+    }
+    req.session = session;
+    next();
+  };
+}
+
 // Register tenant routes now that requireAdmin is defined
 registerTenantRoutes();
+
+// --- Custom AI Training per Tenant ---
+// Business+ plans can customize agent behavior with custom instructions, knowledge docs, and custom agent personas.
+
+// Helper: get tenant training directory
+function getTrainingDir(tenantId) {
+  const dir = path.join(TENANTS_DIR, tenantId, 'training');
+  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+  return dir;
+}
+
+// Helper: get tenant training config
+function loadTrainingConfig(tenantId) {
+  const defaults = {
+    instructions: {
+      global: '',           // Injected into every agent call
+      brandVoice: '',       // Tone, style, terminology
+      industry: '',         // Industry-specific context
+      rules: [],            // Hard rules (never say X, always include Y)
+    },
+    knowledgeBase: [],       // Array of { id, title, content, category, createdAt }
+    customAgents: [],        // Array of { id, name, title, prompt, modelTier, avatar, department, createdAt }
+    updatedAt: null,
+  };
+  return loadTenantState(tenantId, 'training', defaults);
+}
+
+function saveTrainingConfig(tenantId, config) {
+  config.updatedAt = new Date().toISOString();
+  saveTenantState(tenantId, 'training', config);
+}
+
+// GET /api/training — load training config for current tenant
+app.get('/api/training', requirePlan('business'), (req, res) => {
+  const config = loadTrainingConfig(req.tenantId);
+  res.json({ ok: true, ...config });
+});
+
+// PUT /api/training/instructions — update custom instructions
+app.put('/api/training/instructions', requirePlan('business'), (req, res) => {
+  const { global, brandVoice, industry, rules } = req.body;
+  const config = loadTrainingConfig(req.tenantId);
+  if (global !== undefined) config.instructions.global = global.substring(0, 5000);
+  if (brandVoice !== undefined) config.instructions.brandVoice = brandVoice.substring(0, 3000);
+  if (industry !== undefined) config.instructions.industry = industry.substring(0, 2000);
+  if (rules !== undefined) config.instructions.rules = (Array.isArray(rules) ? rules : []).slice(0, 50).map(r => String(r).substring(0, 500));
+  saveTrainingConfig(req.tenantId, config);
+  logActivity('training', `Custom instructions updated for tenant ${req.tenantId}`);
+  res.json({ ok: true, instructions: config.instructions });
+});
+
+// --- Tenant Knowledge Base ---
+
+// GET /api/training/knowledge — list knowledge docs
+app.get('/api/training/knowledge', requirePlan('business'), (req, res) => {
+  const config = loadTrainingConfig(req.tenantId);
+  res.json({ ok: true, docs: config.knowledgeBase, count: config.knowledgeBase.length });
+});
+
+// POST /api/training/knowledge — add a knowledge doc
+app.post('/api/training/knowledge', requirePlan('business'), (req, res) => {
+  const { title, content, category } = req.body;
+  if (!title || !content) return res.status(400).json({ error: 'Title and content required' });
+
+  const config = loadTrainingConfig(req.tenantId);
+  const maxDocs = PLAN_LEVELS[req.session?.plan] >= PLAN_LEVELS.enterprise ? 500 : 100;
+  if (config.knowledgeBase.length >= maxDocs) {
+    return res.status(400).json({ error: `Knowledge base limit reached (${maxDocs} docs). Upgrade plan for more.` });
+  }
+
+  const doc = {
+    id: uuidv4(),
+    title: title.substring(0, 200),
+    content: content.substring(0, 50000),
+    category: (category || 'general').substring(0, 50),
+    createdAt: new Date().toISOString(),
+  };
+  config.knowledgeBase.push(doc);
+  saveTrainingConfig(req.tenantId, config);
+  logActivity('training', `Knowledge doc added: "${doc.title}" for tenant ${req.tenantId}`);
+  res.json({ ok: true, doc });
+});
+
+// PUT /api/training/knowledge/:id — update a knowledge doc
+app.put('/api/training/knowledge/:id', requirePlan('business'), (req, res) => {
+  const config = loadTrainingConfig(req.tenantId);
+  const doc = config.knowledgeBase.find(d => d.id === req.params.id);
+  if (!doc) return res.status(404).json({ error: 'Document not found' });
+
+  if (req.body.title) doc.title = req.body.title.substring(0, 200);
+  if (req.body.content) doc.content = req.body.content.substring(0, 50000);
+  if (req.body.category) doc.category = req.body.category.substring(0, 50);
+  doc.updatedAt = new Date().toISOString();
+
+  saveTrainingConfig(req.tenantId, config);
+  res.json({ ok: true, doc });
+});
+
+// DELETE /api/training/knowledge/:id — remove a knowledge doc
+app.delete('/api/training/knowledge/:id', requirePlan('business'), (req, res) => {
+  const config = loadTrainingConfig(req.tenantId);
+  const idx = config.knowledgeBase.findIndex(d => d.id === req.params.id);
+  if (idx === -1) return res.status(404).json({ error: 'Document not found' });
+
+  const removed = config.knowledgeBase.splice(idx, 1)[0];
+  saveTrainingConfig(req.tenantId, config);
+  logActivity('training', `Knowledge doc removed: "${removed.title}" for tenant ${req.tenantId}`);
+  res.json({ ok: true, removed: removed.id });
+});
+
+// --- Custom Agent Personas ---
+
+// GET /api/training/agents — list custom agents
+app.get('/api/training/agents', requirePlan('business'), (req, res) => {
+  const config = loadTrainingConfig(req.tenantId);
+  res.json({ ok: true, agents: config.customAgents, count: config.customAgents.length });
+});
+
+// POST /api/training/agents — create a custom agent
+app.post('/api/training/agents', requirePlan('business'), (req, res) => {
+  const { name, title, prompt, modelTier, avatar, department } = req.body;
+  if (!name || !prompt) return res.status(400).json({ error: 'Name and prompt required' });
+
+  const config = loadTrainingConfig(req.tenantId);
+  const maxAgents = PLAN_LEVELS[req.session?.plan] >= PLAN_LEVELS.enterprise ? 50 : 10;
+  if (config.customAgents.length >= maxAgents) {
+    return res.status(400).json({ error: `Custom agent limit reached (${maxAgents}). Upgrade plan for more.` });
+  }
+
+  // Validate model tier
+  const validTiers = ['strategic', 'professional', 'scout', 'creative', 'economy', 'realtime'];
+  const tier = validTiers.includes(modelTier) ? modelTier : 'professional';
+
+  const agent = {
+    id: uuidv4(),
+    name: name.replace(/[^a-z0-9-]/gi, '-').toLowerCase().substring(0, 50),
+    displayName: name.substring(0, 100),
+    title: (title || 'Custom Agent').substring(0, 100),
+    prompt: prompt.substring(0, 20000),
+    modelTier: tier,
+    avatar: (avatar || '').substring(0, 10),
+    department: (department || 'Custom').substring(0, 50),
+    createdAt: new Date().toISOString(),
+  };
+
+  // Prevent name collisions with built-in agents
+  const builtInNames = Object.keys(EFFORT_ROUTING).flatMap(t => EFFORT_ROUTING[t].agents);
+  if (builtInNames.includes(agent.name)) {
+    agent.name = `custom-${agent.name}`;
+  }
+
+  config.customAgents.push(agent);
+  saveTrainingConfig(req.tenantId, config);
+  logActivity('training', `Custom agent created: "${agent.displayName}" for tenant ${req.tenantId}`);
+  res.json({ ok: true, agent });
+});
+
+// PUT /api/training/agents/:id — update a custom agent
+app.put('/api/training/agents/:id', requirePlan('business'), (req, res) => {
+  const config = loadTrainingConfig(req.tenantId);
+  const agent = config.customAgents.find(a => a.id === req.params.id);
+  if (!agent) return res.status(404).json({ error: 'Custom agent not found' });
+
+  if (req.body.title) agent.title = req.body.title.substring(0, 100);
+  if (req.body.prompt) agent.prompt = req.body.prompt.substring(0, 20000);
+  if (req.body.modelTier) {
+    const validTiers = ['strategic', 'professional', 'scout', 'creative', 'economy', 'realtime'];
+    if (validTiers.includes(req.body.modelTier)) agent.modelTier = req.body.modelTier;
+  }
+  if (req.body.avatar !== undefined) agent.avatar = req.body.avatar.substring(0, 10);
+  if (req.body.department) agent.department = req.body.department.substring(0, 50);
+  if (req.body.displayName) agent.displayName = req.body.displayName.substring(0, 100);
+  agent.updatedAt = new Date().toISOString();
+
+  saveTrainingConfig(req.tenantId, config);
+  res.json({ ok: true, agent });
+});
+
+// DELETE /api/training/agents/:id — delete a custom agent
+app.delete('/api/training/agents/:id', requirePlan('business'), (req, res) => {
+  const config = loadTrainingConfig(req.tenantId);
+  const idx = config.customAgents.findIndex(a => a.id === req.params.id);
+  if (idx === -1) return res.status(404).json({ error: 'Custom agent not found' });
+
+  const removed = config.customAgents.splice(idx, 1)[0];
+  saveTrainingConfig(req.tenantId, config);
+  logActivity('training', `Custom agent deleted: "${removed.displayName}" for tenant ${req.tenantId}`);
+  res.json({ ok: true, removed: removed.id });
+});
+
+// POST /api/training/agents/:id/test — test-run a custom agent
+app.post('/api/training/agents/:id/test', requirePlan('business'), async (req, res) => {
+  const { task } = req.body;
+  if (!task) return res.status(400).json({ error: 'Task text required' });
+
+  const config = loadTrainingConfig(req.tenantId);
+  const agent = config.customAgents.find(a => a.id === req.params.id);
+  if (!agent) return res.status(404).json({ error: 'Custom agent not found' });
+
+  // Build a temporary execution with the custom prompt
+  const tenantInstructions = buildTenantContext(req.tenantId);
+  const fullPrompt = tenantInstructions ? `${agent.prompt}\n\n${tenantInstructions}` : agent.prompt;
+
+  try {
+    const result = await callAnthropic(fullPrompt, task, 'high', 2048);
+    res.json({ ok: true, response: result.content, model: 'opus-4.8-high', inputTokens: result.inputTokens, outputTokens: result.outputTokens });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+// --- Tenant Context Injection ---
+// Builds the per-tenant context string injected into every agent call
+
+function buildTenantContext(tenantId) {
+  if (tenantId === MASTER_TENANT_ID) return '';
+
+  try {
+    const config = loadTrainingConfig(tenantId);
+    const parts = [];
+
+    // Custom instructions
+    if (config.instructions.global) {
+      parts.push(`## Tenant Custom Instructions\n${config.instructions.global}`);
+    }
+    if (config.instructions.brandVoice) {
+      parts.push(`## Brand Voice & Tone\n${config.instructions.brandVoice}`);
+    }
+    if (config.instructions.industry) {
+      parts.push(`## Industry Context\n${config.instructions.industry}`);
+    }
+    if (config.instructions.rules?.length > 0) {
+      parts.push(`## Mandatory Rules\n${config.instructions.rules.map((r, i) => `${i + 1}. ${r}`).join('\n')}`);
+    }
+
+    // Knowledge base — inject relevant docs (first 10 by recency, up to 15K chars total)
+    if (config.knowledgeBase.length > 0) {
+      const sorted = [...config.knowledgeBase].sort((a, b) => (b.updatedAt || b.createdAt || '').localeCompare(a.updatedAt || a.createdAt || ''));
+      let kbText = '';
+      let charCount = 0;
+      const maxChars = 15000;
+      for (const doc of sorted.slice(0, 10)) {
+        const entry = `### ${doc.title} [${doc.category}]\n${doc.content}\n\n`;
+        if (charCount + entry.length > maxChars) break;
+        kbText += entry;
+        charCount += entry.length;
+      }
+      if (kbText) {
+        parts.push(`## Tenant Knowledge Base\n${kbText}`);
+      }
+    }
+
+    return parts.length > 0 ? `\n\n--- Tenant-Specific Training ---\n${parts.join('\n\n')}` : '';
+  } catch (e) {
+    console.error(`[TRAINING] Failed to build tenant context for ${tenantId}:`, e.message);
+    return '';
+  }
+}
 
 // Mask a key for display — show first 4 and last 4 chars
 function capitalize(str) {

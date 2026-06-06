@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>AI OS — Orchestration Lab</title>
-  <link rel="stylesheet" href="css/styles.css?v=29">
+  <link rel="stylesheet" href="css/styles.css?v=31">
   <link rel="stylesheet" href="css/avatars.css">
   <script src="https://cdn.jsdelivr.net/npm/livekit-client@2/dist/livekit-client.umd.js" defer></script>
   <script src="https://cdn.jsdelivr.net/npm/@heygen/streaming-avatar/dist/index.umd.js" defer></script>
@@ -135,6 +135,9 @@
         </a>
         <a href="#" class="nav-item" data-view="tenants">
           <span class="nav-icon">&#127760;</span> Tenants
+        </a>
+        <a href="#" class="nav-item" data-view="training">
+          <span class="nav-icon">&#129504;</span> AI Training
         </a>
         <a href="#" class="nav-item" data-view="platform">
           <span class="nav-icon">&#128736;</span> Platform
@@ -1401,6 +1404,9 @@
                   <button class="avatar-speaker-btn" id="avatarSpeakerBtn" onclick="toggleTTS()" title="Toggle voice output">
                     <span id="speakerIcon">&#128264;</span>
                   </button>
+                  <button class="avatar-continuous-btn" id="continuousVoiceBtn" onclick="toggleContinuousVoice()" title="Start continuous voice chat" style="background:none;border:1px solid var(--border);border-radius:50%;width:36px;height:36px;cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:16px;transition:all 0.3s;">
+                    <span>&#127897;</span>
+                  </button>
                 </div>
                 <input type="text" class="avatar-text-input" id="avatarInput" placeholder="Type or click the mic to speak..." onkeydown="if(event.key==='Enter')sendAvatarMessage()">
                 <button class="avatar-send-btn" onclick="sendAvatarMessage()">&#10148;</button>
@@ -1462,6 +1468,92 @@
           <!-- Provision modal -->
           <div id="tenantModal" class="hq-modal" style="display:none;">
             <div class="hq-modal-content" id="tenantModalContent" style="max-width:560px;"></div>
+          </div>
+        </div>
+
+        <!-- Training Center View -->
+        <div class="view" id="view-training">
+          <div class="radar-header">
+            <div class="radar-header-left">
+              <h2 class="radar-title">AI Training Center</h2>
+              <span class="radar-subtitle">Custom instructions, knowledge base, and custom agent personas for your tenant</span>
+            </div>
+            <div class="radar-actions">
+              <span class="badge" id="trainingPlanBadge">Business+</span>
+            </div>
+          </div>
+
+          <!-- Custom Instructions -->
+          <section class="panel settings-section">
+            <h3 class="panel-title settings-section-title">
+              <span class="settings-section-icon">&#128221;</span> Custom Instructions
+            </h3>
+            <p class="settings-desc">These instructions are injected into every agent call for your tenant. Define your brand voice, industry context, and mandatory rules.</p>
+
+            <div class="settings-field">
+              <label>Global Instructions</label>
+              <textarea id="trainingGlobal" rows="4" placeholder="e.g., You are working for Acme Corp, a B2B SaaS company in the fintech space. Always be professional and data-driven."></textarea>
+              <small>Injected into every agent's system prompt. Max 5,000 chars.</small>
+            </div>
+
+            <div class="settings-field">
+              <label>Brand Voice &amp; Tone</label>
+              <textarea id="trainingBrandVoice" rows="3" placeholder="e.g., Confident but not arrogant. Use active voice. Avoid jargon. Speak like a trusted advisor, not a salesperson."></textarea>
+              <small>Controls how agents write and communicate. Max 3,000 chars.</small>
+            </div>
+
+            <div class="settings-field">
+              <label>Industry Context</label>
+              <textarea id="trainingIndustry" rows="3" placeholder="e.g., We serve mid-market healthcare SaaS companies. Our customers are CTOs and VP Engineering at 50-500 person companies."></textarea>
+              <small>Helps agents understand your market and audience. Max 2,000 chars.</small>
+            </div>
+
+            <div class="settings-field">
+              <label>Mandatory Rules</label>
+              <div id="trainingRulesList"></div>
+              <div style="display:flex; gap:8px; margin-top:8px;">
+                <input type="text" id="trainingNewRule" placeholder="e.g., Never mention competitor X by name" style="flex:1;">
+                <button class="btn btn-sm" onclick="addTrainingRule()">+ Add Rule</button>
+              </div>
+              <small>Hard rules all agents must follow. Max 50 rules.</small>
+            </div>
+
+            <button class="btn btn-primary" onclick="saveTrainingInstructions()">Save Instructions</button>
+          </section>
+
+          <!-- Knowledge Base -->
+          <section class="panel settings-section">
+            <h3 class="panel-title settings-section-title">
+              <span class="settings-section-icon">&#128218;</span> Tenant Knowledge Base
+            </h3>
+            <p class="settings-desc">Upload company-specific documents that get injected as context into agent calls. Product docs, FAQs, guidelines, playbooks.</p>
+
+            <div class="radar-actions" style="margin-bottom:16px;">
+              <button class="btn btn-primary" onclick="showAddKnowledgeModal()">+ Add Document</button>
+              <span class="text-muted" id="trainingKBCount">0 documents</span>
+            </div>
+
+            <div id="trainingKBList"><div class="empty-state">No knowledge documents yet. Add your first one above.</div></div>
+          </section>
+
+          <!-- Custom Agent Personas -->
+          <section class="panel settings-section">
+            <h3 class="panel-title settings-section-title">
+              <span class="settings-section-icon">&#129302;</span> Custom Agent Personas
+            </h3>
+            <p class="settings-desc">Create custom agents beyond the 51 built-in fleet. Define their name, role, system prompt, and model tier.</p>
+
+            <div class="radar-actions" style="margin-bottom:16px;">
+              <button class="btn btn-primary" onclick="showAddAgentModal()">+ Create Agent</button>
+              <span class="text-muted" id="trainingAgentCount">0 custom agents</span>
+            </div>
+
+            <div id="trainingAgentList"><div class="empty-state">No custom agents yet. Create your first one above.</div></div>
+          </section>
+
+          <!-- Training Modal (shared for knowledge docs and custom agents) -->
+          <div id="trainingModal" class="hq-modal" style="display:none;">
+            <div class="hq-modal-content" id="trainingModalContent" style="max-width:640px;"></div>
           </div>
         </div>
 
@@ -1907,6 +1999,6 @@
     </div>
   </div>
 
-  <script src="js/app.js?v=29"></script>
+  <script src="js/app.js?v=31"></script>
 </body>
 </html>
