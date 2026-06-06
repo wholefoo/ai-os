@@ -87,6 +87,9 @@ function switchView(view) {
     licensing: loadLicensing,
     tenants: loadTenants,
     training: loadTraining,
+    plugins: loadPlugins,
+    reports: loadReports,
+    meetings: loadMeetings,
     monitoring: loadMonitoring,
     'avatar-chat': loadAvatarChat,
     platform: loadPlatform,
@@ -6151,6 +6154,480 @@ async function testCustomAgent(id) {
   } else {
     showSettingsToast(result.error || 'Test failed', true);
   }
+}
+
+// ========================================================================
+//  PLUGINS & EXTENSIONS
+// ========================================================================
+
+let pluginsData = { plugins: [], limit: 0, plan: 'free' };
+
+async function loadPlugins() {
+  try {
+    const result = await fetchJSON('/api/plugins');
+    pluginsData = result;
+    renderPlugins();
+  } catch (e) {
+    document.getElementById('pluginList').innerHTML = '<div class="empty-state">Plugins require Pro plan or higher. <a href="/#pricing">Upgrade</a></div>';
+  }
+}
+
+function renderPlugins() {
+  const container = document.getElementById('pluginList');
+  const { plugins, limit, plan } = pluginsData;
+
+  document.getElementById('pluginCount').textContent = plugins.length;
+  document.getElementById('pluginActiveCount').textContent = plugins.filter(p => p.enabled).length;
+  document.getElementById('pluginLimitDisplay').textContent = limit;
+  document.getElementById('pluginTypeCount').textContent = new Set(plugins.map(p => p.type)).size;
+  document.getElementById('pluginPlanBadge').textContent = plan.charAt(0).toUpperCase() + plan.slice(1);
+
+  if (plugins.length === 0) {
+    container.innerHTML = '<div class="empty-state">No plugins installed. Click "+ New Plugin" to extend your agents with custom tools.</div>';
+    return;
+  }
+
+  const typeIcons = { webhook: '🔗', 'api-tool': '⚙️', 'data-source': '📊', formatter: '📝', validator: '✅' };
+
+  container.innerHTML = plugins.map(p => `
+    <div class="panel" style="margin-bottom:12px; padding:16px; display:flex; justify-content:space-between; align-items:center;">
+      <div>
+        <div style="display:flex; align-items:center; gap:8px;">
+          <span style="font-size:20px;">${typeIcons[p.type] || '🧩'}</span>
+          <strong>${escapeHtml(p.name)}</strong>
+          <span class="badge" style="font-size:11px;">${p.type}</span>
+          ${p.enabled ? '<span style="color:var(--success);font-size:12px;">● Active</span>' : '<span style="color:var(--text-muted);font-size:12px;">○ Disabled</span>'}
+        </div>
+        <div class="text-muted" style="margin-top:4px;font-size:13px;">${escapeHtml(p.description || '')}</div>
+        ${p.agentBindings?.length ? `<div style="margin-top:4px;font-size:12px;color:var(--primary);">Bound to: ${p.agentBindings.join(', ')}</div>` : ''}
+      </div>
+      <div style="display:flex; gap:6px;">
+        <button class="btn btn-sm" onclick="testPlugin('${p.id}')" title="Test">&#9654;</button>
+        <button class="btn btn-sm" onclick="togglePlugin('${p.id}', ${!p.enabled})" title="${p.enabled ? 'Disable' : 'Enable'}">${p.enabled ? '⏸' : '▶'}</button>
+        <button class="btn btn-sm" onclick="editPlugin('${p.id}')" title="Edit">&#9998;</button>
+        <button class="btn btn-sm" onclick="deletePlugin('${p.id}')" title="Delete" style="color:#ef4444;">&#128465;</button>
+      </div>
+    </div>
+  `).join('');
+}
+
+function showAddPluginModal(editId) {
+  const plugin = editId ? pluginsData.plugins.find(p => p.id === editId) : null;
+  const modal = document.getElementById('pluginModal');
+  document.getElementById('pluginModalContent').innerHTML = `
+    <h3>${plugin ? 'Edit Plugin' : 'New Plugin'}</h3>
+    <div class="settings-field"><label>Name</label><input type="text" id="pluginName" value="${plugin ? escapeHtml(plugin.name) : ''}" placeholder="e.g., Slack Notifier, CRM Lookup" maxlength="60"></div>
+    <div class="settings-field"><label>Type</label>
+      <select id="pluginType">
+        <option value="webhook" ${plugin?.type === 'webhook' ? 'selected' : ''}>Webhook — POST to an external URL on events</option>
+        <option value="api-tool" ${plugin?.type === 'api-tool' ? 'selected' : ''}>API Tool — Call an external API as an agent tool</option>
+        <option value="data-source" ${plugin?.type === 'data-source' ? 'selected' : ''}>Data Source — Inject external data into agent context</option>
+        <option value="formatter" ${plugin?.type === 'formatter' ? 'selected' : ''}>Formatter — Transform agent output before delivery</option>
+        <option value="validator" ${plugin?.type === 'validator' ? 'selected' : ''}>Validator — Validate agent output against rules</option>
+      </select>
+    </div>
+    <div class="settings-field"><label>Description</label><textarea id="pluginDesc" rows="2" maxlength="500" placeholder="What does this plugin do?">${plugin ? escapeHtml(plugin.description) : ''}</textarea></div>
+    <div class="settings-field"><label>URL / Endpoint</label><input type="text" id="pluginUrl" value="${plugin?.config?.url || plugin?.config?.endpoint || ''}" placeholder="https://hooks.slack.com/..."></div>
+    <div class="settings-field"><label>Agent Bindings (comma-separated agent names, leave blank for all)</label><input type="text" id="pluginBindings" value="${(plugin?.agentBindings || []).join(', ')}" placeholder="e.g., orchestrator, coder, writer"></div>
+    <div style="display:flex; gap:8px; margin-top:16px;">
+      <button class="btn btn-primary" onclick="submitPlugin('${editId || ''}')">${plugin ? 'Save' : 'Create'}</button>
+      <button class="btn" onclick="document.getElementById('pluginModal').style.display='none'">Cancel</button>
+    </div>
+  `;
+  modal.style.display = 'flex';
+}
+
+async function submitPlugin(editId) {
+  const name = document.getElementById('pluginName').value.trim();
+  const type = document.getElementById('pluginType').value;
+  const description = document.getElementById('pluginDesc').value.trim();
+  const url = document.getElementById('pluginUrl').value.trim();
+  const bindings = document.getElementById('pluginBindings').value.split(',').map(s => s.trim()).filter(Boolean);
+
+  if (!name) return showSettingsToast('Name is required', true);
+
+  const config = {};
+  if (type === 'webhook') config.url = url;
+  else if (type === 'api-tool') config.endpoint = url;
+  else if (url) config.url = url;
+
+  const body = { name, type, description, config, agentBindings: bindings };
+  const endpoint = editId ? `/api/plugins/${editId}` : '/api/plugins';
+  const method = editId ? 'PUT' : 'POST';
+
+  const result = await fetchJSON(endpoint, { method, body });
+  if (result.ok) {
+    document.getElementById('pluginModal').style.display = 'none';
+    showSettingsToast(editId ? 'Plugin updated' : 'Plugin created');
+    loadPlugins();
+  } else {
+    showSettingsToast(result.error || 'Failed', true);
+  }
+}
+
+function editPlugin(id) { showAddPluginModal(id); }
+
+async function deletePlugin(id) {
+  if (!confirm('Delete this plugin?')) return;
+  const result = await fetchJSON(`/api/plugins/${id}`, { method: 'DELETE' });
+  if (result.ok) { showSettingsToast('Plugin deleted'); loadPlugins(); }
+}
+
+async function togglePlugin(id, enabled) {
+  await fetchJSON(`/api/plugins/${id}`, { method: 'PUT', body: { enabled } });
+  loadPlugins();
+}
+
+async function testPlugin(id) {
+  showSettingsToast('Testing plugin...');
+  const result = await fetchJSON(`/api/plugins/${id}/test`, { method: 'POST' });
+  if (result.ok) {
+    showSettingsToast(`Plugin test passed (status: ${result.status || 'OK'})`);
+  } else {
+    showSettingsToast(`Plugin test failed: ${result.error || 'Unknown error'}`, true);
+  }
+}
+
+// ========================================================================
+//  ADVANCED REPORTING
+// ========================================================================
+
+let reportsData = { templates: [], schedules: [], history: [], limit: 0, plan: 'free' };
+
+async function loadReports() {
+  try {
+    const result = await fetchJSON('/api/reports');
+    reportsData = result;
+    renderReportTemplates();
+    renderReportSchedules();
+    renderReportHistory();
+    document.getElementById('reportPlanBadge').textContent = reportsData.plan.charAt(0).toUpperCase() + reportsData.plan.slice(1);
+  } catch (e) {
+    document.getElementById('reportTemplates').innerHTML = '<div class="empty-state">Reports require Starter plan or higher. <a href="/#pricing">Upgrade</a></div>';
+  }
+}
+
+function renderReportTemplates() {
+  const container = document.getElementById('reportTemplates');
+  const categoryIcons = { SEO: '🔎', Operations: '⚙️', Admin: '🏛️', Marketing: '📣', Finance: '💰', Security: '🛡️', Executive: '👔', Custom: '🧩' };
+
+  container.innerHTML = reportsData.templates.map(t => `
+    <div class="panel" style="padding:16px;">
+      <div style="display:flex; justify-content:space-between; align-items:start;">
+        <div>
+          <div style="display:flex; align-items:center; gap:8px;">
+            <span style="font-size:20px;">${categoryIcons[t.category] || '📄'}</span>
+            <strong>${escapeHtml(t.name)}</strong>
+            <span class="badge" style="font-size:11px;">${t.category}</span>
+          </div>
+          <div class="text-muted" style="margin-top:4px;font-size:13px;">${escapeHtml(t.description)}</div>
+          <div style="margin-top:6px;font-size:12px;">Formats: ${t.formats.map(f => f.toUpperCase()).join(', ')}</div>
+        </div>
+        <div style="display:flex; gap:6px;">
+          <button class="btn btn-sm btn-primary" onclick="generateReport('${t.id}', 'pdf')">PDF</button>
+          ${t.formats.includes('csv') ? `<button class="btn btn-sm" onclick="generateReport('${t.id}', 'csv')">CSV</button>` : ''}
+          <button class="btn btn-sm" onclick="showScheduleReportModal('${t.id}')" title="Schedule">&#128339;</button>
+        </div>
+      </div>
+    </div>
+  `).join('');
+}
+
+function renderReportSchedules() {
+  const container = document.getElementById('reportSchedules');
+  const { schedules } = reportsData;
+  if (!schedules?.length) {
+    container.innerHTML = '<div class="empty-state">No scheduled reports. Click the clock icon on a template to set up recurring delivery.</div>';
+    return;
+  }
+  container.innerHTML = schedules.map(s => `
+    <div class="panel" style="padding:12px; margin-bottom:8px; display:flex; justify-content:space-between; align-items:center;">
+      <div>
+        <strong>${escapeHtml(s.templateId.replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase()))}</strong>
+        <span class="text-muted" style="margin-left:8px;">${s.frequency} &middot; ${s.format.toUpperCase()}</span>
+        ${s.email ? `<span class="text-muted" style="margin-left:8px;">&#8594; ${escapeHtml(s.email)}</span>` : ''}
+        <span style="margin-left:8px;">${s.enabled ? '<span style="color:var(--success);">● Active</span>' : '<span style="color:var(--text-muted);">○ Paused</span>'}</span>
+      </div>
+      <button class="btn btn-sm" onclick="deleteReportSchedule('${s.id}')" style="color:#ef4444;">&#128465;</button>
+    </div>
+  `).join('');
+}
+
+function renderReportHistory() {
+  const container = document.getElementById('reportHistory');
+  const { history } = reportsData;
+  if (!history?.length) {
+    container.innerHTML = '<div class="empty-state">No reports generated yet. Click "PDF" or "CSV" on a template above.</div>';
+    return;
+  }
+  container.innerHTML = [...history].reverse().slice(0, 20).map(h => `
+    <div class="panel" style="padding:12px; margin-bottom:8px; display:flex; justify-content:space-between; align-items:center;">
+      <div>
+        <strong>${escapeHtml(h.title)}</strong>
+        <span class="text-muted" style="margin-left:8px;">${h.format?.toUpperCase() || 'PDF'} &middot; ${new Date(h.generatedAt).toLocaleDateString()}</span>
+      </div>
+      <div style="display:flex; gap:6px;">
+        ${h.filePath || h.data ? `<button class="btn btn-sm btn-primary" onclick="downloadReport('${h.id}')">Download</button>` : ''}
+      </div>
+    </div>
+  `).join('');
+}
+
+async function generateReport(templateId, format) {
+  showSettingsToast('Generating report...');
+  const result = await fetchJSON('/api/reports/generate', {
+    method: 'POST',
+    body: { templateId, format, dateRange: { start: new Date(Date.now() - 30 * 86400000).toISOString(), end: new Date().toISOString() } },
+  });
+  if (result.ok) {
+    showSettingsToast(`Report generated: ${result.report.title}`);
+    if (format === 'csv' || format === 'json') {
+      window.open(`/api/reports/download/${result.report.id}`, '_blank');
+    } else if (result.data) {
+      showReportPreview(result.data);
+    }
+    loadReports();
+  } else {
+    showSettingsToast(result.error || 'Report generation failed', true);
+  }
+}
+
+function showReportPreview(data) {
+  const modal = document.getElementById('reportModal');
+  let html = `<h3>${escapeHtml(data.title)}</h3><p class="text-muted">Generated: ${new Date(data.generatedAt).toLocaleString()}</p>`;
+  for (const section of data.sections || []) {
+    html += `<h4 style="margin-top:16px;">${escapeHtml(section.name)}</h4>`;
+    if (Array.isArray(section.data)) {
+      html += '<table style="width:100%;border-collapse:collapse;font-size:13px;"><thead><tr>' +
+        Object.keys(section.data[0] || {}).map(k => `<th style="padding:6px 10px;border:1px solid var(--border);background:var(--bg-secondary);">${k}</th>`).join('') +
+        '</tr></thead><tbody>' +
+        section.data.map(row => '<tr>' + Object.values(row).map(v => `<td style="padding:6px 10px;border:1px solid var(--border);">${v}</td>`).join('') + '</tr>').join('') +
+        '</tbody></table>';
+    } else {
+      html += '<div style="background:var(--bg-secondary);padding:12px;border-radius:8px;font-size:13px;">';
+      Object.entries(section.data).forEach(([k, v]) => { html += `<div><strong>${k}:</strong> ${v}</div>`; });
+      html += '</div>';
+    }
+  }
+  html += '<div style="margin-top:16px;"><button class="btn" onclick="document.getElementById(\'reportModal\').style.display=\'none\'">Close</button></div>';
+  document.getElementById('reportModalContent').innerHTML = html;
+  modal.style.display = 'flex';
+}
+
+function showScheduleReportModal(templateId) {
+  const modal = document.getElementById('reportModal');
+  document.getElementById('reportModalContent').innerHTML = `
+    <h3>Schedule Report</h3>
+    <div class="settings-field"><label>Report</label><input type="text" value="${templateId.replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase())}" disabled></div>
+    <div class="settings-field"><label>Frequency</label>
+      <select id="schedFrequency">
+        <option value="daily">Daily</option>
+        <option value="weekly" selected>Weekly</option>
+        <option value="biweekly">Biweekly</option>
+        <option value="monthly">Monthly</option>
+      </select>
+    </div>
+    <div class="settings-field"><label>Format</label>
+      <select id="schedFormat">
+        <option value="pdf">PDF</option>
+        <option value="csv">CSV</option>
+      </select>
+    </div>
+    <div class="settings-field"><label>Email (optional)</label><input type="email" id="schedEmail" placeholder="reports@yourcompany.com"></div>
+    <div style="display:flex; gap:8px; margin-top:16px;">
+      <button class="btn btn-primary" onclick="submitReportSchedule('${templateId}')">Schedule</button>
+      <button class="btn" onclick="document.getElementById('reportModal').style.display='none'">Cancel</button>
+    </div>
+  `;
+  modal.style.display = 'flex';
+}
+
+async function submitReportSchedule(templateId) {
+  const result = await fetchJSON('/api/reports/schedule', {
+    method: 'POST',
+    body: {
+      templateId,
+      frequency: document.getElementById('schedFrequency').value,
+      format: document.getElementById('schedFormat').value,
+      email: document.getElementById('schedEmail').value,
+    },
+  });
+  if (result.ok) {
+    document.getElementById('reportModal').style.display = 'none';
+    showSettingsToast('Report scheduled');
+    loadReports();
+  } else {
+    showSettingsToast(result.error || 'Failed to schedule', true);
+  }
+}
+
+async function deleteReportSchedule(id) {
+  if (!confirm('Remove this scheduled report?')) return;
+  await fetchJSON(`/api/reports/schedule/${id}`, { method: 'DELETE' });
+  showSettingsToast('Schedule removed');
+  loadReports();
+}
+
+async function downloadReport(reportId) {
+  window.open(`/api/reports/download/${reportId}`, '_blank');
+}
+
+// ========================================================================
+//  VIDEO AVATAR MEETINGS
+// ========================================================================
+
+let activeMeeting = null;
+let meetingTTSEnabled = true;
+
+async function loadMeetings() {
+  // Check capabilities and populate participant picker
+  try {
+    const caps = await fetchJSON('/api/meetings/capabilities');
+    if (!caps.videoEnabled) {
+      document.getElementById('meetingLobby').innerHTML += '<div class="empty-state" style="margin-top:12px;color:var(--warning);">Video meetings require a Gemini API key. Add it in Settings.</div>';
+    }
+  } catch {}
+
+  // Build participant picker from org chart
+  try {
+    const org = await fetchJSON('/api/hq/org');
+    const picker = document.getElementById('meetingParticipantPicker');
+    if (picker && org.departments) {
+      const allEmployees = org.departments.flatMap(d => d.employees);
+      picker.innerHTML = allEmployees.map(e => `
+        <label style="display:flex; align-items:center; gap:4px; padding:4px 10px; border:1px solid var(--border); border-radius:8px; cursor:pointer; font-size:13px; transition:all 0.2s;">
+          <input type="checkbox" class="meeting-participant-cb" value="${e.name}" style="margin:0;">
+          <span>${e.avatar} ${e.name}</span>
+        </label>
+      `).join('');
+    }
+  } catch {}
+}
+
+async function startMeeting() {
+  const checkboxes = document.querySelectorAll('.meeting-participant-cb:checked');
+  const participants = Array.from(checkboxes).map(cb => cb.value);
+  if (participants.length === 0) return showSettingsToast('Select at least one participant', true);
+  if (participants.length > 5) return showSettingsToast('Maximum 5 participants', true);
+
+  const topic = document.getElementById('meetingTopic').value.trim() || 'General Discussion';
+  const mode = document.getElementById('meetingMode').value;
+
+  showSettingsToast('Starting meeting...');
+  const result = await fetchJSON('/api/meetings/create', {
+    method: 'POST',
+    body: { participants, topic, mode },
+  });
+
+  if (result.ok) {
+    activeMeeting = result.meeting;
+    document.getElementById('meetingLobby').style.display = 'none';
+    document.getElementById('meetingRoom').style.display = 'block';
+    document.getElementById('meetingRoomTitle').textContent = topic;
+    document.getElementById('meetingRoomParticipants').textContent =
+      activeMeeting.participants.map(p => `${p.avatar} ${p.name}`).join('  ');
+
+    // Render avatar row
+    const avatarRow = document.getElementById('meetingAvatarRow');
+    avatarRow.innerHTML = activeMeeting.participants.map(p => `
+      <div style="text-align:center; padding:12px;">
+        <div style="width:64px;height:64px;border-radius:50%;background:var(--bg-secondary);display:flex;align-items:center;justify-content:center;font-size:28px;margin:0 auto 6px;border:2px solid var(--border);">
+          ${typeof renderAvatar === 'function' && AVATAR_MAP?.[p.name.toLowerCase()] ? renderAvatar(p.name, 'md') : p.avatar}
+        </div>
+        <div style="font-size:13px;font-weight:600;">${p.name}</div>
+        <div style="font-size:11px;color:var(--text-muted);">${p.title}</div>
+      </div>
+    `).join('');
+
+    document.getElementById('meetingMessages').innerHTML = '';
+    addMeetingSystemMessage(`Meeting started: "${topic}" with ${participants.join(', ')}`);
+    document.getElementById('meetingInput').focus();
+  } else {
+    showSettingsToast(result.error || 'Failed to start meeting', true);
+  }
+}
+
+function addMeetingSystemMessage(text) {
+  const container = document.getElementById('meetingMessages');
+  const div = document.createElement('div');
+  div.style.cssText = 'text-align:center;color:var(--text-muted);font-size:12px;padding:8px;font-style:italic;';
+  div.textContent = text;
+  container.appendChild(div);
+  container.scrollTop = container.scrollHeight;
+}
+
+function addMeetingMessage(speaker, title, avatar, content, isUser) {
+  const container = document.getElementById('meetingMessages');
+  const div = document.createElement('div');
+  div.style.cssText = `display:flex;gap:10px;padding:10px 0;${isUser ? 'flex-direction:row-reverse;' : ''}`;
+  div.innerHTML = `
+    <div style="width:36px;height:36px;border-radius:50%;background:var(--bg-secondary);display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0;">
+      ${isUser ? '👤' : (typeof renderAvatar === 'function' && AVATAR_MAP?.[speaker?.toLowerCase()] ? renderAvatar(speaker, 'sm') : (avatar || '🤖'))}
+    </div>
+    <div style="max-width:70%;${isUser ? 'text-align:right;' : ''}">
+      <div style="font-size:12px;font-weight:600;margin-bottom:2px;">${isUser ? 'You' : `${escapeHtml(speaker)} — ${escapeHtml(title)}`}</div>
+      <div style="padding:10px 14px;border-radius:12px;background:${isUser ? 'var(--primary)' : 'var(--bg-secondary)'};color:${isUser ? '#fff' : 'var(--text-primary)'};font-size:14px;line-height:1.5;">
+        ${escapeHtml(content)}
+      </div>
+    </div>
+  `;
+  container.appendChild(div);
+  container.scrollTop = container.scrollHeight;
+}
+
+async function sendMeetingMessage() {
+  if (!activeMeeting) return;
+  const input = document.getElementById('meetingInput');
+  const text = input.value.trim();
+  if (!text) return;
+  input.value = '';
+
+  addMeetingMessage('You', '', '', text, true);
+
+  // Show typing indicators
+  activeMeeting.participants.forEach(p => {
+    addMeetingSystemMessage(`${p.name} is thinking...`);
+  });
+
+  const result = await fetchJSON(`/api/meetings/${activeMeeting.id}/message`, {
+    method: 'POST',
+    body: { text },
+  });
+
+  // Remove typing indicators
+  const msgs = document.getElementById('meetingMessages');
+  msgs.querySelectorAll('div[style*="font-style:italic"]').forEach(el => {
+    if (el.textContent.includes('is thinking...')) el.remove();
+  });
+
+  if (result.ok && result.responses) {
+    for (const r of result.responses) {
+      addMeetingMessage(r.speaker, r.title || '', r.avatar || '', r.content, false);
+      if (meetingTTSEnabled && typeof speakText === 'function') {
+        // Brief delay between speakers
+        await new Promise(resolve => setTimeout(resolve, 500));
+      }
+    }
+  }
+}
+
+function toggleMeetingTTS() {
+  meetingTTSEnabled = !meetingTTSEnabled;
+  document.getElementById('meetingTTSBtn').textContent = meetingTTSEnabled ? '🔊' : '🔇';
+}
+
+async function endMeeting() {
+  if (!activeMeeting) return;
+  if (!confirm('End this meeting?')) return;
+
+  await fetchJSON(`/api/meetings/${activeMeeting.id}`, { method: 'DELETE' });
+  addMeetingSystemMessage('Meeting ended.');
+  activeMeeting = null;
+
+  setTimeout(() => {
+    document.getElementById('meetingRoom').style.display = 'none';
+    document.getElementById('meetingLobby').style.display = 'block';
+  }, 1500);
 }
 
 // --- YouTube Video Intelligence ---

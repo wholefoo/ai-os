@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>AI OS — Orchestration Lab</title>
-  <link rel="stylesheet" href="css/styles.css?v=31">
+  <link rel="stylesheet" href="css/styles.css?v=32">
   <link rel="stylesheet" href="css/avatars.css">
   <script src="https://cdn.jsdelivr.net/npm/livekit-client@2/dist/livekit-client.umd.js" defer></script>
   <script src="https://cdn.jsdelivr.net/npm/@heygen/streaming-avatar/dist/index.umd.js" defer></script>
@@ -138,6 +138,15 @@
         </a>
         <a href="#" class="nav-item" data-view="training">
           <span class="nav-icon">&#129504;</span> AI Training
+        </a>
+        <a href="#" class="nav-item" data-view="plugins">
+          <span class="nav-icon">&#129513;</span> Plugins
+        </a>
+        <a href="#" class="nav-item" data-view="reports">
+          <span class="nav-icon">&#128202;</span> Reports
+        </a>
+        <a href="#" class="nav-item" data-view="meetings">
+          <span class="nav-icon">&#127909;</span> Meetings
         </a>
         <a href="#" class="nav-item" data-view="platform">
           <span class="nav-icon">&#128736;</span> Platform
@@ -1557,6 +1566,141 @@
           </div>
         </div>
 
+        <!-- Plugins View -->
+        <div class="view" id="view-plugins">
+          <div class="radar-header">
+            <div class="radar-header-left">
+              <h2 class="radar-title">Plugins &amp; Extensions</h2>
+              <span class="radar-subtitle">Extend your agents with custom tools, webhooks, data sources, and integrations</span>
+            </div>
+            <div class="radar-actions">
+              <button class="btn btn-primary" onclick="showAddPluginModal()">+ New Plugin</button>
+              <span class="badge" id="pluginPlanBadge">Pro+</span>
+            </div>
+          </div>
+
+          <div class="stats-grid" style="margin-bottom:24px;">
+            <div class="stat-card"><div class="stat-value" id="pluginCount">0</div><div class="stat-label">Installed</div></div>
+            <div class="stat-card"><div class="stat-value" id="pluginActiveCount">0</div><div class="stat-label">Active</div></div>
+            <div class="stat-card"><div class="stat-value" id="pluginLimitDisplay">0</div><div class="stat-label">Limit</div></div>
+            <div class="stat-card"><div class="stat-value" id="pluginTypeCount">0</div><div class="stat-label">Types Used</div></div>
+          </div>
+
+          <section class="panel" id="pluginList">
+            <div class="empty-state">No plugins installed. Create your first one to extend your agents.</div>
+          </section>
+
+          <div id="pluginModal" class="hq-modal" style="display:none;">
+            <div class="hq-modal-content" id="pluginModalContent" style="max-width:600px;"></div>
+          </div>
+        </div>
+
+        <!-- Reports View -->
+        <div class="view" id="view-reports">
+          <div class="radar-header">
+            <div class="radar-header-left">
+              <h2 class="radar-title">Advanced Reporting</h2>
+              <span class="radar-subtitle">Generate, schedule, and download PDF/CSV reports across all departments</span>
+            </div>
+            <div class="radar-actions">
+              <span class="badge" id="reportPlanBadge">Starter+</span>
+            </div>
+          </div>
+
+          <section class="panel">
+            <h3 class="panel-title">Report Templates</h3>
+            <div id="reportTemplates" class="settings-grid" style="gap:12px;"></div>
+          </section>
+
+          <section class="panel">
+            <h3 class="panel-title">Scheduled Reports</h3>
+            <div id="reportSchedules">
+              <div class="empty-state">No scheduled reports. Click the clock icon on a template to set up recurring delivery.</div>
+            </div>
+          </section>
+
+          <section class="panel">
+            <h3 class="panel-title">Report History</h3>
+            <div id="reportHistory">
+              <div class="empty-state">No reports generated yet. Click "Generate" on a template above.</div>
+            </div>
+          </section>
+
+          <div id="reportModal" class="hq-modal" style="display:none;">
+            <div class="hq-modal-content" id="reportModalContent" style="max-width:560px;"></div>
+          </div>
+        </div>
+
+        <!-- Meetings View -->
+        <div class="view" id="view-meetings">
+          <div class="radar-header">
+            <div class="radar-header-left">
+              <h2 class="radar-title">Video Avatar Meetings</h2>
+              <span class="radar-subtitle">Face-to-face conversations with your AI employees — roundtables, panels, and 1-on-1s</span>
+            </div>
+            <div class="radar-actions">
+              <button class="btn btn-primary" id="newMeetingBtn" onclick="showNewMeetingModal()">+ New Meeting</button>
+              <span class="badge" id="meetingPlanBadge">Pro+</span>
+            </div>
+          </div>
+
+          <div id="meetingLobby">
+            <section class="panel">
+              <h3 class="panel-title">Start a Meeting</h3>
+              <p class="settings-desc">Select AI employees to invite, set a topic, and start a live video meeting. Each participant responds in character with their expertise.</p>
+
+              <div class="settings-field">
+                <label>Meeting Mode</label>
+                <select id="meetingMode">
+                  <option value="roundtable">Roundtable — all participants respond to each message</option>
+                  <option value="panel">Panel — direct questions to specific participants</option>
+                  <option value="single">1-on-1 — talk to one employee at a time</option>
+                </select>
+              </div>
+
+              <div class="settings-field">
+                <label>Topic / Agenda</label>
+                <input type="text" id="meetingTopic" placeholder="e.g., Q3 marketing strategy review, Product roadmap planning">
+              </div>
+
+              <div class="settings-field">
+                <label>Invite Participants (up to 5)</label>
+                <div id="meetingParticipantPicker" style="display:flex; flex-wrap:wrap; gap:8px; margin-top:8px;"></div>
+              </div>
+
+              <button class="btn btn-primary" onclick="startMeeting()" style="margin-top:16px;">Start Meeting</button>
+            </section>
+          </div>
+
+          <div id="meetingRoom" style="display:none;">
+            <div class="panel" style="display:flex; flex-direction:column; height:calc(100vh - 200px);">
+              <div style="display:flex; justify-content:space-between; align-items:center; padding:12px 0; border-bottom:1px solid var(--border);">
+                <div>
+                  <strong id="meetingRoomTitle">Meeting</strong>
+                  <span class="text-muted" id="meetingRoomParticipants"></span>
+                </div>
+                <div style="display:flex; gap:8px;">
+                  <button class="btn btn-sm" onclick="toggleMeetingTTS()" id="meetingTTSBtn" title="Toggle voice">&#128264;</button>
+                  <button class="btn btn-sm" style="background:#ef4444;color:#fff;" onclick="endMeeting()">End Meeting</button>
+                </div>
+              </div>
+
+              <div id="meetingAvatarRow" style="display:flex; gap:16px; padding:16px 0; justify-content:center; flex-wrap:wrap;"></div>
+
+              <div id="meetingMessages" style="flex:1; overflow-y:auto; padding:12px 0;"></div>
+
+              <div style="display:flex; gap:8px; padding:12px 0; border-top:1px solid var(--border);">
+                <input type="text" id="meetingInput" class="avatar-text-input" placeholder="Say something to the room..." onkeydown="if(event.key==='Enter')sendMeetingMessage()">
+                <button class="btn btn-primary" onclick="sendMeetingMessage()">Send</button>
+              </div>
+            </div>
+          </div>
+
+          <div id="meetingModal" class="hq-modal" style="display:none;">
+            <div class="hq-modal-content" id="meetingModalContent" style="max-width:560px;"></div>
+          </div>
+        </div>
+
         <!-- Settings View -->
         <div class="view" id="view-settings">
           <div class="radar-header">
@@ -1999,6 +2143,6 @@
     </div>
   </div>
 
-  <script src="js/app.js?v=31"></script>
+  <script src="js/app.js?v=32"></script>
 </body>
 </html>
