@@ -3,32 +3,32 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Founders Plan — AI OS | Lifetime Enterprise Subscription</title>
-  <meta name="description" content="Become an AI OS Founder — $9,997 Lifetime Enterprise Subscription. Everything in Enterprise, forever. Limited to 100 spots.">
+  <title>Enterprise License — AI OS | Self-Hosted AI Platform</title>
+  <meta name="description" content="AI OS Enterprise License — $4,997 one-time. Self-hosted, white-label AI platform with 51 agents. Deploy on your own infrastructure.">
   <link rel="canonical" href="https://aiosorchestrationlab.com/lifetime">
-  <meta property="og:title" content="Founders Plan — AI OS Lifetime Enterprise Subscription">
-  <meta property="og:description" content="$9,997 one-time payment for lifetime Enterprise access. 51 AI agents, white-label, custom domain. Limited to 100 spots.">
+  <meta property="og:title" content="Enterprise License — AI OS Self-Hosted AI Platform">
+  <meta property="og:description" content="$4,997 one-time license for self-hosted Enterprise access. 51 AI agents, white-label, custom domain. Deploy on your infrastructure.">
   <meta property="og:type" content="website">
   <meta property="og:url" content="https://aiosorchestrationlab.com/lifetime">
   <meta property="og:image" content="https://aiosorchestrationlab.com/assets/og-share.png">
   <meta name="twitter:card" content="summary_large_image">
-  <meta name="twitter:title" content="Founders Plan — AI OS Lifetime Enterprise">
-  <meta name="twitter:description" content="$9,997 one-time for lifetime Enterprise access. 51 AI agents, white-label, custom domain. 100 spots.">
+  <meta name="twitter:title" content="Enterprise License — AI OS Self-Hosted">
+  <meta name="twitter:description" content="$4,997 one-time license for self-hosted Enterprise access. 51 AI agents, white-label, custom domain.">
   <meta name="twitter:image" content="https://aiosorchestrationlab.com/assets/og-share.png">
   <script type="application/ld+json">
   {
     "@context": "https://schema.org",
     "@type": "Product",
-    "name": "AI OS Founders Plan",
-    "description": "Lifetime Enterprise Subscription to AI OS. Everything in Enterprise, forever. Limited to 100 spots.",
+    "name": "AI OS Enterprise License",
+    "description": "One-time Enterprise License for self-hosted AI OS. 51 AI agents, white-label, deploy on your own infrastructure.",
     "url": "https://aiosorchestrationlab.com/lifetime",
     "brand": { "@type": "Organization", "name": "AI OS Orchestration Lab" },
     "offers": {
       "@type": "Offer",
-      "price": "9997.00",
+      "price": "4997.00",
       "priceCurrency": "USD",
-      "availability": "https://schema.org/LimitedAvailability",
-      "description": "One-time lifetime payment. Everything in Enterprise, forever. Limited to 100 spots."
+      "availability": "https://schema.org/InStock",
+      "description": "One-time Enterprise License. Self-hosted, white-label AI platform. Includes 1 year priority support. Optional $997/yr renewal to extend priority support."
     }
   }
   </script>
@@ -48,7 +48,6 @@
     .lifetime-header h1 { font-size: 36px; font-weight: 800; margin-bottom: 8px; }
     .lifetime-price { font-size: 48px; font-weight: 800; color: #10b981; }
     .lifetime-price-sub { font-size: 14px; color: var(--text-muted); margin-top: 4px; }
-    .lifetime-spots { display: inline-block; background: rgba(16,185,129,0.1); color: #10b981; padding: 6px 16px; border-radius: 20px; font-size: 13px; font-weight: 600; margin-top: 12px; }
     .lifetime-form { background: var(--bg-secondary); border: 1px solid var(--border); border-radius: 12px; padding: 32px; }
     .lifetime-form h2 { font-size: 18px; margin-bottom: 20px; }
     .form-group { margin-bottom: 16px; }
@@ -90,14 +89,13 @@
 
   <div class="lifetime-page">
     <div class="lifetime-header">
-      <h1>Founders Plan</h1>
-      <div class="lifetime-price">$9,997</div>
-      <div class="lifetime-price-sub">Lifetime Enterprise Subscription</div>
-      <div class="lifetime-spots" id="spotsRemaining">Loading availability...</div>
+      <h1>Enterprise License</h1>
+      <div class="lifetime-price">$4,997</div>
+      <div class="lifetime-price-sub">One-Time License — Self-Hosted</div>
     </div>
 
     <div class="lifetime-form">
-      <h2>Become a Founder</h2>
+      <h2>Get Your Enterprise License</h2>
       <p style="font-size:13px; color:var(--text-muted); margin-bottom:20px;">Fill out the form below. We'll review your application and send you a secure payment link within 24 hours.</p>
 
       <div class="form-group">
@@ -140,22 +138,22 @@
         <textarea id="ltMessage" placeholder="Tell us about your use case or any questions..."></textarea>
       </div>
 
-      <button class="form-submit" id="ltSubmit" onclick="submitLifetime()">Become a Founder — $9,997</button>
+      <button class="form-submit" id="ltSubmit" onclick="submitLifetime()">Get Enterprise License — $4,997</button>
       <div id="ltResult"></div>
     </div>
 
     <div class="lifetime-includes">
       <h3>What's Included:</h3>
       <ul>
-        <li>Everything in Enterprise — forever, no recurring fees</li>
+        <li>Full Enterprise platform — one-time license, no recurring fees</li>
         <li>51 AI agents across 10 departments</li>
-        <li>Your own deployed tenant instance</li>
+        <li>Self-hosted on your own infrastructure</li>
         <li>White-label branding (your name, logo, colors, domain)</li>
         <li>Stripe integration to charge your own customers</li>
         <li>SEO Agency, Creative Studio, YouTube Intelligence</li>
         <li>Legal department (license agreements, compliance)</li>
-        <li>Lifetime platform updates and upgrades</li>
         <li>30-day onboarding support</li>
+        <li>Optional $997/yr renewal to extend priority support</li>
       </ul>
     </div>
   </div>
@@ -167,25 +165,6 @@
   </footer>
 
   <script>
-    // Load availability
-    fetch('/api/license/info')
-      .then(r => r.json())
-      .then(data => {
-        const el = document.getElementById('spotsRemaining');
-        if (data.available) {
-          el.textContent = data.remaining + ' of ' + data.maxLifetime + ' spots remaining';
-        } else {
-          el.textContent = 'SOLD OUT';
-          el.style.background = 'rgba(239,68,68,0.1)';
-          el.style.color = '#ef4444';
-          document.getElementById('ltSubmit').disabled = true;
-          document.getElementById('ltSubmit').textContent = 'Sold Out';
-        }
-      })
-      .catch(() => {
-        document.getElementById('spotsRemaining').textContent = 'Limited to 100 spots';
-      });
-
     async function submitLifetime() {
       const name = document.getElementById('ltName').value.trim();
       const email = document.getElementById('ltEmail').value.trim();
@@ -215,7 +194,7 @@
 
         if (data.ok) {
           // Track conversion
-          if (typeof gtag === 'function') gtag('event', 'lifetime_application', { event_category: 'conversion', event_label: email });
+          if (typeof gtag === 'function') gtag('event', 'enterprise_license_application', { event_category: 'conversion', event_label: email });
 
           if (data.checkoutUrl) {
             // Redirect to Stripe checkout immediately

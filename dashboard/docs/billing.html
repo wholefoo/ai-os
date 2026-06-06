@@ -3,8 +3,8 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Billing, Subscriptions &amp; Stripe Setup — AI OS Docs</title>
-  <meta name="description" content="Configure Stripe for AI OS subscription payments and franchise fees. Covers six plans from Free to Founders, API keys, webhooks, testing, and going live.">
+  <title>Billing, Licenses &amp; Stripe Setup — AI OS Docs</title>
+  <meta name="description" content="Configure Stripe for AI OS license payments. Covers plans from Free Demo to Enterprise License, API keys, webhooks, testing, and going live.">
   <link rel="canonical" href="https://aiosorchestrationlab.com/docs/billing">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
@@ -16,8 +16,8 @@
   {
     "@context": "https://schema.org",
     "@type": "TechArticle",
-    "headline": "Billing, Subscriptions & Stripe Setup — AI OS Docs",
-    "description": "Configure Stripe for AI OS subscription payments and franchise fees. Covers six plans from Free to Founders, API keys, webhooks, testing, and going live.",
+    "headline": "Billing, Licenses & Stripe Setup — AI OS Docs",
+    "description": "Configure Stripe for AI OS license payments. Covers plans from Free Demo to Enterprise License, API keys, webhooks, testing, and going live.",
     "url": "https://aiosorchestrationlab.com/docs/billing",
     "author": { "@type": "Organization", "name": "AI OS Orchestration Lab" },
     "publisher": { "@type": "Organization", "name": "AI OS Orchestration Lab", "url": "https://aiosorchestrationlab.com" }
@@ -48,33 +48,30 @@
             <a href="/docs">Docs</a> <span>/</span> Billing &amp; Stripe Setup
           </div>
 
-          <h1>Billing, Subscriptions &amp; Stripe Setup</h1>
-          <p class="docs-lead">Complete guide to configuring Stripe for subscription payments and franchise fees. Covers account creation, API keys, product setup, webhooks, testing, and going live.</p>
+          <h1>Billing, Licenses &amp; Stripe Setup</h1>
+          <p class="docs-lead">Complete guide to configuring Stripe for one-time license payments. Covers account creation, API keys, product setup, webhooks, testing, and going live.</p>
 
-          <h2>Subscription Tiers</h2>
-          <p>AI OS offers six plans. All subscriptions use Stripe Checkout for PCI-compliant payment processing.</p>
+          <h2>License Tiers</h2>
+          <p>AI OS offers four tiers. The Free Demo and Community edition are free. Business and Enterprise licenses use Stripe Checkout for PCI-compliant one-time payment processing.</p>
           <table class="docs-table">
             <thead>
-              <tr><th>Feature</th><th>Free ($0)</th><th>Starter ($49/mo)</th><th>Pro ($99/mo)</th><th>Business ($497/mo)</th><th>Enterprise ($997/mo)</th><th>Founders ($9,997)</th></tr>
+              <tr><th>Feature</th><th>Free Demo ($0)</th><th>Community (Free)</th><th>Business ($1,997)</th><th>Enterprise ($4,997)</th></tr>
             </thead>
             <tbody>
-              <tr><td>Agent access</td><td>3 agents</td><td>15 agents</td><td>All 51</td><td>All 51</td><td>All 51</td><td>All 51</td></tr>
-              <tr><td>Departments</td><td>Preview</td><td>5</td><td>All 10</td><td>All 10</td><td>All 10</td><td>All 10</td></tr>
-              <tr><td>Model tiers</td><td>Scout only</td><td>Scout + Pro</td><td>Scout + Pro</td><td>All 7 tiers</td><td>All 7 tiers</td><td>All 7 tiers</td></tr>
-              <tr><td>SEO Agency</td><td>1 audit/mo</td><td>3 audits/mo</td><td>5 audits/mo</td><td>Unlimited</td><td>Unlimited</td><td>Unlimited</td></tr>
-              <tr><td>Gemini Omni Studio</td><td>&#10060;</td><td>&#10060;</td><td>&#10060;</td><td>&#9989;</td><td>&#9989;</td><td>&#9989;</td></tr>
-              <tr><td>YouTube Intelligence</td><td>&#10060;</td><td>&#10060;</td><td>&#10060;</td><td>&#9989;</td><td>&#9989;</td><td>&#9989;</td></tr>
-              <tr><td>Batch queue</td><td>10 items/day</td><td>25 items/day</td><td>50 items/day</td><td>Unlimited</td><td>Unlimited</td><td>Unlimited</td></tr>
-              <tr><td>API rate limit</td><td>30 req/min</td><td>60 req/min</td><td>120 req/min</td><td>300 req/min</td><td>Unlimited</td><td>Unlimited</td></tr>
-              <tr><td>Vault storage</td><td>500 MB</td><td>2 GB</td><td>5 GB</td><td>50 GB</td><td>Unlimited</td><td>Unlimited</td></tr>
-              <tr><td>Custom agents</td><td>&#10060;</td><td>&#10060;</td><td>&#10060;</td><td>&#9989;</td><td>&#9989;</td><td>&#9989;</td></tr>
-              <tr><td>White-label branding</td><td>&#10060;</td><td>&#10060;</td><td>&#10060;</td><td>&#9989;</td><td>&#9989;</td><td>&#9989;</td></tr>
-              <tr><td>Custom domain</td><td>&#10060;</td><td>&#10060;</td><td>&#10060;</td><td>Subdomain</td><td>&#9989;</td><td>&#9989;</td></tr>
-              <tr><td>SSO / SAML</td><td>&#10060;</td><td>&#10060;</td><td>&#10060;</td><td>&#10060;</td><td>&#9989;</td><td>&#9989;</td></tr>
-              <tr><td>Dedicated tenant</td><td>&#10060;</td><td>&#10060;</td><td>&#10060;</td><td>&#10060;</td><td>&#9989;</td><td>&#9989;</td></tr>
-              <tr><td>API access</td><td>&#10060;</td><td>&#10060;</td><td>&#10060;</td><td>&#10060;</td><td>&#9989;</td><td>&#9989;</td></tr>
-              <tr><td>Lifetime updates</td><td>While active</td><td>While subscribed</td><td>While subscribed</td><td>While subscribed</td><td>While subscribed</td><td>&#9989; Forever</td></tr>
-              <tr><td>Support</td><td>Community</td><td>Email</td><td>Email</td><td>Priority email</td><td>SLA + Slack</td><td>SLA + Slack</td></tr>
+              <tr><td>Hosting</td><td>Hosted preview</td><td>Self-hosted</td><td>Self-hosted</td><td>Self-hosted</td></tr>
+              <tr><td>Agent access</td><td>3 agents</td><td>15 agents</td><td>All 51</td><td>All 51</td></tr>
+              <tr><td>Departments</td><td>Preview</td><td>5</td><td>All 10</td><td>All 10</td></tr>
+              <tr><td>Model tiers</td><td>Scout only</td><td>Scout + Pro</td><td>All 7 tiers</td><td>All 7 tiers</td></tr>
+              <tr><td>SEO Agency</td><td>1 audit/mo</td><td>5 audits/mo</td><td>Unlimited</td><td>Unlimited</td></tr>
+              <tr><td>Gemini Omni Studio</td><td>&#10060;</td><td>&#10060;</td><td>&#9989;</td><td>&#9989;</td></tr>
+              <tr><td>YouTube Intelligence</td><td>&#10060;</td><td>&#10060;</td><td>&#9989;</td><td>&#9989;</td></tr>
+              <tr><td>Custom agents</td><td>&#10060;</td><td>&#10060;</td><td>&#9989;</td><td>&#9989;</td></tr>
+              <tr><td>White-label branding</td><td>&#10060;</td><td>&#10060;</td><td>&#9989;</td><td>&#9989;</td></tr>
+              <tr><td>Multi-tenant</td><td>&#10060;</td><td>&#10060;</td><td>&#9989;</td><td>&#9989;</td></tr>
+              <tr><td>Custom domain</td><td>&#10060;</td><td>&#10060;</td><td>Subdomain</td><td>&#9989;</td></tr>
+              <tr><td>SSO / SAML</td><td>&#10060;</td><td>&#10060;</td><td>&#10060;</td><td>&#9989;</td></tr>
+              <tr><td>SLA support</td><td>&#10060;</td><td>Community</td><td>Priority email</td><td>SLA + Slack</td></tr>
+              <tr><td>Optional renewal</td><td>N/A</td><td>N/A</td><td>N/A</td><td>$997/yr (extend priority support)</td></tr>
             </tbody>
           </table>
 
@@ -103,80 +100,58 @@
           </div>
 
           <h2>Step 3 — Create Products and Prices</h2>
-          <p>Create one Stripe product for each paid subscription tier. The Free tier has no Stripe product. The Founders tier uses a one-time Checkout session created dynamically by the server.</p>
+          <p>Create one Stripe product for each paid license tier. The Free Demo and Community tiers have no Stripe product.</p>
 
-          <h3>Starter Plan ($49/month)</h3>
+          <h3>Business License ($1,997 one-time)</h3>
           <ol>
             <li>Go to <a href="https://dashboard.stripe.com/products" target="_blank">dashboard.stripe.com/products</a></li>
             <li>Click <strong>+ Add product</strong></li>
             <li>Fill in:
               <ul>
-                <li><strong>Name:</strong> <code>AI OS Starter</code></li>
-                <li><strong>Description:</strong> <code>15 AI agents, 5 departments, 3 SEO audits/month, email support</code></li>
+                <li><strong>Name:</strong> <code>AI OS Business License</code></li>
+                <li><strong>Description:</strong> <code>All 51 AI agents, white-label branding, multi-tenant, self-hosted</code></li>
               </ul>
             </li>
             <li>Under <strong>Price information:</strong>
               <ul>
                 <li><strong>Pricing model:</strong> Standard</li>
-                <li><strong>Price:</strong> $49.00</li>
-                <li><strong>Billing period:</strong> Monthly</li>
+                <li><strong>Price:</strong> $1,997.00</li>
+                <li><strong>One time</strong></li>
               </ul>
             </li>
             <li>Click <strong>Save product</strong></li>
             <li>On the product page, copy the <strong>Price ID</strong> (starts with <code>price_</code>)</li>
             <li>Paste into <code>.env</code>:</li>
           </ol>
-          <pre><code>STRIPE_STARTER_PRICE_ID=price_XXXXXXXXXXXXXXXXXXXXXXXX</code></pre>
-
-          <h3>Pro Plan ($99/month)</h3>
-          <ol>
-            <li>Click <strong>+ Add product</strong> again</li>
-            <li>Fill in:
-              <ul>
-                <li><strong>Name:</strong> <code>AI OS Pro</code></li>
-                <li><strong>Description:</strong> <code>All 51 AI agents, full Virtual HQ, 10 departments, SEO Agency, knowledge vault</code></li>
-              </ul>
-            </li>
-            <li>Price: $99.00 / Monthly</li>
-            <li>Save, copy the Price ID, paste into <code>.env</code>:</li>
-          </ol>
-          <pre><code>STRIPE_PRO_PRICE_ID=price_XXXXXXXXXXXXXXXXXXXXXXXX</code></pre>
-
-          <h3>Business Plan ($497/month)</h3>
-          <ol>
-            <li>Click <strong>+ Add product</strong></li>
-            <li>Fill in:
-              <ul>
-                <li><strong>Name:</strong> <code>AI OS Business</code></li>
-                <li><strong>Description:</strong> <code>Everything in Pro + Gemini Omni Studio, YouTube Intel, white-label branding, subdomain</code></li>
-              </ul>
-            </li>
-            <li>Price: $497.00 / Monthly</li>
-            <li>Save, copy the Price ID, paste into <code>.env</code>:</li>
-          </ol>
           <pre><code>STRIPE_BUSINESS_PRICE_ID=price_XXXXXXXXXXXXXXXXXXXXXXXX</code></pre>
 
-          <h3>Enterprise Plan ($997/month)</h3>
+          <h3>Enterprise License ($4,997 one-time)</h3>
           <ol>
             <li>Click <strong>+ Add product</strong></li>
             <li>Fill in:
               <ul>
-                <li><strong>Name:</strong> <code>AI OS Enterprise</code></li>
-                <li><strong>Description:</strong> <code>Everything in Business + SSO, custom domain, dedicated tenant, API access, SLA support</code></li>
+                <li><strong>Name:</strong> <code>AI OS Enterprise License</code></li>
+                <li><strong>Description:</strong> <code>Everything in Business + 1 year priority support, custom agents, SLA, self-hosted</code></li>
               </ul>
             </li>
-            <li>Price: $997.00 / Monthly</li>
+            <li>Under <strong>Price information:</strong>
+              <ul>
+                <li><strong>Pricing model:</strong> Standard</li>
+                <li><strong>Price:</strong> $4,997.00</li>
+                <li><strong>One time</strong></li>
+              </ul>
+            </li>
             <li>Save, copy the Price ID, paste into <code>.env</code>:</li>
           </ol>
           <pre><code>STRIPE_ENTERPRISE_PRICE_ID=price_XXXXXXXXXXXXXXXXXXXXXXXX</code></pre>
 
-          <h3>Founders License ($9,997 one-time)</h3>
+          <h3>Optional Annual Renewal Products</h3>
           <div class="docs-callout info">
-            <strong>No Stripe product needed.</strong> The Founders fee is handled as a dynamic one-time Stripe Checkout session created by the server. The amount ($9,997) is set in <code>LICENSE_CONFIG</code> in <code>server.js</code>. No separate Price ID is required. Limited to 100 spots.
+            <strong>Optional.</strong> If you want to offer an annual renewal to extend priority support, create one additional recurring product: Enterprise Renewal ($997/year). This is optional &mdash; licenses work permanently without renewal. Business has no recurring fees.
           </div>
 
           <h2>Step 4 — Set Up the Webhook</h2>
-          <p>The webhook lets Stripe notify your server when payments succeed, subscriptions renew, or customers cancel.</p>
+          <p>The webhook lets Stripe notify your server when payments succeed, annual renewals process, or customers cancel.</p>
           <ol>
             <li>Go to <a href="https://dashboard.stripe.com/webhooks" target="_blank">dashboard.stripe.com/webhooks</a></li>
             <li>Click <strong>+ Add endpoint</strong></li>
@@ -201,14 +176,13 @@
           </div>
 
           <h2>Step 5 — Complete .env Configuration</h2>
-          <pre><code># Stripe — Subscription paywall + License payments
+          <pre><code># Stripe — One-time license payments
 STRIPE_SECRET_KEY=sk_test_XXXXXXXXXXXXXXXXXXXXXXXX
 STRIPE_WEBHOOK_SECRET=whsec_XXXXXXXXXXXXXXXXXXXXXXXX
-STRIPE_STARTER_PRICE_ID=price_XXXXXXXXXXXXXXXXXXXXXXXX
-STRIPE_PRO_PRICE_ID=price_XXXXXXXXXXXXXXXXXXXXXXXX
 STRIPE_BUSINESS_PRICE_ID=price_XXXXXXXXXXXXXXXXXXXXXXXX
 STRIPE_ENTERPRISE_PRICE_ID=price_XXXXXXXXXXXXXXXXXXXXXXXX
-# Founders license ($9,997 one-time) handled automatically</code></pre>
+# Optional Enterprise renewal Price ID (if configured)
+# STRIPE_ENTERPRISE_RENEWAL_PRICE_ID=price_XXXXXXXXXXXXXXXXXXXXXXXX</code></pre>
 
           <h2>Step 6 — Restart and Test</h2>
           <pre><code>sudo -u aios pm2 restart ai-os --update-env</code></pre>
@@ -243,21 +217,13 @@ STRIPE_ENTERPRISE_PRICE_ID=price_XXXXXXXXXXXXXXXXXXXXXXXX
           </div>
 
           <h2>Checkout Flow</h2>
-          <p>The subscription flow uses Stripe Checkout for secure, PCI-compliant payment processing:</p>
+          <p>The license purchase flow uses Stripe Checkout for secure, PCI-compliant payment processing:</p>
           <ol>
             <li>User clicks a pricing CTA on the landing page</li>
-            <li>The server creates a Stripe Checkout Session via <code>GET /api/stripe/checkout?plan=pro</code></li>
+            <li>The server creates a Stripe Checkout Session via <code>GET /api/stripe/checkout?plan=business</code> or <code>?plan=enterprise</code></li>
             <li>User is redirected to Stripe&rsquo;s hosted payment page</li>
-            <li>After successful payment, Stripe redirects to the success URL</li>
-            <li>The server creates a session cookie and redirects to <code>/app</code></li>
-          </ol>
-
-          <h3>Founders License Checkout Flow</h3>
-          <ol>
-            <li>Customer selects the Founders plan on the pricing page</li>
-            <li>The server creates a $9,997 one-time Stripe Checkout Session</li>
-            <li>After payment, the customer is provisioned with lifetime Enterprise access</li>
-            <li>All future platform updates are included at no additional cost</li>
+            <li>After successful one-time payment, Stripe redirects to the success URL</li>
+            <li>The server provisions the license, creates a session cookie, and redirects to <code>/app</code></li>
           </ol>
 
           <h2>Webhook Events</h2>
@@ -266,11 +232,11 @@ STRIPE_ENTERPRISE_PRICE_ID=price_XXXXXXXXXXXXXXXXXXXXXXXX
               <tr><th>Event</th><th>Action</th></tr>
             </thead>
             <tbody>
-              <tr><td><code>checkout.session.completed</code></td><td>Activate subscription or franchise, create session</td></tr>
-              <tr><td><code>customer.subscription.updated</code></td><td>Update plan tier (starter &harr; pro &harr; business &harr; enterprise)</td></tr>
-              <tr><td><code>customer.subscription.deleted</code></td><td>Revoke dashboard access</td></tr>
-              <tr><td><code>invoice.payment_succeeded</code></td><td>Confirm renewal, extend access</td></tr>
-              <tr><td><code>invoice.payment_failed</code></td><td>Notify user, enter grace period</td></tr>
+              <tr><td><code>checkout.session.completed</code></td><td>Activate license, create session</td></tr>
+              <tr><td><code>customer.subscription.updated</code></td><td>Update annual renewal status (if applicable)</td></tr>
+              <tr><td><code>customer.subscription.deleted</code></td><td>End annual renewal (license remains active)</td></tr>
+              <tr><td><code>invoice.payment_succeeded</code></td><td>Confirm annual renewal payment</td></tr>
+              <tr><td><code>invoice.payment_failed</code></td><td>Notify user of renewal failure</td></tr>
             </tbody>
           </table>
 
@@ -292,7 +258,7 @@ STRIPE_ENTERPRISE_PRICE_ID=price_XXXXXXXXXXXXXXXXXXXXXXXX
 
         <aside class="docs-toc">
           <div class="docs-toc-title">On this page</div>
-          <a href="#">Subscription Tiers</a>
+          <a href="#">License Tiers</a>
           <a href="#">Step 1 — Create Account</a>
           <a href="#">Step 2 — Secret Key</a>
           <a href="#">Step 3 — Products &amp; Prices</a>

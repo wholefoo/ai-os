@@ -217,7 +217,7 @@ app.post('/api/tenants', requireAdmin, (req, res) => {
     mcp: { hermes_url: 'http://127.0.0.1:8420', hermes_enabled: false },
     notifications: { telegram_bot_token: '', telegram_chat_id: '', slack_webhook_url: '' },
     automation: { n8n_webhook_base: '', n8n_api_key: '', team_webhook_url: '' },
-    stripe: { secret_key: '', webhook_secret: '', starter_price_id: '', pro_price_id: '', business_price_id: '', enterprise_price_id: '' },
+    stripe: { secret_key: '', webhook_secret: '', business_price_id: '', enterprise_price_id: '', enterprise_renewal_price_id: '' },
     seo: { dataforseo_login: '', dataforseo_password: '', default_location: 'United States', default_language: 'en' },
     general: { demo_mode: true, cors_origin: '*', api_token: '' },
   };
@@ -538,25 +538,23 @@ const STRIPE_WEBHOOK_SECRET = process.env.STRIPE_WEBHOOK_SECRET || '';
 const stripe = STRIPE_SECRET ? require('stripe')(STRIPE_SECRET) : null;
 
 const STRIPE_PLANS = {
-  starter: {
-    name: 'Starter',
-    priceId: process.env.STRIPE_STARTER_PRICE_ID || 'price_starter_placeholder',
-    amount: 4900, // $49
-  },
-  pro: {
-    name: 'Pro',
-    priceId: process.env.STRIPE_PRO_PRICE_ID || 'price_pro_placeholder',
-    amount: 9900, // $99
-  },
   business: {
-    name: 'Business',
+    name: 'Business License',
     priceId: process.env.STRIPE_BUSINESS_PRICE_ID || 'price_business_placeholder',
-    amount: 49700, // $497
+    amount: 199700, // $1,997 one-time
+    mode: 'payment',
   },
   enterprise: {
-    name: 'Enterprise',
+    name: 'Enterprise License',
     priceId: process.env.STRIPE_ENTERPRISE_PRICE_ID || 'price_enterprise_placeholder',
-    amount: 99700, // $997
+    amount: 499700, // $4,997 one-time
+    mode: 'payment',
+  },
+  'enterprise-renewal': {
+    name: 'Enterprise Priority Support Renewal',
+    priceId: process.env.STRIPE_ENTERPRISE_RENEWAL_PRICE_ID || 'price_enterprise_renewal_placeholder',
+    amount: 99700, // $997/yr
+    mode: 'subscription',
   },
 };
 
@@ -609,7 +607,7 @@ app.get('/api/stripe/checkout', async (req, res) => {
     const session = await stripe.checkout.sessions.create({
       payment_method_types: ['card'],
       line_items: [{ price: plan.priceId, quantity: 1 }],
-      mode: 'subscription',
+      mode: plan.mode || 'payment',
       success_url: `${req.protocol}://${req.get('host')}/api/stripe/success?session_id={CHECKOUT_SESSION_ID}`,
       cancel_url: `${req.protocol}://${req.get('host')}/#pricing`,
       metadata: { plan: planKey },
@@ -835,7 +833,7 @@ app.get('/lifetime/success', (req, res) => {
           mcp: { hermes_url: 'http://127.0.0.1:8420', hermes_enabled: false },
           notifications: { telegram_bot_token: '', telegram_chat_id: '', slack_webhook_url: '' },
           automation: { n8n_webhook_base: '', n8n_api_key: '', team_webhook_url: '' },
-          stripe: { secret_key: '', webhook_secret: '', starter_price_id: '', pro_price_id: '', business_price_id: '', enterprise_price_id: '' },
+          stripe: { secret_key: '', webhook_secret: '', business_price_id: '', enterprise_price_id: '', enterprise_renewal_price_id: '' },
           seo: { dataforseo_login: '', dataforseo_password: '', default_location: 'United States', default_language: 'en' },
           general: { demo_mode: true, cors_origin: '*', api_token: '' },
         });
@@ -864,7 +862,7 @@ app.get('/lifetime/success', (req, res) => {
 <div class="success-page">
 <div class="success-icon">&#127881;</div>
 <h1>Welcome to AI OS!</h1>
-<p>Your Founders Plan is now active. Your Virtual Corporate HQ is being provisioned.</p>
+<p>Your license is now active. Your Virtual Corporate HQ is being provisioned.</p>
 <div class="success-next">
 <h3>Next Steps:</h3>
 <ol>
@@ -5711,10 +5709,9 @@ const settings = loadState('settings', {
   stripe: {
     secret_key: process.env.STRIPE_SECRET_KEY || '',
     webhook_secret: process.env.STRIPE_WEBHOOK_SECRET || '',
-    starter_price_id: process.env.STRIPE_STARTER_PRICE_ID || '',
-    pro_price_id: process.env.STRIPE_PRO_PRICE_ID || '',
     business_price_id: process.env.STRIPE_BUSINESS_PRICE_ID || '',
     enterprise_price_id: process.env.STRIPE_ENTERPRISE_PRICE_ID || '',
+    enterprise_renewal_price_id: process.env.STRIPE_ENTERPRISE_RENEWAL_PRICE_ID || '',
   },
   seo: {
     dataforseo_login: process.env.DATAFORSEO_LOGIN || '',
@@ -5739,7 +5736,7 @@ function requireAdmin(req, res, next) {
 }
 
 // Plan hierarchy for feature gating
-const PLAN_LEVELS = { free: 0, starter: 1, pro: 2, business: 3, enterprise: 4, founders: 5 };
+const PLAN_LEVELS = { free: 0, pro: 1, business: 2, enterprise: 3 };
 
 function requirePlan(minPlan) {
   return (req, res, next) => {
@@ -6022,7 +6019,7 @@ function buildTenantContext(tenantId) {
 // ========================================================================
 
 const PLUGIN_LIMITS = {
-  starter: 0, free: 0, pro: 5, business: 20, enterprise: 100, founders: 100
+  free: 0, pro: 5, business: 20, enterprise: 100
 };
 
 function getPluginsDir(tenantId) {
@@ -6165,7 +6162,7 @@ app.post('/api/plugins/:id/test', requirePlan('pro'), async (req, res) => {
 // ========================================================================
 
 const REPORT_LIMITS = {
-  free: 0, starter: 1, pro: 5, business: 20, enterprise: 100, founders: 100
+  free: 0, pro: 5, business: 20, enterprise: 100
 };
 
 function getReportsDir(tenantId) {
@@ -6186,7 +6183,7 @@ function saveReportConfig(tenantId, config) {
 }
 
 // GET /api/reports — list report templates and history
-app.get('/api/reports', requirePlan('starter'), (req, res) => {
+app.get('/api/reports', requirePlan('pro'), (req, res) => {
   const tenantId = req.session.tenantId || MASTER_TENANT_ID;
   const plan = req.session.plan || 'free';
   const config = loadReportConfig(tenantId);
@@ -6214,7 +6211,7 @@ app.get('/api/reports', requirePlan('starter'), (req, res) => {
 });
 
 // POST /api/reports/generate — generate a report on demand
-app.post('/api/reports/generate', requirePlan('starter'), async (req, res) => {
+app.post('/api/reports/generate', requirePlan('pro'), async (req, res) => {
   const tenantId = req.session.tenantId || MASTER_TENANT_ID;
   const { templateId, format, dateRange, options } = req.body;
   if (!templateId || !format) return res.status(400).json({ error: 'templateId and format required' });
@@ -6379,7 +6376,7 @@ app.delete('/api/reports/schedule/:id', requirePlan('pro'), (req, res) => {
 });
 
 // GET /api/reports/download/:reportId — download a generated report file
-app.get('/api/reports/download/:reportId', requirePlan('starter'), (req, res) => {
+app.get('/api/reports/download/:reportId', requirePlan('pro'), (req, res) => {
   const tenantId = req.session?.tenantId || MASTER_TENANT_ID;
   const config = loadReportConfig(tenantId);
   const entry = (config.history || []).find(h => h.id === req.params.reportId);
@@ -6570,10 +6567,9 @@ app.get('/api/settings', requireAdmin, (req, res) => {
     stripe: {
       secret_key: { value: maskKey(settings.stripe.secret_key), configured: !!settings.stripe.secret_key },
       webhook_secret: { value: maskKey(settings.stripe.webhook_secret), configured: !!settings.stripe.webhook_secret },
-      starter_price_id: settings.stripe.starter_price_id,
-      pro_price_id: settings.stripe.pro_price_id,
       business_price_id: settings.stripe.business_price_id,
       enterprise_price_id: settings.stripe.enterprise_price_id,
+      enterprise_renewal_price_id: settings.stripe.enterprise_renewal_price_id,
     },
     seo: {
       dataforseo_login: settings.seo.dataforseo_login || '',
@@ -7025,16 +7021,16 @@ app.post('/api/hq/dispatch/:employeeId', requireAdmin, (req, res) => {
 
 const LICENSE_CONFIG = {
   tiers: {
-    starter:    { price: 49,   interval: 'month', name: 'Starter' },
-    pro:        { price: 99,   interval: 'month', name: 'Pro' },
-    business:   { price: 497,  interval: 'month', name: 'Business' },
-    enterprise: { price: 997,  interval: 'month', name: 'Enterprise' },
-    lifetime:   { price: 9997, interval: 'one-time', name: 'Founders Plan' },
+    community:  { price: 0,    interval: 'free', name: 'Community' },
+    business:   { price: 1997, interval: 'one-time', name: 'Business License' },
+    enterprise: { price: 4997, interval: 'one-time', name: 'Enterprise License' },
   },
-  maxLifetime: 100,       // limited lifetime spots
+  renewals: {
+    enterprise: { price: 997,  interval: 'year', name: 'Enterprise Priority Support Renewal' },
+  },
   currency: 'usd',
-  name: 'AI OS White-Label SaaS License',
-  description: 'Complete AI-powered Virtual Corporate HQ with 51 agents, 10 departments, white-label branding, and all integrations.',
+  name: 'AI OS Open-Core License',
+  description: 'Complete AI-powered Virtual Corporate HQ with 51 agents, 10 departments, self-hosted deployment, and all integrations.',
   includes: [
     'Virtual Corporate HQ with 51 AI agents across 10 departments',
     'SEO Agency with 5 parallel audit sub-agents and post-audit actions',
@@ -7133,10 +7129,10 @@ app.post('/api/license/apply', async (req, res) => {
         price_data: {
           currency: 'usd',
           product_data: {
-            name: LICENSE_CONFIG.name + ' — Founders Plan',
-            description: 'One-time payment. Everything in Enterprise, forever. ' + LICENSE_CONFIG.description,
+            name: LICENSE_CONFIG.name + ' — Enterprise License',
+            description: 'One-time payment. Self-hosted deployment. ' + LICENSE_CONFIG.description,
           },
-          unit_amount: LICENSE_CONFIG.tiers.lifetime.price * 100, // cents
+          unit_amount: LICENSE_CONFIG.tiers.enterprise.price * 100, // cents
         },
         quantity: 1,
       }],
@@ -7222,7 +7218,7 @@ app.put('/api/license/participant/:id', requireAdmin, (req, res) => {
           mcp: { hermes_url: 'http://127.0.0.1:8420', hermes_enabled: false },
           notifications: { telegram_bot_token: '', telegram_chat_id: '', slack_webhook_url: '' },
           automation: { n8n_webhook_base: '', n8n_api_key: '', team_webhook_url: '' },
-          stripe: { secret_key: '', webhook_secret: '', starter_price_id: '', pro_price_id: '', business_price_id: '', enterprise_price_id: '' },
+          stripe: { secret_key: '', webhook_secret: '', business_price_id: '', enterprise_price_id: '', enterprise_renewal_price_id: '' },
           seo: { dataforseo_login: '', dataforseo_password: '', default_location: 'United States', default_language: 'en' },
           general: { demo_mode: true, cors_origin: '*', api_token: '' },
         });
@@ -8525,7 +8521,7 @@ app.get('/api/seo/free-audit/:id', (req, res) => {
     agents: Object.fromEntries(
       Object.entries(audit.agents).map(([k, v]) => [k, { status: v.status, score: v.score, findingCount: v.findings?.length || 0, topFinding: v.findings?.[0] || null }])
     ),
-    upgradeMessage: 'Get the full report with all findings, content briefs, 12-week calendar, and meta tag optimization — upgrade to Starter ($49/mo) or Pro ($99/mo).',
+    upgradeMessage: 'Get the full report with all findings, content briefs, 12-week calendar, and meta tag optimization — clone the repo and self-host the Community edition for free.',
     upgradeUrl: '/#pricing',
   });
 });

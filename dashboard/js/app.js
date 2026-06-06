@@ -5041,7 +5041,7 @@ const settingsFieldMap = {
   mcp: ['hermes_url', 'hermes_enabled'],
   notifications: ['telegram_bot_token', 'telegram_chat_id', 'slack_webhook_url'],
   automation: ['n8n_webhook_base', 'n8n_api_key', 'team_webhook_url'],
-  stripe: ['secret_key', 'webhook_secret', 'starter_price_id', 'pro_price_id', 'business_price_id', 'enterprise_price_id'],
+  stripe: ['secret_key', 'webhook_secret', 'business_price_id', 'enterprise_price_id', 'enterprise_renewal_price_id'],
   seo: ['dataforseo_login', 'dataforseo_password', 'default_location', 'default_language'],
   general: ['demo_mode', 'cors_origin', 'api_token'],
 };
@@ -5311,17 +5311,17 @@ function renderLicenseInfo(info) {
   const tierRows = Object.entries(tiers).map(([key, t]) =>
     `<div class="franchise-tier-row">
       <span class="franchise-tier-name">${t.name}</span>
-      <span class="franchise-tier-price">$${t.price.toLocaleString()}${t.interval === 'month' ? '/mo' : ''}</span>
+      <span class="franchise-tier-price">${t.price === 0 ? 'Free' : `$${t.price.toLocaleString()}`}${t.interval === 'one-time' ? ' one-time' : t.interval === 'year' ? '/yr' : ''}</span>
     </div>`
   ).join('');
   container.innerHTML = `
     <div class="franchise-info-header">
-      <div class="franchise-price">White-Label SaaS</div>
-      <div class="franchise-price-label">4 License Tiers</div>
+      <div class="franchise-price">Open-Core Licensing</div>
+      <div class="franchise-price-label">Self-Hosted Deployment</div>
     </div>
     <div class="franchise-tiers" style="margin:12px 0;">${tierRows}</div>
-    <div class="franchise-availability ${info.available ? 'open' : 'closed'}">
-      ${info.available ? `${info.remaining} of ${info.maxLifetime} lifetime spots available` : 'SOLD OUT — All lifetime spots claimed'}
+    <div class="franchise-availability open">
+      Community edition free &amp; open-source. Business &amp; Enterprise licenses available.
     </div>
     <h4 style="margin:16px 0 8px; font-size:13px;">What's Included:</h4>
     <ul class="franchise-includes">
@@ -5870,7 +5870,7 @@ async function loadTraining() {
         <div class="empty-state" style="padding:60px 20px; text-align:center;">
           <div style="font-size:48px; margin-bottom:16px;">&#128274;</div>
           <h3>AI Training requires Business plan or higher</h3>
-          <p style="color:var(--text-muted); margin-top:8px;">Custom instructions, knowledge base, and custom agents are available on Business ($497/mo) and Enterprise ($997/mo) plans.</p>
+          <p style="color:var(--text-muted); margin-top:8px;">Custom instructions, knowledge base, and custom agents are available with Business ($1,997 one-time) and Enterprise ($4,997 one-time) licenses.</p>
           <a href="/#pricing" class="btn btn-primary" style="margin-top:16px;">Upgrade Plan</a>
         </div>`;
       return;
@@ -6303,7 +6303,7 @@ async function loadReports() {
     renderReportHistory();
     document.getElementById('reportPlanBadge').textContent = reportsData.plan.charAt(0).toUpperCase() + reportsData.plan.slice(1);
   } catch (e) {
-    document.getElementById('reportTemplates').innerHTML = '<div class="empty-state">Reports require Starter plan or higher. <a href="/#pricing">Upgrade</a></div>';
+    document.getElementById('reportTemplates').innerHTML = '<div class="empty-state">Reports require Pro plan or higher. <a href="/#pricing">View Plans</a></div>';
   }
 }
 
