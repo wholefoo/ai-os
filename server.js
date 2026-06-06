@@ -477,8 +477,10 @@ app.use(helmet({
       scriptSrcAttr: ["'unsafe-inline'"],  // Required for onclick handlers in HTML
       styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
       fontSrc: ["'self'", "https://fonts.gstatic.com"],
-      connectSrc: ["'self'", "ws:", "wss:", "https://www.google-analytics.com", "https://analytics.google.com", "https://*.google-analytics.com", "https://*.analytics.google.com", "wss://*.livekit.cloud", "https://*.heygen.com", "https://*.liveavatar.com", "wss://*.heygen.com", "wss://*.liveavatar.com"],
-      imgSrc: ["'self'", "data:", "blob:", "https://www.google-analytics.com", "https://www.googletagmanager.com"],
+      connectSrc: ["'self'", "ws:", "wss:", "https://www.google-analytics.com", "https://analytics.google.com", "https://*.google-analytics.com", "https://*.analytics.google.com", "wss://*.livekit.cloud", "https://*.heygen.com", "https://*.liveavatar.com", "wss://*.heygen.com", "wss://*.liveavatar.com", "https://cdn.jsdelivr.net"],
+      frameSrc: ["'self'", "https://*.heygen.com", "https://*.liveavatar.com"],
+      imgSrc: ["'self'", "data:", "blob:", "https://www.google-analytics.com", "https://www.googletagmanager.com", "https://*.heygen.com", "https://*.liveavatar.com"],
+      mediaSrc: ["'self'", "data:", "blob:", "https://*.heygen.com", "https://*.liveavatar.com"],
     }
   }
 }));
