@@ -1,33 +1,29 @@
 # AI OS Virtual Corporate HQ — robots.txt
 User-agent: *
 Allow: /
-Allow: /about
-Allow: /docs/
 Disallow: /app
 Disallow: /api/
 Disallow: /login
 Disallow: /.magent/
 Disallow: /.claude/
 
-# AI crawlers welcome (AEO)
+# AI crawlers welcome (AEO — Answer Engine Optimization)
 User-agent: GPTBot
 Allow: /
-Allow: /about
-Allow: /docs/
 
 User-agent: ChatGPT-User
 Allow: /
-Allow: /about
-Allow: /docs/
 
 User-agent: PerplexityBot
 Allow: /
-Allow: /about
-Allow: /docs/
 
 User-agent: ClaudeBot
 Allow: /
-Allow: /about
-Allow: /docs/
+
+User-agent: Google-Extended
+Allow: /
+
+User-agent: Amazonbot
+Allow: /
 
 Sitemap: https://aiosorchestrationlab.com/sitemap.xml

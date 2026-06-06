@@ -263,7 +263,7 @@ deploy/
   install-vps.sh One-command VPS provisioning (Ubuntu)
   push-update.sh Local-to-VPS update script
   nginx.conf     Reverse proxy with TLS, WS, rate limiting
-server.js        Express + WebSocket backend (~6000 lines)
+server.js        Express + WebSocket backend (~9000 lines)
 ecosystem.config.js  PM2 process manager config
 ```
 

@@ -791,6 +791,7 @@ app.get('/sitemap.xml', (req, res) => {
     { url: '/docs/deployment', priority: '0.5', freq: 'monthly' },
     { url: '/docs/notifications', priority: '0.5', freq: 'monthly' },
     { url: '/docs/hermes', priority: '0.7', freq: 'monthly' },
+    { url: '/docs/billing', priority: '0.6', freq: 'monthly' },
   ];
   const xml = `<?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
