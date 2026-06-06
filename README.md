@@ -331,6 +331,7 @@ GET  /api/stripe/checkout?plan=pro  Start Stripe checkout
 | Plugin / Extension System | Typed SDK for building custom agent tools — extend any agent with new capabilities and data sources | Planned |
 | White-Label Mobile App | Fully branded mobile app for Enterprise tenants — custom icon, colors, App Store listing | Planned |
 | Advanced Reporting | Scheduled PDF/CSV reports, custom dashboards, date-range comparisons, executive summaries | Planned |
+| Video Avatar Meetings | Face-to-face video calls with AI employees via Gemini Omni real-time video — screen sharing, whiteboarding, multi-agent roundtables | Planned |
 
 ## Documentation
 
