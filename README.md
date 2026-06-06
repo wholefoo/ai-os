@@ -1,6 +1,6 @@
 # AI OS — The Agentic Operating System
 
-A multi-agentic AI operating system built as a Virtual Corporate Headquarters, orchestrating 51 specialized sub-agents across 10 departments and 7 model tiers. Research, create, analyze, scrape, and monetize — all from a single dashboard. Available as a white-label SaaS license — Starter $49/mo, Pro $99/mo, Business $497/mo, Enterprise $997/mo, or Founders $9,997 Lifetime (limited to 100 spots).
+A multi-agentic AI operating system built as a Virtual Corporate Headquarters, orchestrating 51 specialized sub-agents across 10 departments and 7 model tiers. Research, create, analyze, scrape, and monetize — all from a single dashboard. Open-source core (Community edition) with commercial licenses: Business $1,997 one-time (white-label, all 51 agents, multi-tenant) and Enterprise $4,997 one-time (everything in Business + 1 year priority support, custom agents, SLA).
 
 ## Architecture
 
@@ -105,13 +105,14 @@ Each virtual employee maps to an AI agent with a specific model tier, can receiv
 - **Licensing Attorney** — Software license agreements, white-label terms, SaaS licensing
 - **Contract Specialist** — Contract generation, review, lifecycle management, template library
 
-### White-Label Licensing
-- **5 tiers** — Starter ($49/mo), Pro ($99/mo), Business ($497/mo), Enterprise ($997/mo), Founders ($9,997 one-time)
-- **Application pipeline** — apply, review, approve, payment, activate
-- **Stripe checkout** — subscription and one-time payment integration
-- **White-label branding** — custom name, logo, colors, domain per licensee
+### Licensing (Open-Core Model)
+- **Community** — Free, open-source, self-hosted. 15 agents, 5 departments, core features
+- **Business License** — $1,997 one-time. All 51 agents, white-label branding, multi-tenant client management
+- **Enterprise License** — $4,997 one-time. Everything in Business + 1 year priority support, custom agents, SLA
+- **Annual renewal** — Enterprise only: optional $997/yr to extend priority support
+- **White-label branding** — custom name, logo, colors, domain per licensee (Business+)
 - **Admin management** — status tracking, tenant provisioning, revenue dashboard
-- **No franchise law** — standard software license, no FDD, no state registration required
+- **Self-hosted** — you run it on your own infrastructure, use your own API keys
 
 ### Hermes Agent (Persistent MCP)
 - **Walkaway Mode** — Delegate tasks that run autonomously in the background
@@ -129,7 +130,7 @@ Each virtual employee maps to an AI agent with a specific model tier, can receiv
 
 ### Infrastructure
 - **Admin Dashboard** — Settings page for all API keys, MCP connections, and account management
-- **Stripe Paywall** — Starter ($49/mo), Pro ($99/mo), Business ($497/mo), Enterprise ($997/mo) subscriptions
+- **Stripe Checkout** — Business ($1,997) and Enterprise ($4,997) one-time license payments
 - **Auth System** — bcrypt password hashing, session cookies, Bearer token fallback, admin roles
 - **Security** — Helmet CSP, CORS, rate limiting, input validation
 - **Notifications** — Dashboard (WebSocket), Telegram Bot API, Slack Incoming Webhooks
@@ -153,19 +154,18 @@ Each virtual employee maps to an AI agent with a specific model tier, can receiv
 | Security | Helmet, CORS, express-rate-limit, compression |
 | Deployment | PM2, Nginx, Let's Encrypt |
 
-## For Customers
+## For Users
 
-AI OS is a hosted SaaS platform. Customers do not clone, install, or self-host. They sign up at [aiosorchestrationlab.com](https://aiosorchestrationlab.com), choose a plan, and access their dashboard immediately.
+AI OS follows an open-core model. The Community edition is free and open-source — self-host on your own server. Commercial licenses unlock advanced features.
 
-| Plan | Access |
-|---|---|
-| Starter ($49/mo) | Dashboard at aiosorchestrationlab.com |
-| Pro ($99/mo) | Full dashboard, all 51 agents, 5 SEO audits/mo |
-| Business ($497/mo) | White-labeled subdomain (yourcompany.aiosorchestrationlab.com) |
-| Enterprise ($997/mo) | Custom domain (app.yourcompany.com), dedicated instance |
-| Founders ($9,997) | Same as Enterprise, one-time lifetime payment |
+| Plan | Price | Hosting | Access |
+|---|---|---|---|
+| Free Demo | $0 | Hosted at aiosorchestrationlab.com | Limited preview, 3 agents, 1 SEO audit/mo |
+| Community | Free | Self-hosted | 15 agents, 5 departments, full source code |
+| Business | $1,997 one-time | Self-hosted | All 51 agents, white-label, multi-tenant |
+| Enterprise | $4,997 one-time | Self-hosted | Everything in Business + 1 year priority support, custom agents, SLA |
 
-All infrastructure, updates, and maintenance are handled by AI OS Corp.
+Enterprise includes optional $997/yr renewal to extend priority support.
 
 ---
 
@@ -230,10 +230,9 @@ bash deploy/push-update.sh root@your-vps-ip
 | `DATAFORSEO_PASSWORD` | For SEO | DataForSEO API password |
 | `STRIPE_SECRET_KEY` | Payments | Stripe secret key |
 | `STRIPE_WEBHOOK_SECRET` | Payments | Stripe webhook signing secret |
-| `STRIPE_STARTER_PRICE_ID` | Payments | Stripe price ID for Starter plan |
-| `STRIPE_PRO_PRICE_ID` | Payments | Stripe price ID for Pro plan |
-| `STRIPE_BUSINESS_PRICE_ID` | Payments | Stripe price ID for Business plan |
-| `STRIPE_ENTERPRISE_PRICE_ID` | Payments | Stripe price ID for Enterprise |
+| `STRIPE_BUSINESS_PRICE_ID` | Payments | Stripe price ID for Business license ($1,997) |
+| `STRIPE_ENTERPRISE_PRICE_ID` | Payments | Stripe price ID for Enterprise license ($4,997) |
+| `STRIPE_ENTERPRISE_RENEWAL_PRICE_ID` | Payments | Stripe price ID for Enterprise priority support renewal ($997/yr) |
 | `TELEGRAM_BOT_TOKEN` | No | Telegram notifications |
 | `TELEGRAM_CHAT_ID` | No | Telegram chat target |
 | `SLACK_WEBHOOK_URL` | No | Slack notifications |
