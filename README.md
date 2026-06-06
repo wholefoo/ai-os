@@ -1,6 +1,6 @@
 # AI OS — The Agentic Operating System
 
-A multi-agentic AI operating system built as a Virtual Corporate Headquarters, orchestrating 51 specialized sub-agents across 10 departments and 7 model tiers. Research, create, analyze, scrape, and monetize — all from a single dashboard. Available as a white-label SaaS license — Pro $99/mo, Business $497/mo, Enterprise $1,997/mo, or Founders $9,997 Lifetime Enterprise Subscription (limited to 100 spots).
+A multi-agentic AI operating system built as a Virtual Corporate Headquarters, orchestrating 51 specialized sub-agents across 10 departments and 7 model tiers. Research, create, analyze, scrape, and monetize — all from a single dashboard. Available as a white-label SaaS license — Starter $49/mo, Pro $99/mo, Business $497/mo, Enterprise $997/mo, or Founders $9,997 Lifetime (limited to 100 spots).
 
 ## Architecture
 
@@ -106,7 +106,7 @@ Each virtual employee maps to an AI agent with a specific model tier, can receiv
 - **Contract Specialist** — Contract generation, review, lifecycle management, template library
 
 ### White-Label Licensing
-- **4 tiers** — Pro ($99/mo), Business ($497/mo), Enterprise ($1,997/mo), Lifetime ($9,997 one-time)
+- **5 tiers** — Starter ($49/mo), Pro ($99/mo), Business ($497/mo), Enterprise ($997/mo), Founders ($9,997 one-time)
 - **Application pipeline** — apply, review, approve, payment, activate
 - **Stripe checkout** — subscription and one-time payment integration
 - **White-label branding** — custom name, logo, colors, domain per licensee
@@ -129,7 +129,7 @@ Each virtual employee maps to an AI agent with a specific model tier, can receiv
 
 ### Infrastructure
 - **Admin Dashboard** — Settings page for all API keys, MCP connections, and account management
-- **Stripe Paywall** — Pro ($49/mo) and Enterprise ($199/mo) subscriptions
+- **Stripe Paywall** — Starter ($49/mo), Pro ($99/mo), Business ($497/mo), Enterprise ($997/mo) subscriptions
 - **Auth System** — bcrypt password hashing, session cookies, Bearer token fallback, admin roles
 - **Security** — Helmet CSP, CORS, rate limiting, input validation
 - **Notifications** — Dashboard (WebSocket), Telegram Bot API, Slack Incoming Webhooks
@@ -159,10 +159,11 @@ AI OS is a hosted SaaS platform. Customers do not clone, install, or self-host. 
 
 | Plan | Access |
 |---|---|
-| Pro ($99/mo) | Dashboard at aiosorchestrationlab.com |
+| Starter ($49/mo) | Dashboard at aiosorchestrationlab.com |
+| Pro ($99/mo) | Full dashboard, all 51 agents, 5 SEO audits/mo |
 | Business ($497/mo) | White-labeled subdomain (yourcompany.aiosorchestrationlab.com) |
-| Enterprise ($1,997/mo) | Custom domain (app.yourcompany.com) |
-| Lifetime ($9,997) | Same as Enterprise, one-time payment |
+| Enterprise ($997/mo) | Custom domain (app.yourcompany.com), dedicated instance |
+| Founders ($9,997) | Same as Enterprise, one-time lifetime payment |
 
 All infrastructure, updates, and maintenance are handled by AI OS Corp.
 
@@ -229,7 +230,9 @@ bash deploy/push-update.sh root@your-vps-ip
 | `DATAFORSEO_PASSWORD` | For SEO | DataForSEO API password |
 | `STRIPE_SECRET_KEY` | Payments | Stripe secret key |
 | `STRIPE_WEBHOOK_SECRET` | Payments | Stripe webhook signing secret |
+| `STRIPE_STARTER_PRICE_ID` | Payments | Stripe price ID for Starter plan |
 | `STRIPE_PRO_PRICE_ID` | Payments | Stripe price ID for Pro plan |
+| `STRIPE_BUSINESS_PRICE_ID` | Payments | Stripe price ID for Business plan |
 | `STRIPE_ENTERPRISE_PRICE_ID` | Payments | Stripe price ID for Enterprise |
 | `TELEGRAM_BOT_TOKEN` | No | Telegram notifications |
 | `TELEGRAM_CHAT_ID` | No | Telegram chat target |
