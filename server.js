@@ -477,7 +477,7 @@ app.use(helmet({
       scriptSrcAttr: ["'unsafe-inline'"],  // Required for onclick handlers in HTML
       styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
       fontSrc: ["'self'", "https://fonts.gstatic.com"],
-      connectSrc: ["'self'", "ws:", "wss:", "https://www.google-analytics.com", "https://analytics.google.com", "https://*.google-analytics.com", "https://*.analytics.google.com", "wss://*.livekit.cloud"],
+      connectSrc: ["'self'", "ws:", "wss:", "https://www.google-analytics.com", "https://analytics.google.com", "https://*.google-analytics.com", "https://*.analytics.google.com", "wss://*.livekit.cloud", "https://*.heygen.com", "https://*.liveavatar.com", "wss://*.heygen.com", "wss://*.liveavatar.com"],
       imgSrc: ["'self'", "data:", "blob:", "https://www.google-analytics.com", "https://www.googletagmanager.com"],
     }
   }
@@ -891,18 +891,28 @@ app.post('/api/heygen/token', requireAdmin, async (req, res) => {
   if (!apiKey) return res.json({ ok: false, error: 'HeyGen API key not configured — add it in Settings' });
 
   try {
-    const tokenRes = await fetch('https://api.heygen.com/v1/streaming.create_token', {
+    // Try LiveAvatar API first (new), fall back to legacy streaming API
+    let tokenRes = await fetch('https://api.liveavatar.com/v1/sessions/token', {
       method: 'POST',
-      headers: { 'x-api-key': apiKey, 'Content-Type': 'application/json' },
+      headers: { 'X-API-KEY': apiKey, 'Content-Type': 'application/json' },
     });
+
+    // Fallback to legacy HeyGen endpoint
+    if (!tokenRes.ok) {
+      tokenRes = await fetch('https://api.heygen.com/v1/streaming.create_token', {
+        method: 'POST',
+        headers: { 'x-api-key': apiKey, 'Content-Type': 'application/json' },
+      });
+    }
 
     if (!tokenRes.ok) {
       const err = await tokenRes.json().catch(() => ({}));
-      return res.json({ ok: false, error: err.message || `HeyGen HTTP ${tokenRes.status}` });
+      return res.json({ ok: false, error: err.message || err.error || `HeyGen HTTP ${tokenRes.status}` });
     }
 
     const data = await tokenRes.json();
-    res.json({ ok: true, token: data.data?.token || data.token, apiKey });
+    const token = data.data?.token || data.token || data.access_token;
+    res.json({ ok: true, token, apiKey });
   } catch (e) {
     res.json({ ok: false, error: e.message });
   }

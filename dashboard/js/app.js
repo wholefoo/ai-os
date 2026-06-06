@@ -6136,24 +6136,36 @@ async function startHeyGenSession() {
     const tokenData = await fetchJSON('/api/heygen/token', { method: 'POST', body: {} });
     if (!tokenData.ok) throw new Error(tokenData.error || 'Token request failed');
 
-    const StreamingAvatar = window.StreamingAvatar || window.default;
-    if (!StreamingAvatar) throw new Error('HeyGen SDK not loaded');
+    // Try multiple SDK export paths
+    const SDK = window.StreamingAvatar || window.HeyGenStreaming || window.default;
+    if (!SDK) throw new Error('HeyGen SDK not loaded — check browser console for CSP errors');
 
     // Create avatar instance
-    heygenAvatar = new StreamingAvatar({ token: tokenData.token });
+    heygenAvatar = new SDK({ token: tokenData.token });
+
+    // Listen for stream ready event
+    const videoEl = document.getElementById('avatarVideo');
+
+    heygenAvatar.on('stream_ready', (event) => {
+      if (event.detail) {
+        videoEl.srcObject = event.detail;
+      } else if (event instanceof MediaStream) {
+        videoEl.srcObject = event;
+      }
+      videoEl.style.display = 'block';
+      document.getElementById('avatarPortraitFallback').style.display = 'none';
+    });
 
     // Start session with an avatar
     const sessionData = await heygenAvatar.createStartAvatar({
       quality: 'medium',
-      avatarName: 'default',  // HeyGen's default avatar
-      voice: { voiceId: '' }, // Default voice
+      avatarName: 'default',
+      voice: { voiceId: '' },
       language: 'en',
-      knowledgeBase: AVATAR_PROFILES[avatarState.employee]?.systemPrompt || 'You are a helpful AI assistant.',
     });
 
-    // Attach video stream
-    const videoEl = document.getElementById('avatarVideo');
-    if (sessionData.stream) {
+    // If stream returned directly
+    if (sessionData && sessionData.stream) {
       videoEl.srcObject = sessionData.stream;
       videoEl.style.display = 'block';
       document.getElementById('avatarPortraitFallback').style.display = 'none';
