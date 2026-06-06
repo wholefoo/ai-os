@@ -335,15 +335,20 @@ function handleWsMessage(msg) {
 
 // --- Dashboard ---
 async function loadDashboard() {
-  const [health, skills, activity] = await Promise.all([
+  const [health, skills, activity, hqStats] = await Promise.all([
     fetchJSON('/api/health'),
     fetchJSON('/api/skills'),
     fetchJSON('/api/activity?limit=20'),
+    fetchJSON('/api/hq/stats'),
   ]);
 
   state.health = health;
   state.skills = skills;
   state.activity = activity;
+
+  // Store tier info globally for feature gating in UI
+  window.aiosTier = hqStats?.tier || 'community';
+  window.aiosFeatures = hqStats?.features || {};
 
   updateStats();
   renderQuickActions();
@@ -351,6 +356,7 @@ async function loadDashboard() {
   renderFleetGrid();
   renderContextHealth();
   renderTeamGrid();
+  applyTierGating();
 }
 
 function updateStats() {
@@ -375,6 +381,46 @@ function updateStats() {
   } else {
     badge.classList.remove('visible');
   }
+}
+
+// --- Tier-based UI gating ---
+function applyTierGating() {
+  const tier = window.aiosTier || 'community';
+  const features = window.aiosFeatures || {};
+
+  // Add tier badge to header
+  const header = document.querySelector('.header-right') || document.querySelector('header');
+  if (header && !document.getElementById('tierBadge')) {
+    const badge = document.createElement('span');
+    badge.id = 'tierBadge';
+    badge.className = `tier-badge tier-${tier}`;
+    badge.textContent = tier.charAt(0).toUpperCase() + tier.slice(1);
+    badge.style.cssText = 'padding:2px 10px;border-radius:12px;font-size:11px;font-weight:600;margin-left:8px;' +
+      (tier === 'enterprise' ? 'background:#8b5cf6;color:#fff;' :
+       tier === 'business' ? 'background:#3b82f6;color:#fff;' :
+       'background:rgba(255,255,255,0.1);color:var(--text-muted);');
+    header.prepend(badge);
+  }
+
+  // Gate nav items — hide tabs for features that are gated
+  const gatedNavItems = {
+    'tenants': 'multiTenant',
+    'browser': 'browserAgent',
+    'grok': 'grokIntel',
+    'creative': 'creativeStudio',
+    'meetings': 'videoMeetings',
+    'leads': 'leadGen',
+    'youtube': 'youtubeIntel',
+    'products': 'productFactory',
+  };
+
+  Object.entries(gatedNavItems).forEach(([viewId, featureFlag]) => {
+    const navItem = document.querySelector(`[data-view="${viewId}"]`);
+    if (navItem && !features[featureFlag]) {
+      navItem.style.opacity = '0.4';
+      navItem.title = `Requires Business or Enterprise license`;
+    }
+  });
 }
 
 function renderQuickActions() {
@@ -8335,8 +8381,11 @@ async function loadHQ() {
 function renderHQStats(stats) {
   const container = document.getElementById('hqStats');
   if (!container) return;
+  const tierColor = stats.tier === 'enterprise' ? '#8b5cf6' : stats.tier === 'business' ? '#3b82f6' : 'var(--text-muted)';
+  const tierLabel = (stats.tier || 'community').charAt(0).toUpperCase() + (stats.tier || 'community').slice(1);
   container.innerHTML = `
-    <div class="hq-stat"><div class="hq-stat-value">${stats.totalEmployees}</div><div class="hq-stat-label">Total Employees</div></div>
+    <div class="hq-stat"><div class="hq-stat-value" style="color:${tierColor};">${tierLabel}</div><div class="hq-stat-label">License Tier</div></div>
+    <div class="hq-stat"><div class="hq-stat-value">${stats.totalEmployees}</div><div class="hq-stat-label">Total Agents</div></div>
     <div class="hq-stat"><div class="hq-stat-value">${stats.departments}</div><div class="hq-stat-label">Departments</div></div>
     <div class="hq-stat"><div class="hq-stat-value" style="color:var(--success);">${stats.byStatus?.active || 0}</div><div class="hq-stat-label">Active</div></div>
     <div class="hq-stat"><div class="hq-stat-value" style="color:var(--text-muted);">${stats.byStatus?.idle || 0}</div><div class="hq-stat-label">Idle</div></div>
