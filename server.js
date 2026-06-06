@@ -546,8 +546,14 @@ const heavyLimiter = rateLimit({
 // Auth middleware — if API_TOKEN is set, all /api/ routes require it
 function authMiddleware(req, res, next) {
   if (!API_TOKEN) return next(); // no token configured = open (dev mode)
-  // Allow health check without auth
-  if (req.path === '/api/health') return next();
+  // Allow public endpoints without API token
+  const url = req.originalUrl.split('?')[0]; // strip query string
+  const publicPaths = ['/api/health', '/api/auth/login', '/api/auth/logout', '/api/auth/me',
+    '/api/stripe/webhook', '/api/license/info', '/api/hq/stats', '/api/hq/org'];
+  if (publicPaths.includes(url)) return next();
+  // Also allow session-cookie auth (logged-in dashboard users)
+  const sessionToken = req.cookies?.['ai-os-session'];
+  if (sessionToken && isValidSession(sessionToken)) return next();
   const token = req.headers.authorization?.replace('Bearer ', '');
   if (token === API_TOKEN) return next();
   res.status(401).json({ error: 'Unauthorized. Provide Authorization: Bearer <token> header.' });
