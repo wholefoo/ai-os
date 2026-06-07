@@ -78,6 +78,7 @@ function registerRoutes(app, ctx) {
     'self-improving',
     'hermes-advanced',
     'browser-agent',
+    'design-system',
   ];
 
   for (const modName of moduleNames) {
