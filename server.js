@@ -551,11 +551,13 @@ function authMiddleware(req, res, next) {
   const publicPaths = ['/api/health', '/api/auth/login', '/api/auth/logout', '/api/auth/me',
     '/api/stripe/webhook', '/api/license/info', '/api/hq/stats', '/api/hq/org'];
   if (publicPaths.includes(url)) return next();
-  // Also allow session-cookie auth (logged-in dashboard users)
+  // Allow session-cookie auth (logged-in dashboard users)
   const sessionToken = req.cookies?.['ai-os-session'];
   if (sessionToken && isValidSession(sessionToken)) return next();
-  const token = req.headers.authorization?.replace('Bearer ', '');
-  if (token === API_TOKEN) return next();
+  // Allow Bearer token — either the API_TOKEN or a valid session token
+  const bearerToken = req.headers.authorization?.replace('Bearer ', '');
+  if (bearerToken === API_TOKEN) return next();
+  if (bearerToken && isValidSession(bearerToken)) return next();
   res.status(401).json({ error: 'Unauthorized. Provide Authorization: Bearer <token> header.' });
 }
 app.use('/api/', authMiddleware);
