@@ -314,7 +314,8 @@ function authMiddleware(req, res, next) {
   // Allow public endpoints without API token
   const url = req.originalUrl.split('?')[0]; // strip query string
   const publicPaths = ['/api/health', '/api/auth/login', '/api/auth/logout', '/api/auth/me',
-    '/api/stripe/webhook', '/api/license/info', '/api/hq/stats', '/api/hq/org'];
+    '/api/stripe/webhook', '/api/stripe/checkout', '/api/stripe/success',
+    '/api/license/info', '/api/hq/stats', '/api/hq/org'];
   if (publicPaths.includes(url)) return next();
   // Allow session-cookie auth (logged-in dashboard users)
   const sessionToken = req.cookies?.['ai-os-session'];
