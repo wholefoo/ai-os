@@ -108,7 +108,12 @@ const WS_MAX_BACKOFF = 30000; // 30s max
 
 function setupWebSocket() {
   const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
-  ws = new WebSocket(`${protocol}//${location.host}`);
+  // Pass session token so WebSocket verifyClient accepts the connection
+  const sessionToken = document.cookie.match(/ai-os-session=([^;]+)/)?.[1] || '';
+  const wsUrl = sessionToken
+    ? `${protocol}//${location.host}?token=${encodeURIComponent(sessionToken)}`
+    : `${protocol}//${location.host}`;
+  ws = new WebSocket(wsUrl);
 
   ws.onmessage = (event) => {
     const msg = JSON.parse(event.data);

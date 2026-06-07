@@ -1287,9 +1287,16 @@ const wss = new WebSocketServer({
   server,
   verifyClient: (info, cb) => {
     if (!API_TOKEN) return cb(true);
+    // Check ?token= query parameter (API token)
     const url = new URL(info.req.url, `http://${info.req.headers.host}`);
     const token = url.searchParams.get('token');
     if (token === API_TOKEN) return cb(true);
+    // Check session token in query param (dashboard login)
+    if (token && isValidSession(token)) return cb(true);
+    // Check session cookie (same as HTTP auth middleware)
+    const cookies = info.req.headers.cookie || '';
+    const sessionMatch = cookies.match(/ai-os-session=([^;]+)/);
+    if (sessionMatch && isValidSession(sessionMatch[1])) return cb(true);
     cb(false, 401, 'Unauthorized');
   },
 });
