@@ -170,27 +170,6 @@ app.use((req, res, next) => {
   next();
 });
 
-// --- Tenant Management API ---
-// Note: routes are registered in registerTenantRoutes() after requireAdmin is defined
-
-function registerTenantRoutes() {
-
-// Multi-tenant routes extracted to commercial/modules/multi-tenant/index.js
-
-// GET /api/tenant/branding — current tenant's branding (public, no auth)
-app.get('/api/tenant/branding', (req, res) => {
-  const tenant = req.tenant || tenantRegistry[MASTER_TENANT_ID];
-  res.json({
-    tenantId: tenant.id,
-    companyName: tenant.branding?.companyName || 'AI OS Corp',
-    tagline: tenant.branding?.tagline || 'The Agentic Operating System',
-    logo: tenant.branding?.logo || null,
-    primaryColor: tenant.branding?.primaryColor || '#3b82f6',
-    accentColor: tenant.branding?.accentColor || '#8b5cf6',
-    industry: tenant.industry,
-  });
-});
-
 // --- Industry Templates ---
 const INDUSTRY_TEMPLATES = {
   'digital-agency': {
@@ -251,8 +230,22 @@ const INDUSTRY_TEMPLATES = {
   },
 };
 
-// Templates route extracted to commercial/modules/multi-tenant/index.js
-
+// --- Tenant Management API ---
+// Tenant CRUD routes extracted to commercial/modules/multi-tenant/index.js
+// Branding route (public, no auth)
+function registerTenantRoutes() {
+  app.get('/api/tenant/branding', (req, res) => {
+    const tenant = req.tenant || tenantRegistry[MASTER_TENANT_ID];
+    res.json({
+      tenantId: tenant.id,
+      companyName: tenant.branding?.companyName || 'AI OS Corp',
+      tagline: tenant.branding?.tagline || 'The Agentic Operating System',
+      logo: tenant.branding?.logo || null,
+      primaryColor: tenant.branding?.primaryColor || '#3b82f6',
+      accentColor: tenant.branding?.accentColor || '#8b5cf6',
+      industry: tenant.industry,
+    });
+  });
 } // end registerTenantRoutes
 
 // --- Security & Middleware ---
