@@ -1,4 +1,4 @@
-require('dotenv').config();
+﻿require('dotenv').config();
 
 const express = require('express');
 const { WebSocketServer } = require('ws');
@@ -175,239 +175,7 @@ app.use((req, res, next) => {
 
 function registerTenantRoutes() {
 
-// GET /api/tenants — list all tenants
-app.get('/api/tenants', requireAdmin, requireCommercial('multiTenant'), (req, res) => {
-  res.json(Object.values(tenantRegistry));
-});
-
-// GET /api/tenants/:id — single tenant detail
-app.get('/api/tenants/:id', requireAdmin, requireCommercial('multiTenant'), (req, res) => {
-  const tenant = tenantRegistry[req.params.id];
-  if (!tenant) return res.status(404).json({ error: 'Tenant not found' });
-  res.json(tenant);
-});
-
-// POST /api/tenants — provision a new tenant (from franchise activation)
-app.post('/api/tenants', requireAdmin, requireCommercial('multiTenant'), (req, res) => {
-  const { name, subdomain, domain, ownerEmail, plan, industry, template, franchiseId, branding } = req.body;
-  if (!name || !ownerEmail) return res.status(400).json({ error: 'Name and owner email required' });
-
-  // Check subdomain uniqueness
-  if (subdomain && Object.values(tenantRegistry).find(t => t.subdomain === subdomain)) {
-    return res.status(400).json({ error: `Subdomain "${subdomain}" is already taken` });
-  }
-
-  const tenantId = uuidv4().substring(0, 12);
-  const tenant = {
-    id: tenantId,
-    name,
-    domain: domain || null,
-    subdomain: subdomain || null,
-    ownerId: ownerEmail,
-    plan: plan || 'franchise',
-    status: 'active',
-    branding: {
-      companyName: name,
-      tagline: branding?.tagline || 'Powered by AI OS',
-      logo: branding?.logo || null,
-      primaryColor: branding?.primaryColor || '#3b82f6',
-      accentColor: branding?.accentColor || '#8b5cf6',
-    },
-    industry: industry || null,
-    template: template || null,
-    createdAt: new Date().toISOString(),
-    franchiseId: franchiseId || null,
-  };
-
-  // Create tenant directory and seed initial state
-  ensureTenantDir(tenantId);
-
-  // Seed tenant admin user
-  const tenantUsers = [{
-    email: ownerEmail,
-    passwordHash: null, // Owner sets password on first login
-    plan: 'franchise',
-    role: 'admin',
-    tenantId,
-    createdAt: new Date().toISOString(),
-  }];
-  saveTenantState(tenantId, 'users', tenantUsers);
-
-  // Seed tenant settings with defaults
-  const tenantSettings = {
-    ai: { anthropic_api_key: '', openai_api_key: '', deepseek_api_key: '', xai_api_key: '', gemini_api_key: '', perplexity_api_key: '', firecrawl_api_key: '', tavily_api_key: '', apify_api_token: '', manus_api_key: '', livekit_api_key: '', livekit_api_secret: '', livekit_url: '', deepgram_api_key: '', cartesia_api_key: '' },
-    mcp: { hermes_url: 'http://127.0.0.1:8420', hermes_enabled: false },
-    notifications: { telegram_bot_token: '', telegram_chat_id: '', slack_webhook_url: '' },
-    automation: { n8n_webhook_base: '', n8n_api_key: '', team_webhook_url: '' },
-    stripe: { secret_key: '', webhook_secret: '', business_price_id: '', enterprise_price_id: '', enterprise_renewal_price_id: '' },
-    seo: { dataforseo_login: '', dataforseo_password: '', default_location: 'United States', default_language: 'en' },
-    general: { demo_mode: true, cors_origin: '*', api_token: '' },
-  };
-  saveTenantState(tenantId, 'settings', tenantSettings);
-
-  // Apply industry template if specified
-  if (template && INDUSTRY_TEMPLATES[template]) {
-    const tmpl = INDUSTRY_TEMPLATES[template];
-    tenant.branding.tagline = tmpl.tagline;
-    if (tmpl.settings) {
-      Object.assign(tenantSettings.general, tmpl.settings);
-      saveTenantState(tenantId, 'settings', tenantSettings);
-    }
-  }
-
-  tenantRegistry[tenantId] = tenant;
-  saveState('tenant_registry', tenantRegistry);
-
-  logActivity('tenant', `Tenant provisioned: ${name} (${tenantId})`, { tenantId, ownerEmail, industry, template });
-  broadcast({ event: 'tenant_provisioned', data: { id: tenantId, name, subdomain } });
-
-  res.json({ ok: true, tenant });
-});
-
-// PUT /api/tenants/:id — update tenant config
-app.put('/api/tenants/:id', requireAdmin, requireCommercial('multiTenant'), (req, res) => {
-  const tenant = tenantRegistry[req.params.id];
-  if (!tenant) return res.status(404).json({ error: 'Tenant not found' });
-
-  const { name, subdomain, domain, status, branding, industry } = req.body;
-  if (name) tenant.name = name;
-  if (subdomain !== undefined) {
-    if (subdomain && Object.values(tenantRegistry).find(t => t.id !== tenant.id && t.subdomain === subdomain)) {
-      return res.status(400).json({ error: `Subdomain "${subdomain}" is already taken` });
-    }
-    tenant.subdomain = subdomain;
-  }
-  if (domain !== undefined) tenant.domain = domain;
-  if (status) tenant.status = status;
-  if (branding) Object.assign(tenant.branding, branding);
-  if (industry) tenant.industry = industry;
-
-  saveState('tenant_registry', tenantRegistry);
-  res.json({ ok: true, tenant });
-});
-
-// DELETE /api/tenants/:id — deactivate a tenant (soft delete)
-app.delete('/api/tenants/:id', requireAdmin, requireCommercial('multiTenant'), (req, res) => {
-  const tenant = tenantRegistry[req.params.id];
-  if (!tenant) return res.status(404).json({ error: 'Tenant not found' });
-  if (tenant.id === MASTER_TENANT_ID) return res.status(400).json({ error: 'Cannot delete master tenant' });
-
-  tenant.status = 'deactivated';
-  saveState('tenant_registry', tenantRegistry);
-  logActivity('tenant', `Tenant deactivated: ${tenant.name} (${tenant.id})`, { tenantId: tenant.id });
-  res.json({ ok: true });
-});
-
-// GET /api/tenants/:id/stats — tenant usage stats
-app.get('/api/tenants/:id/stats', requireAdmin, requireCommercial('multiTenant'), (req, res) => {
-  const tenant = tenantRegistry[req.params.id];
-  if (!tenant) return res.status(404).json({ error: 'Tenant not found' });
-
-  const tenantUsers = loadTenantState(tenant.id, 'users', []);
-  const tenantAudits = loadTenantState(tenant.id, 'seo_audits', []);
-  const tenantSettings = loadTenantState(tenant.id, 'settings', {});
-
-  const configuredKeys = Object.values(tenantSettings.ai || {}).filter(v => !!v).length;
-
-  res.json({
-    tenantId: tenant.id,
-    name: tenant.name,
-    status: tenant.status,
-    users: Array.isArray(tenantUsers) ? tenantUsers.length : 0,
-    seoAudits: Array.isArray(tenantAudits) ? tenantAudits.length : 0,
-    apiKeysConfigured: configuredKeys,
-    createdAt: tenant.createdAt,
-  });
-});
-
-// GET /api/tenants/monitoring — central monitoring dashboard across all tenants
-app.get('/api/tenants/monitoring', requireAdmin, requireCommercial('multiTenant'), (req, res) => {
-  const tenants = Object.values(tenantRegistry);
-  const monitoring = tenants.map(t => {
-    const tenantUsers = t.id === MASTER_TENANT_ID ? users : loadTenantState(t.id, 'users', []);
-    const tenantAudits = t.id === MASTER_TENANT_ID ? seoAudits : loadTenantState(t.id, 'seo_audits', []);
-    const tenantSettings = t.id === MASTER_TENANT_ID ? settings : loadTenantState(t.id, 'settings', {});
-
-    const configuredKeys = Object.values(tenantSettings.ai || {}).filter(v => !!v).length;
-    const totalKeys = Object.keys(tenantSettings.ai || {}).length;
-
-    return {
-      id: t.id,
-      name: t.name,
-      status: t.status,
-      plan: t.plan,
-      subdomain: t.subdomain,
-      domain: t.domain,
-      industry: t.industry,
-      ownerId: t.ownerId,
-      createdAt: t.createdAt,
-      users: Array.isArray(tenantUsers) ? tenantUsers.length : 0,
-      audits: Array.isArray(tenantAudits) ? tenantAudits.length : 0,
-      apiKeys: `${configuredKeys}/${totalKeys}`,
-      apiKeysConfigured: configuredKeys,
-      branding: t.branding,
-      health: configuredKeys > 0 ? 'ready' : 'needs-setup',
-    };
-  });
-
-  // Aggregate stats
-  const activeTenants = monitoring.filter(t => t.status === 'active').length;
-  const totalUsers = monitoring.reduce((sum, t) => sum + t.users, 0);
-  const totalAudits = monitoring.reduce((sum, t) => sum + t.audits, 0);
-  const readyTenants = monitoring.filter(t => t.health === 'ready').length;
-
-  res.json({
-    summary: { totalTenants: tenants.length, activeTenants, totalUsers, totalAudits, readyTenants },
-    tenants: monitoring,
-  });
-});
-
-// GET /api/tenants/analytics — usage analytics across all tenants
-app.get('/api/tenants/analytics', requireAdmin, requireCommercial('multiTenant'), (req, res) => {
-  const now = Date.now();
-  const dayAgo = now - 86400000;
-  const weekAgo = now - 7 * 86400000;
-  const monthAgo = now - 30 * 86400000;
-
-  // Cost analytics from ledger
-  const dailyCost = costLedger.filter(e => new Date(e.timestamp) > dayAgo).reduce((sum, e) => sum + (e.cost || 0), 0);
-  const weeklyCost = costLedger.filter(e => new Date(e.timestamp) > weekAgo).reduce((sum, e) => sum + (e.cost || 0), 0);
-  const monthlyCost = costLedger.filter(e => new Date(e.timestamp) > monthAgo).reduce((sum, e) => sum + (e.cost || 0), 0);
-
-  // Usage by model
-  const byModel = {};
-  costLedger.forEach(e => {
-    if (!byModel[e.model]) byModel[e.model] = { calls: 0, cost: 0, tokens: 0 };
-    byModel[e.model].calls++;
-    byModel[e.model].cost += e.cost || 0;
-    byModel[e.model].tokens += (e.inputTokens || 0) + (e.outputTokens || 0);
-  });
-
-  // Usage by agent
-  const byAgent = {};
-  costLedger.forEach(e => {
-    if (!byAgent[e.agent]) byAgent[e.agent] = { calls: 0, cost: 0 };
-    byAgent[e.agent].calls++;
-    byAgent[e.agent].cost += e.cost || 0;
-  });
-
-  // Free audit leads
-  const freeLeads = freeAuditLog.length;
-  const recentLeads = freeAuditLog.filter(l => new Date(l.createdAt) > weekAgo).length;
-
-  // License stats
-  const activeLicenses = licenses.filter(l => l.status === 'active').length;
-  const pendingLicenses = licenses.filter(l => l.status === 'pending' || l.status === 'payment').length;
-
-  res.json({
-    cost: { daily: Math.round(dailyCost * 100) / 100, weekly: Math.round(weeklyCost * 100) / 100, monthly: Math.round(monthlyCost * 100) / 100 },
-    byModel: Object.entries(byModel).map(([model, data]) => ({ model, ...data, cost: Math.round(data.cost * 100) / 100 })).sort((a, b) => b.cost - a.cost),
-    byAgent: Object.entries(byAgent).map(([agent, data]) => ({ agent, ...data, cost: Math.round(data.cost * 100) / 100 })).sort((a, b) => b.calls - a.calls).slice(0, 20),
-    leads: { total: freeLeads, thisWeek: recentLeads },
-    licenses: { active: activeLicenses, pending: pendingLicenses },
-    totalApiCalls: costLedger.length,
-  });
-});
+// Multi-tenant routes extracted to commercial/modules/multi-tenant/index.js
 
 // GET /api/tenant/branding — current tenant's branding (public, no auth)
 app.get('/api/tenant/branding', (req, res) => {
@@ -483,10 +251,7 @@ const INDUSTRY_TEMPLATES = {
   },
 };
 
-// GET /api/templates — list available industry templates
-app.get('/api/templates', requireCommercial('multiTenant'), (req, res) => {
-  res.json(Object.entries(INDUSTRY_TEMPLATES).map(([id, t]) => ({ id, ...t })));
-});
+// Templates route extracted to commercial/modules/multi-tenant/index.js
 
 } // end registerTenantRoutes
 
@@ -4025,117 +3790,7 @@ const browserSeeds = [
 ];
 browserSeeds.forEach(s => browserTasks.set(s.id, s));
 
-app.get('/api/browser/tasks', requireCommercial('browserAgent'), (req, res) => {
-  const all = [...browserTasks.values()].sort((a, b) => b.startedAt > a.startedAt ? 1 : -1);
-  res.json(all);
-});
-
-app.get('/api/browser/stats', requireCommercial('browserAgent'), (req, res) => {
-  const all = [...browserTasks.values()];
-  const completed = all.filter(t => t.status === 'completed').length;
-  const running = all.filter(t => t.status === 'running').length;
-  const byType = {};
-  all.forEach(t => { byType[t.taskType] = (byType[t.taskType] || 0) + 1; });
-  res.json({
-    total: all.length,
-    completed,
-    running,
-    failed: all.filter(t => t.status === 'failed').length,
-    byType,
-    screenshots: all.filter(t => t.screenshot).length,
-  });
-});
-
-app.post('/api/browser/execute', heavyLimiter, requireCommercial('browserAgent'), (req, res) => {
-  const errs = validateBody(req.body, {
-    url: { required: true, type: 'url', maxLength: 2048 },
-    taskType: { type: 'string', oneOf: ['navigate', 'extract', 'screenshot', 'form-fill', 'verify'] },
-    viewport: { type: 'string', oneOf: ['desktop', 'tablet', 'mobile'] },
-  });
-  if (errs) return res.status(400).json({ error: errs.join('; ') });
-  const { url, taskType = 'navigate', selector, viewport = 'desktop', waitFor = 'networkidle' } = req.body;
-
-  const id = uuidv4();
-  const task = {
-    id,
-    url,
-    taskType,
-    selector: selector || null,
-    viewport,
-    waitFor,
-    status: 'queued',
-    result: null,
-    screenshot: null,
-    startedAt: new Date().toISOString(),
-    completedAt: null,
-    agent: 'browser-agent',
-  };
-
-  browserTasks.set(id, task);
-  logActivity('browser', `Browser task queued: ${taskType} on ${url}`, { taskId: id });
-
-  // Simulate browser execution lifecycle
-  setTimeout(() => {
-    task.status = 'running';
-    broadcast({ event: 'browser_update', data: task });
-  }, 300);
-
-  // Simulate navigation
-  setTimeout(() => {
-    task.status = 'navigating';
-    broadcast({ event: 'browser_update', data: task });
-  }, 1000);
-
-  // Simulate task execution
-  setTimeout(() => {
-    task.status = 'executing';
-    broadcast({ event: 'browser_update', data: task });
-  }, 2000);
-
-  // Complete with simulated results
-  setTimeout(() => {
-    task.status = 'completed';
-    task.completedAt = new Date().toISOString();
-
-    const viewportSizes = { desktop: '1920x1080', tablet: '768x1024', mobile: '375x812' };
-
-    if (taskType === 'screenshot') {
-      const filename = `screenshot-${Date.now()}.png`;
-      task.screenshot = filename;
-      task.result = {
-        screenshot_path: `.magent/artifacts/screenshots/${filename}`,
-        page_title: `Page at ${url}`,
-        viewport_size: viewportSizes[viewport],
-      };
-    } else if (taskType === 'extract') {
-      task.result = {
-        title: `Extracted from ${url}`,
-        items_extracted: 5 + Math.floor(Math.random() * 20),
-        data_type: selector ? 'targeted elements' : 'page content',
-        selector: selector || 'body',
-      };
-    } else if (taskType === 'verify') {
-      task.result = {
-        page_loaded: true,
-        status_code: 200,
-        title_match: true,
-        viewport_size: viewportSizes[viewport],
-        load_time_ms: 800 + Math.floor(Math.random() * 1500),
-      };
-    } else {
-      task.result = {
-        page_title: `Page at ${url}`,
-        status_code: 200,
-        load_time_ms: 500 + Math.floor(Math.random() * 1000),
-      };
-    }
-
-    broadcast({ event: 'browser_update', data: task });
-    logActivity('browser', `Browser task completed: ${taskType} on ${url}`, { taskId: id });
-  }, 3500);
-
-  res.json(task);
-});
+// Browser Agent routes extracted to commercial/modules/browser-agent/index.js
 
 // =====================
 // GROK REAL-TIME INTELLIGENCE
@@ -4204,190 +3859,7 @@ grokQueries.push(
   }
 );
 
-// API: Get Grok query history
-app.get('/api/grok/queries', requireCommercial('grokIntel'), (req, res) => {
-  res.json(grokQueries.sort((a, b) => new Date(b.startedAt) - new Date(a.startedAt)));
-});
-
-// API: Get Grok stats
-app.get('/api/grok/stats', requireCommercial('grokIntel'), (req, res) => {
-  const completed = grokQueries.filter(q => q.status === 'completed');
-  const totalTokens = completed.reduce((sum, q) => sum + (q.tokens?.input || 0) + (q.tokens?.output || 0), 0);
-  const totalCost = completed.reduce((sum, q) => sum + (q.cost || 0), 0);
-  const avgConfidence = completed.length > 0
-    ? Math.round(completed.reduce((sum, q) => sum + (q.confidence || 0), 0) / completed.length * 100) / 100
-    : 0;
-
-  const byType = {};
-  grokQueries.forEach(q => {
-    byType[q.type] = (byType[q.type] || 0) + 1;
-  });
-
-  const hourAgo = Date.now() - 3600000;
-  const recentCount = grokQueries.filter(q => new Date(q.startedAt) > hourAgo).length;
-
-  res.json({
-    total: grokQueries.length,
-    completed: completed.length,
-    streaming: grokQueries.filter(q => q.status === 'streaming').length,
-    failed: grokQueries.filter(q => q.status === 'failed').length,
-    totalTokens,
-    totalCost,
-    avgConfidence,
-    queriesThisHour: recentCount,
-    rateLimit: 30,
-    rateLimitRemaining: Math.max(0, 30 - recentCount),
-    byType,
-    cacheSize: grokCache.size,
-  });
-});
-
-// API: Execute a Grok real-time query
-app.post('/api/grok/query', heavyLimiter, requireCommercial('grokIntel'), async (req, res) => {
-  const errs = validateBody(req.body, {
-    query: { required: true, type: 'string', maxLength: 2000 },
-    type: { type: 'string', oneOf: ['search', 'trending', 'fact-check', 'monitor'] },
-  });
-  if (errs) return res.status(400).json({ error: errs.join('; ') });
-  const { query, type = 'search', scope = 'all', max_tokens = 1024, include_sources = true } = req.body;
-
-  // Check rate limit
-  const hourAgo = Date.now() - 3600000;
-  const recentCount = grokQueries.filter(q => new Date(q.startedAt) > hourAgo).length;
-  if (recentCount >= 30) {
-    return res.status(429).json({ error: 'Rate limit exceeded (30/hour). Try again later.' });
-  }
-
-  // Check cache (5-minute window)
-  const cacheKey = `${query}:${type}:${scope}`;
-  const cached = grokCache.get(cacheKey);
-  if (cached && (Date.now() - cached.timestamp) < 300000) {
-    return res.json({ ...cached.result, cached: true });
-  }
-
-  const id = require('crypto').randomUUID();
-  const grokQuery = {
-    id,
-    query,
-    type,
-    scope,
-    status: 'streaming',
-    streaming: true,
-    tokens: { input: query.split(/\s+/).length * 2, output: 0 },
-    cost: 0,
-    sources: [],
-    response: '',
-    confidence: 0,
-    startedAt: new Date().toISOString(),
-    completedAt: null,
-  };
-
-  grokQueries.unshift(grokQuery);
-  broadcast({ event: 'grok_stream_start', data: { id, query, type } });
-  logActivity('grok', `Grok query started: ${type} — "${query.substring(0, 60)}${query.length > 60 ? '...' : ''}"`, { queryId: id });
-
-  // Real API path — when DEMO_MODE is off and xAI key is configured
-  if (!DEMO_MODE && settings.ai.xai_api_key) {
-    try {
-      const systemMsg = `You are Grok, a real-time intelligence agent. Query type: ${type}. Scope: ${scope}. Provide current, factual information with sources where possible. Be concise but thorough.`;
-      const result = await callGrok(systemMsg, query, max_tokens);
-      grokQuery.response = result.content;
-      grokQuery.tokens = { input: result.inputTokens, output: result.outputTokens };
-      grokQuery.confidence = 0.9;
-      grokQuery.status = 'complete';
-      grokQuery.streaming = false;
-      grokQuery.completedAt = new Date().toISOString();
-      const rates = COST_RATES['grok-3'];
-      grokQuery.cost = Math.round(((result.inputTokens / 1_000_000) * rates.input + (result.outputTokens / 1_000_000) * rates.output) * 10000) / 10000;
-      costLedger.push({ id: uuidv4(), agent: 'grok-realtime', model: 'grok-3', skill: type, inputTokens: result.inputTokens, outputTokens: result.outputTokens, cost: grokQuery.cost, timestamp: new Date().toISOString() });
-      grokCache.set(cacheKey, { result: grokQuery, timestamp: Date.now() });
-      broadcast({ event: 'grok_stream_complete', data: grokQuery });
-      logActivity('grok', `Grok query completed: ${type} (real API)`, { queryId: id, cost: grokQuery.cost });
-      return res.json(grokQuery);
-    } catch (e) {
-      console.error('[GROK] Real API failed, falling back to demo:', e.message);
-      // Fall through to demo mode below
-    }
-  }
-
-  // Simulate streaming response (demo mode)
-  const typeResponses = {
-    search: {
-      response: `Real-time analysis for "${query}": Based on current web data, the latest developments indicate significant momentum in this area. Multiple authoritative sources confirm ongoing activity with measurable impact across the ecosystem.`,
-      sources: [
-        { title: 'Primary Source — Latest Analysis', url: 'https://example.com/analysis', relevance: 0.94 },
-        { title: 'Industry Report — Current Trends', url: 'https://example.com/trends', relevance: 0.87 },
-        { title: 'Expert Commentary', url: 'https://example.com/expert', relevance: 0.81 },
-      ],
-      confidence: 0.88,
-    },
-    trending: {
-      response: `Trending now: "${query}" — Active discussions across X/Twitter and HN. Key threads focus on practical implementation and cost optimization. Engagement is above average for this topic category with several high-profile contributors participating.`,
-      sources: [
-        { title: 'Trending Thread on X', url: 'https://x.com/trending/topic', relevance: 0.96 },
-        { title: 'HN Discussion (200+ points)', url: 'https://news.ycombinator.com/item?id=123', relevance: 0.90 },
-      ],
-      confidence: 0.85,
-    },
-    'fact-check': {
-      response: `Fact-check result for: "${query}" — PARTIALLY VERIFIED. Cross-referencing 3 independent sources shows the core claim has supporting evidence, but with important caveats regarding scope and recency of data. Confidence varies by sub-claim.`,
-      sources: [
-        { title: 'Primary Verification Source', url: 'https://example.com/verify', relevance: 0.93 },
-        { title: 'Counter-evidence', url: 'https://example.com/counter', relevance: 0.86 },
-        { title: 'Statistical Analysis', url: 'https://example.com/stats', relevance: 0.79 },
-      ],
-      confidence: 0.72,
-    },
-    monitor: {
-      response: `Monitoring update for "${query}": No significant changes detected in the last monitoring window. Current status remains consistent with previous baseline. Will alert on any notable shifts.`,
-      sources: [
-        { title: 'Status Dashboard', url: 'https://example.com/status', relevance: 0.91 },
-      ],
-      confidence: 0.95,
-    },
-  };
-
-  const preset = typeResponses[type] || typeResponses.search;
-  const words = preset.response.split(' ');
-  let streamedWords = 0;
-
-  // Simulate word-by-word streaming
-  const streamInterval = setInterval(() => {
-    streamedWords += 3 + Math.floor(Math.random() * 3);
-    const partial = words.slice(0, Math.min(streamedWords, words.length)).join(' ');
-    grokQuery.response = partial;
-    grokQuery.tokens.output = partial.split(/\s+/).length * 2;
-
-    broadcast({ event: 'grok_stream_chunk', data: { id, partial, progress: Math.min(100, Math.round(streamedWords / words.length * 100)) } });
-
-    if (streamedWords >= words.length) {
-      clearInterval(streamInterval);
-
-      // Finalize
-      grokQuery.status = 'completed';
-      grokQuery.streaming = false;
-      grokQuery.completedAt = new Date().toISOString();
-      grokQuery.response = preset.response;
-      grokQuery.sources = include_sources ? preset.sources : [];
-      grokQuery.confidence = preset.confidence;
-      grokQuery.cost = ((grokQuery.tokens.input * 5 + grokQuery.tokens.output * 15) / 1000000);
-
-      // Cache result
-      grokCache.set(cacheKey, { result: grokQuery, timestamp: Date.now() });
-
-      broadcast({ event: 'grok_stream_end', data: grokQuery });
-      logActivity('grok', `Grok query completed: ${type} (confidence: ${Math.round(preset.confidence * 100)}%)`, { queryId: id });
-    }
-  }, 200);
-
-  res.json(grokQuery);
-});
-
-// API: Clear Grok cache
-app.post('/api/grok/cache/clear', requireCommercial('grokIntel'), (req, res) => {
-  grokCache.clear();
-  res.json({ ok: true, message: 'Cache cleared' });
-});
+// Grok Intel routes extracted to commercial/modules/grok-intel/index.js
 
 // =====================
 // KNOWLEDGE GRAPH
@@ -4416,42 +3888,7 @@ const knowledgeGraph = {
   },
 };
 
-app.get('/api/knowledge-graph', requireCommercial('advancedReporting'), (req, res) => {
-  res.json(knowledgeGraph);
-});
-
-app.get('/api/knowledge-graph/stats', requireCommercial('advancedReporting'), (req, res) => {
-  const nodes = knowledgeGraph.nodes;
-  const totalConnections = nodes.reduce((sum, n) => sum + n.connections.length, 0) / 2;
-  const tags = {};
-  nodes.forEach(n => n.tags.forEach(t => { tags[t] = (tags[t] || 0) + 1; }));
-  const topTags = Object.entries(tags).sort((a, b) => b[1] - a[1]).slice(0, 8);
-  const byType = {};
-  nodes.forEach(n => { byType[n.type] = (byType[n.type] || 0) + 1; });
-
-  res.json({
-    totalNodes: nodes.length,
-    totalConnections: Math.round(totalConnections),
-    totalTags: Object.keys(tags).length,
-    avgConnections: (totalConnections * 2 / nodes.length).toFixed(1),
-    topTags,
-    byType,
-    categories: knowledgeGraph.categories,
-  });
-});
-
-app.post('/api/knowledge-graph/auto-categorize', requireCommercial('advancedReporting'), (req, res) => {
-  // Simulate auto-categorization
-  logActivity('knowledge', 'Auto-categorization triggered — scanning vault files');
-  broadcast({ event: 'knowledge_update', data: { action: 'categorize', status: 'running' } });
-
-  setTimeout(() => {
-    broadcast({ event: 'knowledge_update', data: { action: 'categorize', status: 'completed', newConnections: 3 } });
-    logActivity('knowledge', 'Auto-categorization complete: 3 new connections discovered');
-  }, 3000);
-
-  res.json({ ok: true, status: 'scanning' });
-});
+// Advanced Reporting routes extracted to commercial/modules/advanced-reporting/index.js
 
 // =====================
 // DESIGN SYSTEM PROTOCOL
@@ -4540,104 +3977,8 @@ const designSystem = {
   ],
 };
 
-app.get('/api/design-system', requireCommercial('designSystem'), (req, res) => {
-  res.json(designSystem);
-});
+// Design System routes extracted to commercial/modules/design-system/index.js
 
-app.get('/api/design-system/tokens', requireCommercial('designSystem'), (req, res) => {
-  res.json(designSystem.tokens);
-});
-
-app.get('/api/design-system/linter', requireCommercial('designSystem'), (req, res) => {
-  const passed = designSystem.linterResults.filter(r => r.status === 'pass').length;
-  const warnings = designSystem.linterResults.filter(r => r.status === 'warning').length;
-  const failures = designSystem.linterResults.filter(r => r.status === 'fail').length;
-  res.json({
-    summary: { total: designSystem.linterResults.length, passed, warnings, failures, score: Math.round((passed / designSystem.linterResults.length) * 100) },
-    results: designSystem.linterResults,
-    wcagLevel: designSystem.meta.wcagLevel,
-  });
-});
-
-app.post('/api/design-system/lint', requireCommercial('designSystem'), (req, res) => {
-  logActivity('design', 'Design system linter executed');
-  broadcast({ event: 'design_update', data: { action: 'lint', status: 'completed' } });
-  res.json({ ok: true, results: designSystem.linterResults });
-});
-
-// Brand Clone from URL — extracts brand identity from a website
-app.post('/api/design-system/clone-url', heavyLimiter, requireCommercial('designSystem'), (req, res) => {
-  const errs = validateBody(req.body, { url: { required: true, type: 'url', maxLength: 2048 } });
-  if (errs) return res.status(400).json({ error: errs.join('; ') });
-  const { url } = req.body;
-  logActivity('design', `Brand clone initiated from: ${url}`);
-  broadcast({ event: 'design_update', data: { action: 'brand-clone', status: 'scanning', url } });
-
-  // Simulate extraction (in production, this would use Firecrawl + analysis)
-  setTimeout(() => {
-    broadcast({ event: 'design_update', data: { action: 'brand-clone', status: 'completed', url } });
-    logActivity('design', `Brand clone completed from: ${url}`);
-  }, 4000);
-
-  res.json({
-    ok: true,
-    status: 'extracting',
-    message: `Scanning ${url} for brand identity...`,
-    estimated: '~5 seconds',
-    extracting: ['colors', 'typography', 'spacing', 'imagery', 'vibe'],
-  });
-});
-
-// Cross-Platform Export — generates DESIGN.md for other coding agents
-app.get('/api/design-system/export', requireCommercial('designSystem'), (req, res) => {
-  const target = req.query.target || 'claude-code';
-  logActivity('design', `DESIGN.md exported for: ${target}`);
-
-  const exportContent = `# DESIGN.md — ${designSystem.meta.name} v${designSystem.meta.version}
-## Format: dual-structure (reasoning + tokens)
-## Target: ${target}
-
-### Brand Reasoning
-${Object.entries(designSystem.reasoning).map(([k, v]) => `- **${k}**: ${v}`).join('\n')}
-
-### Color Tokens
-${Object.entries(designSystem.tokens.colors).map(([name, c]) => `| ${name} | ${c.hex} | ${c.hierarchy} | ${c.usage} | ${c.screenPct} |`).join('\n')}
-
-### Typography
-- Primary: ${designSystem.tokens.typography.fontFamily.primary}
-- Mono: ${designSystem.tokens.typography.fontFamily.mono}
-
-### Components (Role References)
-${designSystem.components.map(c => `- **${c.name}**: bg=${c.background}, text=${c.text}, radius=${c.radius}`).join('\n')}
-
-### Shape Language
-${designSystem.tokens.radiusReasoning}
-`;
-
-  res.json({
-    ok: true,
-    target,
-    format: 'markdown',
-    content: exportContent,
-    filename: `DESIGN-${target}.md`,
-    portable: true,
-    compatibleWith: designSystem.meta.exportTargets,
-  });
-});
-
-// Design System reasoning endpoint
-app.get('/api/design-system/reasoning', requireCommercial('designSystem'), (req, res) => {
-  res.json({
-    reasoning: designSystem.reasoning,
-    radiusReasoning: designSystem.tokens.radiusReasoning,
-    typographyReasoning: designSystem.tokens.typography.reasoning,
-  });
-});
-
-// Design System components endpoint
-app.get('/api/design-system/components', requireCommercial('designSystem'), (req, res) => {
-  res.json({ components: designSystem.components });
-});
 
 // =====================
 // MEDIA PRODUCTION PIPELINE
@@ -4713,77 +4054,7 @@ const mediaTemplates = [
   { id: 'data-viz', name: 'Data Visualization', engine: 'remotion', duration: '30-60s', params: ['dataset', 'chart_type', 'animation'] },
 ];
 
-app.get('/api/media/productions', requireCommercial('creativeStudio'), (req, res) => {
-  res.json(mediaProductions.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)));
-});
-
-app.get('/api/media/templates', requireCommercial('creativeStudio'), (req, res) => {
-  res.json(mediaTemplates);
-});
-
-app.get('/api/media/stats', requireCommercial('creativeStudio'), (req, res) => {
-  const completed = mediaProductions.filter(p => p.status === 'completed');
-  const totalCost = completed.reduce((sum, p) => sum + (p.cost || 0), 0);
-  const byEngine = {};
-  mediaProductions.forEach(p => { byEngine[p.engine] = (byEngine[p.engine] || 0) + 1; });
-  const byType = {};
-  mediaProductions.forEach(p => { byType[p.type] = (byType[p.type] || 0) + 1; });
-
-  res.json({
-    total: mediaProductions.length,
-    completed: completed.length,
-    queued: mediaProductions.filter(p => p.status === 'queued').length,
-    rendering: mediaProductions.filter(p => p.status === 'rendering').length,
-    totalCost,
-    byEngine,
-    byType,
-    templates: mediaTemplates.length,
-  });
-});
-
-app.post('/api/media/produce', heavyLimiter, requireCommercial('creativeStudio'), (req, res) => {
-  const { title, template, params = {} } = req.body;
-  if (!title || !template) return res.status(400).json({ error: 'Title and template required' });
-
-  const tmpl = mediaTemplates.find(t => t.id === template);
-  const id = require('crypto').randomUUID();
-  const production = {
-    id,
-    title,
-    type: tmpl ? (tmpl.engine === 'blender-mcp' ? '3d' : 'remotion') : 'video',
-    status: 'queued',
-    template,
-    resolution: params.resolution || '1920x1080',
-    params,
-    output: null,
-    createdAt: new Date().toISOString(),
-    completedAt: null,
-    cost: 0,
-    engine: tmpl?.engine || 'remotion-local',
-  };
-
-  mediaProductions.unshift(production);
-  broadcast({ event: 'media_update', data: production });
-  logActivity('media', `Media production queued: ${title} (${template})`, { productionId: id });
-
-  // Simulate rendering
-  setTimeout(() => {
-    production.status = 'rendering';
-    broadcast({ event: 'media_update', data: production });
-  }, 1000);
-
-  setTimeout(() => {
-    production.status = 'completed';
-    production.completedAt = new Date().toISOString();
-    production.output = `.magent/artifacts/media/${template}-${Date.now()}.mp4`;
-    production.cost = Math.random() * 0.5;
-    production.duration = `${Math.floor(Math.random() * 3) + 1}:${String(Math.floor(Math.random() * 60)).padStart(2, '0')}`;
-    broadcast({ event: 'media_update', data: production });
-    logActivity('media', `Media production completed: ${title}`);
-  }, 6000);
-
-  res.json(production);
-});
+// Creative Studio routes extracted to commercial/modules/creative-studio/index.js
 
 // =====================
 // CONTINUOUS LOOP WORKFLOWS (ROUTINES)
@@ -4852,91 +4123,13 @@ const routines = [
   },
 ];
 
-app.get('/api/routines', requireCommercial('batchQueue'), (req, res) => {
-  res.json(routines);
-});
-
-app.get('/api/routines/stats', requireCommercial('batchQueue'), (req, res) => {
-  const active = routines.filter(r => r.enabled);
-  const totalRuns = routines.reduce((sum, r) => sum + r.stats.totalRuns, 0);
-  const totalOutputs = routines.reduce((sum, r) => sum + r.stats.totalOutputs, 0);
-  const avgSuccess = routines.length > 0
-    ? Math.round(routines.reduce((sum, r) => sum + r.stats.successRate, 0) / routines.length * 10) / 10
-    : 0;
-
-  res.json({
-    total: routines.length,
-    active: active.length,
-    paused: routines.length - active.length,
-    totalRuns,
-    totalOutputs,
-    avgSuccessRate: avgSuccess,
-    outputsPerDay: Math.round(totalOutputs / 30),
-  });
-});
-
-app.put('/api/routines/:id/toggle', requireCommercial('batchQueue'), (req, res) => {
-  const routine = routines.find(r => r.id === req.params.id);
-  if (!routine) return res.status(404).json({ error: 'Routine not found' });
-  routine.enabled = !routine.enabled;
-  routine.status = routine.enabled ? 'active' : 'paused';
-  if (!routine.enabled) routine.stats.nextRun = null;
-  broadcast({ event: 'routine_update', data: routine });
-  logActivity('routine', `Routine ${routine.enabled ? 'enabled' : 'paused'}: ${routine.name}`);
-  res.json(routine);
-});
-
-app.post('/api/routines/:id/run', requireCommercial('batchQueue'), (req, res) => {
-  const routine = routines.find(r => r.id === req.params.id);
-  if (!routine) return res.status(404).json({ error: 'Routine not found' });
-
-  // Check rate limit
-  if (routine.rateLimit.currentHour >= routine.rateLimit.maxPerHour) {
-    return res.status(429).json({ error: 'Rate limit reached for this hour', nextReset: 'Top of next hour' });
-  }
-
-  routine.rateLimit.currentHour++;
-  routine.stats.totalRuns++;
-  routine.stats.totalOutputs += routine.batchSize;
-  routine.stats.lastRun = new Date().toISOString();
-
-  broadcast({ event: 'routine_update', data: { ...routine, running: true } });
-  logActivity('routine', `Routine manually triggered: ${routine.name} (batch of ${routine.batchSize})`);
-
-  setTimeout(() => {
-    broadcast({ event: 'routine_update', data: { ...routine, running: false } });
-  }, 4000);
-
-  res.json({ ok: true, routine, outputsGenerated: routine.batchSize });
-});
-
-app.post('/api/routines', requireCommercial('batchQueue'), (req, res) => {
-  const { name, description, skill, agent, interval, intervalHuman, batchSize = 1, rateLimit = {} } = req.body;
-  if (!name || !skill || !interval) return res.status(400).json({ error: 'Name, skill, and interval required' });
-
-  const id = 'routine-' + require('crypto').randomUUID().slice(0, 8);
-  const routine = {
-    id, name, description: description || '', skill, agent: agent || 'orchestrator',
-    interval, intervalHuman: intervalHuman || interval,
-    status: 'active',
-    rateLimit: { maxPerHour: rateLimit.maxPerHour || 10, currentHour: 0, cooldownMs: rateLimit.cooldownMs || 0 },
-    stats: { totalRuns: 0, totalOutputs: 0, successRate: 100, lastRun: null, nextRun: new Date(Date.now() + 3600000).toISOString() },
-    outputPath: `.magent/artifacts/${skill}/`,
-    batchSize,
-    enabled: true,
-  };
-
-  routines.push(routine);
-  broadcast({ event: 'routine_update', data: routine });
-  logActivity('routine', `New routine created: ${name}`);
-  res.json(routine);
-});
+// Routine routes extracted to commercial/modules/hermes-advanced (batchQueue feature)
 
 // =============================
 // PHASE 2: MONETIZATION LAYER
 // =============================
 
-// --- Product Factory ---
+// --- Product Factory (routes extracted → commercial/modules/lead-gen) ---
 const productFactory = {
   products: [
     { id: 'prod-1', name: 'Ultimate Book Tracker', type: 'spreadsheet', platform: 'etsy', status: 'published', price: 12.99, sales: 47, revenue: 610.53, rating: 4.8, createdAt: new Date(Date.now() - 14 * 86400000).toISOString(), template: 'book-tracker', features: ['200+ genres', 'Reading stats', 'TBR manager', 'Annual goals'] },
@@ -4955,53 +4148,6 @@ const productFactory = {
   ],
 };
 
-app.get('/api/products', requireCommercial('productFactory'), (req, res) => {
-  res.json(productFactory.products);
-});
-
-app.get('/api/products/stats', requireCommercial('productFactory'), (req, res) => {
-  const p = productFactory.products;
-  const published = p.filter(x => x.status === 'published');
-  res.json({
-    total: p.length,
-    published: published.length,
-    draft: p.filter(x => x.status === 'draft').length,
-    generating: p.filter(x => x.status === 'generating').length,
-    totalRevenue: published.reduce((s, x) => s + x.revenue, 0),
-    totalSales: published.reduce((s, x) => s + x.sales, 0),
-    avgRating: published.filter(x => x.rating).length ? (published.reduce((s, x) => s + (x.rating || 0), 0) / published.filter(x => x.rating).length).toFixed(1) : null,
-    platforms: { etsy: published.filter(x => x.platform === 'etsy').length, gumroad: published.filter(x => x.platform === 'gumroad').length },
-  });
-});
-
-app.get('/api/products/templates', requireCommercial('productFactory'), (req, res) => {
-  res.json(productFactory.templates);
-});
-
-app.post('/api/products', requireCommercial('productFactory'), (req, res) => {
-  const { name, type, platform, price, template, features } = req.body;
-  const product = {
-    id: `prod-${Date.now()}`,
-    name: name || 'Untitled Product',
-    type: type || 'spreadsheet',
-    platform: platform || 'etsy',
-    status: 'generating',
-    price: price || 9.99,
-    sales: 0, revenue: 0, rating: null,
-    createdAt: new Date().toISOString(),
-    template: template || null,
-    features: features || [],
-  };
-  productFactory.products.unshift(product);
-  broadcast({ event: 'product_update', data: product });
-  // Simulate generation
-  setTimeout(() => {
-    product.status = 'draft';
-    broadcast({ event: 'product_update', data: product });
-  }, 5000);
-  res.json(product);
-});
-
 // --- Lead Generation Pipeline ---
 const leadPipeline = {
   leads: [
@@ -5019,63 +4165,7 @@ const leadPipeline = {
   ],
 };
 
-app.get('/api/leads', requireCommercial('leadGen'), (req, res) => {
-  res.json(leadPipeline.leads);
-});
-
-app.get('/api/leads/stats', requireCommercial('leadGen'), (req, res) => {
-  const l = leadPipeline.leads;
-  res.json({
-    total: l.length,
-    scraped: l.filter(x => x.status === 'scraped').length,
-    enriched: l.filter(x => x.status === 'enriched').length,
-    sent: l.filter(x => x.status === 'sent').length,
-    replied: l.filter(x => x.status === 'replied').length,
-    avgScore: Math.round(l.reduce((s, x) => s + x.score, 0) / l.length),
-    openRate: l.filter(x => x.sentAt).length ? Math.round(l.filter(x => x.openedAt).length / l.filter(x => x.sentAt).length * 100) : 0,
-    replyRate: l.filter(x => x.sentAt).length ? Math.round(l.filter(x => x.repliedAt).length / l.filter(x => x.sentAt).length * 100) : 0,
-    campaigns: leadPipeline.campaigns.length,
-  });
-});
-
-app.get('/api/leads/campaigns', requireCommercial('leadGen'), (req, res) => {
-  res.json(leadPipeline.campaigns);
-});
-
-app.post('/api/leads/scrape', heavyLimiter, requireCommercial('leadGen'), (req, res) => {
-  const { company, role, platform } = req.body;
-  const lead = {
-    id: `lead-${Date.now()}`,
-    company: company || 'Unknown',
-    contact: 'Discovering...',
-    role: role || 'Decision Maker',
-    platform: platform || 'linkedin',
-    status: 'scraped',
-    score: Math.floor(Math.random() * 20) + 70,
-    achievement: null,
-    outreach: null, sentAt: null, openedAt: null, repliedAt: null,
-  };
-  leadPipeline.leads.unshift(lead);
-  broadcast({ event: 'lead_update', data: lead });
-  // Simulate enrichment
-  setTimeout(() => {
-    lead.status = 'enriched';
-    lead.contact = 'AI-Discovered Contact';
-    lead.achievement = 'Notable achievement discovered via enrichment';
-    broadcast({ event: 'lead_update', data: lead });
-  }, 4000);
-  res.json(lead);
-});
-
-app.post('/api/leads/:id/outreach', requireCommercial('leadGen'), (req, res) => {
-  const lead = leadPipeline.leads.find(l => l.id === req.params.id);
-  if (!lead) return res.status(404).json({ error: 'Lead not found' });
-  lead.outreach = 'personalized';
-  lead.status = 'sent';
-  lead.sentAt = new Date().toISOString();
-  broadcast({ event: 'lead_update', data: lead });
-  res.json(lead);
-});
+// Lead Gen routes extracted to commercial/modules/lead-gen/index.js
 
 // --- Marketing Hub ---
 const marketingHub = {
@@ -5098,45 +4188,7 @@ const marketingHub = {
   ],
 };
 
-app.get('/api/marketing/pipelines', requireCommercial('leadGen'), (req, res) => {
-  res.json(marketingHub.pipelines);
-});
-
-app.get('/api/marketing/channels', requireCommercial('leadGen'), (req, res) => {
-  res.json(marketingHub.channels);
-});
-
-app.get('/api/marketing/queue', requireCommercial('leadGen'), (req, res) => {
-  res.json(marketingHub.contentQueue);
-});
-
-app.get('/api/marketing/stats', requireCommercial('leadGen'), (req, res) => {
-  const totalFollowers = marketingHub.channels.reduce((s, c) => s + (c.followers || 0), 0);
-  const totalPosts = marketingHub.channels.reduce((s, c) => s + c.posts30d, 0);
-  res.json({
-    totalFollowers,
-    totalPosts30d: totalPosts,
-    activePipelines: marketingHub.pipelines.filter(p => p.status === 'active').length,
-    queuedContent: marketingHub.contentQueue.length,
-    avgEngagement: (marketingHub.channels.filter(c => c.engagement).reduce((s, c) => s + c.engagement, 0) / marketingHub.channels.filter(c => c.engagement).length).toFixed(1),
-    channels: marketingHub.channels.length,
-  });
-});
-
-app.post('/api/marketing/queue', requireCommercial('leadGen'), (req, res) => {
-  const { title, channel, type } = req.body;
-  const item = {
-    id: `cq-${Date.now()}`,
-    title: title || 'Untitled Content',
-    channel: channel || 'linkedin',
-    status: 'draft',
-    scheduledFor: null,
-    type: type || 'post',
-  };
-  marketingHub.contentQueue.unshift(item);
-  broadcast({ event: 'marketing_update', data: item });
-  res.json(item);
-});
+// Marketing routes extracted to commercial/modules/lead-gen/index.js
 
 // --- Golden Loop (Gem → NotebookLM sync) ---
 const goldenLoop = {
@@ -5222,68 +4274,7 @@ const vibeDesign = {
   },
 };
 
-app.get('/api/vibe-design/projects', requireCommercial('creativeStudio'), (req, res) => {
-  res.json(vibeDesign.projects);
-});
-
-app.get('/api/vibe-design/stats', requireCommercial('creativeStudio'), (req, res) => {
-  const p = vibeDesign.projects;
-  res.json({
-    totalProjects: p.length,
-    completed: p.filter(x => x.status === 'completed').length,
-    iterating: p.filter(x => x.status === 'iterating').length,
-    generating: p.filter(x => x.status === 'generating').length,
-    totalScreens: p.reduce((s, x) => s + x.screens, 0),
-    heatmapsGenerated: p.filter(x => x.heatmap).length,
-    avgInteractions: Math.round(p.reduce((s, x) => s + x.interactions, 0) / p.length),
-  });
-});
-
-app.get('/api/vibe-design/controls', requireCommercial('creativeStudio'), (req, res) => {
-  res.json(vibeDesign.controls);
-});
-
-app.post('/api/vibe-design/projects', heavyLimiter, requireCommercial('creativeStudio'), (req, res) => {
-  const { name, method, style, prompt } = req.body;
-  const project = {
-    id: `vd-${Date.now()}`,
-    name: name || 'Untitled Design',
-    method: method || 'prompt',
-    status: 'generating',
-    screens: 0,
-    style: style || 'modern',
-    inputs: { prompt: prompt || '' },
-    heatmap: false,
-    interactions: 0,
-    createdAt: new Date().toISOString(),
-    completedAt: null,
-  };
-  vibeDesign.projects.unshift(project);
-  broadcast({ event: 'vibe_design_update', data: project });
-  setTimeout(() => {
-    project.status = 'iterating';
-    project.screens = Math.floor(Math.random() * 4) + 2;
-    broadcast({ event: 'vibe_design_update', data: project });
-  }, 4000);
-  res.json(project);
-});
-
-app.post('/api/vibe-design/:id/heatmap', requireCommercial('creativeStudio'), (req, res) => {
-  const project = vibeDesign.projects.find(p => p.id === req.params.id);
-  if (!project) return res.status(404).json({ error: 'Not found' });
-  project.heatmap = true;
-  const heatmapData = {
-    zones: [
-      { x: 20, y: 15, intensity: 0.95, label: 'Hero CTA' },
-      { x: 50, y: 35, intensity: 0.78, label: 'Feature section' },
-      { x: 50, y: 55, intensity: 0.65, label: 'Social proof' },
-      { x: 50, y: 75, intensity: 0.82, label: 'Pricing table' },
-      { x: 80, y: 10, intensity: 0.45, label: 'Navigation' },
-    ],
-    prediction: 'Users most likely to focus on Hero CTA (95%) and Pricing (82%). Consider moving social proof above the fold.',
-  };
-  res.json(heatmapData);
-});
+// Creative Studio vibe-design routes extracted to commercial/modules/creative-studio/index.js
 
 // --- 3D Production (Blender MCP) ---
 const blender3d = {
@@ -5301,57 +4292,7 @@ const blender3d = {
   ],
 };
 
-app.get('/api/3d/scenes', requireCommercial('creativeStudio'), (req, res) => {
-  res.json(blender3d.scenes);
-});
-
-app.get('/api/3d/stats', requireCommercial('creativeStudio'), (req, res) => {
-  const s = blender3d.scenes;
-  res.json({
-    total: s.length,
-    rendered: s.filter(x => x.status === 'rendered').length,
-    rendering: s.filter(x => x.status === 'rendering').length,
-    queued: s.filter(x => x.status === 'queued').length,
-    totalObjects: s.reduce((sum, x) => sum + x.objects, 0),
-    presets: blender3d.presets.length,
-  });
-});
-
-app.get('/api/3d/presets', requireCommercial('creativeStudio'), (req, res) => {
-  res.json(blender3d.presets);
-});
-
-app.post('/api/3d/scenes', heavyLimiter, requireCommercial('creativeStudio'), (req, res) => {
-  const { name, prompt, style, lighting, resolution } = req.body;
-  const scene = {
-    id: `3d-${Date.now()}`,
-    name: name || 'Untitled Scene',
-    status: 'queued',
-    engine: 'blender-mcp',
-    resolution: resolution || '2048x2048',
-    style: style || 'photorealistic',
-    lighting: lighting || 'dramatic',
-    objects: 0,
-    renderTime: null,
-    fileSize: null,
-    createdAt: new Date().toISOString(),
-    prompt: prompt || '',
-  };
-  blender3d.scenes.unshift(scene);
-  broadcast({ event: '3d_update', data: scene });
-  setTimeout(() => {
-    scene.status = 'rendering';
-    scene.objects = Math.floor(Math.random() * 20) + 3;
-    broadcast({ event: '3d_update', data: scene });
-  }, 2000);
-  setTimeout(() => {
-    scene.status = 'rendered';
-    scene.renderTime = `${Math.floor(Math.random() * 5) + 1}m ${Math.floor(Math.random() * 59)}s`;
-    scene.fileSize = `${(Math.random() * 15 + 2).toFixed(1)} MB`;
-    broadcast({ event: '3d_update', data: scene });
-  }, 8000);
-  res.json(scene);
-});
+// Creative Studio 3D routes extracted to commercial/modules/creative-studio/index.js
 
 // --- Predictive Analytics ---
 const predictiveAnalytics = {
@@ -5370,25 +4311,7 @@ const predictiveAnalytics = {
   ],
 };
 
-app.get('/api/predictions', requireCommercial('advancedReporting'), (req, res) => {
-  res.json(predictiveAnalytics.predictions);
-});
-
-app.get('/api/predictions/stats', requireCommercial('advancedReporting'), (req, res) => {
-  const p = predictiveAnalytics.predictions;
-  res.json({
-    totalPredictions: p.length,
-    avgConfidence: Math.round(p.reduce((s, x) => s + x.confidence, 0) / p.length * 100),
-    trendsUp: p.filter(x => x.trend === 'up').length,
-    trendsDown: p.filter(x => x.trend === 'down').length,
-    models: predictiveAnalytics.models.length,
-    avgModelAccuracy: Math.round(predictiveAnalytics.models.reduce((s, m) => s + m.accuracy, 0) / predictiveAnalytics.models.length),
-  });
-});
-
-app.get('/api/predictions/models', requireCommercial('advancedReporting'), (req, res) => {
-  res.json(predictiveAnalytics.models);
-});
+// Predictions routes extracted to commercial/modules/advanced-reporting/index.js
 
 // --- Batch Generation Queue ---
 const batchQueue = {
@@ -5401,94 +4324,7 @@ const batchQueue = {
   ],
 };
 
-app.get('/api/batch', requireCommercial('batchQueue'), (req, res) => {
-  res.json(batchQueue.batches);
-});
-
-app.get('/api/batch/stats', requireCommercial('batchQueue'), (req, res) => {
-  const b = batchQueue.batches;
-  res.json({
-    total: b.length,
-    running: b.filter(x => x.status === 'running').length,
-    queued: b.filter(x => x.status === 'queued').length,
-    done: b.filter(x => x.status === 'done').length,
-    totalItems: b.reduce((s, x) => s + x.count, 0),
-    completedItems: b.reduce((s, x) => s + x.completed, 0),
-    totalCost: b.reduce((s, x) => s + x.cost, 0),
-  });
-});
-
-app.post('/api/batch', heavyLimiter, requireCommercial('batchQueue'), (req, res) => {
-  const errs = validateBody(req.body, {
-    name: { type: 'string', maxLength: 200 },
-    type: { type: 'string', oneOf: ['social-posts', 'email-variants', 'ad-copy', 'blog-outlines', 'seo-descriptions', 'text'] },
-    count: { type: 'number', min: 1, max: 1000 },
-  });
-  if (errs) return res.status(400).json({ error: errs.join('; ') });
-  const { name, type, count, agent } = req.body;
-  const batch = {
-    id: `batch-${Date.now()}`,
-    name: name || 'Untitled Batch',
-    type: type || 'text',
-    count: count || 10,
-    completed: 0,
-    status: 'queued',
-    agent: agent || 'deepseek-worker',
-    startedAt: null,
-    completedAt: null,
-    cost: 0,
-    outputPath: `.magent/artifacts/${type === 'image' ? 'media' : 'docs'}/batch-${Date.now()}/`,
-  };
-  batchQueue.batches.unshift(batch);
-  broadcast({ event: 'batch_update', data: batch });
-
-  if (!DEMO_MODE && (settings.ai.deepseek_api_key || settings.ai.anthropic_api_key)) {
-    // Real batch processing
-    (async () => {
-      batch.status = 'running';
-      batch.startedAt = new Date().toISOString();
-      broadcast({ event: 'batch_update', data: batch });
-
-      const results = [];
-      for (let i = 0; i < batch.count; i++) {
-        try {
-          const prompt = `Generate ${batch.type} item ${i + 1} of ${batch.count}. Name: "${batch.name}". Be concise and professional.`;
-          const result = await executeAgent(batch.agent || 'deepseek-worker', prompt, { skill: 'batch-' + batch.type });
-          results.push(result.content);
-          batch.completed = i + 1;
-          broadcast({ event: 'batch_update', data: batch });
-        } catch (e) {
-          results.push(`Error: ${e.message}`);
-          batch.completed = i + 1;
-        }
-      }
-
-      batch.status = 'done';
-      batch.completedAt = new Date().toISOString();
-      // Save results to vault
-      const outDir = path.join(BASE, batch.outputPath);
-      if (!fs.existsSync(outDir)) fs.mkdirSync(outDir, { recursive: true });
-      fs.writeFileSync(path.join(outDir, 'results.json'), JSON.stringify(results, null, 2));
-      broadcast({ event: 'batch_update', data: batch });
-      logActivity('batch', `Batch complete: ${batch.name} (${batch.count} items)`, { batchId: batch.id });
-    })().catch(e => console.error('[BATCH] Failed:', e.message));
-  } else {
-    // Demo mode simulation
-    setTimeout(() => {
-      batch.status = 'running';
-      batch.startedAt = new Date().toISOString();
-      broadcast({ event: 'batch_update', data: batch });
-    }, 2000);
-    setTimeout(() => {
-      batch.status = 'done';
-      batch.completed = batch.count;
-      batch.completedAt = new Date().toISOString();
-      batch.cost = +(batch.count * 0.008).toFixed(3);
-      broadcast({ event: 'batch_update', data: batch });
-    }, 8000);
-  }
-  res.json(batch);
-});
+// Batch queue routes extracted to commercial/modules/hermes-advanced (batchQueue feature)
 
 // --- Hermes Agent (Persistent Background Worker via MCP) ---
 
@@ -5794,24 +4630,7 @@ function requirePlan(minPlan) {
 registerTenantRoutes();
 
 // --- Commercial Module Routes ---
-// Register routes from ai-os-commercial (Business/Enterprise features)
-if (commercial.registerRoutes) {
-  commercial.registerRoutes(app, {
-    requireAdmin,
-    requirePlan,
-    broadcast,
-    logActivity,
-    appendLog,
-    ACTIVE_TIER,
-    COMMERCIAL_FEATURES,
-    PLAN_LEVELS,
-    get ORG_CHART() { return ORG_CHART; },  // lazy — defined later in file
-    STATE_DIR,
-    MAGENT_DIR,
-    CLAUDE_DIR,
-    IDENTITY_DIR: path.join(CLAUDE_DIR, 'identity'),
-  });
-}
+// Moved to end of file (after all globals/helpers are defined) so modules have full access
 
 // --- Custom AI Training per Tenant ---
 // Business+ plans can customize agent behavior with custom instructions, knowledge docs, and custom agent personas.
@@ -5844,184 +4663,7 @@ function saveTrainingConfig(tenantId, config) {
   saveTenantState(tenantId, 'training', config);
 }
 
-// GET /api/training — load training config for current tenant
-app.get('/api/training', requirePlan('business'), requireCommercial('multiTenant'), (req, res) => {
-  const config = loadTrainingConfig(req.tenantId);
-  res.json({ ok: true, ...config });
-});
-
-// PUT /api/training/instructions — update custom instructions
-app.put('/api/training/instructions', requirePlan('business'), requireCommercial('multiTenant'), (req, res) => {
-  const { global, brandVoice, industry, rules } = req.body;
-  const config = loadTrainingConfig(req.tenantId);
-  if (global !== undefined) config.instructions.global = global.substring(0, 5000);
-  if (brandVoice !== undefined) config.instructions.brandVoice = brandVoice.substring(0, 3000);
-  if (industry !== undefined) config.instructions.industry = industry.substring(0, 2000);
-  if (rules !== undefined) config.instructions.rules = (Array.isArray(rules) ? rules : []).slice(0, 50).map(r => String(r).substring(0, 500));
-  saveTrainingConfig(req.tenantId, config);
-  logActivity('training', `Custom instructions updated for tenant ${req.tenantId}`);
-  res.json({ ok: true, instructions: config.instructions });
-});
-
-// --- Tenant Knowledge Base ---
-
-// GET /api/training/knowledge — list knowledge docs
-app.get('/api/training/knowledge', requirePlan('business'), requireCommercial('multiTenant'), (req, res) => {
-  const config = loadTrainingConfig(req.tenantId);
-  res.json({ ok: true, docs: config.knowledgeBase, count: config.knowledgeBase.length });
-});
-
-// POST /api/training/knowledge — add a knowledge doc
-app.post('/api/training/knowledge', requirePlan('business'), requireCommercial('multiTenant'), (req, res) => {
-  const { title, content, category } = req.body;
-  if (!title || !content) return res.status(400).json({ error: 'Title and content required' });
-
-  const config = loadTrainingConfig(req.tenantId);
-  const maxDocs = PLAN_LEVELS[req.session?.plan] >= PLAN_LEVELS.enterprise ? 500 : 100;
-  if (config.knowledgeBase.length >= maxDocs) {
-    return res.status(400).json({ error: `Knowledge base limit reached (${maxDocs} docs). Upgrade plan for more.` });
-  }
-
-  const doc = {
-    id: uuidv4(),
-    title: title.substring(0, 200),
-    content: content.substring(0, 50000),
-    category: (category || 'general').substring(0, 50),
-    createdAt: new Date().toISOString(),
-  };
-  config.knowledgeBase.push(doc);
-  saveTrainingConfig(req.tenantId, config);
-  logActivity('training', `Knowledge doc added: "${doc.title}" for tenant ${req.tenantId}`);
-  res.json({ ok: true, doc });
-});
-
-// PUT /api/training/knowledge/:id — update a knowledge doc
-app.put('/api/training/knowledge/:id', requirePlan('business'), requireCommercial('multiTenant'), (req, res) => {
-  const config = loadTrainingConfig(req.tenantId);
-  const doc = config.knowledgeBase.find(d => d.id === req.params.id);
-  if (!doc) return res.status(404).json({ error: 'Document not found' });
-
-  if (req.body.title) doc.title = req.body.title.substring(0, 200);
-  if (req.body.content) doc.content = req.body.content.substring(0, 50000);
-  if (req.body.category) doc.category = req.body.category.substring(0, 50);
-  doc.updatedAt = new Date().toISOString();
-
-  saveTrainingConfig(req.tenantId, config);
-  res.json({ ok: true, doc });
-});
-
-// DELETE /api/training/knowledge/:id — remove a knowledge doc
-app.delete('/api/training/knowledge/:id', requirePlan('business'), requireCommercial('multiTenant'), (req, res) => {
-  const config = loadTrainingConfig(req.tenantId);
-  const idx = config.knowledgeBase.findIndex(d => d.id === req.params.id);
-  if (idx === -1) return res.status(404).json({ error: 'Document not found' });
-
-  const removed = config.knowledgeBase.splice(idx, 1)[0];
-  saveTrainingConfig(req.tenantId, config);
-  logActivity('training', `Knowledge doc removed: "${removed.title}" for tenant ${req.tenantId}`);
-  res.json({ ok: true, removed: removed.id });
-});
-
-// --- Custom Agent Personas ---
-
-// GET /api/training/agents — list custom agents
-app.get('/api/training/agents', requirePlan('business'), requireCommercial('multiTenant'), (req, res) => {
-  const config = loadTrainingConfig(req.tenantId);
-  res.json({ ok: true, agents: config.customAgents, count: config.customAgents.length });
-});
-
-// POST /api/training/agents — create a custom agent
-app.post('/api/training/agents', requirePlan('business'), requireCommercial('multiTenant'), (req, res) => {
-  const { name, title, prompt, modelTier, avatar, department } = req.body;
-  if (!name || !prompt) return res.status(400).json({ error: 'Name and prompt required' });
-
-  const config = loadTrainingConfig(req.tenantId);
-  const maxAgents = PLAN_LEVELS[req.session?.plan] >= PLAN_LEVELS.enterprise ? 50 : 10;
-  if (config.customAgents.length >= maxAgents) {
-    return res.status(400).json({ error: `Custom agent limit reached (${maxAgents}). Upgrade plan for more.` });
-  }
-
-  // Validate model tier
-  const validTiers = ['strategic', 'professional', 'scout', 'creative', 'economy', 'realtime'];
-  const tier = validTiers.includes(modelTier) ? modelTier : 'professional';
-
-  const agent = {
-    id: uuidv4(),
-    name: name.replace(/[^a-z0-9-]/gi, '-').toLowerCase().substring(0, 50),
-    displayName: name.substring(0, 100),
-    title: (title || 'Custom Agent').substring(0, 100),
-    prompt: prompt.substring(0, 20000),
-    modelTier: tier,
-    avatar: (avatar || '').substring(0, 10),
-    department: (department || 'Custom').substring(0, 50),
-    createdAt: new Date().toISOString(),
-  };
-
-  // Prevent name collisions with built-in agents
-  const builtInNames = Object.keys(EFFORT_ROUTING).flatMap(t => EFFORT_ROUTING[t].agents);
-  if (builtInNames.includes(agent.name)) {
-    agent.name = `custom-${agent.name}`;
-  }
-
-  config.customAgents.push(agent);
-  saveTrainingConfig(req.tenantId, config);
-  logActivity('training', `Custom agent created: "${agent.displayName}" for tenant ${req.tenantId}`);
-  res.json({ ok: true, agent });
-});
-
-// PUT /api/training/agents/:id — update a custom agent
-app.put('/api/training/agents/:id', requirePlan('business'), requireCommercial('multiTenant'), (req, res) => {
-  const config = loadTrainingConfig(req.tenantId);
-  const agent = config.customAgents.find(a => a.id === req.params.id);
-  if (!agent) return res.status(404).json({ error: 'Custom agent not found' });
-
-  if (req.body.title) agent.title = req.body.title.substring(0, 100);
-  if (req.body.prompt) agent.prompt = req.body.prompt.substring(0, 20000);
-  if (req.body.modelTier) {
-    const validTiers = ['strategic', 'professional', 'scout', 'creative', 'economy', 'realtime'];
-    if (validTiers.includes(req.body.modelTier)) agent.modelTier = req.body.modelTier;
-  }
-  if (req.body.avatar !== undefined) agent.avatar = req.body.avatar.substring(0, 10);
-  if (req.body.department) agent.department = req.body.department.substring(0, 50);
-  if (req.body.displayName) agent.displayName = req.body.displayName.substring(0, 100);
-  agent.updatedAt = new Date().toISOString();
-
-  saveTrainingConfig(req.tenantId, config);
-  res.json({ ok: true, agent });
-});
-
-// DELETE /api/training/agents/:id — delete a custom agent
-app.delete('/api/training/agents/:id', requirePlan('business'), requireCommercial('multiTenant'), (req, res) => {
-  const config = loadTrainingConfig(req.tenantId);
-  const idx = config.customAgents.findIndex(a => a.id === req.params.id);
-  if (idx === -1) return res.status(404).json({ error: 'Custom agent not found' });
-
-  const removed = config.customAgents.splice(idx, 1)[0];
-  saveTrainingConfig(req.tenantId, config);
-  logActivity('training', `Custom agent deleted: "${removed.displayName}" for tenant ${req.tenantId}`);
-  res.json({ ok: true, removed: removed.id });
-});
-
-// POST /api/training/agents/:id/test — test-run a custom agent
-app.post('/api/training/agents/:id/test', requirePlan('business'), requireCommercial('multiTenant'), async (req, res) => {
-  const { task } = req.body;
-  if (!task) return res.status(400).json({ error: 'Task text required' });
-
-  const config = loadTrainingConfig(req.tenantId);
-  const agent = config.customAgents.find(a => a.id === req.params.id);
-  if (!agent) return res.status(404).json({ error: 'Custom agent not found' });
-
-  // Build a temporary execution with the custom prompt
-  const tenantInstructions = buildTenantContext(req.tenantId);
-  const fullPrompt = tenantInstructions ? `${agent.prompt}\n\n${tenantInstructions}` : agent.prompt;
-
-  try {
-    const result = await callAnthropic(fullPrompt, task, 'high', 2048);
-    res.json({ ok: true, response: result.content, model: 'opus-4.8-high', inputTokens: result.inputTokens, outputTokens: result.outputTokens });
-  } catch (e) {
-    res.status(500).json({ ok: false, error: e.message });
-  }
-});
+// Training routes extracted to commercial/modules/multi-tenant/index.js
 
 // --- Tenant Context Injection ---
 // Builds the per-tenant context string injected into every agent call
@@ -6096,123 +4738,7 @@ function savePluginRegistry(tenantId, registry) {
   fs.writeFileSync(path.join(getPluginsDir(tenantId), 'registry.json'), JSON.stringify(registry, null, 2));
 }
 
-// GET /api/plugins — list all plugins for tenant
-app.get('/api/plugins', requirePlan('pro'), requireCommercial('advancedReporting'), (req, res) => {
-  const registry = loadPluginRegistry(req.session.tenantId || MASTER_TENANT_ID);
-  const plan = req.session.plan || 'free';
-  res.json({ ok: true, plugins: registry.plugins, limit: PLUGIN_LIMITS[plan] || 0, plan });
-});
-
-// POST /api/plugins — create a new plugin
-app.post('/api/plugins', requirePlan('pro'), requireCommercial('advancedReporting'), (req, res) => {
-  const tenantId = req.session.tenantId || MASTER_TENANT_ID;
-  const plan = req.session.plan || 'free';
-  const registry = loadPluginRegistry(tenantId);
-  const limit = PLUGIN_LIMITS[plan] || 0;
-  if (registry.plugins.length >= limit) {
-    return res.status(403).json({ error: `Plugin limit reached (${limit} on ${plan} plan)` });
-  }
-
-  const { name, description, type, config, agentBindings } = req.body;
-  if (!name || !type) return res.status(400).json({ error: 'name and type are required' });
-
-  const validTypes = ['webhook', 'api-tool', 'data-source', 'formatter', 'validator'];
-  if (!validTypes.includes(type)) return res.status(400).json({ error: `Invalid type. Must be one of: ${validTypes.join(', ')}` });
-
-  if (name.length > 60) return res.status(400).json({ error: 'Name must be 60 chars or less' });
-  if (description && description.length > 500) return res.status(400).json({ error: 'Description must be 500 chars or less' });
-
-  const plugin = {
-    id: `plg_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`,
-    name: name.trim(),
-    description: (description || '').trim(),
-    type,
-    config: config || {},
-    agentBindings: agentBindings || [], // which agents can use this plugin
-    enabled: true,
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
-  };
-
-  // Validate config per type
-  if (type === 'webhook' && !plugin.config.url) {
-    return res.status(400).json({ error: 'Webhook plugins require config.url' });
-  }
-  if (type === 'api-tool' && !plugin.config.endpoint) {
-    return res.status(400).json({ error: 'API tool plugins require config.endpoint' });
-  }
-
-  registry.plugins.push(plugin);
-  savePluginRegistry(tenantId, registry);
-  res.json({ ok: true, plugin });
-});
-
-// PUT /api/plugins/:id — update a plugin
-app.put('/api/plugins/:id', requirePlan('pro'), requireCommercial('advancedReporting'), (req, res) => {
-  const tenantId = req.session.tenantId || MASTER_TENANT_ID;
-  const registry = loadPluginRegistry(tenantId);
-  const idx = registry.plugins.findIndex(p => p.id === req.params.id);
-  if (idx === -1) return res.status(404).json({ error: 'Plugin not found' });
-
-  const { name, description, type, config, agentBindings, enabled } = req.body;
-  const plugin = registry.plugins[idx];
-  if (name !== undefined) plugin.name = name.trim().substring(0, 60);
-  if (description !== undefined) plugin.description = description.trim().substring(0, 500);
-  if (type !== undefined) plugin.type = type;
-  if (config !== undefined) plugin.config = config;
-  if (agentBindings !== undefined) plugin.agentBindings = agentBindings;
-  if (enabled !== undefined) plugin.enabled = !!enabled;
-  plugin.updatedAt = new Date().toISOString();
-
-  registry.plugins[idx] = plugin;
-  savePluginRegistry(tenantId, registry);
-  res.json({ ok: true, plugin });
-});
-
-// DELETE /api/plugins/:id — remove a plugin
-app.delete('/api/plugins/:id', requirePlan('pro'), requireCommercial('advancedReporting'), (req, res) => {
-  const tenantId = req.session.tenantId || MASTER_TENANT_ID;
-  const registry = loadPluginRegistry(tenantId);
-  const idx = registry.plugins.findIndex(p => p.id === req.params.id);
-  if (idx === -1) return res.status(404).json({ error: 'Plugin not found' });
-
-  registry.plugins.splice(idx, 1);
-  savePluginRegistry(tenantId, registry);
-  res.json({ ok: true });
-});
-
-// POST /api/plugins/:id/test — test-fire a plugin
-app.post('/api/plugins/:id/test', requirePlan('pro'), requireCommercial('advancedReporting'), async (req, res) => {
-  const tenantId = req.session.tenantId || MASTER_TENANT_ID;
-  const registry = loadPluginRegistry(tenantId);
-  const plugin = registry.plugins.find(p => p.id === req.params.id);
-  if (!plugin) return res.status(404).json({ error: 'Plugin not found' });
-
-  try {
-    if (plugin.type === 'webhook') {
-      const testPayload = { event: 'test', pluginId: plugin.id, tenantId, timestamp: new Date().toISOString() };
-      const resp = await fetch(plugin.config.url, {
-        method: plugin.config.method || 'POST',
-        headers: { 'Content-Type': 'application/json', ...(plugin.config.headers || {}) },
-        body: JSON.stringify(testPayload),
-        signal: AbortSignal.timeout(10000),
-      });
-      res.json({ ok: true, status: resp.status, statusText: resp.statusText });
-    } else if (plugin.type === 'api-tool') {
-      const resp = await fetch(plugin.config.endpoint, {
-        method: 'GET',
-        headers: plugin.config.headers || {},
-        signal: AbortSignal.timeout(10000),
-      });
-      const body = await resp.text();
-      res.json({ ok: true, status: resp.status, preview: body.substring(0, 500) });
-    } else {
-      res.json({ ok: true, message: `Plugin "${plugin.name}" (${plugin.type}) is configured correctly.` });
-    }
-  } catch (e) {
-    res.json({ ok: false, error: e.message });
-  }
-});
+// Plugin routes extracted to commercial/modules/advanced-reporting/index.js
 
 // ========================================================================
 //  ADVANCED REPORTING — PDF/CSV export + scheduled reports
@@ -6239,342 +4765,13 @@ function saveReportConfig(tenantId, config) {
   fs.writeFileSync(path.join(getReportsDir(tenantId), 'config.json'), JSON.stringify(config, null, 2));
 }
 
-// GET /api/reports — list report templates and history
-app.get('/api/reports', requirePlan('pro'), requireCommercial('advancedReporting'), (req, res) => {
-  const tenantId = req.session.tenantId || MASTER_TENANT_ID;
-  const plan = req.session.plan || 'free';
-  const config = loadReportConfig(tenantId);
-
-  // Built-in report templates
-  const templates = [
-    { id: 'seo-audit', name: 'SEO Audit Summary', description: 'Latest SEO audit scores, findings, and action items', formats: ['pdf', 'csv'], category: 'SEO' },
-    { id: 'agent-activity', name: 'Agent Activity Report', description: 'Agent usage, task counts, model costs, and performance metrics', formats: ['pdf', 'csv'], category: 'Operations' },
-    { id: 'tenant-usage', name: 'Tenant Usage Report', description: 'API calls, storage, agent hours, and bandwidth per tenant', formats: ['pdf', 'csv'], category: 'Admin' },
-    { id: 'content-performance', name: 'Content Performance', description: 'Content created, published, engagement metrics, and SEO impact', formats: ['pdf', 'csv'], category: 'Marketing' },
-    { id: 'financial-summary', name: 'Financial Summary', description: 'Revenue, costs, margins, and forecasts with trend analysis', formats: ['pdf', 'csv'], category: 'Finance' },
-    { id: 'security-audit', name: 'Security Audit Log', description: 'Login attempts, API usage, permission changes, and anomalies', formats: ['pdf', 'csv'], category: 'Security' },
-    { id: 'executive-dashboard', name: 'Executive Dashboard', description: 'High-level KPIs, department summaries, and strategic metrics', formats: ['pdf'], category: 'Executive' },
-    { id: 'custom', name: 'Custom Report', description: 'Build a custom report with selected data sources and date range', formats: ['pdf', 'csv'], category: 'Custom' },
-  ];
-
-  res.json({
-    ok: true,
-    templates,
-    schedules: config.schedules || [],
-    history: (config.history || []).slice(-50),
-    limit: REPORT_LIMITS[plan] || 0,
-    plan,
-  });
-});
-
-// POST /api/reports/generate — generate a report on demand
-app.post('/api/reports/generate', requirePlan('pro'), requireCommercial('advancedReporting'), async (req, res) => {
-  const tenantId = req.session.tenantId || MASTER_TENANT_ID;
-  const { templateId, format, dateRange, options } = req.body;
-  if (!templateId || !format) return res.status(400).json({ error: 'templateId and format required' });
-
-  const validFormats = ['pdf', 'csv', 'json'];
-  if (!validFormats.includes(format)) return res.status(400).json({ error: `Invalid format. Must be: ${validFormats.join(', ')}` });
-
-  const config = loadReportConfig(tenantId);
-  const reportId = `rpt_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`;
-
-  // Gather data based on template
-  let reportData = {};
-  const range = dateRange || { start: new Date(Date.now() - 30 * 86400000).toISOString(), end: new Date().toISOString() };
-
-  try {
-    if (templateId === 'agent-activity') {
-      const logDir = path.join(BASE, '.magent', 'state');
-      reportData = {
-        title: 'Agent Activity Report',
-        dateRange: range,
-        totalAgents: 51,
-        departments: 10,
-        generatedAt: new Date().toISOString(),
-        sections: [
-          { name: 'Summary', data: { totalTasks: Math.floor(Math.random() * 500) + 100, avgResponseTime: '2.3s', successRate: '97.8%' } },
-          { name: 'By Department', data: ['Executive', 'Engineering', 'Marketing', 'Creative', 'Legal', 'Support', 'IT', 'Product', 'Operations', 'Board'].map(d => ({ department: d, tasks: Math.floor(Math.random() * 80) + 10 })) },
-        ],
-      };
-    } else if (templateId === 'seo-audit') {
-      const auditsDir = path.join(BASE, '.magent', 'state', 'seo-audits');
-      const audits = fs.existsSync(auditsDir) ? fs.readdirSync(auditsDir).filter(f => f.endsWith('.json')).slice(-5) : [];
-      reportData = {
-        title: 'SEO Audit Summary',
-        dateRange: range,
-        auditCount: audits.length,
-        generatedAt: new Date().toISOString(),
-        sections: [{ name: 'Recent Audits', data: audits.map(f => ({ file: f, date: f.replace('.json', '') })) }],
-      };
-    } else if (templateId === 'financial-summary') {
-      reportData = {
-        title: 'Financial Summary',
-        dateRange: range,
-        generatedAt: new Date().toISOString(),
-        sections: [
-          { name: 'Revenue', data: { mrr: '$0', arr: '$0', note: 'Connect Stripe for live data' } },
-          { name: 'API Costs', data: { estimated: 'See Costs view for live model usage tracking' } },
-        ],
-      };
-    } else if (templateId === 'executive-dashboard') {
-      reportData = {
-        title: 'Executive Dashboard',
-        dateRange: range,
-        generatedAt: new Date().toISOString(),
-        sections: [
-          { name: 'KPIs', data: { agents: 51, departments: 10, uptime: '99.9%', activeTenants: 1 } },
-          { name: 'Highlights', data: { note: 'Full executive summary generated from latest data' } },
-        ],
-      };
-    } else {
-      reportData = {
-        title: `${templateId.replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase())} Report`,
-        dateRange: range,
-        generatedAt: new Date().toISOString(),
-        sections: [{ name: 'Data', data: options || {} }],
-      };
-    }
-
-    // Save report to history
-    const reportEntry = {
-      id: reportId,
-      templateId,
-      format,
-      title: reportData.title,
-      dateRange: range,
-      generatedAt: new Date().toISOString(),
-      status: 'completed',
-    };
-
-    if (format === 'csv') {
-      // Generate CSV
-      const rows = [];
-      for (const section of reportData.sections) {
-        rows.push([`--- ${section.name} ---`]);
-        if (Array.isArray(section.data)) {
-          if (section.data.length > 0) {
-            rows.push(Object.keys(section.data[0]));
-            section.data.forEach(row => rows.push(Object.values(row)));
-          }
-        } else {
-          Object.entries(section.data).forEach(([k, v]) => rows.push([k, v]));
-        }
-        rows.push([]);
-      }
-      const csv = rows.map(r => r.join(',')).join('\n');
-      const csvPath = path.join(getReportsDir(tenantId), `${reportId}.csv`);
-      fs.writeFileSync(csvPath, csv);
-      reportEntry.filePath = csvPath;
-      reportEntry.fileName = `${reportData.title.replace(/\s+/g, '-').toLowerCase()}-${new Date().toISOString().slice(0, 10)}.csv`;
-    } else if (format === 'json') {
-      const jsonPath = path.join(getReportsDir(tenantId), `${reportId}.json`);
-      fs.writeFileSync(jsonPath, JSON.stringify(reportData, null, 2));
-      reportEntry.filePath = jsonPath;
-      reportEntry.fileName = `${reportData.title.replace(/\s+/g, '-').toLowerCase()}-${new Date().toISOString().slice(0, 10)}.json`;
-    } else {
-      // PDF — generate HTML-based report saved as JSON (client renders)
-      reportEntry.data = reportData;
-      reportEntry.fileName = `${reportData.title.replace(/\s+/g, '-').toLowerCase()}-${new Date().toISOString().slice(0, 10)}.pdf`;
-    }
-
-    config.history = config.history || [];
-    config.history.push(reportEntry);
-    if (config.history.length > 100) config.history = config.history.slice(-100);
-    saveReportConfig(tenantId, config);
-
-    res.json({ ok: true, report: reportEntry, data: reportData });
-  } catch (e) {
-    res.status(500).json({ error: 'Report generation failed: ' + e.message });
-  }
-});
-
-// POST /api/reports/schedule — create or update a scheduled report
-app.post('/api/reports/schedule', requirePlan('pro'), requireCommercial('advancedReporting'), (req, res) => {
-  const tenantId = req.session.tenantId || MASTER_TENANT_ID;
-  const { templateId, format, frequency, email, enabled } = req.body;
-  if (!templateId || !frequency) return res.status(400).json({ error: 'templateId and frequency required' });
-
-  const validFreqs = ['daily', 'weekly', 'biweekly', 'monthly'];
-  if (!validFreqs.includes(frequency)) return res.status(400).json({ error: `frequency must be: ${validFreqs.join(', ')}` });
-
-  const config = loadReportConfig(tenantId);
-  config.schedules = config.schedules || [];
-
-  const existing = config.schedules.findIndex(s => s.templateId === templateId);
-  const schedule = {
-    id: existing >= 0 ? config.schedules[existing].id : `sched_${Date.now().toString(36)}`,
-    templateId,
-    format: format || 'pdf',
-    frequency,
-    email: email || req.session.email || '',
-    enabled: enabled !== false,
-    createdAt: existing >= 0 ? config.schedules[existing].createdAt : new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
-  };
-
-  if (existing >= 0) {
-    config.schedules[existing] = schedule;
-  } else {
-    config.schedules.push(schedule);
-  }
-
-  saveReportConfig(tenantId, config);
-  res.json({ ok: true, schedule });
-});
-
-// DELETE /api/reports/schedule/:id — remove a scheduled report
-app.delete('/api/reports/schedule/:id', requirePlan('pro'), requireCommercial('advancedReporting'), (req, res) => {
-  const tenantId = req.session.tenantId || MASTER_TENANT_ID;
-  const config = loadReportConfig(tenantId);
-  config.schedules = (config.schedules || []).filter(s => s.id !== req.params.id);
-  saveReportConfig(tenantId, config);
-  res.json({ ok: true });
-});
-
-// GET /api/reports/download/:reportId — download a generated report file
-app.get('/api/reports/download/:reportId', requirePlan('pro'), requireCommercial('advancedReporting'), (req, res) => {
-  const tenantId = req.session?.tenantId || MASTER_TENANT_ID;
-  const config = loadReportConfig(tenantId);
-  const entry = (config.history || []).find(h => h.id === req.params.reportId);
-  if (!entry) return res.status(404).json({ error: 'Report not found' });
-
-  if (entry.filePath && fs.existsSync(entry.filePath)) {
-    res.download(entry.filePath, entry.fileName || 'report');
-  } else if (entry.data) {
-    res.json({ ok: true, data: entry.data, fileName: entry.fileName });
-  } else {
-    res.status(404).json({ error: 'Report file not found' });
-  }
-});
+// Report routes extracted to commercial/modules/advanced-reporting/index.js
 
 // ========================================================================
 //  VIDEO AVATAR MEETINGS — Gemini Omni real-time video
 // ========================================================================
 
-// GET /api/meetings/capabilities — check if video meetings are available
-app.get('/api/meetings/capabilities', requireCommercial('videoMeetings'), (req, res) => {
-  const hasGemini = !!(settings.ai?.gemini_api_key);
-  res.json({
-    ok: true,
-    videoEnabled: hasGemini,
-    features: {
-      singleAgent: true,
-      multiAgent: hasGemini,
-      screenShare: true,
-      whiteboard: true,
-      recording: false, // future
-    },
-    requiredKeys: hasGemini ? [] : ['GEMINI_API_KEY'],
-  });
-});
-
-// POST /api/meetings/create — create a meeting room
-app.post('/api/meetings/create', requirePlan('pro'), requireCommercial('videoMeetings'), (req, res) => {
-  const { participants, topic, mode } = req.body;
-  if (!participants || !Array.isArray(participants) || participants.length === 0) {
-    return res.status(400).json({ error: 'participants array required (agent names)' });
-  }
-  if (participants.length > 5) {
-    return res.status(400).json({ error: 'Maximum 5 participants per meeting' });
-  }
-
-  const meetingId = `mtg_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`;
-  const meeting = {
-    id: meetingId,
-    participants: participants.map(name => {
-      const profile = ORG_CHART.departments.flatMap(d => d.employees).find(e => e.name.toLowerCase() === name.toLowerCase());
-      return {
-        name: profile?.name || name,
-        title: profile?.title || 'Custom Agent',
-        agent: profile?.agent || 'orchestrator',
-        avatar: profile?.avatar || '🤖',
-      };
-    }),
-    topic: topic || 'General Discussion',
-    mode: mode || 'roundtable', // 'single', 'roundtable', 'panel'
-    status: 'active',
-    createdAt: new Date().toISOString(),
-    messages: [],
-  };
-
-  // Store in memory for active meetings
-  if (!global.activeMeetings) global.activeMeetings = {};
-  global.activeMeetings[meetingId] = meeting;
-
-  // Auto-cleanup after 2 hours
-  setTimeout(() => { delete global.activeMeetings?.[meetingId]; }, 2 * 60 * 60 * 1000);
-
-  res.json({ ok: true, meeting });
-});
-
-// POST /api/meetings/:id/message — send a message in a meeting
-app.post('/api/meetings/:id/message', requirePlan('pro'), requireCommercial('videoMeetings'), async (req, res) => {
-  const meeting = global.activeMeetings?.[req.params.id];
-  if (!meeting) return res.status(404).json({ error: 'Meeting not found or expired' });
-
-  const { text, targetParticipant } = req.body;
-  if (!text) return res.status(400).json({ error: 'text required' });
-
-  meeting.messages.push({ role: 'user', content: text, timestamp: new Date().toISOString() });
-
-  // Determine which participants respond
-  const respondents = targetParticipant
-    ? meeting.participants.filter(p => p.name.toLowerCase() === targetParticipant.toLowerCase())
-    : meeting.mode === 'roundtable' ? meeting.participants : [meeting.participants[0]];
-
-  const responses = [];
-  const recentHistory = meeting.messages.slice(-12).map(m => `${m.speaker || m.role}: ${m.content}`).join('\n');
-
-  for (const participant of respondents) {
-    try {
-      const meetingContext = `You are in a video meeting as ${participant.name} (${participant.title}).
-Topic: ${meeting.topic}
-Other participants: ${meeting.participants.filter(p => p.name !== participant.name).map(p => `${p.name} (${p.title})`).join(', ')}
-Mode: ${meeting.mode}
-
-Stay in character. Be concise — this is a live meeting, not a report. Address others by name when relevant. Respond in 2-4 sentences unless asked for detail.
-
-Recent conversation:
-${recentHistory}`;
-
-      const result = await executeAgent(participant.agent, text, meetingContext, req.session.tenantId || MASTER_TENANT_ID);
-      const reply = {
-        role: 'assistant',
-        speaker: participant.name,
-        title: participant.title,
-        avatar: participant.avatar,
-        content: result.content || result.error || 'No response',
-        timestamp: new Date().toISOString(),
-      };
-      meeting.messages.push(reply);
-      responses.push(reply);
-    } catch (e) {
-      responses.push({ speaker: participant.name, content: `[Error: ${e.message}]`, timestamp: new Date().toISOString() });
-    }
-  }
-
-  res.json({ ok: true, responses });
-});
-
-// DELETE /api/meetings/:id — end a meeting
-app.delete('/api/meetings/:id', requirePlan('pro'), requireCommercial('videoMeetings'), (req, res) => {
-  if (global.activeMeetings?.[req.params.id]) {
-    const meeting = global.activeMeetings[req.params.id];
-    meeting.status = 'ended';
-    delete global.activeMeetings[req.params.id];
-    res.json({ ok: true, summary: `Meeting ended. ${meeting.messages.length} messages exchanged.` });
-  } else {
-    res.status(404).json({ error: 'Meeting not found' });
-  }
-});
-
-// GET /api/meetings/:id — get meeting state
-app.get('/api/meetings/:id', requirePlan('pro'), requireCommercial('videoMeetings'), (req, res) => {
-  const meeting = global.activeMeetings?.[req.params.id];
-  if (!meeting) return res.status(404).json({ error: 'Meeting not found or expired' });
-  res.json({ ok: true, meeting });
-});
+// Video Meetings routes extracted to commercial/modules/video-meetings/index.js
 
 // Mask a key for display — show first 4 and last 4 chars
 function capitalize(str) {
@@ -7097,17 +5294,7 @@ app.get('/api/license/info', (req, res) => {
   });
 });
 
-// GET /api/license/participants — admin list of all franchise participants
-app.get('/api/license/participants', requireAdmin, requireCommercial('whiteLabel'), (req, res) => {
-  res.json(franchises);
-});
-
-// GET /api/license/participant/:id — single participant detail
-app.get('/api/license/participant/:id', requireAdmin, requireCommercial('whiteLabel'), (req, res) => {
-  const f = licenses.find(p => p.id === req.params.id);
-  if (!f) return res.status(404).json({ error: 'Participant not found' });
-  res.json(f);
-});
+// White Label routes extracted to commercial/modules/white-label/index.js
 
 // POST /api/license/apply — submit application and go straight to Stripe checkout
 app.post('/api/license/apply', async (req, res) => {
@@ -7192,93 +5379,7 @@ app.post('/api/license/apply', async (req, res) => {
   }
 });
 
-// PUT /api/license/participant/:id — admin update participant (approve, reject, activate, notes)
-app.put('/api/license/participant/:id', requireAdmin, requireCommercial('whiteLabel'), (req, res) => {
-  const f = licenses.find(p => p.id === req.params.id);
-  if (!f) return res.status(404).json({ error: 'Participant not found' });
-
-  const { status, notes, territory, instanceUrl } = req.body;
-
-  if (status) {
-    const validTransitions = {
-      pending: ['approved', 'rejected'],
-      approved: ['payment', 'rejected'],
-      payment: ['active', 'rejected'],
-      active: ['suspended'],
-      suspended: ['active'],
-      rejected: ['pending'],
-    };
-    if (!validTransitions[f.status]?.includes(status)) {
-      return res.status(400).json({ error: `Cannot transition from ${f.status} to ${status}` });
-    }
-    f.status = status;
-    if (status === 'approved') f.approvedAt = new Date().toISOString();
-    if (status === 'active') {
-      f.activatedAt = new Date().toISOString();
-
-      // Auto-provision tenant for newly activated license
-      if (!f.tenantId) {
-        const tenantId = uuidv4().substring(0, 12);
-        const subdomain = (f.company || f.name).toLowerCase().replace(/[^a-z0-9]/g, '-').replace(/-+/g, '-').substring(0, 20);
-        const tenant = {
-          id: tenantId,
-          name: f.company || f.name,
-          domain: null,
-          subdomain,
-          ownerId: f.email,
-          plan: 'franchise',
-          status: 'active',
-          branding: {
-            companyName: f.company || f.name,
-            tagline: 'Powered by AI OS',
-            logo: null,
-            primaryColor: '#3b82f6',
-            accentColor: '#8b5cf6',
-          },
-          industry: f.industry || null,
-          template: null,
-          createdAt: new Date().toISOString(),
-          franchiseId: f.id,
-        };
-
-        ensureTenantDir(tenantId);
-        // Seed tenant admin
-        saveTenantState(tenantId, 'users', [{
-          email: f.email, passwordHash: null, plan: 'franchise', role: 'admin', tenantId, createdAt: new Date().toISOString(),
-        }]);
-        // Seed empty settings
-        saveTenantState(tenantId, 'settings', {
-          ai: { anthropic_api_key: '', openai_api_key: '', deepseek_api_key: '', xai_api_key: '', gemini_api_key: '', perplexity_api_key: '', firecrawl_api_key: '', tavily_api_key: '', apify_api_token: '', manus_api_key: '', livekit_api_key: '', livekit_api_secret: '', livekit_url: '', deepgram_api_key: '', cartesia_api_key: '' },
-          mcp: { hermes_url: 'http://127.0.0.1:8420', hermes_enabled: false },
-          notifications: { telegram_bot_token: '', telegram_chat_id: '', slack_webhook_url: '' },
-          automation: { n8n_webhook_base: '', n8n_api_key: '', team_webhook_url: '' },
-          stripe: { secret_key: '', webhook_secret: '', business_price_id: '', enterprise_price_id: '', enterprise_renewal_price_id: '' },
-          seo: { dataforseo_login: '', dataforseo_password: '', default_location: 'United States', default_language: 'en' },
-          general: { demo_mode: true, cors_origin: '*', api_token: '' },
-        });
-
-        tenantRegistry[tenantId] = tenant;
-        saveState('tenant_registry', tenantRegistry);
-
-        f.tenantId = tenantId;
-        f.instanceUrl = `https://${subdomain}.${tenantRegistry[MASTER_TENANT_ID]?.domain || 'aiosorchestrationlab.com'}`;
-
-        logActivity('license', `Tenant auto-provisioned for ${f.name}: ${tenantId} (${subdomain})`, { franchiseId: f.id, tenantId });
-        broadcast({ event: 'tenant_provisioned', data: { id: tenantId, name: tenant.name, subdomain, franchiseId: f.id } });
-      }
-    }
-  }
-
-  if (notes !== undefined) f.notes = notes;
-  if (territory) f.territory = territory;
-  if (instanceUrl) f.instanceUrl = instanceUrl;
-
-  saveState('licenses', licenses);
-  logActivity('license', `Franchise ${f.status}: ${f.name} (${f.email})`, { id: f.id, status: f.status });
-  broadcast({ event: 'license_updated', data: { id: f.id, status: f.status, name: f.name } });
-
-  res.json({ ok: true, participant: f });
-});
+// White Label participant update route extracted to commercial/modules/white-label/index.js
 
 // POST /api/license/checkout/:id — generate Stripe checkout for franchise fee
 app.post('/api/license/checkout/:id', async (req, res) => {
@@ -7332,27 +5433,7 @@ app.post('/api/license/checkout/:id', async (req, res) => {
   }
 });
 
-// GET /api/license/stats — license program stats
-app.get('/api/license/stats', requireAdmin, requireCommercial('whiteLabel'), (req, res) => {
-  const byStatus = {};
-  licenses.forEach(f => { byStatus[f.status] = (byStatus[f.status] || 0) + 1; });
-
-  const active = byStatus.active || 0;
-  const revenue = active * LICENSE_CONFIG.tiers.lifetime.price;
-  const remaining = LICENSE_CONFIG.maxLifetime - active - (byStatus.pending || 0) - (byStatus.approved || 0) - (byStatus.payment || 0);
-
-  res.json({
-    total: licenses.length,
-    byStatus,
-    active,
-    remaining: Math.max(0, remaining),
-    maxParticipants: LICENSE_CONFIG.maxLifetime,
-    fee: LICENSE_CONFIG.tiers.lifetime.price,
-    totalRevenue: revenue,
-    projectedRevenue: LICENSE_CONFIG.maxLifetime * LICENSE_CONFIG.tiers.lifetime.price,
-    fillRate: Math.round((active / LICENSE_CONFIG.maxLifetime) * 100),
-  });
-});
+// White Label stats route extracted to commercial/modules/white-label/index.js
 
 // --- Self-Improving Platform (Telegram/Slack Approval Bot) ---
 
@@ -7585,121 +5666,7 @@ async function applyProposal(proposal) {
   return results;
 }
 
-// POST /api/platform/propose — create a self-improvement proposal
-app.post('/api/platform/propose', requireAdmin, requireCommercial('selfImproving'), (req, res) => {
-  const { type, title, description, diff, autoApply } = req.body;
-  if (!type || !title) return res.status(400).json({ error: 'Type and title required' });
-
-  const proposalType = PROPOSAL_TYPES[type] || { icon: '📋', label: type, risk: 'medium' };
-  const proposal = {
-    id: uuidv4(),
-    type,
-    typeLabel: proposalType.label,
-    icon: proposalType.icon,
-    risk: proposalType.risk,
-    title,
-    description: description || '',
-    diff: diff || null,
-    autoApply: autoApply || false,
-    status: 'pending', // pending → approved → applied | rejected | expired
-    createdAt: new Date().toISOString(),
-    respondedAt: null,
-    appliedAt: null,
-    respondedVia: null, // telegram, slack, dashboard
-    response: null,
-  };
-
-  pendingApprovals.push(proposal);
-  saveState('pending_approvals', pendingApprovals);
-
-  // Send to Telegram if configured
-  sendTelegramApproval(proposal);
-  // Send to Slack if configured
-  sendSlackApproval(proposal);
-
-  broadcast({ event: 'platform_proposal', data: proposal });
-  logActivity('platform', `Self-improvement proposed: ${title}`, { id: proposal.id, type, risk: proposalType.risk });
-
-  res.json({ ok: true, proposal });
-});
-
-// GET /api/platform/proposals — list all proposals
-app.get('/api/platform/proposals', requireAdmin, requireCommercial('selfImproving'), (req, res) => {
-  res.json(pendingApprovals);
-});
-
-// PUT /api/platform/proposals/:id — approve or reject
-app.put('/api/platform/proposals/:id', requireAdmin, requireCommercial('selfImproving'), async (req, res) => {
-  const proposal = pendingApprovals.find(p => p.id === req.params.id);
-  if (!proposal) return res.status(404).json({ error: 'Proposal not found' });
-
-  const { status, response } = req.body;
-  if (!['approved', 'rejected'].includes(status)) return res.status(400).json({ error: 'Status must be approved or rejected' });
-
-  proposal.status = status;
-  proposal.respondedAt = new Date().toISOString();
-  proposal.respondedVia = 'dashboard';
-  proposal.response = response || null;
-
-  if (status === 'approved' && proposal.autoApply) {
-    const applyResult = await applyProposal(proposal);
-    if (applyResult.success) {
-      proposal.status = 'applied';
-      proposal.appliedAt = new Date().toISOString();
-      proposal.applyResult = applyResult;
-      logActivity('platform', `Auto-applied: ${proposal.title}`, { id: proposal.id, steps: applyResult.steps });
-      sendTelegramMessage(`✅ Auto-applied: ${proposal.title}\nSteps: ${applyResult.steps.map(s => s.action).join(' → ')}`);
-    } else {
-      proposal.status = 'approved'; // stays approved but not applied
-      proposal.applyResult = applyResult;
-      logActivity('platform', `Auto-apply failed: ${proposal.title}`, { id: proposal.id, steps: applyResult.steps });
-      sendTelegramMessage(`⚠️ Auto-apply failed: ${proposal.title}\nReason: ${applyResult.steps.map(s => s.reason || s.warning || s.action).join(', ')}`);
-    }
-  }
-
-  saveState('pending_approvals', pendingApprovals);
-  broadcast({ event: 'platform_proposal_responded', data: { id: proposal.id, status: proposal.status } });
-
-  // Notify via Telegram/Slack
-  const emoji = status === 'approved' ? '✅' : '❌';
-  sendTelegramMessage(`${emoji} Proposal ${status}: ${proposal.title}`);
-  sendSlackMessage(`${emoji} Proposal ${status}: ${proposal.title}`);
-
-  res.json({ ok: true, proposal });
-});
-
-// POST /api/platform/proposals/:id/apply — manually trigger apply on an approved proposal
-app.post('/api/platform/proposals/:id/apply', requireAdmin, requireCommercial('selfImproving'), async (req, res) => {
-  const proposal = pendingApprovals.find(p => p.id === req.params.id);
-  if (!proposal) return res.status(404).json({ error: 'Proposal not found' });
-  if (proposal.status !== 'approved') return res.status(400).json({ error: `Cannot apply — status is "${proposal.status}", must be "approved"` });
-
-  const applyResult = await applyProposal(proposal);
-  if (applyResult.success) {
-    proposal.status = 'applied';
-    proposal.appliedAt = new Date().toISOString();
-    proposal.applyResult = applyResult;
-    saveState('pending_approvals', pendingApprovals);
-    logActivity('platform', `Manually applied: ${proposal.title}`, { id: proposal.id, steps: applyResult.steps });
-    sendTelegramMessage(`✅ Applied: ${proposal.title}`);
-    res.json({ ok: true, proposal, applyResult });
-  } else {
-    proposal.applyResult = applyResult;
-    saveState('pending_approvals', pendingApprovals);
-    res.json({ ok: false, error: 'Apply failed', applyResult });
-  }
-});
-
-// GET /api/platform/stats — self-improvement stats
-app.get('/api/platform/stats', requireAdmin, requireCommercial('selfImproving'), (req, res) => {
-  const byStatus = {};
-  const byType = {};
-  pendingApprovals.forEach(p => {
-    byStatus[p.status] = (byStatus[p.status] || 0) + 1;
-    byType[p.type] = (byType[p.type] || 0) + 1;
-  });
-  res.json({ total: pendingApprovals.length, byStatus, byType });
-});
+// Self-Improving routes extracted to commercial/modules/self-improving/index.js
 
 // --- Telegram Bot Integration ---
 async function sendTelegramMessage(text) {
@@ -7745,52 +5712,7 @@ async function sendTelegramApproval(proposal) {
   }
 }
 
-// POST /api/platform/telegram-webhook — receive Telegram bot responses
-app.post('/api/platform/telegram-webhook', requireCommercial('selfImproving'), async (req, res) => {
-  const update = req.body;
-  const text = update?.message?.text || '';
-  const chatId = String(update?.message?.chat?.id || '');
-
-  // Verify this is from our configured chat
-  const configuredChat = String(settings.notifications?.telegram_chat_id || '');
-  if (!configuredChat || chatId !== configuredChat) return res.json({ ok: true });
-
-  // Parse /approve or /reject commands
-  const approveMatch = text.match(/\/approve\s+(\S+)/i);
-  const rejectMatch = text.match(/\/reject\s+(\S+)/i);
-
-  if (approveMatch || rejectMatch) {
-    const isApprove = !!approveMatch;
-    const shortId = (approveMatch || rejectMatch)[1];
-    const proposal = pendingApprovals.find(p => p.id.startsWith(shortId) && p.status === 'pending');
-
-    if (proposal) {
-      proposal.status = isApprove ? 'approved' : 'rejected';
-      proposal.respondedAt = new Date().toISOString();
-      proposal.respondedVia = 'telegram';
-
-      if (isApprove && proposal.autoApply) {
-        const applyResult = await applyProposal(proposal);
-        if (applyResult.success) {
-          proposal.status = 'applied';
-          proposal.appliedAt = new Date().toISOString();
-          proposal.applyResult = applyResult;
-        }
-      }
-
-      saveState('pending_approvals', pendingApprovals);
-      broadcast({ event: 'platform_proposal_responded', data: { id: proposal.id, status: proposal.status } });
-      logActivity('platform', `Proposal ${proposal.status} via Telegram: ${proposal.title}`, { id: proposal.id });
-
-      const emoji = isApprove ? '✅' : '❌';
-      sendTelegramMessage(`${emoji} <b>${proposal.title}</b> — ${proposal.status}${proposal.status === 'applied' ? ' and auto-applied' : ''}`);
-    } else {
-      sendTelegramMessage(`⚠️ No pending proposal found matching: ${shortId}`);
-    }
-  }
-
-  res.json({ ok: true });
-});
+// Self-Improving telegram webhook extracted to commercial/modules/self-improving/index.js
 
 // --- Slack Integration ---
 async function sendSlackMessage(text) {
@@ -7860,116 +5782,8 @@ if (!fs.existsSync(YT_ANALYSIS_DIR)) fs.mkdirSync(YT_ANALYSIS_DIR, { recursive: 
 
 const ytAnalyses = loadState('yt_analyses', []);
 
-// POST /api/youtube/analyze — start a YouTube video analysis
-app.post('/api/youtube/analyze', requireAdmin, requireCommercial('youtubeIntel'), async (req, res) => {
-  const { url, frameInterval, analysisType } = req.body;
-  if (!url) return res.status(400).json({ error: 'YouTube URL is required' });
+// YouTube Intel routes extracted to commercial/modules/youtube-intel/index.js
 
-  // Validate YouTube URL
-  const ytMatch = url.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/shorts\/)([\w-]{11})/);
-  if (!ytMatch) return res.status(400).json({ error: 'Invalid YouTube URL — must be a youtube.com or youtu.be link' });
-
-  const videoId = ytMatch[1];
-  const analysisId = uuidv4();
-  const interval = frameInterval || 10; // seconds between frames
-  const type = analysisType || 'full'; // full, visual-only, transcript-only
-
-  const analysis = {
-    id: analysisId,
-    videoId,
-    url: url.trim(),
-    status: 'processing',
-    type,
-    frameInterval: interval,
-    startedAt: new Date().toISOString(),
-    completedAt: null,
-    videoInfo: null,
-    transcript: null,
-    frames: [],
-    visualAnalysis: [],
-    summary: null,
-    insights: null,
-  };
-
-  ytAnalyses.push(analysis);
-  broadcast({ event: 'yt_analysis_started', data: { id: analysisId, videoId } });
-  logActivity('youtube', `Video analysis started: ${videoId}`, { analysisId, type });
-
-  // Real YouTube analysis pipeline
-  if (!DEMO_MODE && settings.ai.anthropic_api_key) {
-    runRealYouTubeAnalysis(analysis, analysisId, interval, type).catch(e => {
-      console.error('[YOUTUBE] Real analysis failed:', e.message);
-      analysis.status = 'complete';
-      analysis.completedAt = new Date().toISOString();
-      analysis.summary = { overview: `Analysis failed: ${e.message}`, keyTopics: [], contentType: 'Error', technicalLevel: 'N/A', actionability: 'N/A' };
-      analysis.insights = [{ type: 'extraction', insight: `Pipeline error: ${e.message}. Ensure yt-dlp and ffmpeg are installed on the server.`, confidence: 1.0 }];
-      saveState('yt_analyses', ytAnalyses);
-      broadcast({ event: 'yt_analysis_complete', data: { id: analysisId, videoId: analysis.videoId } });
-    });
-  }
-  else if (DEMO_MODE) {
-    // Simulate the analysis pipeline
-    const steps = [
-      { delay: 1500, status: 'fetching_info', msg: 'Fetching video metadata...' },
-      { delay: 3000, status: 'extracting_frames', msg: `Extracting frames every ${interval}s...` },
-      { delay: 5000, status: 'transcribing', msg: 'Extracting transcript...' },
-      { delay: 7000, status: 'analyzing_frames', msg: 'Claude Vision analyzing frames...' },
-      { delay: 9500, status: 'synthesizing', msg: 'Synthesizing visual + transcript analysis...' },
-      { delay: 11000, status: 'complete', msg: 'Analysis complete' },
-    ];
-
-    steps.forEach(step => {
-      setTimeout(() => {
-        analysis.status = step.status;
-        broadcast({ event: 'yt_analysis_progress', data: { id: analysisId, status: step.status, msg: step.msg } });
-
-        if (step.status === 'complete') {
-          analysis.completedAt = new Date().toISOString();
-          analysis.videoInfo = generateYTVideoInfo(videoId);
-          analysis.transcript = generateYTTranscript();
-          analysis.frames = generateYTFrames(interval);
-          analysis.visualAnalysis = generateYTVisualAnalysis(analysis.frames);
-          analysis.summary = generateYTSummary(analysis);
-          analysis.insights = generateYTInsights(analysis);
-          saveState('yt_analyses', ytAnalyses);
-          broadcast({ event: 'yt_analysis_complete', data: { id: analysisId, videoId } });
-          logActivity('youtube', `Video analysis complete: ${videoId}`, { analysisId });
-
-          // Track cost
-          const inputTokens = 15000 + analysis.frames.length * 2000;
-          const outputTokens = 5000 + analysis.frames.length * 500;
-          const rates = COST_RATES['opus-4.8-high'];
-          costLedger.push({
-            id: uuidv4(), agent: 'youtube-analyzer', model: 'opus-4.8-high', skill: 'video-analysis',
-            inputTokens, outputTokens,
-            cost: Math.round(((inputTokens / 1_000_000) * rates.input + (outputTokens / 1_000_000) * rates.output) * 10000) / 10000,
-            timestamp: new Date().toISOString(),
-          });
-        }
-      }, step.delay);
-    });
-  }
-
-  res.json({ ok: true, analysisId, videoId, type });
-});
-
-// GET /api/youtube/analyses — list all analyses
-app.get('/api/youtube/analyses', requireAdmin, requireCommercial('youtubeIntel'), (req, res) => {
-  res.json(ytAnalyses.map(a => ({
-    id: a.id, videoId: a.videoId, url: a.url, status: a.status, type: a.type,
-    startedAt: a.startedAt, completedAt: a.completedAt,
-    title: a.videoInfo?.title || null,
-    duration: a.videoInfo?.duration || null,
-    frameCount: a.frames?.length || 0,
-  })));
-});
-
-// GET /api/youtube/analysis/:id — full analysis detail
-app.get('/api/youtube/analysis/:id', requireAdmin, requireCommercial('youtubeIntel'), (req, res) => {
-  const analysis = ytAnalyses.find(a => a.id === req.params.id);
-  if (!analysis) return res.status(404).json({ error: 'Analysis not found' });
-  res.json(analysis);
-});
 
 // DELETE /api/youtube/analysis/:id
 app.delete('/api/youtube/analysis/:id', requireAdmin, (req, res) => {
@@ -8303,107 +6117,7 @@ function generateYTInsights(analysis) {
 
 // --- Gemini Omni Creative Endpoints ---
 
-// POST /api/omni/generate — multimodal content generation
-app.post('/api/omni/generate', requireAdmin, requireCommercial('creativeStudio'), async (req, res) => {
-  const { type, prompt, inputs } = req.body;
-  if (!prompt) return res.status(400).json({ error: 'Prompt is required' });
-
-  const validTypes = ['video', 'image', 'audio', 'thumbnail', 'social-clip'];
-  const outputType = validTypes.includes(type) ? type : 'video';
-
-  const jobId = uuidv4();
-  const job = {
-    id: jobId,
-    type: outputType,
-    prompt,
-    inputs: inputs || {},
-    status: 'processing',
-    progress: 0,
-    startedAt: new Date().toISOString(),
-    completedAt: null,
-    result: null,
-  };
-
-  logActivity('omni', `Omni ${outputType} generation started`, { jobId, prompt: prompt.substring(0, 80) });
-  broadcast({ event: 'omni_job_started', data: { id: jobId, type: outputType } });
-
-  if (!DEMO_MODE && settings.ai.gemini_api_key) {
-    // Real Gemini generation
-    (async () => {
-      broadcast({ event: 'omni_job_progress', data: { id: jobId, progress: 30, status: 'generating', msg: `Sending to Gemini Omni for ${outputType} generation...` } });
-      try {
-        const result = await callGemini(
-          `You are a creative content generator. Generate a detailed ${outputType} concept based on the user's prompt. Describe what the ${outputType} would contain, its structure, style, and key elements. Be specific and production-ready.`,
-          prompt, 2048
-        );
-        broadcast({ event: 'omni_job_progress', data: { id: jobId, progress: 80, status: 'finalizing', msg: 'Finalizing output...' } });
-
-        job.progress = 100;
-        job.status = 'complete';
-        job.completedAt = new Date().toISOString();
-        job.result = {
-          prompt, model: GEMINI_OMNI_MODEL, watermark: 'SynthID', generatedAt: new Date().toISOString(),
-          content: result.content,
-          preview: `Generated ${outputType} concept — ${result.content.substring(0, 100)}...`,
-          inputTokens: result.inputTokens, outputTokens: result.outputTokens,
-        };
-
-        const rates = COST_RATES['gemini-omni'];
-        const cost = (result.inputTokens / 1_000_000) * rates.input + (result.outputTokens / 1_000_000) * rates.output;
-        costLedger.push({ id: uuidv4(), agent: `omni-${outputType}`, model: 'gemini-omni', skill: `${outputType}-generation`, inputTokens: result.inputTokens, outputTokens: result.outputTokens, cost: Math.round(cost * 10000) / 10000, timestamp: new Date().toISOString() });
-
-        broadcast({ event: 'omni_job_complete', data: { id: jobId, type: outputType, result: job.result } });
-        logActivity('omni', `Omni ${outputType} complete (real)`, { jobId });
-      } catch (e) {
-        job.status = 'error';
-        broadcast({ event: 'omni_job_complete', data: { id: jobId, type: outputType, result: { preview: `Error: ${e.message}`, prompt } } });
-      }
-    })();
-  } else if (DEMO_MODE) {
-    // Simulate progressive generation
-    const steps = [
-      { progress: 20, status: 'analyzing', msg: 'Analyzing input modalities...' },
-      { progress: 45, status: 'composing', msg: `Composing ${outputType} elements...` },
-      { progress: 70, status: 'rendering', msg: `Rendering ${outputType} output...` },
-      { progress: 90, status: 'finalizing', msg: 'Applying SynthID watermark & quality check...' },
-      { progress: 100, status: 'complete', msg: 'Generation complete' },
-    ];
-
-    steps.forEach((step, i) => {
-      setTimeout(() => {
-        job.progress = step.progress;
-        job.status = step.status;
-        broadcast({ event: 'omni_job_progress', data: { id: jobId, ...step } });
-
-        if (step.progress === 100) {
-          job.status = 'complete';
-          job.completedAt = new Date().toISOString();
-          job.result = generateOmniResult(outputType, prompt);
-          broadcast({ event: 'omni_job_complete', data: { id: jobId, type: outputType, result: job.result } });
-          logActivity('omni', `Omni ${outputType} complete: ${prompt.substring(0, 50)}`, { jobId });
-
-          // Track cost
-          const inputTokens = 2000 + Math.floor(Math.random() * 5000);
-          const outputTokens = outputType === 'video' ? 50000 + Math.floor(Math.random() * 100000) : 10000 + Math.floor(Math.random() * 20000);
-          const rates = COST_RATES['gemini-omni'];
-          const cost = (inputTokens / 1_000_000) * rates.input + (outputTokens / 1_000_000) * rates.output;
-          costLedger.push({
-            id: uuidv4(), agent: `omni-${outputType}`, model: 'gemini-omni', skill: `${outputType}-generation`,
-            inputTokens, outputTokens, cost: Math.round(cost * 10000) / 10000, timestamp: new Date().toISOString(),
-          });
-        }
-      }, (i + 1) * 1500);
-    });
-  }
-
-  res.json({ ok: true, jobId, type: outputType, status: 'processing' });
-});
-
-// GET /api/omni/job/:id — check generation job status
-app.get('/api/omni/job/:id', requireAdmin, requireCommercial('creativeStudio'), (req, res) => {
-  // In demo mode, return simulated status from broadcast events
-  res.json({ ok: true, message: 'Job status available via WebSocket events' });
-});
+// Creative Studio omni routes extracted to commercial/modules/creative-studio/index.js
 
 // GET /api/omni/capabilities — list available Omni generation types
 app.get('/api/omni/capabilities', (req, res) => {
@@ -8560,124 +6274,7 @@ app.get('/api/seo/free-audit/:id', (req, res) => {
   });
 });
 
-// POST /api/seo/audit — launch a full SEO audit for a domain
-app.post('/api/seo/audit', requireAdmin, requireCommercial('unlimitedSeo'), async (req, res) => {
-  const { domain } = req.body;
-  if (!domain) return res.status(400).json({ error: 'Domain is required' });
-
-  const auditId = uuidv4();
-  const audit = {
-    id: auditId,
-    domain: domain.replace(/^https?:\/\//, '').replace(/\/.*$/, ''),
-    status: 'running',
-    startedAt: new Date().toISOString(),
-    completedAt: null,
-    compositeScore: null,
-    agents: {
-      keyword:    { status: 'running', score: null, findings: [], startedAt: new Date().toISOString() },
-      technical:  { status: 'running', score: null, findings: [], startedAt: new Date().toISOString() },
-      competitor: { status: 'running', score: null, findings: [], startedAt: new Date().toISOString() },
-      content:    { status: 'running', score: null, findings: [], startedAt: new Date().toISOString() },
-      backlink:   { status: 'running', score: null, findings: [], startedAt: new Date().toISOString() },
-    },
-    quickWins: [],
-    actionPlan: [],
-    executiveSummary: '',
-  };
-
-  seoAudits.push(audit);
-  broadcast({ event: 'seo_audit_started', data: { id: auditId, domain: audit.domain } });
-  logActivity('seo', `SEO audit started: ${audit.domain}`, { auditId });
-
-  // Real DataForSEO audit path
-  if (!DEMO_MODE && settings.seo.dataforseo_login && settings.seo.dataforseo_password) {
-    runRealSeoAudit(audit, auditId).catch(e => {
-      console.error('[SEO] Real audit failed:', e.message);
-      // Mark failed agents and complete with partial data
-      const agentNames = ['keyword', 'technical', 'competitor', 'content', 'backlink'];
-      agentNames.forEach(name => {
-        if (audit.agents[name].status === 'running') {
-          audit.agents[name].status = 'error';
-          audit.agents[name].findings = [{ severity: 'critical', issue: `DataForSEO error: ${e.message}`, recommendation: 'Check DataForSEO credentials in Settings and ensure sufficient API credits.' }];
-        }
-      });
-      audit.status = 'complete';
-      audit.completedAt = new Date().toISOString();
-      const scores = agentNames.map(n => audit.agents[n].score || 0);
-      audit.compositeScore = Math.round(scores.reduce((a, b) => a + b, 0) / Math.max(scores.filter(s => s > 0).length, 1));
-      audit.executiveSummary = `Audit partially completed with errors. ${e.message}`;
-      audit.quickWins = generateQuickWins(audit);
-      audit.actionPlan = generateActionPlan(audit);
-      saveState('seo_audits', seoAudits);
-      broadcast({ event: 'seo_audit_complete', data: { auditId, compositeScore: audit.compositeScore } });
-    });
-  }
-  // Simulate parallel agent execution (demo mode)
-  else if (DEMO_MODE) {
-    const agentNames = ['keyword', 'technical', 'competitor', 'content', 'backlink'];
-    const delays = [2000, 3000, 2500, 3500, 4000];
-
-    agentNames.forEach((name, i) => {
-      setTimeout(() => {
-        const score = 40 + Math.floor(Math.random() * 50);
-        audit.agents[name].status = 'complete';
-        audit.agents[name].score = score;
-        audit.agents[name].completedAt = new Date().toISOString();
-        audit.agents[name].findings = generateSeoFindings(name, audit.domain);
-        broadcast({ event: 'seo_agent_complete', data: { auditId, agent: name, score } });
-
-        // Check if all agents are done
-        const allDone = agentNames.every(n => audit.agents[n].status === 'complete');
-        if (allDone) {
-          const scores = agentNames.map(n => audit.agents[n].score);
-          audit.compositeScore = Math.round(scores.reduce((a, b) => a + b, 0) / scores.length);
-          audit.status = 'complete';
-          audit.completedAt = new Date().toISOString();
-          audit.executiveSummary = generateExecutiveSummary(audit);
-          audit.quickWins = generateQuickWins(audit);
-          audit.actionPlan = generateActionPlan(audit);
-          saveState('seo_audits', seoAudits);
-          broadcast({ event: 'seo_audit_complete', data: { auditId, compositeScore: audit.compositeScore } });
-          logActivity('seo', `SEO audit complete: ${audit.domain} — score ${audit.compositeScore}/100`, { auditId });
-        }
-      }, delays[i]);
-    });
-  }
-
-  res.json({ ok: true, auditId, domain: audit.domain });
-});
-
-// GET /api/seo/audits — list all audits
-app.get('/api/seo/audits', requireAdmin, requireCommercial('unlimitedSeo'), (req, res) => {
-  res.json(seoAudits.map(a => ({
-    id: a.id, domain: a.domain, status: a.status,
-    compositeScore: a.compositeScore, startedAt: a.startedAt, completedAt: a.completedAt,
-  })));
-});
-
-// GET /api/seo/audit/:id — get full audit detail
-app.get('/api/seo/audit/:id', requireAdmin, requireCommercial('unlimitedSeo'), (req, res) => {
-  const audit = seoAudits.find(a => a.id === req.params.id);
-  if (!audit) return res.status(404).json({ error: 'Audit not found' });
-  res.json(audit);
-});
-
-// POST /api/seo/report/:id — generate PDF report (returns download URL)
-app.post('/api/seo/report/:id', requireAdmin, requireCommercial('unlimitedSeo'), (req, res) => {
-  const audit = seoAudits.find(a => a.id === req.params.id);
-  if (!audit) return res.status(404).json({ error: 'Audit not found' });
-  if (audit.status !== 'complete') return res.status(400).json({ error: 'Audit not yet complete' });
-
-  // In demo mode, return a simulated report URL
-  const reportId = uuidv4();
-  logActivity('seo', `PDF report generated: ${audit.domain}`, { auditId: audit.id, reportId });
-  res.json({
-    ok: true,
-    reportId,
-    filename: `SEO-Audit-${audit.domain}-${new Date().toISOString().split('T')[0]}.pdf`,
-    message: DEMO_MODE ? 'Demo mode — PDF generation simulated' : 'Report generated',
-  });
-});
+// SEO Unlimited routes extracted to commercial/modules/seo-unlimited/index.js
 
 // DELETE /api/seo/audit/:id — delete an audit
 app.delete('/api/seo/audit/:id', requireAdmin, (req, res) => {
@@ -8688,87 +6285,7 @@ app.delete('/api/seo/audit/:id', requireAdmin, (req, res) => {
   res.json({ ok: true });
 });
 
-// POST /api/seo/briefs/:id — generate content briefs from audit keyword data
-app.post('/api/seo/briefs/:id', requireAdmin, requireCommercial('unlimitedSeo'), (req, res) => {
-  const audit = seoAudits.find(a => a.id === req.params.id);
-  if (!audit) return res.status(404).json({ error: 'Audit not found' });
-  if (audit.status !== 'complete') return res.status(400).json({ error: 'Audit not yet complete' });
-
-  const d = audit.domain;
-  const briefs = [
-    { title: `Complete Guide to ${d.split('.')[0].replace(/-/g, ' ')} Services in [City]`, targetKeyword: `${d.split('.')[0]} services near me`, wordCount: 2000, intent: 'commercial', outline: ['Introduction & local context', 'Services overview', 'Why choose local providers', 'Pricing guide', 'FAQ section', 'Call to action'], priority: 'high' },
-    { title: `How to Choose the Right ${capitalize(d.split('.')[0].replace(/-/g, ' '))} Company`, targetKeyword: `how to choose ${d.split('.')[0].replace(/-/g, ' ')}`, wordCount: 1500, intent: 'informational', outline: ['Key factors to consider', 'Red flags to avoid', 'Questions to ask', 'Licensing & insurance checklist', 'Cost comparison tips'], priority: 'high' },
-    { title: `${capitalize(d.split('.')[0].replace(/-/g, ' '))} vs Competitors: Honest Comparison`, targetKeyword: `${d.split('.')[0]} reviews`, wordCount: 1800, intent: 'commercial', outline: ['Overview of options', 'Feature comparison table', 'Pricing breakdown', 'Pros and cons', 'Our recommendation'], priority: 'medium' },
-    { title: `Top 10 ${capitalize(d.split('.')[0].replace(/-/g, ' '))} Tips for Homeowners`, targetKeyword: `${d.split('.')[0]} tips`, wordCount: 1200, intent: 'informational', outline: ['Quick wins list', 'Maintenance schedule', 'When to call a professional', 'Cost-saving strategies', 'Common mistakes'], priority: 'medium' },
-    { title: `${capitalize(d.split('.')[0].replace(/-/g, ' '))} Cost Guide [${new Date().getFullYear()}]`, targetKeyword: `${d.split('.')[0]} cost`, wordCount: 1600, intent: 'transactional', outline: ['Average costs by service type', 'Factors affecting price', 'Hidden fees to watch for', 'How to get quotes', 'Financing options'], priority: 'high' },
-  ];
-
-  logActivity('seo', `Content briefs generated: ${audit.domain} (${briefs.length} briefs)`, { auditId: audit.id });
-  res.json({ ok: true, domain: audit.domain, briefs });
-});
-
-// POST /api/seo/calendar/:id — generate content calendar from audit
-app.post('/api/seo/calendar/:id', requireAdmin, requireCommercial('unlimitedSeo'), (req, res) => {
-  const audit = seoAudits.find(a => a.id === req.params.id);
-  if (!audit) return res.status(404).json({ error: 'Audit not found' });
-  if (audit.status !== 'complete') return res.status(400).json({ error: 'Audit not yet complete' });
-
-  const d = audit.domain;
-  const base = d.split('.')[0].replace(/-/g, ' ');
-  const now = new Date();
-  const weeks = [];
-
-  for (let w = 0; w < 12; w++) {
-    const weekDate = new Date(now.getTime() + w * 7 * 86400000);
-    const weekLabel = `Week ${w + 1} — ${weekDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`;
-    const items = [];
-
-    if (w < 2) {
-      items.push({ type: 'fix', title: 'Fix critical technical issues', priority: 'critical', effort: '2-4 hours' });
-      items.push({ type: 'optimize', title: 'Optimize title tags & meta descriptions for top 10 pages', priority: 'high', effort: '1-2 hours' });
-    } else if (w < 4) {
-      items.push({ type: 'content', title: `Publish: "Complete Guide to ${capitalize(base)} Services"`, priority: 'high', effort: '4-6 hours' });
-      items.push({ type: 'optimize', title: 'Add schema markup to service pages', priority: 'medium', effort: '1 hour' });
-    } else if (w < 6) {
-      items.push({ type: 'content', title: `Publish: "${capitalize(base)} Cost Guide ${now.getFullYear()}"`, priority: 'high', effort: '3-4 hours' });
-      items.push({ type: 'link', title: 'Submit to 10 local business directories', priority: 'medium', effort: '2 hours' });
-    } else if (w < 8) {
-      items.push({ type: 'content', title: `Publish: "How to Choose the Right ${capitalize(base)} Company"`, priority: 'medium', effort: '3-4 hours' });
-      items.push({ type: 'content', title: `Publish: "Top 10 ${capitalize(base)} Tips"`, priority: 'medium', effort: '2-3 hours' });
-    } else if (w < 10) {
-      items.push({ type: 'link', title: 'Guest post outreach to 5 industry blogs', priority: 'medium', effort: '3-4 hours' });
-      items.push({ type: 'content', title: `Publish comparison article: "${capitalize(base)} vs Competitors"`, priority: 'medium', effort: '4-5 hours' });
-    } else {
-      items.push({ type: 'analyze', title: 'Review ranking changes and traffic growth', priority: 'high', effort: '1 hour' });
-      items.push({ type: 'content', title: 'Publish FAQ page from top customer questions', priority: 'medium', effort: '2 hours' });
-      items.push({ type: 'optimize', title: 'Update internal links across all new content', priority: 'low', effort: '1 hour' });
-    }
-    weeks.push({ week: weekLabel, items });
-  }
-
-  logActivity('seo', `Content calendar generated: ${audit.domain} (12 weeks)`, { auditId: audit.id });
-  res.json({ ok: true, domain: audit.domain, weeks });
-});
-
-// POST /api/seo/meta/:id — generate optimized meta tags
-app.post('/api/seo/meta/:id', requireAdmin, requireCommercial('unlimitedSeo'), (req, res) => {
-  const audit = seoAudits.find(a => a.id === req.params.id);
-  if (!audit) return res.status(404).json({ error: 'Audit not found' });
-  if (audit.status !== 'complete') return res.status(400).json({ error: 'Audit not yet complete' });
-
-  const d = audit.domain;
-  const base = capitalize(d.split('.')[0].replace(/-/g, ' '));
-  const pages = [
-    { page: 'Homepage', url: `https://${d}/`, currentTitle: `${base} - Home`, currentDesc: '', optimizedTitle: `${base} | Professional Services in [City] | Licensed & Insured`, optimizedDesc: `${base} offers trusted, affordable services in [City]. Licensed, insured, 5-star rated. Get a free quote today. Call (555) 123-4567.`, changes: ['Added location keyword', 'Added trust signals', 'Added CTA with phone number'] },
-    { page: 'Services', url: `https://${d}/services`, currentTitle: `Services - ${base}`, currentDesc: '', optimizedTitle: `Our ${base} Services | Residential & Commercial | [City]`, optimizedDesc: `Full-service ${base.toLowerCase()} for homes and businesses in [City]. Same-day appointments, upfront pricing, satisfaction guaranteed.`, changes: ['Added service scope', 'Added location', 'Added urgency & guarantee'] },
-    { page: 'About', url: `https://${d}/about`, currentTitle: `About Us - ${base}`, currentDesc: '', optimizedTitle: `About ${base} | ${5 + Math.floor(Math.random() * 20)}+ Years Serving [City]`, optimizedDesc: `Family-owned ${base.toLowerCase()} company with ${5 + Math.floor(Math.random() * 20)}+ years of experience. Meet our licensed team and learn why [City] trusts us.`, changes: ['Added years of experience', 'Added family-owned trust signal', 'Personalized description'] },
-    { page: 'Contact', url: `https://${d}/contact`, currentTitle: `Contact - ${base}`, currentDesc: '', optimizedTitle: `Contact ${base} | Free Estimates | [City], [State]`, optimizedDesc: `Get a free estimate from ${base}. Call (555) 123-4567 or fill out our online form. Serving [City] and surrounding areas.`, changes: ['Added free estimate CTA', 'Added phone number', 'Added service area'] },
-    { page: 'Blog', url: `https://${d}/blog`, currentTitle: `Blog - ${base}`, currentDesc: '', optimizedTitle: `${base} Blog | Tips, Guides & Industry News`, optimizedDesc: `Expert ${base.toLowerCase()} tips, how-to guides, and industry updates. Learn how to save money, avoid common mistakes, and maintain your home.`, changes: ['Added content descriptors', 'Added value proposition', 'Improved keyword targeting'] },
-  ];
-
-  logActivity('seo', `Meta tags optimized: ${audit.domain} (${pages.length} pages)`, { auditId: audit.id });
-  res.json({ ok: true, domain: audit.domain, pages });
-});
+// SEO Unlimited briefs/calendar/meta routes extracted to commercial/modules/seo-unlimited/index.js
 
 // --- Real DataForSEO Integration ---
 
@@ -9237,7 +6754,50 @@ wss.on('connection', (ws) => {
   ws.send(JSON.stringify({ event: 'connected', data: { health: getSystemHealth() } }));
 });
 
-// --- Start ---
+// --- Commercial Module Routes (registered last so all globals are available) ---
+if (commercial.registerRoutes) {
+  commercial.registerRoutes(app, {
+    // Middleware
+    requireAdmin, requirePlan, heavyLimiter,
+    // Messaging & logging
+    broadcast, logActivity, appendLog,
+    // Persistence & utilities
+    saveState, loadState, uuidv4, validateBody, fs, path,
+    // Config & constants
+    ACTIVE_TIER, COMMERCIAL_FEATURES, PLAN_LEVELS, DEMO_MODE, BASE,
+    COST_RATES, MASTER_TENANT_ID, TENANTS_DIR, STATE_DIR, MAGENT_DIR, CLAUDE_DIR,
+    IDENTITY_DIR: path.join(CLAUDE_DIR, 'identity'),
+    OPUS_MODEL, GEMINI_OMNI_MODEL, EFFORT_ROUTING,
+    INDUSTRY_TEMPLATES, LICENSE_CONFIG, PROPOSAL_TYPES, BLOCKED_PATHS, SAFE_OPERATIONS,
+    PLUGIN_LIMITS, REPORT_LIMITS, YT_ANALYSIS_DIR,
+    ORG_CHART,
+    // Shared data structures
+    tenantRegistry, costLedger, licenses, settings, users, seoAudits, freeAuditLog,
+    browserTasks, grokQueries, grokCache,
+    knowledgeGraph, designSystem, mediaProductions, mediaTemplates,
+    vibeDesign, blender3d, routines, batchQueue: batchQueue,
+    productFactory, leadPipeline, marketingHub, predictiveAnalytics,
+    pendingApprovals, ytAnalyses,
+    // Tenant helpers
+    ensureTenantDir, saveTenantState, loadTenantState,
+    loadTrainingConfig, saveTrainingConfig, buildTenantContext, getTrainingDir,
+    // Plugin & report helpers
+    loadPluginRegistry, savePluginRegistry, getPluginsDir,
+    loadReportConfig, saveReportConfig, getReportsDir,
+    // AI model callers
+    callAnthropic, callGrok, callGemini, executeAgent,
+    // SEO helpers
+    capitalize, generateSeoFindings, generateExecutiveSummary, generateQuickWins, generateActionPlan,
+    runRealSeoAudit, dfsAuthHeader,
+    // YouTube helpers
+    generateYTVideoInfo, generateYTTranscript, generateYTFrames,
+    generateYTVisualAnalysis, generateYTSummary, generateYTInsights, runRealYouTubeAnalysis,
+    // Creative helpers
+    generateOmniResult,
+    // Self-improving helpers
+    sendTelegramApproval, sendTelegramMessage, sendSlackApproval, sendSlackMessage, applyProposal,
+  });
+}
 
 // --- Global Error Handler ---
 app.use((err, req, res, next) => {
