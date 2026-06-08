@@ -428,6 +428,18 @@ app.get('/api/stripe/success', async (req, res) => {
       user.plan = plan;
       user.stripeCustomerId = customerId;
     }
+    // Track support expiration for enterprise/business plans (1 year from purchase)
+    if (plan === 'enterprise' || plan === 'business') {
+      user.purchasedAt = new Date().toISOString();
+      user.supportExpiresAt = new Date(Date.now() + 365 * 86400000).toISOString();
+    }
+    if (plan === 'enterprise-renewal') {
+      // Extend support by 1 year from current expiration (or from now if expired)
+      const currentExpiry = user.supportExpiresAt ? new Date(user.supportExpiresAt) : new Date();
+      const base = currentExpiry > new Date() ? currentExpiry : new Date();
+      user.supportExpiresAt = new Date(base.getTime() + 365 * 86400000).toISOString();
+      user.plan = 'enterprise'; // Keep them on enterprise tier
+    }
     saveState('users', users);
 
     // Create session
@@ -6807,6 +6819,51 @@ app.use((err, req, res, next) => {
 // 404 handler for unknown API routes
 app.use('/api/*', (req, res) => {
   res.status(404).json({ error: `Route not found: ${req.method} ${req.path}` });
+});
+
+// --- Enterprise Renewal Notification Cron ---
+// Runs daily at 9am — checks for enterprise users whose support expires within 30 days
+cron.schedule('0 9 * * *', () => {
+  const now = new Date();
+  const thirtyDaysOut = new Date(now.getTime() + 30 * 86400000);
+  const fourteenDaysOut = new Date(now.getTime() + 14 * 86400000);
+  const sevenDaysOut = new Date(now.getTime() + 7 * 86400000);
+
+  const renewalUrl = `https://aiosorchestrationlab.com/api/stripe/checkout?plan=enterprise-renewal`;
+
+  users.forEach(user => {
+    if (!user.supportExpiresAt) return;
+    if (user.plan !== 'enterprise' && user.plan !== 'business') return;
+
+    const expiresAt = new Date(user.supportExpiresAt);
+    if (expiresAt < now) return; // Already expired
+
+    const daysUntilExpiry = Math.ceil((expiresAt - now) / 86400000);
+    const alreadyNotified = user.lastRenewalNotice;
+    const lastNoticeDate = alreadyNotified ? new Date(alreadyNotified) : null;
+    const daysSinceLastNotice = lastNoticeDate ? Math.ceil((now - lastNoticeDate) / 86400000) : Infinity;
+
+    // Send at 30 days, 14 days, and 7 days — but don't re-send within 6 days
+    let shouldNotify = false;
+    if (expiresAt <= sevenDaysOut && daysSinceLastNotice >= 6) shouldNotify = true;
+    else if (expiresAt <= fourteenDaysOut && daysSinceLastNotice >= 10) shouldNotify = true;
+    else if (expiresAt <= thirtyDaysOut && !alreadyNotified) shouldNotify = true;
+
+    if (shouldNotify) {
+      const msg = `🔄 *Support Renewal Reminder*\n\n` +
+        `${user.email}'s ${user.plan} priority support expires in *${daysUntilExpiry} days* (${expiresAt.toISOString().split('T')[0]}).\n\n` +
+        `Renewal link: ${renewalUrl}\n` +
+        `Price: $997/year for continued priority support & platform updates.`;
+
+      // Notify via available channels
+      sendTelegramMessage(msg).catch(() => {});
+      sendSlackMessage(msg).catch(() => {});
+
+      user.lastRenewalNotice = now.toISOString();
+      saveState('users', users);
+      logActivity('billing', `Renewal reminder sent to ${user.email} (${daysUntilExpiry} days until expiry)`);
+    }
+  });
 });
 
 // --- Graceful Shutdown ---
