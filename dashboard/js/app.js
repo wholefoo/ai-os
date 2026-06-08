@@ -326,6 +326,19 @@ function handleWsMessage(msg) {
         loadBatch();
       }
       break;
+    case 'inbox_update':
+      seedInbox();
+      break;
+    case 'inbox_deleted':
+      state.inbox = state.inbox.filter(i => i.id !== msg.data.id);
+      updateStats();
+      loadInbox(document.querySelector('.filter-btn.active')?.dataset?.filter || 'all');
+      break;
+    case 'inbox_cleared':
+      state.inbox = state.inbox.filter(i => i.status === 'pending');
+      updateStats();
+      loadInbox(document.querySelector('.filter-btn.active')?.dataset?.filter || 'all');
+      break;
     case 'proposal_update':
       const pIdx = state.proposals.findIndex(p => p.id === msg.data.id);
       if (pIdx >= 0) state.proposals[pIdx] = msg.data;
@@ -617,36 +630,13 @@ function renderContextHealth() {
 }
 
 // --- Human-in-the-Loop Inbox ---
-function seedInbox() {
-  state.inbox = [
-    {
-      id: 'gate-1',
-      title: 'Deploy research-brief output to production docs',
-      agent: 'orchestrator',
-      gate: 'blocking',
-      status: 'pending',
-      context: 'The research brief for "AI OS Market Landscape" is ready to be published to the shared documentation repository. This is an irreversible external action.',
-      timestamp: new Date(Date.now() - 300000).toISOString(),
-    },
-    {
-      id: 'gate-2',
-      title: 'Send enriched leads CSV via email',
-      agent: 'data-wrangler',
-      gate: 'blocking',
-      status: 'pending',
-      context: 'Lead enrichment completed for 47 contacts. The data-wrangler wants to email the CSV to the sales team distribution list. This sends data externally.',
-      timestamp: new Date(Date.now() - 600000).toISOString(),
-    },
-    {
-      id: 'gate-3',
-      title: 'Reviewer flagged potential license issue in coder output',
-      agent: 'reviewer',
-      gate: 'advisory',
-      status: 'pending',
-      context: 'The reviewer found a code snippet that may be derived from an AGPL-licensed library. Recommendation: verify licensing compatibility before merging.',
-      timestamp: new Date(Date.now() - 900000).toISOString(),
-    },
-  ];
+async function seedInbox() {
+  // Load from server (persistent)
+  try {
+    state.inbox = await fetchJSON('/api/inbox');
+  } catch (e) {
+    state.inbox = [];
+  }
   updateStats();
 }
 
@@ -665,12 +655,17 @@ function loadInbox(filter = 'all') {
   let items = state.inbox;
   if (filter !== 'all') items = items.filter(i => i.gate === filter);
 
+  const resolvedCount = state.inbox.filter(i => i.status !== 'pending').length;
+  const clearBtn = resolvedCount > 0
+    ? `<div style="text-align:right;margin-bottom:10px;"><button class="btn btn-sm btn-secondary" onclick="clearResolvedInbox()">Clear ${resolvedCount} Resolved</button></div>`
+    : '';
+
   if (!items.length) {
-    container.innerHTML = '<div class="empty-state">No pending approvals. All clear.</div>';
+    container.innerHTML = clearBtn + '<div class="empty-state">No pending approvals. All clear.</div>';
     return;
   }
 
-  container.innerHTML = items.map(item => `
+  container.innerHTML = clearBtn + items.map(item => `
     <div class="inbox-item ${item.gate}">
       <div class="inbox-item-header">
         <span class="inbox-item-title">${escapeHtml(item.title)}</span>
@@ -686,33 +681,62 @@ function loadInbox(filter = 'all') {
         <div class="inbox-actions">
           <button class="btn btn-sm btn-success" onclick="resolveInbox('${item.id}', 'approved')">Approve</button>
           <button class="btn btn-sm btn-secondary" onclick="resolveInbox('${item.id}', 'rejected')">Reject</button>
+          <button class="btn btn-sm" style="background:var(--danger);color:#fff;" onclick="deleteInboxItem('${item.id}')">Delete</button>
         </div>
-      ` : `<div style="font-size:12px;color:var(--text-muted);">Resolved: ${item.status}</div>`}
+      ` : `
+        <div class="inbox-actions" style="justify-content:space-between;">
+          <span style="font-size:12px;color:var(--text-muted);">Resolved: ${item.status}</span>
+          <button class="btn btn-sm" style="background:var(--danger);color:#fff;font-size:11px;" onclick="deleteInboxItem('${item.id}')">Delete</button>
+        </div>
+      `}
     </div>
   `).join('');
 }
 
-function resolveInbox(id, verdict) {
-  const item = state.inbox.find(i => i.id === id);
-  if (item) {
-    item.status = verdict;
-    addTimelineEvent('approval', `${verdict === 'approved' ? 'Approved' : 'Rejected'}: ${item.title}`);
-    state.activity.unshift({
-      id: Date.now().toString(),
-      type: verdict === 'approved' ? 'mission' : 'plan',
-      message: `Gate ${verdict}: ${item.title}`,
-      timestamp: new Date().toISOString(),
-    });
-    renderActivityFeed();
-    // Update fleet status to show agent proceeding
-    if (verdict === 'approved' && state.fleetStatus[item.agent] !== undefined) {
-      state.fleetStatus[item.agent] = 'running';
-      renderFleetGrid();
-      setTimeout(() => {
-        state.fleetStatus[item.agent] = 'idle';
+async function resolveInbox(id, verdict) {
+  try {
+    await fetchJSON(`/api/inbox/${id}`, { method: 'PUT', body: JSON.stringify({ status: verdict }) });
+    const item = state.inbox.find(i => i.id === id);
+    if (item) {
+      item.status = verdict;
+      addTimelineEvent('approval', `${verdict === 'approved' ? 'Approved' : 'Rejected'}: ${item.title}`);
+      state.activity.unshift({
+        id: Date.now().toString(),
+        type: verdict === 'approved' ? 'mission' : 'plan',
+        message: `Gate ${verdict}: ${item.title}`,
+        timestamp: new Date().toISOString(),
+      });
+      renderActivityFeed();
+      if (verdict === 'approved' && state.fleetStatus[item.agent] !== undefined) {
+        state.fleetStatus[item.agent] = 'running';
         renderFleetGrid();
-      }, 4000);
+        setTimeout(() => { state.fleetStatus[item.agent] = 'idle'; renderFleetGrid(); }, 4000);
+      }
     }
+  } catch (e) {
+    console.error('Failed to resolve inbox item:', e);
+  }
+  updateStats();
+  loadInbox(document.querySelector('.filter-btn.active')?.dataset?.filter || 'all');
+}
+
+async function deleteInboxItem(id) {
+  try {
+    await fetchJSON(`/api/inbox/${id}`, { method: 'DELETE' });
+    state.inbox = state.inbox.filter(i => i.id !== id);
+  } catch (e) {
+    console.error('Failed to delete inbox item:', e);
+  }
+  updateStats();
+  loadInbox(document.querySelector('.filter-btn.active')?.dataset?.filter || 'all');
+}
+
+async function clearResolvedInbox() {
+  try {
+    await fetchJSON('/api/inbox', { method: 'DELETE' });
+    state.inbox = state.inbox.filter(i => i.status === 'pending');
+  } catch (e) {
+    console.error('Failed to clear resolved inbox items:', e);
   }
   updateStats();
   loadInbox(document.querySelector('.filter-btn.active')?.dataset?.filter || 'all');
