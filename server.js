@@ -5249,10 +5249,12 @@ const LICENSE_CONFIG = {
     community:  { price: 0,    interval: 'free', name: 'Community' },
     business:   { price: 1997, interval: 'one-time', name: 'Business License' },
     enterprise: { price: 4997, interval: 'one-time', name: 'Enterprise License' },
+    lifetime:   { price: 9997, interval: 'one-time', name: 'Founders Lifetime License' },
   },
   renewals: {
     enterprise: { price: 997,  interval: 'year', name: 'Enterprise Priority Support Renewal' },
   },
+  maxLifetime: 100,
   currency: 'usd',
   name: 'AI OS Open-Core License',
   description: 'Complete AI-powered Virtual Corporate HQ with 51 agents, 10 departments, self-hosted deployment, and all integrations.',

@@ -407,25 +407,90 @@ function applyTierGating() {
     header.prepend(badge);
   }
 
-  // Gate nav items — hide tabs for features that are gated
+  // Map nav views to feature flags and required tier
   const gatedNavItems = {
-    'tenants': 'multiTenant',
-    'browser': 'browserAgent',
-    'grok': 'grokIntel',
-    'creative': 'creativeStudio',
-    'meetings': 'videoMeetings',
-    'leads': 'leadGen',
-    'youtube': 'youtubeIntel',
-    'products': 'productFactory',
+    'tenants':      { feature: 'multiTenant',     tier: 'business' },
+    'training':     { feature: 'multiTenant',     tier: 'business' },
+    'browser':      { feature: 'browserAgent',    tier: 'business' },
+    'grok':         { feature: 'grokIntel',       tier: 'business' },
+    'media':        { feature: 'creativeStudio',  tier: 'business' },
+    'vibe-design':  { feature: 'creativeStudio',  tier: 'business' },
+    '3d-studio':    { feature: 'creativeStudio',  tier: 'business' },
+    'leads':        { feature: 'leadGen',         tier: 'business' },
+    'marketing':    { feature: 'leadGen',         tier: 'business' },
+    'youtube':      { feature: 'youtubeIntel',    tier: 'business' },
+    'products':     { feature: 'productFactory',  tier: 'business' },
+    'knowledge':    { feature: 'advancedReporting', tier: 'business' },
+    'predictions':  { feature: 'advancedReporting', tier: 'business' },
+    'plugins':      { feature: 'advancedReporting', tier: 'business' },
+    'reports':      { feature: 'advancedReporting', tier: 'business' },
+    'design':       { feature: 'designSystem',    tier: 'business' },
+    'routines':     { feature: 'hermesAdvanced',  tier: 'business' },
+    'batch':        { feature: 'batchQueue',      tier: 'business' },
+    'licensing':    { feature: 'whiteLabel',      tier: 'enterprise' },
+    'golden-loop':  { feature: 'selfImproving',   tier: 'enterprise' },
   };
 
-  Object.entries(gatedNavItems).forEach(([viewId, featureFlag]) => {
+  Object.entries(gatedNavItems).forEach(([viewId, gate]) => {
     const navItem = document.querySelector(`[data-view="${viewId}"]`);
-    if (navItem && !features[featureFlag]) {
-      navItem.style.opacity = '0.4';
-      navItem.title = `Requires Business or Enterprise license`;
+    if (!navItem) return;
+
+    if (!features[gate.feature]) {
+      navItem.style.opacity = '0.35';
+      navItem.style.position = 'relative';
+      navItem.title = `Requires ${gate.tier === 'enterprise' ? 'Enterprise' : 'Business'} license`;
+      // Add lock icon
+      if (!navItem.querySelector('.lock-icon')) {
+        const lock = document.createElement('span');
+        lock.className = 'lock-icon';
+        lock.textContent = '🔒';
+        lock.style.cssText = 'font-size:9px;margin-left:4px;';
+        navItem.appendChild(lock);
+      }
+      // Intercept click to show upgrade prompt
+      navItem.addEventListener('click', (e) => {
+        if (!window.aiosFeatures[gate.feature]) {
+          e.preventDefault();
+          e.stopPropagation();
+          showUpgradeModal(gate.tier, viewId);
+        }
+      }, true);
+    } else {
+      navItem.style.opacity = '';
+      navItem.title = '';
+      const lock = navItem.querySelector('.lock-icon');
+      if (lock) lock.remove();
     }
   });
+}
+
+function showUpgradeModal(requiredTier, featureName) {
+  // Remove existing modal
+  const existing = document.getElementById('upgradeModal');
+  if (existing) existing.remove();
+
+  const tierLabel = requiredTier === 'enterprise' ? 'Enterprise' : 'Business';
+  const price = requiredTier === 'enterprise' ? '$1,997/mo' : '$497/mo';
+  const checkoutUrl = `/api/stripe/checkout?plan=${requiredTier}`;
+
+  const modal = document.createElement('div');
+  modal.id = 'upgradeModal';
+  modal.style.cssText = 'position:fixed;inset:0;z-index:10000;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,0.7);backdrop-filter:blur(4px);';
+  modal.innerHTML = `
+    <div style="background:var(--bg-card,#1e293b);border:1px solid var(--border,#334155);border-radius:16px;padding:32px;max-width:420px;width:90%;text-align:center;box-shadow:0 25px 50px rgba(0,0,0,0.5);">
+      <div style="font-size:48px;margin-bottom:16px;">🚀</div>
+      <h2 style="margin:0 0 8px;font-size:20px;color:var(--text,#f1f5f9);">${tierLabel} Feature</h2>
+      <p style="color:var(--text-muted,#94a3b8);margin:0 0 20px;font-size:14px;line-height:1.5;">
+        <strong>${featureName.replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase())}</strong> requires an active ${tierLabel} license (${price}).
+      </p>
+      <div style="display:flex;gap:12px;justify-content:center;">
+        <a href="${checkoutUrl}" target="_blank" style="padding:10px 24px;background:linear-gradient(135deg,#3b82f6,#8b5cf6);color:#fff;border-radius:8px;text-decoration:none;font-weight:600;font-size:14px;">Upgrade Now</a>
+        <button onclick="document.getElementById('upgradeModal').remove()" style="padding:10px 24px;background:transparent;border:1px solid var(--border,#334155);color:var(--text-muted,#94a3b8);border-radius:8px;cursor:pointer;font-size:14px;">Maybe Later</button>
+      </div>
+    </div>
+  `;
+  modal.addEventListener('click', (e) => { if (e.target === modal) modal.remove(); });
+  document.body.appendChild(modal);
 }
 
 function renderQuickActions() {
