@@ -22,7 +22,7 @@ module.exports = {
 
     // GET /api/license/participants — admin list of all franchise participants
     app.get('/api/license/participants', requireAdmin, (req, res) => {
-      res.json(franchises);
+      res.json(licenses);
     });
 
     // GET /api/license/participant/:id — single participant detail
