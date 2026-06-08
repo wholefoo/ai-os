@@ -249,6 +249,9 @@ function registerTenantRoutes() {
 } // end registerTenantRoutes
 
 // --- Security & Middleware ---
+// Trust first proxy (nginx) so express-rate-limit sees real client IPs
+app.set('trust proxy', 1);
+
 app.use(helmet({
   contentSecurityPolicy: {
     directives: {
