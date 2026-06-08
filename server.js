@@ -4080,6 +4080,69 @@ app.post('/api/golden-loop', (req, res) => {
   res.json(loop);
 });
 
+// --- Human-in-the-Loop Inbox (Agent Approval Gates) ---
+const inbox = loadState('inbox', []);
+
+app.get('/api/inbox', (req, res) => {
+  res.json(inbox);
+});
+
+app.get('/api/inbox/stats', (req, res) => {
+  const pending = inbox.filter(i => i.status === 'pending').length;
+  const byGate = {};
+  inbox.forEach(i => { byGate[i.gate] = (byGate[i.gate] || 0) + 1; });
+  res.json({ total: inbox.length, pending, byGate });
+});
+
+app.post('/api/inbox', (req, res) => {
+  const { title, agent, gate, context } = req.body;
+  const item = {
+    id: `gate-${Date.now()}`,
+    title: title || 'Untitled approval',
+    agent: agent || 'system',
+    gate: gate || 'blocking',
+    status: 'pending',
+    context: context || '',
+    timestamp: new Date().toISOString(),
+  };
+  inbox.unshift(item);
+  saveState('inbox', inbox);
+  broadcast({ event: 'inbox_update', data: item });
+  res.json(item);
+});
+
+app.put('/api/inbox/:id', (req, res) => {
+  const item = inbox.find(i => i.id === req.params.id);
+  if (!item) return res.status(404).json({ error: 'Inbox item not found' });
+  const { status } = req.body;
+  if (status) item.status = status;
+  item.resolvedAt = new Date().toISOString();
+  saveState('inbox', inbox);
+  broadcast({ event: 'inbox_update', data: item });
+  logActivity('approval', `Gate ${status}: ${item.title}`, { id: item.id, agent: item.agent });
+  res.json(item);
+});
+
+app.delete('/api/inbox/:id', (req, res) => {
+  const idx = inbox.findIndex(i => i.id === req.params.id);
+  if (idx === -1) return res.status(404).json({ error: 'Inbox item not found' });
+  const removed = inbox.splice(idx, 1)[0];
+  saveState('inbox', inbox);
+  broadcast({ event: 'inbox_deleted', data: { id: removed.id } });
+  res.json({ ok: true, deleted: removed.id });
+});
+
+app.delete('/api/inbox', (req, res) => {
+  // Clear all resolved items (keep pending)
+  const kept = inbox.filter(i => i.status === 'pending');
+  const removed = inbox.length - kept.length;
+  inbox.length = 0;
+  kept.forEach(i => inbox.push(i));
+  saveState('inbox', inbox);
+  broadcast({ event: 'inbox_cleared', data: { removed } });
+  res.json({ ok: true, removed, remaining: inbox.length });
+});
+
 // =============================
 // PHASE 3: CREATIVE STUDIO
 // =============================
