@@ -57,29 +57,60 @@ that would help someone reading this 6 months from now.
 
 ## Architecture Notes
 
-### Open-Core Structure
+### Open-Core Structure (Single Repo)
+
+The entire platform lives in one private repo. License validation gates commercial features at runtime.
 
 ```
-ai-os/                    ← Public repo (Community edition)
-├── server.js             ← Core server with requireCommercial() gates
+ai-os/
+├── server.js             ← Core server (~6,900 lines), all data structures & helpers
 ├── commercial/
-│   ├── loader.js         ← Detects commercial module
-│   └── README.md         ← Installation docs
-├── dashboard/            ← Frontend
-└── .github/              ← CI + PR template
+│   ├── index.js          ← License validation + module loader
+│   ├── loader.js         ← Graceful fallback when no license key
+│   ├── lib/              ← license-validator, tier-resolver, feature-gate
+│   ├── modules/          ← 14 feature modules (each exports registerRoutes)
+│   │   ├── multi-tenant/
+│   │   ├── creative-studio/
+│   │   ├── advanced-reporting/
+│   │   ├── lead-gen/
+│   │   ├── hermes-advanced/
+│   │   ├── seo-unlimited/
+│   │   ├── self-improving/
+│   │   ├── video-meetings/
+│   │   ├── grok-intel/
+│   │   ├── white-label/
+│   │   ├── browser-agent/
+│   │   ├── youtube-intel/
+│   │   ├── design-system/
+│   │   └── agent-builder/
+│   ├── org-chart/        ← Extended departments + agents
+│   └── enterprise/       ← SSO, SLA, priority support (stubs)
+├── dashboard/            ← Frontend SPA
+├── .github/              ← CI + PR template
+└── ecosystem.config.js   ← PM2 deployment config
+```
 
-ai-os-commercial/         ← Private repo (Business/Enterprise)
-├── index.js              ← License validation + module registration
-├── lib/                  ← License validator, tier resolver, feature gate
-├── modules/              ← 13 feature modules
-├── org-chart/            ← Extended departments + agents
-└── enterprise/           ← SSO, SLA, priority support
+### Commercial Module Pattern
+
+Each module in `commercial/modules/*/index.js` exports:
+
+```javascript
+module.exports = {
+  name: 'module-name',
+  tier: 'business',  // or 'enterprise'
+  registerRoutes(app, ctx) {
+    // ctx provides ~70 shared globals from server.js
+    // (middleware, data structures, helpers, AI callers, etc.)
+    if (!ctx.features.featureFlag) return;
+    app.get('/api/...', (req, res) => { ... });
+  }
+};
 ```
 
 ### Feature Gating
 
-Routes gated with `requireCommercial('featureFlag')` return 403 in community mode.
-The commercial module unlocks them when a valid license key is present.
+The `requireCommercial('featureFlag')` middleware on core routes returns 403 in community mode.
+Commercial modules check `ctx.features` internally and skip registration if tier is insufficient.
 
 ```javascript
 // Community users get a clear upgrade message:
@@ -90,6 +121,8 @@ The commercial module unlocks them when a valid license key is present.
   "upgrade": "https://aiosorchestrationlab.com/#pricing"
 }
 ```
+
+The dashboard also gates UI panels — locked features show a 🔒 icon and an upgrade modal on click.
 
 ### Testing Changes
 
