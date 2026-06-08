@@ -17,111 +17,16 @@ module.exports = {
 
     const { broadcast, logActivity, heavyLimiter, requireAdmin, uuidv4,
             costLedger, settings, DEMO_MODE, COST_RATES, GEMINI_OMNI_MODEL,
-            callGemini, generateOmniResult } = ctx;
+            callGemini, generateOmniResult, loadState, saveState } = ctx;
 
     // ---------------------------------------------------------------
-    // In-memory data
+    // Persistent data (empty defaults — real data added via API)
     // ---------------------------------------------------------------
 
-    const mediaProductions = [
-      {
-        id: 'media-1',
-        title: 'Weekly PR Summary Video',
-        type: 'remotion',
-        status: 'completed',
-        template: 'pr-recap',
-        duration: '2:34',
-        resolution: '1920x1080',
-        params: { repo: 'ai-os', period: 'weekly', style: 'minimal' },
-        output: '.magent/artifacts/media/pr-recap-w21.mp4',
-        createdAt: new Date(Date.now() - 172800000).toISOString(),
-        completedAt: new Date(Date.now() - 170000000).toISOString(),
-        cost: 0.00,
-        engine: 'remotion-local',
-      },
-      {
-        id: 'media-2',
-        title: 'Product Demo: Dashboard Tour',
-        type: 'video',
-        status: 'completed',
-        template: 'product-demo',
-        duration: '1:45',
-        resolution: '1920x1080',
-        params: { scenes: 5, avatar: 'professional', music: 'ambient' },
-        output: '.magent/artifacts/media/demo-dashboard-v2.mp4',
-        createdAt: new Date(Date.now() - 86400000).toISOString(),
-        completedAt: new Date(Date.now() - 82000000).toISOString(),
-        cost: 0.45,
-        engine: 'google-vids',
-      },
-      {
-        id: 'media-3',
-        title: '3D Office Environment',
-        type: '3d',
-        status: 'completed',
-        template: 'scene-generation',
-        resolution: '2048x2048',
-        params: { prompt: 'Modern tech office with holographic displays', lighting: 'dramatic', style: 'photorealistic' },
-        output: '.magent/artifacts/media/office-3d-render.png',
-        createdAt: new Date(Date.now() - 43200000).toISOString(),
-        completedAt: new Date(Date.now() - 40000000).toISOString(),
-        cost: 0.12,
-        engine: 'blender-mcp',
-      },
-      {
-        id: 'media-4',
-        title: 'Social Ad Variations (Batch)',
-        type: 'remotion',
-        status: 'queued',
-        template: 'social-ad',
-        resolution: '1080x1080',
-        params: { variations: 12, platform: 'instagram', cta: 'Learn More' },
-        output: null,
-        createdAt: new Date(Date.now() - 3600000).toISOString(),
-        completedAt: null,
-        cost: 0.00,
-        engine: 'remotion-local',
-      },
-    ];
-
-    const mediaTemplates = [
-      { id: 'pr-recap', name: 'PR Recap Video', engine: 'remotion', duration: '2-3min', params: ['repo', 'period', 'style'] },
-      { id: 'product-demo', name: 'Product Demo', engine: 'google-vids', duration: '1-3min', params: ['scenes', 'avatar', 'music'] },
-      { id: 'social-ad', name: 'Social Ad Generator', engine: 'remotion', duration: '15-30s', params: ['variations', 'platform', 'cta'] },
-      { id: 'scene-generation', name: '3D Scene', engine: 'blender-mcp', duration: 'N/A', params: ['prompt', 'lighting', 'style'] },
-      { id: 'explainer', name: 'Explainer Video', engine: 'google-vids', duration: '3-5min', params: ['topic', 'audience', 'tone'] },
-      { id: 'data-viz', name: 'Data Visualization', engine: 'remotion', duration: '30-60s', params: ['dataset', 'chart_type', 'animation'] },
-    ];
-
-    const vibeDesign = {
-      projects: [
-        { id: 'vd-1', name: 'SaaS Landing Page', method: 'prompt', status: 'completed', screens: 4, style: 'minimal-tech', inputs: { prompt: 'Modern SaaS landing with gradient hero, feature cards, pricing table' }, heatmap: true, interactions: 12, createdAt: new Date(Date.now() - 2 * 86400000).toISOString(), completedAt: new Date(Date.now() - 1.8 * 86400000).toISOString() },
-        { id: 'vd-2', name: 'Mobile Onboarding Flow', method: 'sketch', status: 'completed', screens: 5, style: 'playful', inputs: { sketch: 'onboarding-sketch.png' }, heatmap: true, interactions: 8, createdAt: new Date(Date.now() - 5 * 86400000).toISOString(), completedAt: new Date(Date.now() - 4.7 * 86400000).toISOString() },
-        { id: 'vd-3', name: 'Dashboard Redesign', method: 'voice', status: 'iterating', screens: 3, style: 'data-dense', inputs: { voice: 'I need a dashboard with real-time metrics, dark mode, and a sidebar nav' }, heatmap: false, interactions: 6, createdAt: new Date(Date.now() - 1 * 86400000).toISOString(), completedAt: null },
-        { id: 'vd-4', name: 'E-commerce Product Page', method: 'url', status: 'generating', screens: 0, style: 'luxe', inputs: { url: 'https://reference-store.com/product' }, heatmap: false, interactions: 0, createdAt: new Date().toISOString(), completedAt: null },
-      ],
-      controls: {
-        density: { min: 0, max: 100, default: 50 },
-        hue: { min: 0, max: 360, default: 240 },
-        roundness: { min: 0, max: 100, default: 60 },
-        spacing: { min: 0, max: 100, default: 50 },
-      },
-    };
-
-    const blender3d = {
-      scenes: [
-        { id: '3d-1', name: 'Futuristic Office', status: 'rendered', engine: 'blender-mcp', resolution: '2048x2048', style: 'photorealistic', lighting: 'dramatic', objects: 12, renderTime: '4m 23s', fileSize: '8.4 MB', createdAt: new Date(Date.now() - 3 * 86400000).toISOString(), prompt: 'Modern tech office with holographic displays and ambient lighting' },
-        { id: '3d-2', name: 'Product Showcase', status: 'rendered', engine: 'blender-mcp', resolution: '4096x4096', style: 'studio', lighting: 'three-point', objects: 3, renderTime: '2m 11s', fileSize: '12.1 MB', createdAt: new Date(Date.now() - 7 * 86400000).toISOString(), prompt: 'Sleek SaaS product box floating on dark gradient with reflections' },
-        { id: '3d-3', name: 'Abstract Data Viz', status: 'rendering', engine: 'blender-mcp', resolution: '1920x1080', style: 'abstract', lighting: 'neon', objects: 48, renderTime: null, fileSize: null, createdAt: new Date(Date.now() - 3600000).toISOString(), prompt: 'Abstract 3D bar chart rising from dark surface with glowing edges' },
-        { id: '3d-4', name: 'Hero Background', status: 'queued', engine: 'blender-mcp', resolution: '3840x2160', style: 'gradient-mesh', lighting: 'ambient', objects: 0, renderTime: null, fileSize: null, createdAt: new Date().toISOString(), prompt: 'Organic mesh gradient background with floating geometric shapes' },
-      ],
-      presets: [
-        { id: 'preset-studio', name: 'Studio Lighting', lighting: 'three-point', style: 'clean' },
-        { id: 'preset-dramatic', name: 'Dramatic', lighting: 'dramatic', style: 'cinematic' },
-        { id: 'preset-neon', name: 'Neon Glow', lighting: 'neon', style: 'cyberpunk' },
-        { id: 'preset-natural', name: 'Natural', lighting: 'hdri', style: 'photorealistic' },
-      ],
-    };
+    const mediaProductions = loadState('media_productions', []);
+    const mediaTemplates = loadState('media_templates', []);
+    const vibeDesign = loadState('vibe_design', { projects: [], controls: { density: { min: 0, max: 100, default: 50 }, hue: { min: 0, max: 360, default: 240 }, roundness: { min: 0, max: 100, default: 60 }, spacing: { min: 0, max: 100, default: 50 } } });
+    const blender3d = loadState('blender_3d', { scenes: [], presets: [] });
 
     // ---------------------------------------------------------------
     // Media Production routes (4 routes)
@@ -177,12 +82,14 @@ module.exports = {
       };
 
       mediaProductions.unshift(production);
+      saveState('media_productions', mediaProductions);
       broadcast({ event: 'media_update', data: production });
       logActivity('media', `Media production queued: ${title} (${template})`, { productionId: id });
 
       // Simulate rendering
       setTimeout(() => {
         production.status = 'rendering';
+        saveState('media_productions', mediaProductions);
         broadcast({ event: 'media_update', data: production });
       }, 1000);
 
@@ -192,6 +99,7 @@ module.exports = {
         production.output = `.magent/artifacts/media/${template}-${Date.now()}.mp4`;
         production.cost = Math.random() * 0.5;
         production.duration = `${Math.floor(Math.random() * 3) + 1}:${String(Math.floor(Math.random() * 60)).padStart(2, '0')}`;
+        saveState('media_productions', mediaProductions);
         broadcast({ event: 'media_update', data: production });
         logActivity('media', `Media production completed: ${title}`);
       }, 6000);
@@ -240,10 +148,12 @@ module.exports = {
         completedAt: null,
       };
       vibeDesign.projects.unshift(project);
+      saveState('vibe_design', vibeDesign);
       broadcast({ event: 'vibe_design_update', data: project });
       setTimeout(() => {
         project.status = 'iterating';
         project.screens = Math.floor(Math.random() * 4) + 2;
+        saveState('vibe_design', vibeDesign);
         broadcast({ event: 'vibe_design_update', data: project });
       }, 4000);
       res.json(project);
@@ -253,6 +163,7 @@ module.exports = {
       const project = vibeDesign.projects.find(p => p.id === req.params.id);
       if (!project) return res.status(404).json({ error: 'Not found' });
       project.heatmap = true;
+      saveState('vibe_design', vibeDesign);
       const heatmapData = {
         zones: [
           { x: 20, y: 15, intensity: 0.95, label: 'Hero CTA' },
@@ -307,16 +218,19 @@ module.exports = {
         prompt: prompt || '',
       };
       blender3d.scenes.unshift(scene);
+      saveState('blender_3d', blender3d);
       broadcast({ event: '3d_update', data: scene });
       setTimeout(() => {
         scene.status = 'rendering';
         scene.objects = Math.floor(Math.random() * 20) + 3;
+        saveState('blender_3d', blender3d);
         broadcast({ event: '3d_update', data: scene });
       }, 2000);
       setTimeout(() => {
         scene.status = 'rendered';
         scene.renderTime = `${Math.floor(Math.random() * 5) + 1}m ${Math.floor(Math.random() * 59)}s`;
         scene.fileSize = `${(Math.random() * 15 + 2).toFixed(1)} MB`;
+        saveState('blender_3d', blender3d);
         broadcast({ event: '3d_update', data: scene });
       }, 8000);
       res.json(scene);
