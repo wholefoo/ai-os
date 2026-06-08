@@ -3875,19 +3875,8 @@ grokQueries.push(
 // =====================
 
 // Seeded graph nodes from vault files
-const knowledgeGraph = {
-  nodes: [
-    { id: 'stack-decisions', label: 'Stack Decisions', type: 'wiki', tags: ['architecture', 'decisions'], connections: ['agent-roster', 'ai-os-blueprint'], size: 3 },
-    { id: 'agent-roster', label: 'Agent Roster', type: 'wiki', tags: ['team', 'agents'], connections: ['stack-decisions', 'orchestrator-guide'], size: 2 },
-    { id: 'ai-os-blueprint', label: 'AI OS Blueprint', type: 'docs', tags: ['architecture', 'blueprint', 'planning'], connections: ['stack-decisions', 'market-research'], size: 4 },
-    { id: 'market-research', label: 'Market Research Brief', type: 'research', tags: ['research', 'competitors', 'market'], connections: ['ai-os-blueprint', 'competitor-pricing'], size: 2 },
-    { id: 'competitor-pricing', label: 'Competitor Pricing', type: 'research', tags: ['research', 'pricing', 'competitors'], connections: ['market-research'], size: 1 },
-    { id: 'orchestrator-guide', label: 'Orchestrator Guide', type: 'wiki', tags: ['agents', 'orchestration', 'howto'], connections: ['agent-roster', 'mission-doc'], size: 2 },
-    { id: 'mission-doc', label: 'Mission Statement', type: 'raw', tags: ['mission', 'strategy'], connections: ['orchestrator-guide', 'ai-os-blueprint'], size: 3 },
-    { id: 'security-audit-1', label: 'Security Audit Report', type: 'outputs', tags: ['security', 'audit', 'compliance'], connections: ['stack-decisions'], size: 2 },
-    { id: 'content-brief-saas', label: 'SaaS Content Brief', type: 'outputs', tags: ['marketing', 'content', 'saas'], connections: ['market-research'], size: 1 },
-    { id: 'lead-list-q2', label: 'Q2 Lead List', type: 'raw', tags: ['sales', 'leads', 'data'], connections: ['competitor-pricing'], size: 1 },
-  ],
+const knowledgeGraph = loadState('knowledge_graph', {
+  nodes: [],
   categories: {
     wiki: { color: '#3b82f6', label: 'Wiki (Synthesized)' },
     docs: { color: '#8b5cf6', label: 'Docs (Architecture)' },
@@ -3895,7 +3884,7 @@ const knowledgeGraph = {
     outputs: { color: '#f59e0b', label: 'Outputs (Deliverables)' },
     raw: { color: '#6b7280', label: 'Raw (Intake)' },
   },
-};
+});
 
 // Advanced Reporting routes extracted to commercial/modules/advanced-reporting/index.js
 
@@ -3993,75 +3982,16 @@ const designSystem = {
 // MEDIA PRODUCTION PIPELINE
 // =====================
 
-const mediaProductions = [
-  {
-    id: 'media-1',
-    title: 'Weekly PR Summary Video',
-    type: 'remotion',
-    status: 'completed',
-    template: 'pr-recap',
-    duration: '2:34',
-    resolution: '1920x1080',
-    params: { repo: 'ai-os', period: 'weekly', style: 'minimal' },
-    output: '.magent/artifacts/media/pr-recap-w21.mp4',
-    createdAt: new Date(Date.now() - 172800000).toISOString(),
-    completedAt: new Date(Date.now() - 170000000).toISOString(),
-    cost: 0.00,
-    engine: 'remotion-local',
-  },
-  {
-    id: 'media-2',
-    title: 'Product Demo: Dashboard Tour',
-    type: 'video',
-    status: 'completed',
-    template: 'product-demo',
-    duration: '1:45',
-    resolution: '1920x1080',
-    params: { scenes: 5, avatar: 'professional', music: 'ambient' },
-    output: '.magent/artifacts/media/demo-dashboard-v2.mp4',
-    createdAt: new Date(Date.now() - 86400000).toISOString(),
-    completedAt: new Date(Date.now() - 82000000).toISOString(),
-    cost: 0.45,
-    engine: 'google-vids',
-  },
-  {
-    id: 'media-3',
-    title: '3D Office Environment',
-    type: '3d',
-    status: 'completed',
-    template: 'scene-generation',
-    resolution: '2048x2048',
-    params: { prompt: 'Modern tech office with holographic displays', lighting: 'dramatic', style: 'photorealistic' },
-    output: '.magent/artifacts/media/office-3d-render.png',
-    createdAt: new Date(Date.now() - 43200000).toISOString(),
-    completedAt: new Date(Date.now() - 40000000).toISOString(),
-    cost: 0.12,
-    engine: 'blender-mcp',
-  },
-  {
-    id: 'media-4',
-    title: 'Social Ad Variations (Batch)',
-    type: 'remotion',
-    status: 'queued',
-    template: 'social-ad',
-    resolution: '1080x1080',
-    params: { variations: 12, platform: 'instagram', cta: 'Learn More' },
-    output: null,
-    createdAt: new Date(Date.now() - 3600000).toISOString(),
-    completedAt: null,
-    cost: 0.00,
-    engine: 'remotion-local',
-  },
-];
+const mediaProductions = loadState('media_productions', []);
 
-const mediaTemplates = [
+const mediaTemplates = loadState('media_templates', [
   { id: 'pr-recap', name: 'PR Recap Video', engine: 'remotion', duration: '2-3min', params: ['repo', 'period', 'style'] },
   { id: 'product-demo', name: 'Product Demo', engine: 'google-vids', duration: '1-3min', params: ['scenes', 'avatar', 'music'] },
   { id: 'social-ad', name: 'Social Ad Generator', engine: 'remotion', duration: '15-30s', params: ['variations', 'platform', 'cta'] },
   { id: 'scene-generation', name: '3D Scene', engine: 'blender-mcp', duration: 'N/A', params: ['prompt', 'lighting', 'style'] },
   { id: 'explainer', name: 'Explainer Video', engine: 'google-vids', duration: '3-5min', params: ['topic', 'audience', 'tone'] },
   { id: 'data-viz', name: 'Data Visualization', engine: 'remotion', duration: '30-60s', params: ['dataset', 'chart_type', 'animation'] },
-];
+]);
 
 // Creative Studio routes extracted to commercial/modules/creative-studio/index.js
 
@@ -4069,68 +3999,7 @@ const mediaTemplates = [
 // CONTINUOUS LOOP WORKFLOWS (ROUTINES)
 // =====================
 
-const routines = [
-  {
-    id: 'routine-1',
-    name: 'Social Ad Variation Generator',
-    description: 'Generates 12 ad variations per hour for A/B testing library',
-    skill: 'content-creation',
-    agent: 'deepseek-worker',
-    interval: '0 * * * *',
-    intervalHuman: 'Every hour',
-    status: 'active',
-    rateLimit: { maxPerHour: 12, currentHour: 7, cooldownMs: 300000 },
-    stats: { totalRuns: 156, totalOutputs: 1872, successRate: 98.2, lastRun: new Date(Date.now() - 1800000).toISOString(), nextRun: new Date(Date.now() + 1800000).toISOString() },
-    outputPath: '.magent/artifacts/media/ad-variations/',
-    batchSize: 12,
-    enabled: true,
-  },
-  {
-    id: 'routine-2',
-    name: 'Competitor Price Monitor',
-    description: 'Scrapes competitor pricing pages every 6 hours and logs changes',
-    skill: 'browser-automation',
-    agent: 'browser-agent',
-    interval: '0 */6 * * *',
-    intervalHuman: 'Every 6 hours',
-    status: 'active',
-    rateLimit: { maxPerHour: 10, currentHour: 0, cooldownMs: 120000 },
-    stats: { totalRuns: 84, totalOutputs: 84, successRate: 95.2, lastRun: new Date(Date.now() - 21600000).toISOString(), nextRun: new Date(Date.now() + 600000).toISOString() },
-    outputPath: '.magent/vault/raw/pricing/',
-    batchSize: 1,
-    enabled: true,
-  },
-  {
-    id: 'routine-3',
-    name: 'Daily Analytics Digest',
-    description: 'Compiles daily metrics and posts summary to notification channels',
-    skill: 'research-brief',
-    agent: 'researcher',
-    interval: '0 9 * * *',
-    intervalHuman: 'Daily at 9:00 AM',
-    status: 'paused',
-    rateLimit: { maxPerHour: 1, currentHour: 0, cooldownMs: 0 },
-    stats: { totalRuns: 22, totalOutputs: 22, successRate: 100, lastRun: new Date(Date.now() - 86400000).toISOString(), nextRun: null },
-    outputPath: '.magent/vault/outputs/digests/',
-    batchSize: 1,
-    enabled: false,
-  },
-  {
-    id: 'routine-4',
-    name: 'Content Repurposing Pipeline',
-    description: 'Takes new blog posts and generates LinkedIn, X, and email variants',
-    skill: 'content-creation',
-    agent: 'writer',
-    interval: '30 */4 * * *',
-    intervalHuman: 'Every 4 hours',
-    status: 'active',
-    rateLimit: { maxPerHour: 3, currentHour: 1, cooldownMs: 600000 },
-    stats: { totalRuns: 42, totalOutputs: 126, successRate: 97.6, lastRun: new Date(Date.now() - 7200000).toISOString(), nextRun: new Date(Date.now() + 7200000).toISOString() },
-    outputPath: '.magent/artifacts/docs/repurposed/',
-    batchSize: 3,
-    enabled: true,
-  },
-];
+const routines = loadState('routines', []);
 
 // Routine routes extracted to commercial/modules/hermes-advanced (batchQueue feature)
 
@@ -4139,75 +4008,20 @@ const routines = [
 // =============================
 
 // --- Product Factory (routes extracted → commercial/modules/lead-gen) ---
-const productFactory = {
-  products: [
-    { id: 'prod-1', name: 'Ultimate Book Tracker', type: 'spreadsheet', platform: 'etsy', status: 'published', price: 12.99, sales: 47, revenue: 610.53, rating: 4.8, createdAt: new Date(Date.now() - 14 * 86400000).toISOString(), template: 'book-tracker', features: ['200+ genres', 'Reading stats', 'TBR manager', 'Annual goals'] },
-    { id: 'prod-2', name: 'Wedding Planner Pro', type: 'spreadsheet', platform: 'etsy', status: 'published', price: 24.99, sales: 23, revenue: 574.77, rating: 4.9, createdAt: new Date(Date.now() - 21 * 86400000).toISOString(), template: 'wedding-planner', features: ['Budget tracker', 'Vendor contacts', 'Timeline', 'Guest list', 'Seating chart'] },
-    { id: 'prod-3', name: 'SaaS Metrics Dashboard', type: 'spreadsheet', platform: 'gumroad', status: 'published', price: 19.99, sales: 31, revenue: 619.69, rating: 4.7, createdAt: new Date(Date.now() - 7 * 86400000).toISOString(), template: 'saas-metrics', features: ['MRR tracking', 'Churn analysis', 'LTV calculator', 'Cohort view'] },
-    { id: 'prod-4', name: 'Content Calendar System', type: 'notion-template', platform: 'gumroad', status: 'draft', price: 14.99, sales: 0, revenue: 0, rating: null, createdAt: new Date(Date.now() - 2 * 86400000).toISOString(), template: 'content-calendar', features: ['Multi-platform', 'AI prompts', 'Analytics hooks', 'Repurposing flows'] },
-    { id: 'prod-5', name: 'Freelancer Finance Kit', type: 'spreadsheet', platform: 'etsy', status: 'generating', price: 17.99, sales: 0, revenue: 0, rating: null, createdAt: new Date().toISOString(), template: 'finance-kit', features: ['Invoice tracker', 'Tax estimates', 'Project P&L', 'Quarterly review'] },
-  ],
-  templates: [
-    { id: 'book-tracker', name: 'Book Tracker', complexity: 'medium', est: '~45min', sheets: 5 },
-    { id: 'wedding-planner', name: 'Wedding Planner', complexity: 'high', est: '~90min', sheets: 8 },
-    { id: 'saas-metrics', name: 'SaaS Metrics', complexity: 'high', est: '~60min', sheets: 6 },
-    { id: 'content-calendar', name: 'Content Calendar', complexity: 'medium', est: '~30min', sheets: 3 },
-    { id: 'finance-kit', name: 'Freelancer Finance', complexity: 'medium', est: '~40min', sheets: 4 },
-    { id: 'habit-tracker', name: 'Habit Tracker', complexity: 'low', est: '~20min', sheets: 2 },
-  ],
-};
+const productFactory = loadState('product_factory', { products: [], templates: [] });
 
 // --- Lead Generation Pipeline ---
-const leadPipeline = {
-  leads: [
-    { id: 'lead-1', company: 'TechFlow Inc', contact: 'Sarah Chen', role: 'VP Engineering', platform: 'linkedin', status: 'enriched', score: 92, achievement: 'Scaled team from 5 to 40 engineers in 18 months', outreach: 'personalized', sentAt: new Date(Date.now() - 2 * 86400000).toISOString(), openedAt: new Date(Date.now() - 1.5 * 86400000).toISOString(), repliedAt: null },
-    { id: 'lead-2', company: 'DataVerse AI', contact: 'Marcus Johnson', role: 'CTO', platform: 'linkedin', status: 'replied', score: 88, achievement: 'Led $15M Series A funding round', outreach: 'personalized', sentAt: new Date(Date.now() - 5 * 86400000).toISOString(), openedAt: new Date(Date.now() - 4.5 * 86400000).toISOString(), repliedAt: new Date(Date.now() - 3 * 86400000).toISOString() },
-    { id: 'lead-3', company: 'CloudScale Systems', contact: 'Emily Rodriguez', role: 'Head of Product', platform: 'linkedin', status: 'sent', score: 85, achievement: 'Launched product to 100K users in first quarter', outreach: 'personalized', sentAt: new Date(Date.now() - 1 * 86400000).toISOString(), openedAt: null, repliedAt: null },
-    { id: 'lead-4', company: 'NeuralPath Labs', contact: 'James Park', role: 'CEO', platform: 'email', status: 'scraped', score: 79, achievement: 'YC W24 batch, raised $3.2M seed', outreach: null, sentAt: null, openedAt: null, repliedAt: null },
-    { id: 'lead-5', company: 'QuantumLeap SaaS', contact: 'Aisha Patel', role: 'Director of Growth', platform: 'linkedin', status: 'enriched', score: 91, achievement: 'Grew ARR from $2M to $8M in one year', outreach: 'draft', sentAt: null, openedAt: null, repliedAt: null },
-    { id: 'lead-6', company: 'MetaForge Analytics', contact: 'David Kim', role: 'VP Sales', platform: 'email', status: 'scraped', score: 73, achievement: 'Built enterprise sales team generating $50M pipeline', outreach: null, sentAt: null, openedAt: null, repliedAt: null },
-  ],
-  campaigns: [
-    { id: 'camp-1', name: 'AI Startup Founders', target: 'CEOs/CTOs at AI startups (Series A-B)', leads: 24, sent: 18, opened: 12, replied: 4, status: 'active' },
-    { id: 'camp-2', name: 'SaaS Growth Leaders', target: 'Growth/Marketing leads at $2-10M ARR SaaS', leads: 31, sent: 22, opened: 15, replied: 6, status: 'active' },
-    { id: 'camp-3', name: 'Enterprise DevTool Buyers', target: 'VP Eng at 500+ employee companies', leads: 15, sent: 0, opened: 0, replied: 0, status: 'draft' },
-  ],
-};
+const leadPipeline = loadState('lead_pipeline', { leads: [], campaigns: [] });
 
 // Lead Gen routes extracted to commercial/modules/lead-gen/index.js
 
 // --- Marketing Hub ---
-const marketingHub = {
-  pipelines: [
-    { id: 'mkt-1', name: 'YouTube → Multi-Platform', source: 'youtube', status: 'active', outputs: ['linkedin', 'x-twitter', 'email', 'blog'], lastRun: new Date(Date.now() - 3600000).toISOString(), totalRuns: 18, conversions: { linkedin: 34, twitter: 52, email: 89, blog: 12 } },
-    { id: 'mkt-2', name: 'Blog → Social Distribution', source: 'blog', status: 'active', outputs: ['linkedin', 'x-twitter', 'threads', 'newsletter'], lastRun: new Date(Date.now() - 7200000).toISOString(), totalRuns: 42, conversions: { linkedin: 156, twitter: 203, threads: 67, newsletter: 412 } },
-    { id: 'mkt-3', name: 'Podcast → Content Atoms', source: 'podcast', status: 'paused', outputs: ['audiogram', 'quote-cards', 'blog', 'x-twitter'], lastRun: new Date(Date.now() - 72 * 3600000).toISOString(), totalRuns: 8, conversions: { audiogram: 5, quotes: 24, blog: 3, twitter: 18 } },
-  ],
-  channels: [
-    { id: 'ch-linkedin', name: 'LinkedIn', followers: 2847, posts30d: 22, engagement: 4.8, growth: '+12%' },
-    { id: 'ch-twitter', name: 'X / Twitter', followers: 5231, posts30d: 45, engagement: 2.1, growth: '+8%' },
-    { id: 'ch-email', name: 'Email List', followers: 1203, posts30d: 8, engagement: 38.2, growth: '+15%' },
-    { id: 'ch-blog', name: 'Blog', followers: null, posts30d: 6, engagement: null, growth: '+22%' },
-  ],
-  contentQueue: [
-    { id: 'cq-1', title: 'AI OS Architecture Deep-Dive', channel: 'linkedin', status: 'scheduled', scheduledFor: new Date(Date.now() + 3600000).toISOString(), type: 'carousel' },
-    { id: 'cq-2', title: 'Thread: 5 Lessons from Building Multi-Agent Systems', channel: 'x-twitter', status: 'scheduled', scheduledFor: new Date(Date.now() + 7200000).toISOString(), type: 'thread' },
-    { id: 'cq-3', title: 'Weekly Newsletter: Agentic Workflows', channel: 'email', status: 'draft', scheduledFor: null, type: 'newsletter' },
-    { id: 'cq-4', title: 'Vibe Design: From Sketch to UI in 30s', channel: 'linkedin', status: 'generating', scheduledFor: null, type: 'video' },
-  ],
-};
+const marketingHub = loadState('marketing_hub', { pipelines: [], channels: [], contentQueue: [] });
 
 // Marketing routes extracted to commercial/modules/lead-gen/index.js
 
 // --- Golden Loop (Gem → NotebookLM sync) ---
-const goldenLoop = {
-  loops: [
-    { id: 'gl-1', gem: 'Brand Strategist', notebook: 'Brand & Voice Guidelines', status: 'synced', lastSync: new Date(Date.now() - 1800000).toISOString(), syncInterval: '30min', outputs: 24, accuracy: 97, dataSources: ['brand-voice.md', 'competitor-analysis.pdf', 'customer-interviews.md'] },
-    { id: 'gl-2', gem: 'Market Researcher', notebook: 'Industry Intelligence', status: 'synced', lastSync: new Date(Date.now() - 3600000).toISOString(), syncInterval: '1hr', outputs: 18, accuracy: 94, dataSources: ['market-data.csv', 'trend-reports/', 'analyst-notes.md'] },
-    { id: 'gl-3', gem: 'Technical Writer', notebook: 'Product Documentation', status: 'syncing', lastSync: new Date(Date.now() - 900000).toISOString(), syncInterval: '15min', outputs: 56, accuracy: 99, dataSources: ['api-specs.yaml', 'changelog.md', 'architecture.md'] },
-    { id: 'gl-4', gem: 'Sales Coach', notebook: 'Sales Playbook & Objections', status: 'error', lastSync: new Date(Date.now() - 86400000).toISOString(), syncInterval: '2hr', outputs: 8, accuracy: 91, dataSources: ['objection-handling.md', 'case-studies/', 'pricing.md'], error: 'Notebook source limit reached (50 files)' },
-  ],
-};
+const goldenLoop = loadState('golden_loop', { loops: [] });
 
 app.get('/api/golden-loop', (req, res) => {
   res.json(goldenLoop.loops);
@@ -4231,10 +4045,12 @@ app.post('/api/golden-loop/:id/sync', (req, res) => {
   if (!loop) return res.status(404).json({ error: 'Loop not found' });
   loop.status = 'syncing';
   loop.lastSync = new Date().toISOString();
+  saveState('golden_loop', goldenLoop);
   broadcast({ event: 'golden_loop_update', data: loop });
   setTimeout(() => {
     loop.status = 'synced';
     loop.outputs += 1;
+    saveState('golden_loop', goldenLoop);
     broadcast({ event: 'golden_loop_update', data: loop });
   }, 3000);
   res.json(loop);
@@ -4254,6 +4070,7 @@ app.post('/api/golden-loop', (req, res) => {
     dataSources: dataSources || [],
   };
   goldenLoop.loops.push(loop);
+  saveState('golden_loop', goldenLoop);
   broadcast({ event: 'golden_loop_update', data: loop });
   setTimeout(() => {
     loop.status = 'synced';
@@ -4268,70 +4085,25 @@ app.post('/api/golden-loop', (req, res) => {
 // =============================
 
 // --- Vibe Design Studio ---
-const vibeDesign = {
-  projects: [
-    { id: 'vd-1', name: 'SaaS Landing Page', method: 'prompt', status: 'completed', screens: 4, style: 'minimal-tech', inputs: { prompt: 'Modern SaaS landing with gradient hero, feature cards, pricing table' }, heatmap: true, interactions: 12, createdAt: new Date(Date.now() - 2 * 86400000).toISOString(), completedAt: new Date(Date.now() - 1.8 * 86400000).toISOString() },
-    { id: 'vd-2', name: 'Mobile Onboarding Flow', method: 'sketch', status: 'completed', screens: 5, style: 'playful', inputs: { sketch: 'onboarding-sketch.png' }, heatmap: true, interactions: 8, createdAt: new Date(Date.now() - 5 * 86400000).toISOString(), completedAt: new Date(Date.now() - 4.7 * 86400000).toISOString() },
-    { id: 'vd-3', name: 'Dashboard Redesign', method: 'voice', status: 'iterating', screens: 3, style: 'data-dense', inputs: { voice: 'I need a dashboard with real-time metrics, dark mode, and a sidebar nav' }, heatmap: false, interactions: 6, createdAt: new Date(Date.now() - 1 * 86400000).toISOString(), completedAt: null },
-    { id: 'vd-4', name: 'E-commerce Product Page', method: 'url', status: 'generating', screens: 0, style: 'luxe', inputs: { url: 'https://reference-store.com/product' }, heatmap: false, interactions: 0, createdAt: new Date().toISOString(), completedAt: null },
-  ],
-  controls: {
-    density: { min: 0, max: 100, default: 50 },
-    hue: { min: 0, max: 360, default: 240 },
-    roundness: { min: 0, max: 100, default: 60 },
-    spacing: { min: 0, max: 100, default: 50 },
-  },
-};
+const vibeDesign = loadState('vibe_design', {
+  projects: [],
+  controls: { density: { min: 0, max: 100, default: 50 }, hue: { min: 0, max: 360, default: 240 }, roundness: { min: 0, max: 100, default: 60 }, spacing: { min: 0, max: 100, default: 50 } },
+});
 
 // Creative Studio vibe-design routes extracted to commercial/modules/creative-studio/index.js
 
 // --- 3D Production (Blender MCP) ---
-const blender3d = {
-  scenes: [
-    { id: '3d-1', name: 'Futuristic Office', status: 'rendered', engine: 'blender-mcp', resolution: '2048x2048', style: 'photorealistic', lighting: 'dramatic', objects: 12, renderTime: '4m 23s', fileSize: '8.4 MB', createdAt: new Date(Date.now() - 3 * 86400000).toISOString(), prompt: 'Modern tech office with holographic displays and ambient lighting' },
-    { id: '3d-2', name: 'Product Showcase', status: 'rendered', engine: 'blender-mcp', resolution: '4096x4096', style: 'studio', lighting: 'three-point', objects: 3, renderTime: '2m 11s', fileSize: '12.1 MB', createdAt: new Date(Date.now() - 7 * 86400000).toISOString(), prompt: 'Sleek SaaS product box floating on dark gradient with reflections' },
-    { id: '3d-3', name: 'Abstract Data Viz', status: 'rendering', engine: 'blender-mcp', resolution: '1920x1080', style: 'abstract', lighting: 'neon', objects: 48, renderTime: null, fileSize: null, createdAt: new Date(Date.now() - 3600000).toISOString(), prompt: 'Abstract 3D bar chart rising from dark surface with glowing edges' },
-    { id: '3d-4', name: 'Hero Background', status: 'queued', engine: 'blender-mcp', resolution: '3840x2160', style: 'gradient-mesh', lighting: 'ambient', objects: 0, renderTime: null, fileSize: null, createdAt: new Date().toISOString(), prompt: 'Organic mesh gradient background with floating geometric shapes' },
-  ],
-  presets: [
-    { id: 'preset-studio', name: 'Studio Lighting', lighting: 'three-point', style: 'clean' },
-    { id: 'preset-dramatic', name: 'Dramatic', lighting: 'dramatic', style: 'cinematic' },
-    { id: 'preset-neon', name: 'Neon Glow', lighting: 'neon', style: 'cyberpunk' },
-    { id: 'preset-natural', name: 'Natural', lighting: 'hdri', style: 'photorealistic' },
-  ],
-};
+const blender3d = loadState('blender_3d', { scenes: [], presets: [] });
 
 // Creative Studio 3D routes extracted to commercial/modules/creative-studio/index.js
 
 // --- Predictive Analytics ---
-const predictiveAnalytics = {
-  predictions: [
-    { id: 'pred-1', metric: 'Monthly Revenue', current: 4200, predicted: 5800, confidence: 0.87, trend: 'up', period: 'next-30d', factors: ['Product launches', 'Email list growth', 'Seasonal demand'], createdAt: new Date(Date.now() - 86400000).toISOString() },
-    { id: 'pred-2', metric: 'Lead Conversion Rate', current: 33, predicted: 41, confidence: 0.79, trend: 'up', period: 'next-30d', factors: ['Improved personalization', 'Achievement-based outreach', 'Follow-up sequences'], createdAt: new Date(Date.now() - 2 * 86400000).toISOString() },
-    { id: 'pred-3', metric: 'Content Engagement', current: 4.8, predicted: 6.2, confidence: 0.82, trend: 'up', period: 'next-14d', factors: ['Video content increase', 'Cross-platform distribution', 'Trending topics'], createdAt: new Date(Date.now() - 3 * 86400000).toISOString() },
-    { id: 'pred-4', metric: 'API Cost', current: 12.50, predicted: 18.20, confidence: 0.91, trend: 'up', period: 'next-7d', factors: ['Batch routine scaling', 'New agent additions', 'Media production'], createdAt: new Date(Date.now() - 12 * 3600000).toISOString() },
-    { id: 'pred-5', metric: 'Churn Risk', current: 2.1, predicted: 1.4, confidence: 0.74, trend: 'down', period: 'next-30d', factors: ['Onboarding improvements', 'Feature adoption tracking', 'Proactive support'], createdAt: new Date(Date.now() - 4 * 86400000).toISOString() },
-  ],
-  models: [
-    { id: 'model-revenue', name: 'Revenue Forecaster', accuracy: 87, lastTrained: new Date(Date.now() - 86400000).toISOString(), dataPoints: 180 },
-    { id: 'model-engagement', name: 'Engagement Predictor', accuracy: 82, lastTrained: new Date(Date.now() - 2 * 86400000).toISOString(), dataPoints: 420 },
-    { id: 'model-churn', name: 'Churn Detector', accuracy: 79, lastTrained: new Date(Date.now() - 3 * 86400000).toISOString(), dataPoints: 95 },
-    { id: 'model-cost', name: 'Cost Projector', accuracy: 91, lastTrained: new Date(Date.now() - 12 * 3600000).toISOString(), dataPoints: 304 },
-  ],
-};
+const predictiveAnalytics = loadState('predictive_analytics', { predictions: [], models: [] });
 
 // Predictions routes extracted to commercial/modules/advanced-reporting/index.js
 
 // --- Batch Generation Queue ---
-const batchQueue = {
-  batches: [
-    { id: 'batch-1', name: 'Instagram Ad Variants', type: 'image', count: 24, completed: 24, status: 'done', agent: 'deepseek-worker', startedAt: new Date(Date.now() - 6 * 3600000).toISOString(), completedAt: new Date(Date.now() - 5.2 * 3600000).toISOString(), cost: 0.18, outputPath: '.magent/artifacts/media/ads-ig/' },
-    { id: 'batch-2', name: 'Blog Post Series (SEO)', type: 'text', count: 10, completed: 7, status: 'running', agent: 'writer', startedAt: new Date(Date.now() - 2 * 3600000).toISOString(), completedAt: null, cost: 0.42, outputPath: '.magent/artifacts/docs/blog-series/' },
-    { id: 'batch-3', name: 'Product Description Pack', type: 'text', count: 50, completed: 50, status: 'done', agent: 'deepseek-worker', startedAt: new Date(Date.now() - 24 * 3600000).toISOString(), completedAt: new Date(Date.now() - 22 * 3600000).toISOString(), cost: 0.35, outputPath: '.magent/artifacts/docs/product-descs/' },
-    { id: 'batch-4', name: 'Social Media Carousel Pack', type: 'image', count: 15, completed: 0, status: 'queued', agent: 'media-producer', startedAt: null, completedAt: null, cost: 0, outputPath: '.magent/artifacts/media/carousels/' },
-    { id: 'batch-5', name: 'Email Subject Line A/B', type: 'text', count: 100, completed: 100, status: 'done', agent: 'deepseek-worker', startedAt: new Date(Date.now() - 48 * 3600000).toISOString(), completedAt: new Date(Date.now() - 47 * 3600000).toISOString(), cost: 0.08, outputPath: '.magent/artifacts/docs/subject-lines/' },
-  ],
-};
+const batchQueue = loadState('batch_queue', { batches: [] });
 
 // Batch queue routes extracted to commercial/modules/hermes-advanced (batchQueue feature)
 
