@@ -567,6 +567,7 @@ app.get('/sitemap.xml', (req, res) => {
   const pages = [
     { url: '/', priority: '1.0', freq: 'weekly' },
     { url: '/about', priority: '0.8', freq: 'monthly' },
+    { url: '/contact', priority: '0.7', freq: 'monthly' },
     { url: '/free-audit', priority: '0.9', freq: 'monthly' },
     { url: '/blog', priority: '0.9', freq: 'weekly' },
     { url: '/blog/what-is-ai-operating-system', priority: '0.8', freq: 'monthly' },
@@ -992,6 +993,9 @@ app.get('/blog/:slug', (req, res) => {
 
 app.get('/about', (req, res) => {
   res.sendFile(path.join(BASE, 'dashboard', 'about.html'));
+});
+app.get('/contact', (req, res) => {
+  res.sendFile(path.join(BASE, 'dashboard', 'contact.html'));
 });
 
 // Compare routes
