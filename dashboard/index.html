@@ -56,7 +56,7 @@
         "name": "Enterprise License",
         "price": "4997.00",
         "priceCurrency": "USD",
-        "description": "One-time license. Everything in Business + 1 year priority support, custom agents, SLA. Optional $997/yr renewal to extend priority support."
+        "description": "One-time license. Everything in Business + 1 year priority support, custom agents, target response times. Optional $997/yr renewal to extend priority support."
       }
     ],
     "featureList": [
@@ -101,7 +101,7 @@
         "name": "How much does AI OS cost?",
         "acceptedAnswer": {
           "@type": "Answer",
-          "text": "AI OS is open-source and self-hosted. The Community edition is free with 15 agents and 5 departments. Business license is $1,997 one-time for all 51 agents, white-label branding, and multi-tenant management. Enterprise license is $4,997 one-time with everything in Business plus 1 year priority support, custom agents, and SLA. Optional annual renewal at $997/yr extends priority support."
+          "text": "AI OS is open-source and self-hosted. The Community edition is free with 15 agents and 5 departments. Business license is $1,997 one-time for all 51 agents, white-label branding, and multi-tenant management. Enterprise license is $4,997 one-time with everything in Business plus 1 year priority support, custom agents, and priority response times. Optional annual renewal at $997/yr extends priority support."
         }
       },
       {
@@ -611,13 +611,13 @@
             <li>&#9989; 1 year priority support</li>
             <li>&#9989; Custom agent development</li>
             <li>&#9989; SSO &amp; advanced security</li>
-            <li>&#9989; SLA guarantee</li>
+            <li>&#9989; Priority response times</li>
             <li>&#9989; Optional $997/yr renewal</li>
           </ul>
           <a href="/api/stripe/checkout?plan=enterprise" class="btn-primary-cta btn-block" style="background:linear-gradient(135deg,#10b981,#3b82f6);">Get Enterprise License</a>
         </div>
       </div>
-      <p style="text-align:center; margin-top:16px; font-size:13px; color:var(--text-muted);">Enterprise license includes 1 year of priority support, custom agents, and SLA. Optional annual renewal at $997/yr to extend priority support.</p>
+      <p style="text-align:center; margin-top:16px; font-size:13px; color:var(--text-muted);">Enterprise license includes 1 year of priority support, custom agents, and target response times. Optional annual renewal at $997/yr to extend priority support.</p>
       <h3 style="text-align:center; margin-top:24px; color:var(--text-muted);">See how AI OS stacks up: <a href="/compare" target="_blank" rel="noopener" style="color:var(--primary); text-decoration:underline;">Compare vs Relevance AI, CrewAI, Lindy, Taskade &amp; LangChain &rarr;</a></h3>
     </div>
   </section>
@@ -694,7 +694,7 @@
         </div>
         <div class="faq-item">
           <button class="faq-question">What's the difference between Pro and Business?<span class="faq-toggle">+</span></button>
-          <div class="faq-answer">Community is free and open-source — 15 agents across 5 departments, great for personal use and small teams. Business ($1,997 one-time license) unlocks all 51 agents, white-label branding, and multi-tenant management so you can resell under your own brand. Enterprise ($4,997) includes everything in Business plus 1 year priority support, custom agents, and SLA. Optional $997/yr renewal extends the priority support plan.</div>
+          <div class="faq-answer">Community is free and open-source — 15 agents across 5 departments, great for personal use and small teams. Business ($1,997 one-time license) unlocks all 51 agents, white-label branding, and multi-tenant management so you can resell under your own brand. Enterprise ($4,997) includes everything in Business plus 1 year priority support, custom agents, and priority response times. Optional $997/yr renewal extends the priority support plan.</div>
         </div>
       </div>
     </div>
@@ -833,7 +833,7 @@
         { msg: "AI OS follows the open-core model — like n8n or ViaSocket. The Community edition is free and open-source. You self-host on your own infrastructure.", delay: 0 },
         { msg: "Community is free — 15 agents across 5 departments, full source code, community support. Perfect for individuals and small teams.", delay: 2000 },
         { msg: "Business license is a one-time $1,997 — unlocks all 51 agents, white-label branding, and multi-tenant management so you can resell under your own brand.", delay: 4000 },
-        { msg: "Enterprise license is $4,997 one-time — everything in Business plus 1 year priority support, custom agents, and SLA.", delay: 6000 },
+        { msg: "Enterprise license is $4,997 one-time — everything in Business plus 1 year priority support, custom agents, and priority response times.", delay: 6000 },
         { msg: "Enterprise includes an optional $997/yr renewal to extend priority support. Business has no recurring fees.", delay: 8000, options: ['How do I get started?', 'What\'s included exactly?', 'Show me the pricing page', 'Back to overview'] },
       ],
       pricing: [
@@ -841,7 +841,7 @@
         { msg: "Free Demo — try AI OS in your browser at aiosorchestrationlab.com. Limited access, no self-hosting needed.", delay: 1500 },
         { msg: "Community — free, open-source, self-hosted. 15 agents, 5 departments, SEO Agency, skills and pipelines. Full source code access.", delay: 3000 },
         { msg: "Business — $1,997 one-time license. All 51 agents, white-label, multi-tenant. Resell under your own brand.", delay: 4500 },
-        { msg: "Enterprise — $4,997 one-time license. Everything in Business plus 1 year priority support, custom agents, and SLA. Optional $997/yr renewal extends priority support.", delay: 6000, options: ['How do I self-host?', 'Tell me more about features', 'Back to overview'] },
+        { msg: "Enterprise — $4,997 one-time license. Everything in Business plus 1 year priority support, custom agents, and priority response times. Optional $997/yr renewal extends priority support.", delay: 6000, options: ['How do I self-host?', 'Tell me more about features', 'Back to overview'] },
       ],
       models: [
         { msg: "We route across 10 model tiers for optimal cost and quality:", delay: 0 },
@@ -994,7 +994,7 @@
     let matched = null;
     if (lower.includes('seo') || lower.includes('audit')) matched = 'seo';
     else if (lower.includes('creative') || lower.includes('video') || lower.includes('omni')) matched = 'creative';
-    else if (lower.includes('license') || lower.includes('licensing') || lower.includes('white-label') || lower.includes('white label') || lower.includes('9,997') || lower.includes('9997') || lower.includes('lifetime') || lower.includes('founder')) matched = 'licensing';
+    else if (lower.includes('license') || lower.includes('licensing') || lower.includes('white-label') || lower.includes('white label')) matched = 'licensing';
     else if (lower.includes('price') || lower.includes('pricing') || lower.includes('cost') || lower.includes('how much')) matched = 'pricing';
     else if (lower.includes('model') || lower.includes('opus') || lower.includes('tier')) matched = 'models';
     else if (lower.includes('apply') || lower.includes('sign up') || lower.includes('join')) matched = 'apply';
