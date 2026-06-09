@@ -107,15 +107,15 @@ Each virtual employee maps to an AI agent with a specific model tier, can receiv
 
 ### Licensing (Open-Core Model)
 
-**Community Edition (Free)** — Open-source core, self-hosted. Perpetual, royalty-free license for personal and commercial use. Includes 15 agents, 5 departments, Scout + Pro model tiers, 5 SEO audits/month, Knowledge Graph, Tech Radar, and community support via GitHub Issues. Must retain "Powered by AI OS" attribution. You provide your own API keys and are responsible for hosting, security, and backups. [Full license](/docs/license-community)
+**Community Edition (Free)** — Open-source core, self-hosted with custom domain support. Perpetual, royalty-free license for personal and commercial use. Includes 15 agents, 5 departments, Scout + Pro model tiers, 5 SEO audits/month, Knowledge Graph, Tech Radar, and community support via GitHub Issues. Must retain "Powered by AI OS" attribution. You provide your own API keys and are responsible for hosting, security, and backups. [Full license](/docs/license-community)
 
 **Business License ($1,997 one-time)** — Everything in Community plus all 51 agents, all 10 departments, all 7 model tiers, unlimited SEO audits, Gemini Omni Creative Studio, YouTube Intelligence, Agent Builder, white-label branding (custom name, logo, colors, domain — no attribution required), multi-tenant client management, lead generation, product factory, marketing hub, advanced reporting, browser agent, Grok Intel, design system, video meetings, and batch queue. Priority email support included. Per-organization license (one production deployment per key). Lifetime software updates. 14-day refund policy. [Full license](/docs/license-business)
 
-**Enterprise License ($4,997 one-time)** — Everything in Business plus SSO/SAML integration, SLA-backed support (4hr critical / 8hr high / 24hr medium response times, Mon-Fri 9am-6pm EST), dedicated Slack channel, custom agent development assistance (up to 5 custom agents in Year 1), priority bug fixes, early access to new features, full custom domain support, and deployment architecture review. Includes 1 year of priority support; optional $997/year renewal extends support, SLA, and Slack access (platform works permanently without renewal). Upgrade from Business: $3,000 difference. [Full license](/docs/license-enterprise)
+**Enterprise License ($4,997 one-time)** — Everything in Business plus SSO/SAML integration, SLA-backed support (4hr critical / 8hr high / 24hr medium response times, Mon-Fri 9am-6pm EST), dedicated Slack channel, custom agent development assistance (up to 5 custom agents in Year 1), priority bug fixes, early access to new features, and deployment architecture review. Includes 1 year of priority support; optional $997/year renewal extends support, SLA, and Slack access (platform works permanently without renewal). Upgrade from Business: $3,000 difference. [Full license](/docs/license-enterprise)
 
 **Founders Lifetime License ($9,997 one-time)** — Limited to 100 spots. Everything in Enterprise plus lifetime priority support (no annual renewal), founding member recognition, and priority input on the product roadmap. Contact support@aiosorchestrationlab.com for availability.
 
-All tiers are self-hosted — you run on your own infrastructure with your own API keys.
+All tiers are self-hosted — you run on your own infrastructure with your own domain and API keys. Custom domain support is included in every self-hosted tier (the free hosted demo is the only exception).
 
 ### Hermes Agent (Persistent MCP)
 - **Walkaway Mode** — Delegate tasks that run autonomously in the background
