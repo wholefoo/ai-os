@@ -52,7 +52,7 @@
           <h1>Knowledge Graph</h1>
           <p class="docs-lead">The Knowledge Graph is an auto-categorizing knowledge base that stores, links, and visualizes information with semantic connections. It serves as the long-term memory for all agents.</p>
 
-          <h2>How It Works</h2>
+          <h2 id="how-it-works">How It Works</h2>
           <p>When agents generate research, reports, or artifacts, the Knowledge Graph agent automatically:</p>
           <ol>
             <li>Ingests the raw content into <code>.magent/vault/raw/</code></li>
@@ -62,7 +62,7 @@
             <li>Makes everything searchable and retrievable by other agents</li>
           </ol>
 
-          <h2>Vault Structure</h2>
+          <h2 id="vault-structure">Vault Structure</h2>
           <pre><code>.magent/vault/
   raw/          Original ingested documents
   wiki/         Processed knowledge articles
@@ -82,7 +82,7 @@
   "content": "..."
 }</code></pre>
 
-          <h2>Radial Visualization</h2>
+          <h2 id="radial-visualization">Radial Visualization</h2>
           <p>The dashboard provides an interactive radial graph that displays knowledge entries as nodes with connections drawn between semantically related items. Features include:</p>
           <ul>
             <li><strong>Color coding</strong> — Nodes colored by category (research, technical, business, creative)</li>
@@ -91,7 +91,7 @@
             <li><strong>Search and filter</strong> — Find entries by keyword, category, or date range</li>
           </ul>
 
-          <h2>Agent Integration</h2>
+          <h2 id="agent-integration">Agent Integration</h2>
           <p>Any agent can read from and write to the Knowledge Graph:</p>
           <ul>
             <li><strong>vault_read</strong> — Search and retrieve knowledge entries by query or ID</li>
@@ -100,7 +100,7 @@
           </ul>
           <p>The Orchestrator automatically queries the Knowledge Graph for relevant context before delegating tasks, giving agents access to previously gathered intelligence.</p>
 
-          <h2>Dashboard View</h2>
+          <h2 id="dashboard-view">Dashboard View</h2>
           <p>The Knowledge Graph view in the dashboard provides:</p>
           <ul>
             <li>Radial graph visualization with pan/zoom controls</li>

@@ -52,7 +52,7 @@
           <h1>Deployment</h1>
           <p class="docs-lead">Deploy AI OS to production with PM2 + Nginx (recommended) or Docker. Includes VPS provisioning, TLS setup, and a production hardening checklist.</p>
 
-          <h2>Option 1 — PM2 + Nginx (Recommended)</h2>
+          <h2 id="pm2-nginx">Option 1 — PM2 + Nginx (Recommended)</h2>
           <p>The recommended production deployment uses PM2 for process management and Nginx as a reverse proxy with TLS termination.</p>
 
           <h3>VPS Provisioning</h3>
@@ -81,7 +81,7 @@ pm2 save</code></pre>
           <pre><code>sudo certbot --nginx -d yourdomain.com</code></pre>
           <p>Certbot auto-renews certificates. Nginx is configured to redirect HTTP to HTTPS.</p>
 
-          <h2>Option 2 — Docker</h2>
+          <h2 id="docker">Option 2 — Docker</h2>
           <pre><code>docker compose up -d</code></pre>
           <p>The Docker setup uses <code>node:20-alpine</code> with:</p>
           <ul>
@@ -95,7 +95,7 @@ pm2 save</code></pre>
             <strong>Note:</strong> Docker is optional. The PM2 + Nginx path is simpler and recommended for most deployments.
           </div>
 
-          <h2>Nginx Configuration</h2>
+          <h2 id="nginx-config">Nginx Configuration</h2>
           <p>The included <code>deploy/nginx.conf</code> provides:</p>
           <ul>
             <li><strong>TLS termination</strong> — SSL certificates via Certbot</li>
@@ -106,7 +106,7 @@ pm2 save</code></pre>
             <li><strong>Sensitive path blocking</strong> — Returns 404 for <code>/.magent/</code>, <code>/.claude/</code>, <code>/.env</code></li>
           </ul>
 
-          <h2>PM2 Configuration</h2>
+          <h2 id="pm2-config">PM2 Configuration</h2>
           <p>The <code>ecosystem.config.js</code> configures:</p>
           <ul>
             <li><strong>Auto-restart</strong> — Restarts on crash with exponential backoff</li>
@@ -116,7 +116,7 @@ pm2 save</code></pre>
             <li><strong>Watch mode</strong> — Disabled in production, enabled in development</li>
           </ul>
 
-          <h2>Production Hardening Checklist</h2>
+          <h2 id="hardening-checklist">Production Hardening Checklist</h2>
           <table class="docs-table">
             <thead>
               <tr><th>Item</th><th>Status</th></tr>
@@ -140,7 +140,7 @@ pm2 save</code></pre>
             </tbody>
           </table>
 
-          <h2>Environment Variables</h2>
+          <h2 id="environment-variables">Environment Variables</h2>
           <p>See the <a href="/docs/getting-started">Quick Start</a> guide for the full environment variable reference. In production, ensure all <code>STRIPE_*</code> variables use live keys (prefix <code>sk_live_</code>) and set <code>NODE_ENV=production</code>.</p>
 
           <div class="docs-page-nav">

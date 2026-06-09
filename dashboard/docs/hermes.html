@@ -55,7 +55,7 @@
           <h1>Hermes Agent</h1>
           <p class="docs-lead">Hermes is the persistent background worker tier — an always-on, self-improving MCP bridge that runs 24/7 on the AI OS platform. While Claude is the "brain" (planning and decisions), Hermes is the "hands" (interacting with the real world around the clock).</p>
 
-          <h2>Architecture</h2>
+          <h2 id="architecture">Architecture</h2>
           <p>Hermes connects to AI OS as a Model Context Protocol (MCP) server. The Orchestrator delegates tasks to Hermes for persistent, background execution:</p>
           <ul>
             <li><strong>Claude (AI OS)</strong> — Planning, decision-making, orchestration, complex reasoning</li>
@@ -63,7 +63,7 @@
           </ul>
           <p>The MCP connection is managed by the platform and configured automatically for each tenant.</p>
 
-          <h2>Remote Approval Gate</h2>
+          <h2 id="remote-approval-gate">Remote Approval Gate</h2>
           <p>When Hermes encounters a destructive or risky operation, it pauses execution and pushes an approval prompt to your phone:</p>
           <ol>
             <li>A task requests a risky action (file deletion, force-push, database modification)</li>
@@ -85,7 +85,7 @@
             </tbody>
           </table>
 
-          <h2>Walkaway Mode</h2>
+          <h2 id="walkaway-mode">Walkaway Mode</h2>
           <p>Initiate a long-running task from the dashboard, then close your laptop. Hermes acts as the bridge:</p>
           <ul>
             <li><strong>Progress pings</strong> — Sends status updates to your phone at each milestone</li>
@@ -98,7 +98,7 @@
             <strong>Example:</strong> Start a massive refactoring task, walk away, and Hermes will ping you on Telegram with progress updates. Reply "push to staging" from your phone when it's done.
           </div>
 
-          <h2>Remote Bug Diagnosis</h2>
+          <h2 id="remote-bug-diagnosis">Remote Bug Diagnosis</h2>
           <p>When a bug report arrives in Discord or Slack, use Hermes from your phone to trigger analysis:</p>
           <ol>
             <li>Send a message to Hermes via Telegram: "Analyze the auth bug reported in #bugs"</li>
@@ -107,7 +107,7 @@
             <li>Optionally, approve a fix from mobile</li>
           </ol>
 
-          <h2>24/7 Cron Jobs</h2>
+          <h2 id="cron-jobs">24/7 Cron Jobs</h2>
           <p>While AI OS requires your environment to be open, Hermes runs persistently. Delegate scheduled tasks that execute automatically:</p>
 
           <table class="docs-table">
@@ -123,10 +123,10 @@
             </tbody>
           </table>
 
-          <h2>Self-Improving Skills</h2>
+          <h2 id="self-improving-skills">Self-Improving Skills</h2>
           <p>Hermes has an autonomous "do, learn, improve" loop. When it solves a complex problem, it extracts the successful patterns and writes them into reusable skill files for faster future execution. These skills are stored on the platform and available to all agents in your tenant.</p>
 
-          <h2>API Endpoints</h2>
+          <h2 id="api-endpoints">API Endpoints</h2>
 
           <div class="docs-endpoint">
             <span class="docs-endpoint-method get">GET</span>
@@ -170,7 +170,7 @@
             <p class="docs-endpoint-desc">Create a new Hermes cron job.</p>
           </div>
 
-          <h2>Configuration</h2>
+          <h2 id="configuration">Configuration</h2>
           <table class="docs-table">
             <thead>
               <tr><th>Variable</th><th>Default</th><th>Description</th></tr>
@@ -182,7 +182,7 @@
             </tbody>
           </table>
 
-          <h2>Key Benefits</h2>
+          <h2 id="key-benefits">Key Benefits</h2>
           <ul>
             <li><strong>Tenant isolation</strong> — Each tenant's Hermes tasks are fully isolated from other tenants.</li>
             <li><strong>Cost efficiency</strong> — Background and cron tasks use your own API keys at standard rates.</li>

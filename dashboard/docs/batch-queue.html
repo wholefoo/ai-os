@@ -52,7 +52,7 @@
           <h1>Batch Queue</h1>
           <p class="docs-lead">Mass content production at economy-tier cost. Queue hundreds of generation tasks, manage priorities, and route outputs to the right destination automatically.</p>
 
-          <h2>How It Works</h2>
+          <h2 id="how-it-works">How It Works</h2>
           <p>The Batch Queue routes high-volume tasks to the Economy tier (DeepSeek V4) for cost-efficient processing:</p>
           <ol>
             <li>Submit batch items via the dashboard or API with type, prompt, and count</li>
@@ -62,7 +62,7 @@
             <li>Failed items are automatically retried up to 3 times</li>
           </ol>
 
-          <h2>Supported Batch Types</h2>
+          <h2 id="supported-types">Supported Batch Types</h2>
           <table class="docs-table">
             <thead>
               <tr><th>Type</th><th>Description</th><th>Typical Count</th></tr>
@@ -76,7 +76,7 @@
             </tbody>
           </table>
 
-          <h2>API Usage</h2>
+          <h2 id="api-usage">API Usage</h2>
           <div class="docs-endpoint">
             <span class="docs-endpoint-method post">POST</span>
             <span class="docs-endpoint-path">/api/batch</span>
@@ -97,7 +97,7 @@
             <li><strong>low</strong> — Processed only when no higher-priority items remain</li>
           </ul>
 
-          <h2>Rate Limiting</h2>
+          <h2 id="rate-limiting">Rate Limiting</h2>
           <p>Batch operations are subject to rate limiting to manage API costs:</p>
           <ul>
             <li>Maximum 10 batch submissions per minute (heavy rate limiter)</li>
@@ -106,7 +106,7 @@
             <li>Failed items use exponential backoff before retry</li>
           </ul>
 
-          <h2>Dashboard View</h2>
+          <h2 id="dashboard-view">Dashboard View</h2>
           <p>The Batch view provides real-time monitoring:</p>
           <ul>
             <li>Queue depth and estimated completion time</li>
