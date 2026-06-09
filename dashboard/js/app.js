@@ -483,7 +483,7 @@ function showUpgradeModal(requiredTier, featureName) {
   if (existing) existing.remove();
 
   const tierLabel = requiredTier === 'enterprise' ? 'Enterprise' : 'Business';
-  const price = requiredTier === 'enterprise' ? '$1,997/mo' : '$497/mo';
+  const price = requiredTier === 'enterprise' ? '$4,997 one-time' : '$1,997 one-time';
   const checkoutUrl = `/api/stripe/checkout?plan=${requiredTier}`;
 
   const modal = document.createElement('div');
@@ -8485,6 +8485,60 @@ function renderHQStats(stats) {
     <div class="hq-stat"><div class="hq-stat-value" style="color:var(--text-muted);">${stats.byStatus?.idle || 0}</div><div class="hq-stat-label">Idle</div></div>
     <div class="hq-stat"><div class="hq-stat-value">${stats.cSuite}</div><div class="hq-stat-label">C-Suite</div></div>
   `;
+
+  // Upgrade banner for community users
+  const tier = stats.tier || 'community';
+  const upgradeBanner = document.getElementById('hqUpgradeBanner');
+  if (upgradeBanner) upgradeBanner.remove();
+  if (tier === 'community' || tier === 'free') {
+    const banner = document.createElement('div');
+    banner.id = 'hqUpgradeBanner';
+    banner.style.cssText = 'margin:20px 0 0;border-radius:12px;overflow:hidden;';
+    banner.innerHTML = `
+      <div style="background:linear-gradient(135deg,rgba(59,130,246,0.08),rgba(139,92,246,0.08));border:1px solid rgba(59,130,246,0.2);border-radius:12px;padding:24px;">
+        <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px;">
+          <span style="font-size:24px;">&#128640;</span>
+          <div>
+            <div style="font-size:16px;font-weight:700;color:var(--text,#f1f5f9);">Unlock the Full AI OS Platform</div>
+            <div style="font-size:13px;color:var(--text-muted,#94a3b8);margin-top:2px;">You're on the Community edition with ${stats.totalEmployees} agents and ${stats.departments} departments.</div>
+          </div>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">
+          <div style="background:var(--bg-card,#1e293b);border:1px solid var(--border,#334155);border-radius:10px;padding:20px;">
+            <div style="font-size:14px;font-weight:700;color:#3b82f6;margin-bottom:8px;">&#128188; Business License</div>
+            <div style="font-size:22px;font-weight:800;color:var(--text,#f1f5f9);margin-bottom:8px;">$1,997 <span style="font-size:12px;font-weight:400;color:var(--text-muted,#94a3b8);">one-time</span></div>
+            <ul style="list-style:none;padding:0;margin:0 0 16px;font-size:12px;color:var(--text-muted,#94a3b8);line-height:1.9;">
+              <li>&#9989; All 51 agents &amp; 10 departments</li>
+              <li>&#9989; Unlimited SEO audits</li>
+              <li>&#9989; White-label branding</li>
+              <li>&#9989; Multi-tenant management</li>
+              <li>&#9989; Creative Studio &amp; YouTube Intel</li>
+              <li>&#9989; Priority email support</li>
+            </ul>
+            <a href="/api/stripe/checkout?plan=business" target="_blank" style="display:block;text-align:center;padding:10px;background:#3b82f6;color:#fff;border-radius:8px;text-decoration:none;font-weight:600;font-size:13px;transition:opacity 0.2s;" onmouseover="this.style.opacity='0.9'" onmouseout="this.style.opacity='1'">Upgrade to Business</a>
+          </div>
+          <div style="background:var(--bg-card,#1e293b);border:1px solid rgba(139,92,246,0.3);border-radius:10px;padding:20px;position:relative;">
+            <div style="position:absolute;top:-1px;right:16px;background:linear-gradient(135deg,#8b5cf6,#ec4899);color:#fff;font-size:10px;font-weight:700;padding:3px 10px;border-radius:0 0 6px 6px;text-transform:uppercase;letter-spacing:0.5px;">Recommended</div>
+            <div style="font-size:14px;font-weight:700;color:#8b5cf6;margin-bottom:8px;">&#127961; Enterprise License</div>
+            <div style="font-size:22px;font-weight:800;color:var(--text,#f1f5f9);margin-bottom:8px;">$4,997 <span style="font-size:12px;font-weight:400;color:var(--text-muted,#94a3b8);">one-time</span></div>
+            <ul style="list-style:none;padding:0;margin:0 0 16px;font-size:12px;color:var(--text-muted,#94a3b8);line-height:1.9;">
+              <li>&#9989; Everything in Business, plus:</li>
+              <li>&#9989; SSO / SAML integration</li>
+              <li>&#9989; SLA-backed support (4hr critical)</li>
+              <li>&#9989; Dedicated Slack channel</li>
+              <li>&#9989; Custom agent development (5 agents)</li>
+              <li>&#9989; $997/yr optional renewal</li>
+            </ul>
+            <a href="/api/stripe/checkout?plan=enterprise" target="_blank" style="display:block;text-align:center;padding:10px;background:linear-gradient(135deg,#8b5cf6,#ec4899);color:#fff;border-radius:8px;text-decoration:none;font-weight:600;font-size:13px;transition:opacity 0.2s;" onmouseover="this.style.opacity='0.9'" onmouseout="this.style.opacity='1'">Upgrade to Enterprise</a>
+          </div>
+        </div>
+        <div style="text-align:center;margin-top:12px;">
+          <a href="/docs/license-community" target="_blank" style="font-size:12px;color:var(--text-muted,#94a3b8);text-decoration:none;">Compare all tiers</a>
+        </div>
+      </div>
+    `;
+    container.parentNode.insertBefore(banner, container.nextSibling);
+  }
 }
 
 function renderOrgChart(org) {
