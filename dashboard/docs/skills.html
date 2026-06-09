@@ -55,7 +55,7 @@
           <h1>Skills &amp; Pipelines</h1>
           <p class="docs-lead">Skills are procedural instruction files that teach agents how to perform specific tasks. Pipelines chain multiple skills into declarative YAML workflows for complex multi-step operations.</p>
 
-          <h2>Skills Overview</h2>
+          <h2 id="skills-overview">Skills Overview</h2>
           <p>AI OS includes 19 built-in skill files stored in <code>.claude/skills/</code>. Each skill is a structured Markdown document that an agent reads and follows step by step.</p>
 
           <h3>Skill Categories</h3>
@@ -97,7 +97,7 @@ Structured research document saved to the Memory Vault.
 - Flag low-confidence claims
 - Escalate if topic requires specialized knowledge</code></pre>
 
-          <h2>Pipelines</h2>
+          <h2 id="pipelines">Pipelines</h2>
           <p>Pipelines are declarative YAML files in <code>.claude/pipelines/</code> that chain multiple skills into automated workflows. The Orchestrator reads the pipeline definition and executes each step in sequence, passing outputs between stages.</p>
 
           <h3>Pipeline Structure</h3>
@@ -142,7 +142,7 @@ steps:
             <li><strong>Triggers</strong> — Pipelines can be triggered manually, via CRON schedule, or by webhook</li>
           </ul>
 
-          <h2>Continuous Loops</h2>
+          <h2 id="continuous-loops">Continuous Loops</h2>
           <p>AI OS supports CRON-scheduled autonomous routines through the Automator and Routine Runner agents. These loops execute predefined pipelines on a schedule with built-in rate limiting to manage API costs.</p>
 
           <pre><code>name: daily-intel
@@ -153,7 +153,7 @@ rate_limit:
   max_runs: 1
   window: 24h</code></pre>
 
-          <h2>Custom Skills</h2>
+          <h2 id="custom-skills">Custom Skills</h2>
           <p>You can create custom skills by adding Markdown files to <code>.claude/skills/</code>. Follow the standard anatomy (Purpose, Inputs, Steps, Output, Guardrails) and the system will automatically discover and make them available to agents.</p>
 
           <div class="docs-callout info">

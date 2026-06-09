@@ -52,7 +52,7 @@
           <h1>Notifications</h1>
           <p class="docs-lead">AI OS delivers notifications through three channels: real-time WebSocket messages in the dashboard, Telegram Bot API, and Slack Incoming Webhooks. All channels are optional and independently configurable.</p>
 
-          <h2>WebSocket (Dashboard)</h2>
+          <h2 id="websocket">WebSocket (Dashboard)</h2>
           <p>The primary notification channel. All connected dashboard clients receive real-time updates via WebSocket:</p>
           <ul>
             <li><strong>Agent status</strong> — Started, processing, completed, or failed</li>
@@ -69,7 +69,7 @@
             <li><strong>Graceful shutdown:</strong> Server sends <code>server_shutdown</code> event before stopping</li>
           </ul>
 
-          <h2>Telegram</h2>
+          <h2 id="telegram">Telegram</h2>
           <p>Send notifications to a Telegram chat via the Bot API. Useful for mobile alerts when you're away from the dashboard.</p>
 
           <h3>Setup</h3>
@@ -93,7 +93,7 @@
 
           <p>The server calls the Telegram Bot API directly via HTTP POST to <code>api.telegram.org</code>. Messages are sent as HTML-formatted text with agent name, status, and summary.</p>
 
-          <h2>Slack</h2>
+          <h2 id="slack">Slack</h2>
           <p>Send notifications to a Slack channel via Incoming Webhooks.</p>
 
           <h3>Setup</h3>
@@ -115,7 +115,7 @@
 
           <p>Notifications are sent as Slack Block Kit messages with structured formatting including title, description, and status indicators.</p>
 
-          <h2>Notification Events</h2>
+          <h2 id="notification-events">Notification Events</h2>
           <p>The following events trigger notifications across all configured channels:</p>
           <table class="docs-table">
             <thead>

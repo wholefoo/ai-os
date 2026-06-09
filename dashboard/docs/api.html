@@ -55,12 +55,12 @@
           <h1>API Reference</h1>
           <p class="docs-lead">40+ REST endpoints covering authentication, agent management, AI features, billing, and system health. All endpoints return JSON and require Bearer token authentication in production.</p>
 
-          <h2>Authentication</h2>
+          <h2 id="authentication">Authentication</h2>
           <p>API requests in production require a Bearer token set via the <code>API_TOKEN</code> environment variable:</p>
           <pre><code>Authorization: Bearer your-api-token</code></pre>
           <p>The <code>/api/health</code> endpoint is exempt from authentication. Dashboard access uses session cookies set during login.</p>
 
-          <h2>Rate Limits</h2>
+          <h2 id="rate-limits">Rate Limits</h2>
           <table class="docs-table">
             <thead>
               <tr><th>Scope</th><th>Limit</th><th>Window</th></tr>
@@ -72,7 +72,7 @@
           </table>
           <p>Heavy rate limiting applies to: <code>clone-url</code>, <code>media/produce</code>, <code>leads/scrape</code>, <code>batch</code>, <code>grok/query</code>, <code>browser/execute</code>, <code>3d/scenes</code>, <code>vibe-design/projects</code>.</p>
 
-          <h2>System</h2>
+          <h2 id="system">System</h2>
 
           <div class="docs-endpoint">
             <span class="docs-endpoint-method get">GET</span>
@@ -80,7 +80,7 @@
             <p class="docs-endpoint-desc">Server health check. Returns uptime, memory usage, version, and environment.</p>
           </div>
 
-          <h2>Authentication Endpoints</h2>
+          <h2 id="authentication-endpoints">Authentication Endpoints</h2>
 
           <div class="docs-endpoint">
             <span class="docs-endpoint-method post">POST</span>
@@ -105,7 +105,7 @@
             <p class="docs-endpoint-desc">Invalidate the current session and clear the cookie.</p>
           </div>
 
-          <h2>Agents &amp; Skills</h2>
+          <h2 id="agents-skills">Agents &amp; Skills</h2>
 
           <div class="docs-endpoint">
             <span class="docs-endpoint-method get">GET</span>
@@ -125,7 +125,7 @@
             <p class="docs-endpoint-desc">Send a task to the Orchestrator for intelligent routing and execution.</p>
           </div>
 
-          <h2>Design System</h2>
+          <h2 id="design-system">Design System</h2>
 
           <div class="docs-endpoint">
             <span class="docs-endpoint-method get">GET</span>
@@ -150,7 +150,7 @@
             <p class="docs-endpoint-desc">Export the design system as DESIGN.md, CSS variables, JSON tokens, or Tailwind config.</p>
           </div>
 
-          <h2>Media &amp; 3D</h2>
+          <h2 id="media-3d">Media &amp; 3D</h2>
 
           <div class="docs-endpoint">
             <span class="docs-endpoint-method post">POST</span>
@@ -170,7 +170,7 @@
             <p class="docs-endpoint-desc">Create a new Vibe Design Studio project. Heavy rate limited.</p>
           </div>
 
-          <h2>Monetization</h2>
+          <h2 id="monetization">Monetization</h2>
 
           <div class="docs-endpoint">
             <span class="docs-endpoint-method post">POST</span>
@@ -190,7 +190,7 @@
   "count": 10  // max: 100
 }</code></pre>
 
-          <h2>AI Queries</h2>
+          <h2 id="ai-queries">AI Queries</h2>
 
           <div class="docs-endpoint">
             <span class="docs-endpoint-method post">POST</span>
@@ -204,7 +204,7 @@
             <p class="docs-endpoint-desc">Execute a headless browser task. Heavy rate limited.</p>
           </div>
 
-          <h2>Tenant &amp; Branding</h2>
+          <h2 id="tenant--branding">Tenant &amp; Branding</h2>
 
           <div class="docs-endpoint">
             <span class="docs-endpoint-method get">GET</span>
@@ -218,7 +218,7 @@
             <p class="docs-endpoint-desc">List available industry templates (digital agency, law firm, ecommerce, SaaS, real estate, healthcare, consulting, trades).</p>
           </div>
 
-          <h2>Knowledge Graph</h2>
+          <h2 id="knowledge-graph">Knowledge Graph</h2>
 
           <div class="docs-endpoint">
             <span class="docs-endpoint-method get">GET</span>
@@ -232,7 +232,7 @@
             <p class="docs-endpoint-desc">Add a new entry to the knowledge graph.</p>
           </div>
 
-          <h2>Error Responses</h2>
+          <h2 id="error-responses">Error Responses</h2>
           <p>All endpoints return standard error objects:</p>
           <pre><code>{
   "error": "Description of what went wrong"

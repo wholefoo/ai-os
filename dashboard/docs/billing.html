@@ -52,7 +52,7 @@
           <h1>Billing, Licenses &amp; Stripe Setup</h1>
           <p class="docs-lead">Complete guide to configuring Stripe for one-time license payments. Covers account creation, API keys, product setup, webhooks, testing, and going live.</p>
 
-          <h2>License Tiers</h2>
+          <h2 id="license-tiers">License Tiers</h2>
           <p>AI OS offers four tiers. The Free Demo and Community edition are free. Business and Enterprise licenses use Stripe Checkout for PCI-compliant one-time payment processing.</p>
           <table class="docs-table">
             <thead>
@@ -76,14 +76,14 @@
             </tbody>
           </table>
 
-          <h2>Step 1 — Create a Stripe Account</h2>
+          <h2 id="step-1-create-a-stripe-account">Step 1 — Create a Stripe Account</h2>
           <ol>
             <li>Go to <a href="https://dashboard.stripe.com/register" target="_blank">dashboard.stripe.com/register</a></li>
             <li>Sign up with your email</li>
             <li>Verify your email and complete onboarding</li>
           </ol>
 
-          <h2>Step 2 — Get Your Secret Key</h2>
+          <h2 id="step-2-get-your-secret-key">Step 2 — Get Your Secret Key</h2>
           <ol>
             <li>Go to <a href="https://dashboard.stripe.com/apikeys" target="_blank">dashboard.stripe.com/apikeys</a></li>
             <li>You will see two keys:
@@ -100,7 +100,7 @@
             <strong>Test vs Live:</strong> Start with test keys (<code>sk_test_...</code>). When ready to accept real payments, toggle &ldquo;Test mode&rdquo; off in the Stripe dashboard and use live keys (<code>sk_live_...</code>).
           </div>
 
-          <h2>Step 3 — Create Products and Prices</h2>
+          <h2 id="step-3-create-products-and-prices">Step 3 — Create Products and Prices</h2>
           <p>Create one Stripe product for each paid license tier. The Free Demo and Community tiers have no Stripe product.</p>
 
           <h3>Business License ($1,997 one-time)</h3>
@@ -151,7 +151,7 @@
             <strong>Optional.</strong> If you want to offer an annual renewal to extend priority support, create one additional recurring product: Enterprise Renewal ($997/year). This is optional &mdash; licenses work permanently without renewal. Business has no recurring fees.
           </div>
 
-          <h2>Step 4 — Set Up the Webhook</h2>
+          <h2 id="step-4-set-up-the-webhook">Step 4 — Set Up the Webhook</h2>
           <p>The webhook lets Stripe notify your server when payments succeed, annual renewals process, or customers cancel.</p>
           <ol>
             <li>Go to <a href="https://dashboard.stripe.com/webhooks" target="_blank">dashboard.stripe.com/webhooks</a></li>
@@ -176,7 +176,7 @@
             <strong>Important:</strong> The webhook endpoint receives raw request bodies (not JSON parsed) because Stripe requires the raw body for signature verification. This is already handled in <code>server.js</code> &mdash; the JSON body parser skips the <code>/api/stripe/webhook</code> route.
           </div>
 
-          <h2>Step 5 — Complete .env Configuration</h2>
+          <h2 id="step-5-complete-env-configuration">Step 5 — Complete .env Configuration</h2>
           <pre><code># Stripe — One-time license payments
 STRIPE_SECRET_KEY=sk_test_XXXXXXXXXXXXXXXXXXXXXXXX
 STRIPE_WEBHOOK_SECRET=whsec_XXXXXXXXXXXXXXXXXXXXXXXX
@@ -185,7 +185,7 @@ STRIPE_ENTERPRISE_PRICE_ID=price_XXXXXXXXXXXXXXXXXXXXXXXX
 # Optional Enterprise renewal Price ID (if configured)
 # STRIPE_ENTERPRISE_RENEWAL_PRICE_ID=price_XXXXXXXXXXXXXXXXXXXXXXXX</code></pre>
 
-          <h2>Step 6 — Restart and Test</h2>
+          <h2 id="step-6-restart-and-test">Step 6 — Restart and Test</h2>
           <pre><code>sudo -u aios pm2 restart ai-os --update-env</code></pre>
 
           <h3>Stripe Test Cards</h3>
@@ -202,7 +202,7 @@ STRIPE_ENTERPRISE_PRICE_ID=price_XXXXXXXXXXXXXXXXXXXXXXXX
           </table>
           <p>Use any future expiry date, any 3-digit CVC, and any billing ZIP code.</p>
 
-          <h2>Step 7 — Go Live</h2>
+          <h2 id="step-7-go-live">Step 7 — Go Live</h2>
           <ol>
             <li>Complete Stripe account activation (business info, bank account for payouts)</li>
             <li>Toggle <strong>Test mode off</strong> in the Stripe dashboard</li>
@@ -217,7 +217,7 @@ STRIPE_ENTERPRISE_PRICE_ID=price_XXXXXXXXXXXXXXXXXXXXXXXX
             <strong>Before going live:</strong> Test the full checkout flow end-to-end with test cards. Verify the webhook fires correctly by checking <code>pm2 logs ai-os</code> for Stripe event handling logs.
           </div>
 
-          <h2>Checkout Flow</h2>
+          <h2 id="checkout-flow">Checkout Flow</h2>
           <p>The license purchase flow uses Stripe Checkout for secure, PCI-compliant payment processing:</p>
           <ol>
             <li>User clicks a pricing CTA on the landing page</li>
@@ -227,7 +227,7 @@ STRIPE_ENTERPRISE_PRICE_ID=price_XXXXXXXXXXXXXXXXXXXXXXXX
             <li>The server provisions the license, creates a session cookie, and redirects to <code>/app</code></li>
           </ol>
 
-          <h2>Webhook Events</h2>
+          <h2 id="webhook-events">Webhook Events</h2>
           <table class="docs-table">
             <thead>
               <tr><th>Event</th><th>Action</th></tr>
@@ -241,7 +241,7 @@ STRIPE_ENTERPRISE_PRICE_ID=price_XXXXXXXXXXXXXXXXXXXXXXXX
             </tbody>
           </table>
 
-          <h2>Session Management</h2>
+          <h2 id="session-management">Session Management</h2>
           <ul>
             <li><strong>Cookie name:</strong> <code>ai-os-session</code></li>
             <li><strong>Type:</strong> HTTP-only, Secure (production), SameSite: Lax</li>
@@ -259,17 +259,17 @@ STRIPE_ENTERPRISE_PRICE_ID=price_XXXXXXXXXXXXXXXXXXXXXXXX
 
         <aside class="docs-toc">
           <div class="docs-toc-title">On this page</div>
-          <a href="#">License Tiers</a>
-          <a href="#">Step 1 — Create Account</a>
-          <a href="#">Step 2 — Secret Key</a>
-          <a href="#">Step 3 — Products &amp; Prices</a>
-          <a href="#">Step 4 — Webhook</a>
-          <a href="#">Step 5 — .env Config</a>
-          <a href="#">Step 6 — Test</a>
-          <a href="#">Step 7 — Go Live</a>
-          <a href="#">Checkout Flow</a>
-          <a href="#">Webhook Events</a>
-          <a href="#">Session Management</a>
+          <a href="#license-tiers">License Tiers</a>
+          <a href="#step-1-create-a-stripe-account">Step 1 — Create Account</a>
+          <a href="#step-2-get-your-secret-key">Step 2 — Secret Key</a>
+          <a href="#step-3-create-products-and-prices">Step 3 — Products &amp; Prices</a>
+          <a href="#step-4-set-up-the-webhook">Step 4 — Webhook</a>
+          <a href="#step-5-complete-env-configuration">Step 5 — .env Config</a>
+          <a href="#step-6-restart-and-test">Step 6 — Test</a>
+          <a href="#step-7-go-live">Step 7 — Go Live</a>
+          <a href="#checkout-flow">Checkout Flow</a>
+          <a href="#webhook-events">Webhook Events</a>
+          <a href="#session-management">Session Management</a>
         </aside>
       </div>
     </div>

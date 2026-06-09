@@ -55,7 +55,7 @@
           <h1>Architecture</h1>
           <p class="docs-lead">AI OS is built around three pillars: the Orchestrator, the Agent Fleet, and the Memory Vault. Every request flows through a multi-model routing layer that selects the optimal AI provider for each task.</p>
 
-          <h2>System Topology</h2>
+          <h2 id="system-topology">System Topology</h2>
           <p>The platform is organized into three vertical layers:</p>
           <ul>
             <li><strong>Public Layer</strong> — Landing page, legal pages, documentation. Accessible without authentication.</li>
@@ -63,7 +63,7 @@
             <li><strong>Intelligence Layer</strong> — Orchestrator, agent fleet, multi-model routing, and memory vault. Accessed exclusively through the backend API.</li>
           </ul>
 
-          <h2>Request Flow</h2>
+          <h2 id="request-flow">Request Flow</h2>
           <p>When a user initiates a task from the dashboard:</p>
           <ol>
             <li>The browser sends an HTTP request to the Express backend</li>
@@ -74,7 +74,7 @@
             <li>Results stream back via WebSocket for real-time dashboard updates</li>
           </ol>
 
-          <h2>Effort-Based Model Routing</h2>
+          <h2 id="multi-model-routing">Effort-Based Model Routing</h2>
           <p>AI OS consolidates Anthropic models into a single Opus 4.8 model with effort-based routing, plus external models for specialized roles:</p>
 
           <table class="docs-table">
@@ -172,7 +172,7 @@
             <li><strong>Better tool triggering</strong> — fewer skipped tool calls compared to 4.7</li>
           </ul>
 
-          <h2>The Orchestrator</h2>
+          <h2 id="the-orchestrator">The Orchestrator</h2>
           <p>The Orchestrator is the central intelligence that decides how to fulfill every request. Running on Opus 4.8 at xhigh effort (maximum reasoning depth), it:</p>
           <ul>
             <li>Decomposes complex requests into sub-tasks</li>
@@ -182,7 +182,7 @@
             <li>Synthesizes final outputs from multiple agent results</li>
           </ul>
 
-          <h2>Memory Vault</h2>
+          <h2 id="memory-vault">Memory Vault</h2>
           <p>The <code>.magent/</code> directory serves as the persistent memory layer:</p>
           <ul>
             <li><strong>vault/raw/</strong> — Ingested source documents and data</li>
@@ -192,7 +192,7 @@
             <li><strong>team.yaml</strong> — Agent roster, roles, and escalation paths</li>
           </ul>
 
-          <h2>Backend Stack</h2>
+          <h2 id="backend-stack">Backend Stack</h2>
           <table class="docs-table">
             <thead>
               <tr>
@@ -236,7 +236,7 @@
             </tbody>
           </table>
 
-          <h2>Frontend Stack</h2>
+          <h2 id="frontend-stack">Frontend Stack</h2>
           <p>The dashboard is built with vanilla HTML, CSS, and JavaScript — no build tools, no framework dependencies:</p>
           <ul>
             <li><strong>WebSocket</strong> — Auto-reconnect with exponential backoff (max 30s), visual reconnect banner</li>
