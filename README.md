@@ -113,7 +113,7 @@ Each virtual employee maps to an AI agent with a specific model tier, can receiv
 
 **Enterprise License ($4,997 one-time)** — Everything in Business plus SSO/SAML integration, SLA-backed support (4hr critical / 8hr high / 24hr medium response times, Mon-Fri 9am-6pm EST), dedicated Slack channel, custom agent development assistance (up to 5 custom agents in Year 1), priority bug fixes, early access to new features, full custom domain support, and deployment architecture review. Includes 1 year of priority support; optional $997/year renewal extends support, SLA, and Slack access (platform works permanently without renewal). Upgrade from Business: $3,000 difference. [Full license](/docs/license-enterprise)
 
-**Founders Lifetime License ($9,997 one-time)** — Limited to 100 spots. Everything in Enterprise plus lifetime priority support (no annual renewal), founding member recognition, and priority input on the product roadmap. Contact sales@aiosorchestrationlab.com for availability.
+**Founders Lifetime License ($9,997 one-time)** — Limited to 100 spots. Everything in Enterprise plus lifetime priority support (no annual renewal), founding member recognition, and priority input on the product roadmap. Contact support@aiosorchestrationlab.com for availability.
 
 All tiers are self-hosted — you run on your own infrastructure with your own API keys.
 
