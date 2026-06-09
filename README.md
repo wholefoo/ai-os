@@ -1,6 +1,6 @@
 # AI OS — The Agentic Operating System
 
-A multi-agentic AI operating system built as a Virtual Corporate Headquarters, orchestrating 51 specialized sub-agents across 10 departments and 7 model tiers. Research, create, analyze, scrape, and monetize — all from a single dashboard. Open-source core (Community edition) with commercial licenses: Business $1,997 one-time (white-label, all 51 agents, multi-tenant) and Enterprise $4,997 one-time (everything in Business + 1 year priority support, custom agents, SLA).
+A multi-agentic AI operating system built as a Virtual Corporate Headquarters, orchestrating 51 specialized sub-agents across 10 departments and 7 model tiers. Research, create, analyze, scrape, and monetize — all from a single dashboard. Open-source core (Community edition) with commercial licenses: Business $1,997 one-time (white-label, all 51 agents, multi-tenant) and Enterprise $4,997 one-time (everything in Business + 1 year priority support, custom agents, priority response times).
 
 ## Architecture
 
@@ -111,9 +111,8 @@ Each virtual employee maps to an AI agent with a specific model tier, can receiv
 
 **Business License ($1,997 one-time)** — Everything in Community plus all 51 agents, all 10 departments, all 7 model tiers, unlimited SEO audits, Gemini Omni Creative Studio, YouTube Intelligence, Agent Builder, white-label branding (custom name, logo, colors, domain — no attribution required), multi-tenant client management, lead generation, product factory, marketing hub, advanced reporting, browser agent, Grok Intel, design system, video meetings, and batch queue. Priority email support included. Per-organization license (one production deployment per key). Lifetime software updates. 14-day refund policy. [Full license](/docs/license-business)
 
-**Enterprise License ($4,997 one-time)** — Everything in Business plus SSO/SAML integration, SLA-backed support (4hr critical / 8hr high / 24hr medium response times, Mon-Fri 9am-6pm EST), dedicated Slack channel, custom agent development assistance (up to 5 custom agents in Year 1), priority bug fixes, early access to new features, and deployment architecture review. Includes 1 year of priority support; optional $997/year renewal extends support, SLA, and Slack access (platform works permanently without renewal). Upgrade from Business: $3,000 difference. [Full license](/docs/license-enterprise)
+**Enterprise License ($4,997 one-time)** — Everything in Business plus SSO/SAML integration, priority support with target response times (~4hr critical / ~8hr high / ~24hr medium, Mon-Fri 9am-6pm EST), dedicated Slack channel, custom agent development assistance (up to 5 custom agents in Year 1), priority bug fixes, early access to new features, and deployment architecture review. Includes 1 year of priority support; optional $997/year renewal extends support and Slack access (platform works permanently without renewal). Upgrade from Business: $3,000 difference. [Full license](/docs/license-enterprise)
 
-**Founders Lifetime License ($9,997 one-time)** — Limited to 100 spots. Everything in Enterprise plus lifetime priority support (no annual renewal), founding member recognition, and priority input on the product roadmap. Contact support@aiosorchestrationlab.com for availability.
 
 All tiers are self-hosted — you run on your own infrastructure with your own domain and API keys. Custom domain support is included in every self-hosted tier (the free hosted demo is the only exception).
 
@@ -166,7 +165,7 @@ AI OS follows an open-core model. The Community edition is free and open-source 
 | Free Demo | $0 | Hosted at aiosorchestrationlab.com | Limited preview, 3 agents, 1 SEO audit/mo |
 | Community | Free | Self-hosted | 15 agents, 5 departments, full source code |
 | Business | $1,997 one-time | Self-hosted | All 51 agents, white-label, multi-tenant |
-| Enterprise | $4,997 one-time | Self-hosted | Everything in Business + 1 year priority support, custom agents, SLA |
+| Enterprise | $4,997 one-time | Self-hosted | Everything in Business + 1 year priority support, custom agents, priority response times |
 
 Enterprise includes optional $997/yr renewal to extend priority support.
 

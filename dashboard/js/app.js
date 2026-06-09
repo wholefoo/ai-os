@@ -8524,7 +8524,7 @@ function renderHQStats(stats) {
             <ul style="list-style:none;padding:0;margin:0 0 16px;font-size:12px;color:var(--text-muted,#94a3b8);line-height:1.9;">
               <li>&#9989; Everything in Business, plus:</li>
               <li>&#9989; SSO / SAML integration</li>
-              <li>&#9989; SLA-backed support (4hr critical)</li>
+              <li>&#9989; Priority support (~4hr critical)</li>
               <li>&#9989; Dedicated Slack channel</li>
               <li>&#9989; Custom agent development (5 agents)</li>
               <li>&#9989; $997/yr optional renewal</li>
