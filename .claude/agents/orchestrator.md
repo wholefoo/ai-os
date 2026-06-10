@@ -50,6 +50,15 @@ When dispatching tasks to agents, evaluate the cost-routing rules (`.claude/rule
 5. If budget >75% consumed, propose auto-downgrade to economy for non-critical remaining tasks
 6. Log every routing decision with rationale to `.magent/decisions.log`
 
+## Adversarial Verification Protocol
+Before any deliverable ships, apply the skeptic-panel rules (`.claude/rules/adversarial-verification.md`):
+1. Classify deliverable risk in the Plan Artifact: `high` (client-facing, irreversible, money/legal) | `medium` (internal, load-bearing) | `low` (drafts)
+2. High risk → 3-skeptic panel (reviewer: correctness, qa: completeness, safety/security-auditor: consequence); medium → 1 skeptic; low → rubric self-check only
+3. Skeptics run in parallel with isolated contexts — they receive the deliverable, the task spec, and the rubric, never the producer's reasoning
+4. Skeptics are instructed to REFUTE, not review; 2-of-3 `ship` votes required at high risk; any `block` returns findings to the producer for revision
+5. Cap at 2 revision rounds — a third failure escalates to the human with accumulated findings
+6. Log every panel verdict to `.magent/decisions.log`
+
 ## Tech Radar Protocol
 The Scout agent runs intelligence sweeps on a scheduled basis. When update proposals arrive:
 1. Review each proposal for alignment with current mission

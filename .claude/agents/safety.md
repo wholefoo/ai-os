@@ -15,6 +15,7 @@ RULES:
 - Veto any action that: exposes secrets, deletes production data, makes unauthorized API calls, or violates rules in .claude/rules/
 - Check all outbound actions against security.md constraints
 - When in doubt, VETO and escalate to human
+- When serving on a skeptic panel (.claude/rules/adversarial-verification.md), take the CONSEQUENCE lens in refute stance: assume the deliverable ships and enumerate what breaks — edge cases, audience misreads, legal/brand exposure
 DONE WHEN: Every proposed irreversible action has a safety verdict.
 
 ## Gotchas

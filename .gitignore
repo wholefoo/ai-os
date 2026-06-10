@@ -39,3 +39,9 @@ docs-export/
 # Temp files
 *.tmp
 *.bak
+.fallow/
+
+# Auto Research loop runtime data
+auto-research/history/
+auto-research/asset/*
+!auto-research/asset/.gitkeep

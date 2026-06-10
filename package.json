@@ -14,6 +14,9 @@
     "docker:build": "docker build -t ai-os .",
     "docker:up": "docker compose up -d",
     "docker:down": "docker compose down",
+    "maps": "node tools/generate-maps.js",
+    "lint:dead": "fallow dead-code",
+    "lint:dupes": "fallow dupes",
     "test": "node --check server.js && node -e \"const c = require('./commercial/loader'); if(c.tier !== 'community') process.exit(1); console.log('All checks passed')\"",
     "audit": "npm audit"
   },
@@ -35,5 +38,8 @@
   },
   "engines": {
     "node": ">=20.0.0"
+  },
+  "devDependencies": {
+    "fallow": "^2.91.0"
   }
 }

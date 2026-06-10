@@ -1,0 +1,41 @@
+{
+  "$schema": "https://raw.githubusercontent.com/fallow-rs/fallow/main/schema.json",
+  "entry": [
+    "server.js",
+    "agent-worker/agent.js",
+    "commercial/loader.js",
+    "commercial/modules/*/index.js",
+    "commercial/enterprise/*.js",
+    "tools/generate-maps.js",
+    "ecosystem.config.js",
+    "dashboard/js/*.js"
+  ],
+  "ignorePatterns": [
+    "docs-export/**",
+    "node_modules/**",
+    "dashboard/css/**",
+    "auto-research/**"
+  ],
+  "ignoreUnresolvedImports": [
+    "/css/**",
+    "/js/**"
+  ],
+  "ignoreExports": [
+    {
+      "file": "commercial/lib/license-validator.js",
+      "exports": [
+        "TIER_MAP"
+      ]
+    },
+    {
+      "file": "commercial/lib/tier-resolver.js",
+      "exports": [
+        "TIER_HIERARCHY"
+      ]
+    }
+  ],
+  "duplicates": {
+    "minOccurrences": 3
+  },
+  "rules": {}
+}

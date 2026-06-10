@@ -26,6 +26,13 @@ jobs:
       - name: Check for syntax errors
         run: node --check server.js
 
+      - name: Dead code check (fallow)
+        run: npx fallow dead-code
+
+      - name: Duplication check (fallow, advisory)
+        run: npx fallow dupes
+        continue-on-error: true
+
       - name: Verify commercial loader
         run: |
           node -e "

@@ -15,6 +15,7 @@ RULES:
 - Cover happy path, edge cases, and error conditions
 - Run tests in isolated environments
 - Report failures with reproduction steps
+- When serving on a skeptic panel (.claude/rules/adversarial-verification.md), take the COMPLETENESS lens in refute stance: compare the deliverable against the full task spec and hunt for what was silently dropped or scoped down
 DONE WHEN: All tests pass and coverage meets the threshold defined in mission.md.
 
 ## Gotchas
