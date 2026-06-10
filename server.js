@@ -1134,17 +1134,40 @@ function loadState(key, fallback) {
   return defaults;
 }
 
+// Persist every runtime collection to .magent/state/ so PM2 restarts (deploys) are lossless.
+// Referenced consts are declared later in the file — safe because this only runs after module load.
+function persistAllState() {
+  saveState('activity-log', activityLog.slice(-500));
+  saveState('cost-ledger', costLedger.slice(-500));
+  saveState('grok-queries', grokQueries.slice(-100));
+  saveState('notifications', notifications.slice(-200));
+  saveState('tech_radar_reports', techRadarReports.slice(-50));
+  saveState('update_proposals', updateProposals.slice(-100));
+  saveState('automation_log', automationLog.slice(-200));
+  saveState('social_findings', socialFindings.slice(-200));
+  saveState('knowledge_graph', knowledgeGraph);
+  saveState('media_productions', mediaProductions);
+  saveState('media_templates', mediaTemplates);
+  saveState('routines', routines);
+  saveState('product_factory', productFactory);
+  saveState('lead_pipeline', leadPipeline);
+  saveState('marketing_hub', marketingHub);
+  saveState('vibe_design', vibeDesign);
+  saveState('blender_3d', blender3d);
+  saveState('predictive_analytics', predictiveAnalytics);
+  saveState('batch_queue', batchQueue);
+  saveState('pending_approvals', pendingApprovals);
+}
+
 // Debounced auto-save: saves state 2s after last mutation
 let autoSaveTimer = null;
 function scheduleAutoSave() {
   if (autoSaveTimer) clearTimeout(autoSaveTimer);
-  autoSaveTimer = setTimeout(() => {
-    saveState('activity-log', activityLog.slice(-500));
-    saveState('cost-ledger', costLedger.slice(-500));
-    saveState('grok-queries', grokQueries.slice(-100));
-    saveState('notifications', notifications.slice(-200));
-  }, 2000);
+  autoSaveTimer = setTimeout(persistAllState, 2000);
 }
+
+// Safety net for mutation paths that never call scheduleAutoSave: flush every 60s.
+setInterval(persistAllState, 60_000).unref();
 
 // --- Input Validation ---
 function validateBody(body, schema) {
@@ -1226,9 +1249,9 @@ function getSystemHealth() {
 // --- In-memory workflow state ---
 
 const workflows = new Map();
-const activityLog = [];
-const techRadarReports = [];
-const updateProposals = [];
+const activityLog = loadState('activity-log', []);
+const techRadarReports = loadState('tech_radar_reports', []);
+const updateProposals = loadState('update_proposals', []);
 
 // --- Cost Tracking State ---
 // --- Model Configuration ---
@@ -1626,7 +1649,7 @@ const COST_RATES = {
   'manus':             { input: 0,     output: 0     },   // credit-based, not per-token
 };
 
-const costLedger = [];   // individual cost entries
+const costLedger = loadState('cost-ledger', []);   // individual cost entries
 const costBudget = {
   daily: 50.00,
   weekly: 250.00,
@@ -1664,7 +1687,7 @@ function seedCostLedger() {
   });
 }
 
-seedCostLedger();
+if (DEMO_MODE && costLedger.length === 0) seedCostLedger();
 
 function getCostSummary() {
   const now = Date.now();
@@ -1789,7 +1812,16 @@ function searchVault(query) {
 
 function getSessionContext() {
   // Deterministic session-start hook: load the most recent and relevant vault files
-  const context = { decisions: [], recentArtifacts: [], recentWiki: [] };
+  const context = { decisions: [], recentArtifacts: [], recentWiki: [], vaultMap: '', skillMap: '' };
+
+  // Navigation maps — generated fresh so agents start with an accurate table of contents
+  try {
+    const maps = require('./tools/generate-maps');
+    context.vaultMap = maps.buildVaultMap();
+    context.skillMap = maps.buildSkillMap();
+  } catch (e) {
+    console.error('[CONTEXT] Map generation failed:', e.message);
+  }
 
   // Load latest decisions from log
   const logPath = path.join(MAGENT_DIR, 'decisions.log');
@@ -1827,7 +1859,7 @@ function getSessionContext() {
 }
 
 // Seed demo tech radar data
-techRadarReports.push({
+if (DEMO_MODE && techRadarReports.length === 0) techRadarReports.push({
   id: 'radar-001',
   date: new Date().toISOString(),
   sweep_type: 'daily',
@@ -2271,7 +2303,7 @@ function seedVerifications() {
   ];
   seeds.forEach(s => verifications.set(s.id, s));
 }
-seedVerifications();
+if (DEMO_MODE && verifications.size === 0) seedVerifications();
 
 // API: Get all rubrics
 app.get('/api/verify/rubrics', (req, res) => {
@@ -2967,10 +2999,10 @@ function loadAutomationRegistry() {
   } catch { return { platforms: {}, actions: [] }; }
 }
 
-const automationLog = [];
+const automationLog = loadState('automation_log', []);
 
 // Seed demo automation history
-automationLog.push(
+if (DEMO_MODE && automationLog.length === 0) automationLog.push(
   {
     id: uuidv4(),
     action: 'post-slack',
@@ -3089,10 +3121,10 @@ app.put('/api/automations/:id/reject', (req, res) => {
 
 // --- Social Intelligence API ---
 
-const socialFindings = [];
+const socialFindings = loadState('social_findings', []);
 
 // Seed demo social intel data
-socialFindings.push(
+if (DEMO_MODE && socialFindings.length === 0) socialFindings.push(
   {
     id: 'soc-001',
     source: 'x/twitter',
@@ -3599,7 +3631,7 @@ app.post('/api/pipelines/runs/:id/approve', (req, res) => {
 
 // --- Notification System ---
 
-const notifications = [];
+const notifications = loadState('notifications', []);
 const notificationConfig = {
   telegram: {
     enabled: false,
@@ -3804,7 +3836,7 @@ const browserSeeds = [
     agent: 'browser-agent',
   },
 ];
-browserSeeds.forEach(s => browserTasks.set(s.id, s));
+if (DEMO_MODE && browserTasks.size === 0) browserSeeds.forEach(s => browserTasks.set(s.id, s));
 
 // Browser Agent routes extracted to commercial/modules/browser-agent/index.js
 
@@ -3812,11 +3844,11 @@ browserSeeds.forEach(s => browserTasks.set(s.id, s));
 // GROK REAL-TIME INTELLIGENCE
 // =====================
 
-const grokQueries = [];
+const grokQueries = loadState('grok-queries', []);
 const grokCache = new Map(); // query -> { result, timestamp }
 
 // Seed demo Grok query history
-grokQueries.push(
+if (DEMO_MODE && grokQueries.length === 0) grokQueries.push(
   {
     id: 'grok-1',
     query: 'What are the latest AI agent framework announcements this week?',
@@ -6713,14 +6745,15 @@ cron.schedule('0 9 * * *', () => {
 function gracefulShutdown(signal) {
   console.log(`\n[${signal}] Shutting down gracefully...`);
 
-  // Save in-memory state to disk
+  // Flush all runtime collections to disk so the next boot resumes where we left off
   try {
-    const state = {
+    if (autoSaveTimer) clearTimeout(autoSaveTimer);
+    persistAllState();
+    fs.writeFileSync(path.join(STATE_DIR, 'last-session.json'), JSON.stringify({
       savedAt: new Date().toISOString(),
-      activityLog: activityLog.slice(-200), // last 200 entries
-    };
-    fs.writeFileSync(path.join(STATE_DIR, 'last-session.json'), JSON.stringify(state, null, 2));
-    console.log('[SHUTDOWN] State saved to .magent/state/last-session.json');
+      signal,
+    }, null, 2));
+    console.log('[SHUTDOWN] All state flushed to .magent/state/');
   } catch (e) {
     console.error('[SHUTDOWN] Failed to save state:', e.message);
   }
