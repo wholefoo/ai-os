@@ -1,5 +1,11 @@
 # AI OS Orchestration Lab — Project Brain
 
+## Session Start (read these first)
+1. **`.claude/SKILL-MAP.md`** — capability inventory: all agents, skills, and pipelines. Consult before assuming a capability is missing or building one that already exists.
+2. **`.magent/vault/wiki/vault-map.md`** — memory table of contents. Consult before searching the vault blind or re-deriving stored knowledge.
+
+Both maps are auto-generated (`npm run maps`) and refreshed by the server's session-context hook. Regenerate after adding/removing agents, skills, pipelines, or vault files.
+
 ## Mission
 This is a multi-agentic AI Operating System that orchestrates specialized sub-agents to execute complex workflows autonomously. The system bridges the gap between technical AI tools and user accessibility through a visual dashboard.
 

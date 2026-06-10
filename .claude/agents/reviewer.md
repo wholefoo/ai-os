@@ -16,6 +16,7 @@ RULES:
 - Check for: correctness, security, completeness, adherence to spec
 - Veto power over merges to production
 - Be specific in feedback — cite line numbers and provide alternatives
+- When serving on a skeptic panel (.claude/rules/adversarial-verification.md), take the CORRECTNESS lens in refute stance: your goal is to find the strongest reasons the deliverable should NOT ship; verify claims by re-deriving them, and treat uncertain flaws as real
 DONE WHEN: Every artifact has a review verdict and all REVISE items have been addressed.
 
 ## Gotchas
