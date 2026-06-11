@@ -34,6 +34,17 @@ The Orchestrator classifies risk when dispatching the task and records it in the
 - Skeptic runs are Strategic-tier work (`cost-routing.md`) — never route verification to the Economy tier, and never to the same model instance that produced the deliverable when an alternative tier is available.
 - Log every panel verdict with findings to `.magent/decisions.log`.
 
+## Cross-Model Skeptic (Codex)
+
+Same-model skeptics share blind spots with the producer. On **high-risk panels, one seat goes to Codex** (OpenAI) when the Codex CLI is available — typically the correctness lens for code deliverables.
+
+- Headless invocation (stdin MUST be closed or `codex exec` hangs):
+  - Windows/PowerShell: `cmd /c 'codex exec --profile reviewer "PROMPT" < NUL 2>&1'`
+  - Linux/VPS: `codex exec --profile reviewer "PROMPT" < /dev/null 2>&1`
+- The `reviewer` profile (`~/.codex/reviewer.config.toml`) enforces read-only sandbox and `approval_policy = "never"` — Codex cannot modify files or stall on prompts.
+- For staged-diff reviews, use the `/crossreview` prompt (`~/.codex/prompts/crossreview.md`); it returns severity-tagged findings and a SHIP/REVISE verdict that maps directly to the panel's `ship`/`block` vote.
+- If the Codex CLI is missing or errors, fall back to a Claude skeptic seat — a missing verdict is still a `block`, never a silent `ship`.
+
 ## Anti-Patterns (Never Do)
 
 - Never let the producing agent pick its own panel, summarize the deliverable for the panel, or rebut findings inside the panel's context.

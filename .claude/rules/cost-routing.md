@@ -13,6 +13,9 @@ description: Rules for routing tasks to the most cost-effective execution engine
 | **Professional** | Claude Code | claude-4.7-sonnet | $3-15 | Core coding, research, writing, QA |
 | **Scout** | Claude Code | claude-4.7-haiku | $0.25-1.25 | Quick lookups, classification, triage |
 | **Economy** | DeepSeek Tui | deepseek-v4 | $0.10-0.50 | Bulk content, data processing, batch ops |
+| **Cross-Model** | Codex CLI | gpt-5.5 | ChatGPT plan (flat) | Adversarial review seat, second-opinion code review |
+
+The Cross-Model tier is not a general work tier — it exists solely for verification diversity (see `adversarial-verification.md`). Never dispatch production tasks to it.
 
 ## Routing Decision Matrix
 
