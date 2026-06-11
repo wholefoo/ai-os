@@ -37,7 +37,8 @@ const apps = [
 // --- LiveKit Voice Agent Worker (optional) ---
 // Real-time avatar pipeline: Deepgram STT → LLM → Cartesia TTS.
 // Requires its own npm install (cd agent-worker && npm install) plus API keys.
-const voiceKeysConfigured = process.env.LIVEKIT_API_KEY && process.env.LIVEKIT_API_SECRET
+const voiceKeysConfigured = process.env.LIVEKIT_URL
+  && process.env.LIVEKIT_API_KEY && process.env.LIVEKIT_API_SECRET
   && process.env.DEEPGRAM_API_KEY && process.env.CARTESIA_API_KEY;
 const voiceDepsInstalled = fs.existsSync(path.join(__dirname, 'agent-worker', 'node_modules', '@livekit', 'agents'));
 
@@ -45,6 +46,7 @@ if (voiceKeysConfigured && voiceDepsInstalled) {
   apps.push({
     name: 'agent-worker',
     script: 'agent-worker/agent.js',
+    args: 'start', // LiveKit Agents CLI subcommand — without it the worker prints usage and exits
     instances: 1,
     autorestart: true,
     watch: false,
@@ -63,7 +65,7 @@ if (voiceKeysConfigured && voiceDepsInstalled) {
   });
 } else {
   const missing = [];
-  if (!voiceKeysConfigured) missing.push('LiveKit/Deepgram/Cartesia keys in .env');
+  if (!voiceKeysConfigured) missing.push('LIVEKIT_URL + LiveKit/Deepgram/Cartesia keys in .env');
   if (!voiceDepsInstalled) missing.push('agent-worker dependencies (cd agent-worker && npm install)');
   console.log(`[PM2] agent-worker skipped — missing: ${missing.join(' + ')}`);
 }
