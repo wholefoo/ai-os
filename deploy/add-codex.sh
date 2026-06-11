@@ -67,12 +67,16 @@ CROSSREVIEW
 chown -R ${APP_USER}:${APP_USER} "${CODEX_HOME}"
 log "Codex configured: reviewer profile + /crossreview prompt + trusted ${APP_DIR}"
 
-# 5. Verify end to end if the key is available
+# 5. Store the API key via `codex login` — the CLI ignores a bare OPENAI_API_KEY
+#    env var; the key must be persisted to ~/.codex/auth.json via login.
 if grep -q '^OPENAI_API_KEY=.\+' "${APP_DIR}/.env" 2>/dev/null; then
-  log "OPENAI_API_KEY found in .env — running headless bridge test (~30s)..."
-  OPENAI_KEY=$(grep '^OPENAI_API_KEY=' "${APP_DIR}/.env" | cut -d= -f2-)
+  grep '^OPENAI_API_KEY=' "${APP_DIR}/.env" | cut -d= -f2- | tr -d '"'"'" | \
+    sudo -u ${APP_USER} codex login --with-api-key
+  log "API key stored: $(sudo -u ${APP_USER} codex login status 2>&1 | tail -1)"
+
+  log "Running headless bridge test (~30s)..."
   set +e
-  RESULT=$(cd "${APP_DIR}" && sudo -u ${APP_USER} OPENAI_API_KEY="${OPENAI_KEY}" \
+  RESULT=$(cd "${APP_DIR}" && sudo -u ${APP_USER} \
     timeout 120 codex exec --profile reviewer "Reply with exactly: CODEX-BRIDGE-OK" < /dev/null 2>&1 | tail -1)
   set -e
   if echo "${RESULT}" | grep -q 'CODEX-BRIDGE-OK'; then
@@ -82,8 +86,7 @@ if grep -q '^OPENAI_API_KEY=.\+' "${APP_DIR}/.env" 2>/dev/null; then
     warn "Check the key is valid and has API access (platform.openai.com)"
   fi
 else
-  warn "OPENAI_API_KEY not set in ${APP_DIR}/.env — add it, then test with:"
-  echo "  cd ${APP_DIR} && sudo -u ${APP_USER} OPENAI_API_KEY=sk-... codex exec --profile reviewer \"Reply OK\" < /dev/null"
+  warn "OPENAI_API_KEY not set in ${APP_DIR}/.env — add it, rerun this script to login and test"
 fi
 
 echo ""
