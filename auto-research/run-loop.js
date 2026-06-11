@@ -74,8 +74,17 @@ function mutate(iteration, best) {
 
 // ---- main ----
 fs.mkdirSync(HISTORY_DIR, { recursive: true });
-if (!fs.existsSync(ASSET_DIR) || !fs.readdirSync(ASSET_DIR).length) {
-  console.error('asset/ is empty. Put the asset to optimize in auto-research/asset/ first.');
+
+// asset/ is gitignored (runtime-mutated); hydrate it from the committed seed/ on first run
+const SEED_DIR = path.join(DIR, 'seed');
+const assetFiles = () => fs.existsSync(ASSET_DIR) ? fs.readdirSync(ASSET_DIR).filter(f => !f.startsWith('.')) : [];
+if (!assetFiles().length && fs.existsSync(SEED_DIR)) {
+  fs.mkdirSync(ASSET_DIR, { recursive: true });
+  fs.cpSync(SEED_DIR, ASSET_DIR, { recursive: true });
+  console.log('asset/ was empty — hydrated from seed/');
+}
+if (!assetFiles().length) {
+  console.error('asset/ is empty and no seed/ exists. Put the asset to optimize in auto-research/asset/ first.');
   process.exit(1);
 }
 if (!DRY_RUN) {
