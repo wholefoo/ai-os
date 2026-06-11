@@ -18,10 +18,17 @@ module.exports = {
 
     const { broadcast, logActivity, uuidv4, saveState,
             seoAudits, settings, DEMO_MODE,
-            capitalize, generateSeoFindings, generateExecutiveSummary,
-            generateQuickWins, generateActionPlan,
-            runRealSeoAudit, dfsAuthHeader,
+            capitalize, generateSeoFindings,
+            runRealSeoAudit, finalizeSeoAudit,
             requireAdmin } = ctx;
+
+    // Resolve the audit for /:id routes; replies 404/400 itself and returns null when blocked.
+    function findAudit(req, res, { requireComplete = true } = {}) {
+      const audit = seoAudits.find(a => a.id === req.params.id);
+      if (!audit) { res.status(404).json({ error: 'Audit not found' }); return null; }
+      if (requireComplete && audit.status !== 'complete') { res.status(400).json({ error: 'Audit not yet complete' }); return null; }
+      return audit;
+    }
 
     // POST /api/seo/audit — launch a full SEO audit for a domain
     app.post('/api/seo/audit', requireAdmin, async (req, res) => {
@@ -64,15 +71,11 @@ module.exports = {
               audit.agents[name].findings = [{ severity: 'critical', issue: `DataForSEO error: ${e.message}`, recommendation: 'Check DataForSEO credentials in Settings and ensure sufficient API credits.' }];
             }
           });
-          audit.status = 'complete';
-          audit.completedAt = new Date().toISOString();
           const scores = agentNames.map(n => audit.agents[n].score || 0);
-          audit.compositeScore = Math.round(scores.reduce((a, b) => a + b, 0) / Math.max(scores.filter(s => s > 0).length, 1));
-          audit.executiveSummary = `Audit partially completed with errors. ${e.message}`;
-          audit.quickWins = generateQuickWins(audit);
-          audit.actionPlan = generateActionPlan(audit);
-          saveState('seo_audits', seoAudits);
-          broadcast({ event: 'seo_audit_complete', data: { auditId, compositeScore: audit.compositeScore } });
+          finalizeSeoAudit(audit, auditId, {
+            compositeScore: Math.round(scores.reduce((a, b) => a + b, 0) / Math.max(scores.filter(s => s > 0).length, 1)),
+            summary: `Audit partially completed with errors. ${e.message}`,
+          });
         });
       }
       // Simulate parallel agent execution (demo mode)
@@ -93,14 +96,7 @@ module.exports = {
             const allDone = agentNames.every(n => audit.agents[n].status === 'complete');
             if (allDone) {
               const scores = agentNames.map(n => audit.agents[n].score);
-              audit.compositeScore = Math.round(scores.reduce((a, b) => a + b, 0) / scores.length);
-              audit.status = 'complete';
-              audit.completedAt = new Date().toISOString();
-              audit.executiveSummary = generateExecutiveSummary(audit);
-              audit.quickWins = generateQuickWins(audit);
-              audit.actionPlan = generateActionPlan(audit);
-              saveState('seo_audits', seoAudits);
-              broadcast({ event: 'seo_audit_complete', data: { auditId, compositeScore: audit.compositeScore } });
+              finalizeSeoAudit(audit, auditId, { compositeScore: Math.round(scores.reduce((a, b) => a + b, 0) / scores.length) });
               logActivity('seo', `SEO audit complete: ${audit.domain} — score ${audit.compositeScore}/100`, { auditId });
             }
           }, delays[i]);
@@ -120,16 +116,15 @@ module.exports = {
 
     // GET /api/seo/audit/:id — get full audit detail
     app.get('/api/seo/audit/:id', requireAdmin, (req, res) => {
-      const audit = seoAudits.find(a => a.id === req.params.id);
-      if (!audit) return res.status(404).json({ error: 'Audit not found' });
+      const audit = findAudit(req, res, { requireComplete: false });
+      if (!audit) return;
       res.json(audit);
     });
 
     // POST /api/seo/report/:id — generate PDF report (returns download URL)
     app.post('/api/seo/report/:id', requireAdmin, (req, res) => {
-      const audit = seoAudits.find(a => a.id === req.params.id);
-      if (!audit) return res.status(404).json({ error: 'Audit not found' });
-      if (audit.status !== 'complete') return res.status(400).json({ error: 'Audit not yet complete' });
+      const audit = findAudit(req, res);
+      if (!audit) return;
 
       // In demo mode, return a simulated report URL
       const reportId = uuidv4();
@@ -153,9 +148,8 @@ module.exports = {
 
     // POST /api/seo/briefs/:id — generate content briefs from audit keyword data
     app.post('/api/seo/briefs/:id', requireAdmin, (req, res) => {
-      const audit = seoAudits.find(a => a.id === req.params.id);
-      if (!audit) return res.status(404).json({ error: 'Audit not found' });
-      if (audit.status !== 'complete') return res.status(400).json({ error: 'Audit not yet complete' });
+      const audit = findAudit(req, res);
+      if (!audit) return;
 
       const d = audit.domain;
       const briefs = [
@@ -172,9 +166,8 @@ module.exports = {
 
     // POST /api/seo/calendar/:id — generate content calendar from audit
     app.post('/api/seo/calendar/:id', requireAdmin, (req, res) => {
-      const audit = seoAudits.find(a => a.id === req.params.id);
-      if (!audit) return res.status(404).json({ error: 'Audit not found' });
-      if (audit.status !== 'complete') return res.status(400).json({ error: 'Audit not yet complete' });
+      const audit = findAudit(req, res);
+      if (!audit) return;
 
       const d = audit.domain;
       const base = d.split('.')[0].replace(/-/g, ' ');
@@ -215,9 +208,8 @@ module.exports = {
 
     // POST /api/seo/meta/:id — generate optimized meta tags
     app.post('/api/seo/meta/:id', requireAdmin, (req, res) => {
-      const audit = seoAudits.find(a => a.id === req.params.id);
-      if (!audit) return res.status(404).json({ error: 'Audit not found' });
-      if (audit.status !== 'complete') return res.status(400).json({ error: 'Audit not yet complete' });
+      const audit = findAudit(req, res);
+      if (!audit) return;
 
       const d = audit.domain;
       const base = capitalize(d.split('.')[0].replace(/-/g, ' '));
