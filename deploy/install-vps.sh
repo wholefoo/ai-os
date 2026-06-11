@@ -2,7 +2,7 @@
 # ============================================================
 #  AI OS Virtual Corporate HQ — Complete VPS Setup Script
 #  Tested on: Ubuntu 22.04 / 24.04 LTS (Hostinger KVM 2+)
-#  Usage: sudo bash install-vps.sh yourdomain.com [--with-n8n] [--harden-ssh]
+#  Usage: sudo bash install-vps.sh yourdomain.com [--with-n8n] [--with-codex] [--harden-ssh]
 # ============================================================
 
 set -euo pipefail
@@ -10,11 +10,13 @@ set -euo pipefail
 # --- Parse arguments ---
 DOMAIN=""
 WITH_N8N=false
+WITH_CODEX=false
 HARDEN_SSH=false
 
 for arg in "$@"; do
   case "$arg" in
     --with-n8n)   WITH_N8N=true ;;
+    --with-codex) WITH_CODEX=true ;;
     --harden-ssh) HARDEN_SSH=true ;;
     -*)           echo "Unknown flag: $arg"; exit 1 ;;
     *)            [ -z "$DOMAIN" ] && DOMAIN="$arg" ;;
@@ -42,7 +44,7 @@ step() { echo -e "\n${CYAN}━━━ ${1} ━━━${NC}"; }
 
 # --- Pre-flight checks ---
 if [ -z "$DOMAIN" ]; then
-  err "Usage: sudo bash install-vps.sh yourdomain.com [--with-n8n] [--harden-ssh]"
+  err "Usage: sudo bash install-vps.sh yourdomain.com [--with-n8n] [--with-codex] [--harden-ssh]"
 fi
 
 if [ "$EUID" -ne 0 ]; then
@@ -57,6 +59,7 @@ echo -e "  ${BOLD}Domain:${NC}       ${DOMAIN}"
 echo -e "  ${BOLD}Target:${NC}       ${APP_DIR}"
 echo -e "  ${BOLD}Node.js:${NC}      v${NODE_VERSION}"
 echo -e "  ${BOLD}n8n:${NC}          ${WITH_N8N}"
+echo -e "  ${BOLD}Codex:${NC}        ${WITH_CODEX}"
 echo -e "  ${BOLD}SSH harden:${NC}   ${HARDEN_SSH}"
 echo -e "${CYAN}══════════════════════════════════════════════════════════${NC}"
 echo ""
@@ -562,6 +565,61 @@ N8NECOSYSTEM
 fi
 
 # ============================================================
+# Optional: Codex CLI (cross-model adversarial review)
+# ============================================================
+if [ "$WITH_CODEX" = true ]; then
+  step "Optional: Codex CLI (cross-model verification engine)"
+
+  npm install -g @openai/codex
+  log "Codex CLI installed: $(codex --version 2>/dev/null || echo 'installed')"
+
+  CODEX_HOME="/home/${APP_USER}/.codex"
+  mkdir -p "${CODEX_HOME}/prompts"
+
+  # Main config: API-key auth (no browser on a server) + trust the app dir
+  cat > "${CODEX_HOME}/config.toml" <<CODEXCONF
+preferred_auth_method = "apikey"
+
+[projects.'${APP_DIR}']
+trust_level = "trusted"
+CODEXCONF
+
+  # Reviewer profile: read-only sandbox, never prompts — safe for headless panel calls.
+  # NOTE: profiles live in separate <name>.config.toml files, not [profiles.*] tables.
+  cat > "${CODEX_HOME}/reviewer.config.toml" <<REVIEWERCONF
+model = "gpt-5.5"
+model_reasoning_effort = "high"
+sandbox_mode = "read-only"
+approval_policy = "never"
+REVIEWERCONF
+
+  # /crossreview prompt — staged-diff review with SHIP/REVISE verdict
+  cat > "${CODEX_HOME}/prompts/crossreview.md" <<'CROSSREVIEW'
+---
+description: Cross-model review of staged changes (read-only)
+argument-hint: [optional focus area]
+---
+Review the staged changes only. Run `git diff --staged` to see them.
+
+For each issue, report:
+- severity: blocker | should-fix | nit
+- location: file:line
+- problem: what's wrong (one line)
+- fix: a concrete suggested change
+
+Check correctness, edge cases, error handling, and whether existing tests
+cover the change. Don't restate what the code does. Do not edit any files.
+End with a one-line verdict: SHIP or REVISE.
+
+If arguments are provided, focus the review on: $ARGUMENTS
+CROSSREVIEW
+
+  chown -R ${APP_USER}:${APP_USER} "${CODEX_HOME}"
+  log "Codex configured: reviewer profile + /crossreview prompt + trusted ${APP_DIR}"
+  warn "Codex needs OPENAI_API_KEY — add it to ${APP_DIR}/.env (the panel invocation exports it)"
+fi
+
+# ============================================================
 # Done!
 # ============================================================
 echo ""
@@ -585,6 +643,9 @@ echo -e "    - System tuning (nofile 65535, somaxconn 65535)"
 echo -e "    - Health check cron (every 5 min)"
 if [ "$WITH_N8N" = true ]; then
   echo -e "    - n8n workflow automation (port 5678)"
+fi
+if [ "$WITH_CODEX" = true ]; then
+  echo -e "    - Codex CLI (cross-model review: reviewer profile + /crossreview)"
 fi
 echo ""
 echo -e "  ${CYAN}━━━ Next Steps ━━━${NC}"
@@ -612,6 +673,13 @@ if [ "$WITH_N8N" = true ]; then
   echo -e "     Default credentials: admin / CHANGE_ME_IMMEDIATELY"
   echo -e "     Change password in PM2 ecosystem or set N8N_BASIC_AUTH_PASSWORD in .env"
   echo -e "     Manage: pm2 logs n8n | pm2 restart n8n"
+  echo ""
+fi
+if [ "$WITH_CODEX" = true ]; then
+  echo -e "  ${YELLOW}Codex Setup:${NC}"
+  echo -e "     Add OPENAI_API_KEY to ${APP_DIR}/.env"
+  echo -e "     Test: sudo -u ${APP_USER} bash -c 'cd ${APP_DIR} && OPENAI_API_KEY=sk-... codex exec --profile reviewer \"Reply OK\" < /dev/null'"
+  echo -e "     Panels call it headlessly — stdin must be closed (< /dev/null) or codex exec hangs"
   echo ""
 fi
 echo -e "  ${CYAN}━━━ Useful Commands ━━━${NC}"

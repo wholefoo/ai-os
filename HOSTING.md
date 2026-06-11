@@ -154,6 +154,8 @@ This will:
 3. Add Nginx reverse proxy at `https://yourdomain.com/n8n/`
 4. Configure N8N_WEBHOOK_BASE in your .env
 
+> Also available: `--with-codex` installs the OpenAI Codex CLI configured as the cross-model verification engine (read-only `reviewer` profile + `/crossreview` prompt) for adversarial review panels. Requires `OPENAI_API_KEY` in `.env`. Headless calls must close stdin (`< /dev/null`).
+
 ### Manual Installation
 
 If you prefer to set up n8n manually:
