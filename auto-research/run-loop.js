@@ -78,6 +78,15 @@ if (!fs.existsSync(ASSET_DIR) || !fs.readdirSync(ASSET_DIR).length) {
   console.error('asset/ is empty. Put the asset to optimize in auto-research/asset/ first.');
   process.exit(1);
 }
+if (!DRY_RUN) {
+  try {
+    execSync('claude --version', { stdio: 'ignore', timeout: 30000 });
+  } catch {
+    console.error('The `claude` CLI is required for mutation but was not found on PATH.');
+    console.error('Install: npm install -g @anthropic-ai/claude-code  (and set ANTHROPIC_API_KEY)');
+    process.exit(1);
+  }
+}
 
 const scorerHash = sha(SCORER);
 let best = runScorer();
