@@ -8,6 +8,11 @@ const fs = require('fs');
 const path = require('path');
 
 const DIR = __dirname;
+
+// Load the repo .env so spawned CLIs (claude) get their API keys even when the
+// caller (n8n, cron) has no environment of its own.
+try { require(path.join(DIR, '..', 'node_modules', 'dotenv')).config({ path: path.join(DIR, '..', '.env') }); } catch { /* optional */ }
+
 const ASSET_DIR = path.join(DIR, 'asset');
 const HISTORY_DIR = path.join(DIR, 'history');
 const SCORER = path.join(DIR, 'score.js');
