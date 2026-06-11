@@ -79,7 +79,7 @@
 - **it-director** (opus-4.8) — Oversees infrastructure health, deployment coordination, key rotation, and status reporting to the CTO. Use for monitoring, rollback decisions, and infrastructure oversight; do NOT use for hands-on pipeline/container builds (devops) or routine access and credential requests (helpdesk).
 - **sysadmin** (opus-4.8) — Server operations specialist — provisioning, log monitoring, security patching, backups, and performance tuning for AI OS infrastructure. Use for system health checks, patch planning, and incident diagnosis; do NOT use for application code changes or content/SEO tasks. Escalates to it-director for destructive or production-impacting changes.
 
-## Skills (21) — `.claude/skills/`
+## Skills (22) — `.claude/skills/`
 
 ### automation
 
@@ -112,6 +112,10 @@
 
 - **content-creation** — Multi-step content creation workflow — research, outline, draft, review, publish.
 - **seo-audit** — Full SEO health audit — keyword research, on-page analysis, content gaps, technical checks, and competitor benchmarking with a prioritized action plan.
+
+### planning
+
+- **grill-me** — Pre-flight alignment interrogation that runs BEFORE any implementation begins. Use when a mission, feature request, or task brief arrives and coding has not started; do NOT use mid-implementation (scope questions then go to the orchestrator) or for trivial single-file fixes with an unambiguous spec.
 
 ### research
 
