@@ -15,6 +15,7 @@ const morgan = require('morgan');
 const rateLimit = require('express-rate-limit');
 const cookieParser = require('cookie-parser');
 const bcrypt = require('bcryptjs');
+const { defaultTenantSettings } = require('./lib/default-settings');
 
 const app = express();
 const server = http.createServer(app);
@@ -636,15 +637,7 @@ app.get('/lifetime/success', (req, res) => {
         };
         ensureTenantDir(tenantId);
         saveTenantState(tenantId, 'users', [{ email: license.email, passwordHash: null, plan: 'lifetime', role: 'admin', tenantId, createdAt: new Date().toISOString() }]);
-        saveTenantState(tenantId, 'settings', {
-          ai: { anthropic_api_key: '', openai_api_key: '', deepseek_api_key: '', xai_api_key: '', gemini_api_key: '', perplexity_api_key: '', firecrawl_api_key: '', tavily_api_key: '', apify_api_token: '', manus_api_key: '', livekit_api_key: '', livekit_api_secret: '', livekit_url: '', deepgram_api_key: '', cartesia_api_key: '' },
-          mcp: { hermes_url: 'http://127.0.0.1:8420', hermes_enabled: false },
-          notifications: { telegram_bot_token: '', telegram_chat_id: '', slack_webhook_url: '' },
-          automation: { n8n_webhook_base: '', n8n_api_key: '', team_webhook_url: '' },
-          stripe: { secret_key: '', webhook_secret: '', business_price_id: '', enterprise_price_id: '', enterprise_renewal_price_id: '' },
-          seo: { dataforseo_login: '', dataforseo_password: '', default_location: 'United States', default_language: 'en' },
-          general: { demo_mode: true, cors_origin: '*', api_token: '' },
-        });
+        saveTenantState(tenantId, 'settings', defaultTenantSettings());
         tenantRegistry[tenantId] = tenant;
         saveState('tenant_registry', tenantRegistry);
         license.tenantId = tenantId;
@@ -1428,15 +1421,16 @@ async function callAnthropic(systemPrompt, task, effort, maxTokens) {
   };
 }
 
-async function callGrok(systemPrompt, task, maxTokens) {
-  const apiKey = settings.ai.xai_api_key;
-  if (!apiKey) throw new Error('xAI API key not configured — add it in Settings');
+// Shared caller for OpenAI-compatible chat-completions providers (Grok, DeepSeek, OpenAI, Perplexity).
+// Returns { content, inputTokens, outputTokens, data } — wrappers shape their own public result.
+async function callChatCompletions({ provider, keyName, url, model, apiKey, systemPrompt, task, maxTokens }) {
+  if (!apiKey) throw new Error(`${keyName} API key not configured — add it in Settings`);
 
-  const res = await fetch('https://api.x.ai/v1/chat/completions', {
+  const res = await fetch(url, {
     method: 'POST',
     headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      model: 'grok-3',
+      model,
       messages: [{ role: 'system', content: systemPrompt }, { role: 'user', content: task }],
       max_tokens: maxTokens,
     }),
@@ -1444,7 +1438,7 @@ async function callGrok(systemPrompt, task, maxTokens) {
 
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
-    throw new Error(err.error?.message || `Grok HTTP ${res.status}`);
+    throw new Error(err.error?.message || `${provider} HTTP ${res.status}`);
   }
 
   const data = await res.json();
@@ -1452,34 +1446,24 @@ async function callGrok(systemPrompt, task, maxTokens) {
     content: data.choices?.[0]?.message?.content || '',
     inputTokens: data.usage?.prompt_tokens || 0,
     outputTokens: data.usage?.completion_tokens || 0,
+    data,
   };
 }
 
-async function callDeepSeek(systemPrompt, task, maxTokens) {
-  const apiKey = settings.ai.deepseek_api_key;
-  if (!apiKey) throw new Error('DeepSeek API key not configured — add it in Settings');
-
-  const res = await fetch('https://api.deepseek.com/chat/completions', {
-    method: 'POST',
-    headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      model: 'deepseek-chat',
-      messages: [{ role: 'system', content: systemPrompt }, { role: 'user', content: task }],
-      max_tokens: maxTokens,
-    }),
+async function callGrok(systemPrompt, task, maxTokens) {
+  const { content, inputTokens, outputTokens } = await callChatCompletions({
+    provider: 'Grok', keyName: 'xAI', url: 'https://api.x.ai/v1/chat/completions', model: 'grok-3',
+    apiKey: settings.ai.xai_api_key, systemPrompt, task, maxTokens,
   });
+  return { content, inputTokens, outputTokens };
+}
 
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
-    throw new Error(err.error?.message || `DeepSeek HTTP ${res.status}`);
-  }
-
-  const data = await res.json();
-  return {
-    content: data.choices?.[0]?.message?.content || '',
-    inputTokens: data.usage?.prompt_tokens || 0,
-    outputTokens: data.usage?.completion_tokens || 0,
-  };
+async function callDeepSeek(systemPrompt, task, maxTokens) {
+  const { content, inputTokens, outputTokens } = await callChatCompletions({
+    provider: 'DeepSeek', keyName: 'DeepSeek', url: 'https://api.deepseek.com/chat/completions', model: 'deepseek-chat',
+    apiKey: settings.ai.deepseek_api_key, systemPrompt, task, maxTokens,
+  });
+  return { content, inputTokens, outputTokens };
 }
 
 async function callGemini(systemPrompt, task, maxTokens) {
@@ -1511,58 +1495,19 @@ async function callGemini(systemPrompt, task, maxTokens) {
 }
 
 async function callOpenAI(systemPrompt, task, maxTokens) {
-  const apiKey = settings.ai.openai_api_key;
-  if (!apiKey) throw new Error('OpenAI API key not configured — add it in Settings');
-
-  const res = await fetch('https://api.openai.com/v1/chat/completions', {
-    method: 'POST',
-    headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      model: 'gpt-4o',
-      messages: [{ role: 'system', content: systemPrompt }, { role: 'user', content: task }],
-      max_tokens: maxTokens,
-    }),
+  const { content, inputTokens, outputTokens } = await callChatCompletions({
+    provider: 'OpenAI', keyName: 'OpenAI', url: 'https://api.openai.com/v1/chat/completions', model: 'gpt-4o',
+    apiKey: settings.ai.openai_api_key, systemPrompt, task, maxTokens,
   });
-
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
-    throw new Error(err.error?.message || `OpenAI HTTP ${res.status}`);
-  }
-
-  const data = await res.json();
-  return {
-    content: data.choices?.[0]?.message?.content || '',
-    inputTokens: data.usage?.prompt_tokens || 0,
-    outputTokens: data.usage?.completion_tokens || 0,
-  };
+  return { content, inputTokens, outputTokens };
 }
 
 async function callPerplexity(systemPrompt, task, maxTokens) {
-  const apiKey = settings.ai.perplexity_api_key;
-  if (!apiKey) throw new Error('Perplexity API key not configured — add it in Settings');
-
-  const res = await fetch('https://api.perplexity.ai/chat/completions', {
-    method: 'POST',
-    headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      model: 'sonar-pro',
-      messages: [{ role: 'system', content: systemPrompt }, { role: 'user', content: task }],
-      max_tokens: maxTokens,
-    }),
+  const { content, inputTokens, outputTokens, data } = await callChatCompletions({
+    provider: 'Perplexity', keyName: 'Perplexity', url: 'https://api.perplexity.ai/chat/completions', model: 'sonar-pro',
+    apiKey: settings.ai.perplexity_api_key, systemPrompt, task, maxTokens,
   });
-
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
-    throw new Error(err.error?.message || `Perplexity HTTP ${res.status}`);
-  }
-
-  const data = await res.json();
-  return {
-    content: data.choices?.[0]?.message?.content || '',
-    inputTokens: data.usage?.prompt_tokens || 0,
-    outputTokens: data.usage?.completion_tokens || 0,
-    citations: data.citations || [],
-  };
+  return { content, inputTokens, outputTokens, citations: data.citations || [] };
 }
 
 // --- Generic Agent Dispatch Endpoint ---
@@ -4752,6 +4697,19 @@ app.put('/api/settings/:section', requireAdmin, (req, res) => {
   res.json({ ok: true, updated, skipped });
 });
 
+// Shared connection-test helper: fetch a JSON endpoint, map the parsed body to an
+// { ok, message } result, and normalize network errors. Only for services whose
+// branch parses JSON unconditionally — r.ok-gated branches keep their own flow.
+async function testJsonService(res, fetcher, getResult) {
+  try {
+    const r = await fetcher();
+    const data = await r.json();
+    res.json(getResult(data, r));
+  } catch (e) {
+    res.json({ ok: false, message: `Connection failed: ${e.message}` });
+  }
+}
+
 // POST test a connection (Hermes MCP, Telegram, Slack)
 app.post('/api/settings/test/:service', requireAdmin, async (req, res) => {
   const { service } = req.params;
@@ -4836,34 +4794,22 @@ app.post('/api/settings/test/:service', requireAdmin, async (req, res) => {
     }
   } else if (service === 'gemini') {
     if (!settings.ai.gemini_api_key) return res.json({ ok: false, message: 'No Gemini API key configured — save your key first' });
-    try {
-      const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${settings.ai.gemini_api_key}`);
-      const data = await r.json();
-      if (data.models) {
+    await testJsonService(res,
+      () => fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${settings.ai.gemini_api_key}`),
+      (data, r) => {
+        if (!data.models) return { ok: false, message: data.error?.message || `HTTP ${r.status}` };
         const omniModels = data.models.filter(m => m.name.includes('omni') || m.name.includes('gemini')).slice(0, 3);
-        res.json({ ok: true, message: `Gemini API valid — ${data.models.length} models available` + (omniModels.length ? ` (incl. ${omniModels.map(m => m.name.split('/').pop()).join(', ')})` : '') });
-      } else {
-        res.json({ ok: false, message: data.error?.message || `HTTP ${r.status}` });
-      }
-    } catch (e) {
-      res.json({ ok: false, message: `Connection failed: ${e.message}` });
-    }
+        return { ok: true, message: `Gemini API valid — ${data.models.length} models available` + (omniModels.length ? ` (incl. ${omniModels.map(m => m.name.split('/').pop()).join(', ')})` : '') };
+      });
   } else if (service === 'openai') {
     if (!settings.ai.openai_api_key) return res.json({ ok: false, message: 'No OpenAI API key configured — save your key first' });
-    try {
-      const r = await fetch('https://api.openai.com/v1/models', {
-        headers: { 'Authorization': `Bearer ${settings.ai.openai_api_key}` },
-      });
-      const data = await r.json();
-      if (data.data) {
+    await testJsonService(res,
+      () => fetch('https://api.openai.com/v1/models', { headers: { 'Authorization': `Bearer ${settings.ai.openai_api_key}` } }),
+      (data, r) => {
+        if (!data.data) return { ok: false, message: data.error?.message || `HTTP ${r.status}` };
         const models = data.data.slice(0, 3).map(m => m.id).join(', ');
-        res.json({ ok: true, message: `OpenAI connected — ${data.data.length} models (incl. ${models})` });
-      } else {
-        res.json({ ok: false, message: data.error?.message || `HTTP ${r.status}` });
-      }
-    } catch (e) {
-      res.json({ ok: false, message: `Connection failed: ${e.message}` });
-    }
+        return { ok: true, message: `OpenAI connected — ${data.data.length} models (incl. ${models})` };
+      });
   } else if (service === 'perplexity') {
     if (!settings.ai.perplexity_api_key) return res.json({ ok: false, message: 'No Perplexity API key configured — save your key first' });
     try {
@@ -4895,53 +4841,37 @@ app.post('/api/settings/test/:service', requireAdmin, async (req, res) => {
     }
   } else if (service === 'tavily') {
     if (!settings.ai.tavily_api_key) return res.json({ ok: false, message: 'No Tavily API key configured — save your key first' });
-    try {
-      const r = await fetch('https://api.tavily.com/search', {
+    await testJsonService(res,
+      () => fetch('https://api.tavily.com/search', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ api_key: settings.ai.tavily_api_key, query: 'test', max_results: 1 }),
-      });
-      const data = await r.json();
-      if (data.results) {
-        res.json({ ok: true, message: `Tavily connected — ${data.results.length} result returned` });
-      } else {
-        res.json({ ok: false, message: data.detail || data.error || `HTTP ${r.status}` });
-      }
-    } catch (e) {
-      res.json({ ok: false, message: `Connection failed: ${e.message}` });
-    }
+      }),
+      (data, r) => data.results
+        ? { ok: true, message: `Tavily connected — ${data.results.length} result returned` }
+        : { ok: false, message: data.detail || data.error || `HTTP ${r.status}` });
   } else if (service === 'apify') {
     if (!settings.ai.apify_api_token) return res.json({ ok: false, message: 'No Apify API token configured — save your token first' });
-    try {
-      const r = await fetch('https://api.apify.com/v2/user/me', {
-        headers: { 'Authorization': `Bearer ${settings.ai.apify_api_token}` },
-      });
-      const data = await r.json();
-      if (data.data?.username) {
-        res.json({ ok: true, message: `Apify connected — user: ${data.data.username}, plan: ${data.data.plan?.id || 'free'}` });
-      } else {
-        res.json({ ok: false, message: data.error?.message || `HTTP ${r.status}` });
-      }
-    } catch (e) {
-      res.json({ ok: false, message: `Connection failed: ${e.message}` });
-    }
+    await testJsonService(res,
+      () => fetch('https://api.apify.com/v2/user/me', { headers: { 'Authorization': `Bearer ${settings.ai.apify_api_token}` } }),
+      (data, r) => data.data?.username
+        ? { ok: true, message: `Apify connected — user: ${data.data.username}, plan: ${data.data.plan?.id || 'free'}` }
+        : { ok: false, message: data.error?.message || `HTTP ${r.status}` });
   } else if (service === 'dataforseo') {
     if (!settings.seo.dataforseo_login || !settings.seo.dataforseo_password) {
       return res.json({ ok: false, message: 'DataForSEO login and password required — save your credentials first' });
     }
-    try {
-      const creds = Buffer.from(`${settings.seo.dataforseo_login}:${settings.seo.dataforseo_password}`).toString('base64');
-      const r = await fetch('https://api.dataforseo.com/v3/serp/google/organic/live/advanced', {
+    const creds = Buffer.from(`${settings.seo.dataforseo_login}:${settings.seo.dataforseo_password}`).toString('base64');
+    await testJsonService(res,
+      () => fetch('https://api.dataforseo.com/v3/serp/google/organic/live/advanced', {
         method: 'POST',
         headers: { 'Authorization': `Basic ${creds}`, 'Content-Type': 'application/json' },
         body: JSON.stringify([{ keyword: 'test', location_name: 'United States', language_name: 'English', depth: 1 }]),
+      }),
+      (data, r) => {
+        const ok = data.status_code === 20000;
+        return { ok, message: ok ? `DataForSEO connected — balance: $${data.cost || 'N/A'}` : (data.status_message || `HTTP ${r.status}`) };
       });
-      const data = await r.json();
-      const ok = data.status_code === 20000;
-      res.json({ ok, message: ok ? `DataForSEO connected — balance: $${data.cost || 'N/A'}` : (data.status_message || `HTTP ${r.status}`) });
-    } catch (e) {
-      res.json({ ok: false, message: `Connection failed: ${e.message}` });
-    }
   } else if (service === 'did') {
     if (!settings.ai.did_api_key) return res.json({ ok: false, message: 'No D-ID API key configured — save your key first' });
     try {
@@ -6121,14 +6051,7 @@ app.post('/api/seo/free-audit', async (req, res) => {
         const allDone = agentNames.every(n => audit.agents[n].status === 'complete');
         if (allDone) {
           const scores = agentNames.map(n => audit.agents[n].score);
-          audit.compositeScore = Math.round(scores.reduce((a, b) => a + b, 0) / scores.length);
-          audit.status = 'complete';
-          audit.completedAt = new Date().toISOString();
-          audit.executiveSummary = generateExecutiveSummary(audit);
-          audit.quickWins = generateQuickWins(audit);
-          audit.actionPlan = generateActionPlan(audit);
-          saveState('seo_audits', seoAudits);
-          broadcast({ event: 'seo_audit_complete', data: { auditId, compositeScore: audit.compositeScore } });
+          finalizeSeoAudit(audit, auditId, { compositeScore: Math.round(scores.reduce((a, b) => a + b, 0) / scores.length) });
         }
       }, delays[i]);
     });
@@ -6188,6 +6111,19 @@ async function dfsRequest(endpoint, body) {
   return data;
 }
 
+// Finalize an SEO audit: stamp completion, derive summary artifacts, persist, and notify.
+// `summary` overrides the generated executive summary (used for partial/error completions).
+function finalizeSeoAudit(audit, auditId, { compositeScore, summary } = {}) {
+  audit.compositeScore = compositeScore;
+  audit.status = 'complete';
+  audit.completedAt = new Date().toISOString();
+  audit.executiveSummary = summary || generateExecutiveSummary(audit);
+  audit.quickWins = generateQuickWins(audit);
+  audit.actionPlan = generateActionPlan(audit);
+  saveState('seo_audits', seoAudits);
+  broadcast({ event: 'seo_audit_complete', data: { auditId, compositeScore: audit.compositeScore } });
+}
+
 async function runRealSeoAudit(audit, auditId) {
   const domain = audit.domain;
   const location = settings.seo.default_location || 'United States';
@@ -6217,15 +6153,9 @@ async function runRealSeoAudit(audit, auditId) {
     broadcast({ event: 'seo_agent_complete', data: { auditId, agent: name, score: audit.agents[name].score } });
   });
 
-  // Composite score
+  // Composite score from agents that returned data
   const scores = agentNames.map(n => audit.agents[n].score || 0);
   const validScores = scores.filter(s => s > 0);
-  audit.compositeScore = validScores.length ? Math.round(validScores.reduce((a, b) => a + b, 0) / validScores.length) : 0;
-  audit.status = 'complete';
-  audit.completedAt = new Date().toISOString();
-  audit.executiveSummary = generateExecutiveSummary(audit);
-  audit.quickWins = generateQuickWins(audit);
-  audit.actionPlan = generateActionPlan(audit);
 
   // Track cost (~$0.10-0.30 per audit)
   costLedger.push({
@@ -6234,8 +6164,9 @@ async function runRealSeoAudit(audit, auditId) {
     timestamp: new Date().toISOString(),
   });
 
-  saveState('seo_audits', seoAudits);
-  broadcast({ event: 'seo_audit_complete', data: { auditId, compositeScore: audit.compositeScore } });
+  finalizeSeoAudit(audit, auditId, {
+    compositeScore: validScores.length ? Math.round(validScores.reduce((a, b) => a + b, 0) / validScores.length) : 0,
+  });
   logActivity('seo', `SEO audit complete (real): ${audit.domain} — score ${audit.compositeScore}/100`, { auditId });
 }
 
@@ -6671,7 +6602,7 @@ if (commercial.registerRoutes) {
     callAnthropic, callGrok, callGemini, executeAgent,
     // SEO helpers
     capitalize, generateSeoFindings, generateExecutiveSummary, generateQuickWins, generateActionPlan,
-    runRealSeoAudit, dfsAuthHeader,
+    runRealSeoAudit, dfsAuthHeader, finalizeSeoAudit,
     // YouTube helpers
     generateYTVideoInfo, generateYTTranscript, generateYTFrames,
     generateYTVisualAnalysis, generateYTSummary, generateYTInsights, runRealYouTubeAnalysis,

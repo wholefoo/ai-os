@@ -8915,12 +8915,20 @@ async function generateSeoReport(auditId) {
   }
 }
 
-async function seoGenerateBriefs(auditId) {
+// Shared preamble for post-audit action buttons: show loading state, POST to the
+// endpoint, render the error state on failure. Returns { container, result } or null.
+async function seoPostAction(endpoint, auditId, loadingText) {
   const container = document.getElementById('seoPostActionResult');
-  container.innerHTML = '<div class="empty-state">Generating content briefs...</div>';
+  container.innerHTML = `<div class="empty-state">${loadingText}</div>`;
+  const result = await fetchJSON(`/api/seo/${endpoint}/${auditId}`, { method: 'POST', body: {} });
+  if (!result.ok) { container.innerHTML = `<div class="empty-state" style="color:var(--error);">${result.error || 'Failed'}</div>`; return null; }
+  return { container, result };
+}
 
-  const result = await fetchJSON(`/api/seo/briefs/${auditId}`, { method: 'POST', body: {} });
-  if (!result.ok) { container.innerHTML = `<div class="empty-state" style="color:var(--error);">${result.error || 'Failed'}</div>`; return; }
+async function seoGenerateBriefs(auditId) {
+  const ctx = await seoPostAction('briefs', auditId, 'Generating content briefs...');
+  if (!ctx) return;
+  const { container, result } = ctx;
 
   container.innerHTML = `
     <h4 style="margin-bottom:12px;">Content Briefs for ${escapeHtml(result.domain)} (${result.briefs.length} briefs)</h4>
@@ -8948,11 +8956,9 @@ async function seoGenerateBriefs(auditId) {
 }
 
 async function seoGenerateCalendar(auditId) {
-  const container = document.getElementById('seoPostActionResult');
-  container.innerHTML = '<div class="empty-state">Generating content calendar...</div>';
-
-  const result = await fetchJSON(`/api/seo/calendar/${auditId}`, { method: 'POST', body: {} });
-  if (!result.ok) { container.innerHTML = `<div class="empty-state" style="color:var(--error);">${result.error || 'Failed'}</div>`; return; }
+  const ctx = await seoPostAction('calendar', auditId, 'Generating content calendar...');
+  if (!ctx) return;
+  const { container, result } = ctx;
 
   container.innerHTML = `
     <h4 style="margin-bottom:12px;">12-Week Content Calendar for ${escapeHtml(result.domain)}</h4>
@@ -8977,11 +8983,9 @@ async function seoGenerateCalendar(auditId) {
 }
 
 async function seoOptimizeMeta(auditId) {
-  const container = document.getElementById('seoPostActionResult');
-  container.innerHTML = '<div class="empty-state">Optimizing meta tags...</div>';
-
-  const result = await fetchJSON(`/api/seo/meta/${auditId}`, { method: 'POST', body: {} });
-  if (!result.ok) { container.innerHTML = `<div class="empty-state" style="color:var(--error);">${result.error || 'Failed'}</div>`; return; }
+  const ctx = await seoPostAction('meta', auditId, 'Optimizing meta tags...');
+  if (!ctx) return;
+  const { container, result } = ctx;
 
   container.innerHTML = `
     <h4 style="margin-bottom:12px;">Optimized Meta Tags for ${escapeHtml(result.domain)} (${result.pages.length} pages)</h4>
