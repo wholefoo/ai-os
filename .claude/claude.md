@@ -40,6 +40,7 @@ This is a multi-agentic AI Operating System that orchestrates specialized sub-ag
 The system uses a multi-engine architecture for cost-optimized task routing:
 - **Claude Code** — Primary engine for strategic (Opus), professional (Sonnet), and scout (Haiku) tasks
 - **DeepSeek Tui** — Economy engine for bulk content, data processing, and batch operations via DeepSeek V4
+- **Codex CLI** — Cross-model verification engine (gpt-5.5, read-only `reviewer` profile); used only for adversarial review seats and second-opinion code reviews, never production tasks. Headless calls must close stdin (`< NUL` on Windows, `< /dev/null` on Linux)
 - Routing rules defined in `.claude/rules/cost-routing.md`
 - Orchestrator auto-classifies tasks and routes to the cheapest capable engine
 
