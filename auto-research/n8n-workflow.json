@@ -1,0 +1,47 @@
+{
+  "name": "Auto Research — Overnight Optimization Loop",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 2 * * *"
+            }
+          ]
+        }
+      },
+      "name": "Daily 2am Trigger",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [0, 0]
+    },
+    {
+      "parameters": {
+        "command": "cd /opt/ai-os && node auto-research/run-loop.js --iterations 10 2>&1 | tail -5 && tail -3 /opt/ai-os/auto-research/history/log.jsonl"
+      },
+      "name": "Run Optimization Loop",
+      "type": "n8n-nodes-base.executeCommand",
+      "typeVersion": 1,
+      "position": [220, 0]
+    }
+  ],
+  "connections": {
+    "Daily 2am Trigger": {
+      "main": [
+        [
+          {
+            "node": "Run Optimization Loop",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "pinData": {}
+}
