@@ -70,9 +70,12 @@ function mutate(iteration, best) {
     'You may ONLY write inside auto-research/asset/. Do not touch score.js or run-loop.js.',
   ].join('\n');
 
-  execSync(`claude -p ${JSON.stringify(prompt)} --allowedTools "Read,Write,Edit,Glob,Grep"`, {
+  // Prompt goes via stdin — embedding it in the command line lets the shell
+  // interpret backticks/quotes in the instructions and explode.
+  execSync('claude -p --allowedTools "Read,Write,Edit,Glob,Grep"', {
     cwd: path.join(DIR, '..'),
-    stdio: ['ignore', 'inherit', 'inherit'],
+    input: prompt,
+    stdio: ['pipe', 'inherit', 'inherit'],
     timeout: 15 * 60 * 1000,
   });
 }
