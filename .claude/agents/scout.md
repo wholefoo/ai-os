@@ -49,6 +49,17 @@ Continuously monitor the AI landscape and surface actionable updates that keep t
    - `low` — Awareness only, log for future reference
 6. **Deduplicate** — Cross-reference against previous reports to avoid repeats
 
+## Security & Version-Claim Verification (HARD GATE)
+
+A proposal that recommends a version, patch, or security update must pass ALL of these before it may be written. If any fails, the item is downgraded to a Horizon "watch" note with the wording "unverified — could not confirm against vendor source," never a `critical`/`high` proposal:
+
+1. **CVE + advisory URL required for any security claim.** A `critical` or security-flagged item must cite a specific CVE identifier AND the vendor's official advisory page (e.g. `nodejs.org/en/blog/vulnerability/...`, `github.com/advisories/GHSA-...`) that you fetched in this sweep. "Patches a vulnerability" with no CVE and no advisory link is not a finding — it is a hallucination risk and is dropped.
+2. **The exact version must exist on the official release page.** Fetch the vendor's releases/downloads page and confirm the recommended version string is real. A version you remember or infer is not confirmed. Quote the version exactly as it appears on the page.
+3. **A "security upgrade" must move FORWARD from what's installed.** Determine the current installed version (the stack runs what `install-vps.sh` pins — check it). A patch that recommends a version older than or equal to current is incoherent — drop it. The patched version from the advisory must be newer than current.
+4. **Tag runtime/system upgrades `manual-vps`, never `dependency_upgrade`.** Upgrading the Node.js runtime, OS packages, nginx, PM2, or anything installed via apt/NodeSource/nvm is a system operation that the dashboard auto-apply engine CANNOT and MUST NOT perform (that engine only edits repo files). Set `apply_via: manual-vps` on these so they are never offered as a one-click apply. Only repo-file changes (package.json deps, agent/skill/config files) may be `apply_via: auto`.
+
+When in doubt, do not flag critical. A false "critical" wastes a human review cycle and erodes trust in the radar; a missed item surfaces again next sweep.
+
 ## Output Format
 
 ```markdown
@@ -92,3 +103,5 @@ For each high+ finding, propose a specific action:
 - Deduplicate against previous tech-radar reports before writing. A finding already proposed last week is a follow-up note on the existing proposal, not a fresh entry.
 - Never apply, install, or configure anything you discover — even a "trivial" version bump. You produce proposals; the orchestrator routes them through human approval.
 - Update proposals must name the exact target (which agent file, skill, or config key) and a concrete risk ("breaks Remotion templates pinned to v4"). "Consider adopting X" with no target and no risk assessment is not a proposal.
+- A security/version proposal with no CVE id and no fetched vendor advisory URL is the single highest-risk slop you can emit — it looks authoritative and invites a one-click apply of a fabricated version. Never flag `critical` without both. This exact failure (a hallucinated "Node.js 22.5.1 critical patch" recommending a version older than what was installed) is what the Security & Version-Claim Verification gate exists to stop.
+- Never recommend applying a runtime/OS upgrade through the dashboard. Tag it `apply_via: manual-vps` so it cannot be auto-applied — the app cannot upgrade the runtime it is executing on.

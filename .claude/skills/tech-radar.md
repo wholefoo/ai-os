@@ -37,13 +37,21 @@ Each qualifying finding gets:
 - Source URL for human verification
 
 ### Step 4 — Generate Update Proposals
-For each `critical` or `high` finding, the scout generates a concrete update proposal:
+For each `critical` or `high` finding, the scout generates a concrete update proposal.
+**Before writing any version/security proposal, it MUST pass the Security & Version-Claim
+Verification gate in `.claude/agents/scout.md`** (CVE + fetched advisory URL, version
+confirmed on the official release page, forward-only, correct `apply_via`). If it cannot
+pass, it is downgraded to a Horizon watch note, not a proposal.
+
 ```yaml
 proposal:
   title: "Upgrade Claude model to claude-4.7-opus"
   finding: "Anthropic released Claude 4.7 with 2x context window"
   impact: high
   category: models
+  source_url: "https://www.anthropic.com/news/..."   # REQUIRED — fetched this sweep
+  cve: null                                            # REQUIRED for security items (e.g. CVE-2025-59465), else null
+  apply_via: auto                                      # auto = repo-file change | manual-vps = runtime/OS op, never one-click
   action:
     type: config_change | skill_update | agent_update | new_tool | dependency_upgrade
     target: .claude/agents/orchestrator.md  # specific file to modify
@@ -52,6 +60,9 @@ proposal:
     risk: "Model behavior may differ slightly — run test suite after upgrade"
   rollback: "Revert model references to claude-4.6-opus"
 ```
+
+The dashboard apply flow must honor `apply_via`: `manual-vps` proposals are shown for
+awareness with the documented manual steps, never offered as a one-click apply.
 
 ### Step 5 — Route to Orchestrator
 The orchestrator receives the update proposals and:
