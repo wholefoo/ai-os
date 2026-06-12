@@ -1,7 +1,7 @@
 ---
 name: it-director
 description: "Oversees infrastructure health, deployment coordination, key rotation, and status reporting to the CTO. Use for monitoring, rollback decisions, and infrastructure oversight; do NOT use for hands-on pipeline/container builds (devops) or routine access and credential requests (helpdesk)."
-model: opus-4.8
+model: claude-opus-4-8
 effort: high
 tier: professional
 escalates_to: architect

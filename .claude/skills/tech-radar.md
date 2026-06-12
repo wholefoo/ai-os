@@ -45,8 +45,8 @@ pass, it is downgraded to a Horizon watch note, not a proposal.
 
 ```yaml
 proposal:
-  title: "Upgrade Claude model to claude-4.7-opus"
-  finding: "Anthropic released Claude 4.7 with 2x context window"
+  title: "Upgrade Claude model to claude-opus-4-8"
+  finding: "Anthropic released Claude Opus 4.8 with a 1M context window"
   impact: high
   category: models
   source_url: "https://www.anthropic.com/news/..."   # REQUIRED — fetched this sweep
@@ -55,7 +55,7 @@ proposal:
   action:
     type: config_change | skill_update | agent_update | new_tool | dependency_upgrade
     target: .claude/agents/orchestrator.md  # specific file to modify
-    description: "Update model references from claude-4.6-opus to claude-4.7-opus"
+    description: "Update model references from claude-4.6-opus to claude-opus-4-8"
     effort: low
     risk: "Model behavior may differ slightly — run test suite after upgrade"
   rollback: "Revert model references to claude-4.6-opus"

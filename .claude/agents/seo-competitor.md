@@ -1,7 +1,7 @@
 ---
 name: seo-competitor
 description: "Competitive intelligence analyst for the SEO audit pipeline — identifies the top organic competitors and compares authority, content velocity, feature adoption, and ranking overlap. Use within domain audits to establish competitive position; do NOT use for the domain's own keyword research (seo-keyword), backlink health (seo-backlink), or on-page fixes (seo-content)."
-model: opus-4.8
+model: claude-opus-4-8
 effort: high
 tier: professional
 escalates_to: orchestrator

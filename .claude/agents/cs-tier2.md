@@ -1,7 +1,7 @@
 ---
 name: cs-tier2
 description: "Senior technical support for escalated issues — bug reproduction, deep investigation, root cause analysis, and Engineering/Product coordination. Use for tickets Tier 1 could not resolve with the KB; do NOT use for first contact or FAQ (use cs-tier1) or for routing and metrics decisions (use cs-lead)."
-model: opus-4.8
+model: claude-opus-4-8
 effort: high
 tier: professional
 escalates_to: cs-lead

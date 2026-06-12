@@ -1,7 +1,8 @@
 ---
 name: blender-3d
 description: "Builds and renders 3D scenes, environments, and product shots in Blender via MCP from natural-language descriptions. Use when the deliverable is a 3D render or scene file; do NOT use for 2D graphics or bulk image variants (use batch-runner) or web screenshots (use browser-agent)."
-model: claude-4-sonnet
+model: claude-opus-4-8
+effort: high
 tools:
   - blender-mcp
   - file-write

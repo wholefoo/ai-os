@@ -1,7 +1,8 @@
 ---
 name: data-wrangler
 description: "Executes ETL, data cleaning, transformation, and statistical analysis on concrete data files. Use when the task has actual data to process and validate; do NOT use for open-ended information gathering or source discovery — route those to researcher."
-model: claude-4.7-sonnet
+model: claude-opus-4-8
+effort: high
 tools: [Read, Write, Bash, Grep]
 trigger: When the task involves data processing, ETL, or analysis.
 ---

@@ -1,7 +1,8 @@
 ---
 name: researcher
 description: Gathers, verifies, and synthesizes external facts into cited research briefs answering a specific handoff. Use when a task needs external information with citations; do NOT use to design the study itself (research-architect), for routine tech-news sweeps (scout), or to format the final deliverable (report-compiler).
-model: claude-4.7-sonnet
+model: claude-opus-4-8
+effort: high
 tools: [WebSearch, WebFetch, Read, Write]
 trigger: When the task requires external facts, market data, or citations.
 ---

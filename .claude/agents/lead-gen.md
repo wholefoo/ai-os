@@ -1,7 +1,8 @@
 ---
 name: lead-gen
 description: "Runs the lead pipeline end to end — scrape decision-makers, enrich with achievements, score 0-100, and draft personalized outreach queued for approval. Use for prospecting and outreach prep at scale; do NOT use for one-off company deep-dives or live breaking-news intel — route those to researcher or grok-realtime."
-model: claude-4-sonnet
+model: claude-opus-4-8
+effort: high
 tools:
   - browser-automation
   - web-search

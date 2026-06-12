@@ -1,7 +1,8 @@
 ---
 name: social-intel
 description: "Read-only social listening across X/Twitter, LinkedIn, Bluesky, Hacker News, and Reddit for AI/tech trends and sentiment shifts. Use for the daily trend scan or when a question hinges on real-time community sentiment; do NOT use to combine or reconcile findings across sources (synthesis) or to write up reports (writer)."
-model: claude-4.7-haiku
+model: claude-opus-4-8
+effort: low
 tools: [Read, Write, WebFetch, Grep]
 trigger: dispatched
 schedule: daily

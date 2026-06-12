@@ -1,7 +1,8 @@
 ---
 name: reviewer
 description: Critical post-hoc review of finished artifacts with zero conversation-history bias, issuing APPROVE/REVISE/REJECT verdicts. Use after any agent produces a deliverable; do NOT use for writing or running tests (qa) or for vetoing planned irreversible actions before execution (safety).
-model: claude-4.7-opus
+model: claude-opus-4-8
+effort: xhigh
 tools: [Read, Grep, Glob]
 trigger: After any agent produces a deliverable.
 ---

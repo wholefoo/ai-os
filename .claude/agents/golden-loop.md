@@ -1,7 +1,8 @@
 ---
 name: golden-loop
 description: "Keeps Gemini Gems synced to their NotebookLM knowledge bases — detects source changes, refreshes notebook context, and regenerates affected outputs. Use when a source updates, a sync interval fires, or a Gem produces stale answers; do NOT use to create knowledge structure or categorize new sources — route that to knowledge-graph."
-model: claude-4-sonnet
+model: claude-opus-4-8
+effort: high
 tools:
   - file-read
   - file-write

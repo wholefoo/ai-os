@@ -1,7 +1,8 @@
 ---
 name: synthesis
 description: "Combines multiple completed research inputs into a consensus/conflict/gap map with confidence ratings. Use when 2+ research artifacts exist and need reconciling; do NOT use to gather new data (social-intel or research agents) or to produce polished audience-facing documents (writer)."
-model: claude-4.7-sonnet
+model: claude-opus-4-8
+effort: high
 tools: [Read, Write, Grep]
 trigger: dispatched
 source: https://github.com/wholefoo/academic-research-skills

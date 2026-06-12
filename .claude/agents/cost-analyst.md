@@ -1,8 +1,8 @@
 ---
 name: cost-analyst
 description: "Tracks model spending against budgets, alerts on threshold breaches, and recommends model/effort-tier adjustments for cost efficiency. Use for budget monitoring, cost summaries, and spend-optimization questions; do NOT use for legal/compliance cost exposure (use compliance-officer) or for executing the model-tier changes it recommends — those go to the orchestrator."
-model: opus-4.8
-effort: xhigh
+model: claude-opus-4-8
+effort: high
 tier: strategic
 escalates_to: orchestrator
 group: executive

@@ -34,11 +34,11 @@ This is a multi-agentic AI Operating System that orchestrates specialized sub-ag
 - Team config: YAML
 - Memory: File-based (`.magent/`)
 - Web Intelligence: Firecrawl MCP server (search, scrape, structured extraction)
-- Execution Engines: Claude Code (Opus/Sonnet/Haiku), DeepSeek Tui (DeepSeek V4 economy tier)
+- Execution Engines: Claude Code (Opus 4.8 across xhigh/high/low effort tiers), DeepSeek Tui (DeepSeek V4 economy tier)
 
 ## Execution Engines
 The system uses a multi-engine architecture for cost-optimized task routing:
-- **Claude Code** — Primary engine for strategic (Opus), professional (Sonnet), and scout (Haiku) tasks
+- **Claude Code** — Primary engine running Opus 4.8 across strategic (xhigh effort), professional (high effort), and scout (low effort) tasks
 - **DeepSeek Tui** — Economy engine for bulk content, data processing, and batch operations via DeepSeek V4
 - **Codex CLI** — Cross-model verification engine (gpt-5.5, read-only `reviewer` profile); used only for adversarial review seats and second-opinion code reviews, never production tasks. Headless calls must close stdin (`< NUL` on Windows, `< /dev/null` on Linux)
 - Routing rules defined in `.claude/rules/cost-routing.md`
@@ -126,7 +126,7 @@ The vault prevents "context rot" by maintaining a structured, searchable knowled
 
 ## Cost Tracking
 Real-time token usage and API spend monitoring across all execution engines:
-- 4-tier tracking: Strategic (Opus), Professional (Sonnet), Scout (Haiku), Economy (DeepSeek)
+- 4-tier tracking: Strategic (Opus 4.8 xhigh), Professional (Opus 4.8 high), Scout (Opus 4.8 low), Economy (DeepSeek)
 - Budget alerts at 75% threshold with auto-downgrade recommendations
 - Per-agent and per-skill cost attribution
 - Daily/weekly/monthly budget caps configurable via API
@@ -134,55 +134,55 @@ Real-time token usage and API spend monitoring across all execution engines:
 ## Knowledge Graph (Phase 1 — Core Intelligence)
 Auto-organizing knowledge base that categorizes sources into types (wiki, docs, research, outputs, raw) and discovers semantic connections between them. Provides a visual radial graph in the dashboard.
 - API: `/api/knowledge-graph`, `/api/knowledge-graph/stats`, `POST /api/knowledge-graph/auto-categorize`
-- Agent: knowledge-graph (claude-4.7-sonnet)
+- Agent: knowledge-graph (claude-opus-4-8)
 - Skill: knowledge-categorize
 
 ## Design System Protocol (Phase 1 — Core Intelligence)
 DESIGN.md-based universal token system with built-in WCAG linter. Defines color roles, typography scales, spacing grids, and border radii. Includes "Skills as Ingredients" for programmatic design feature generation.
 - API: `/api/design-system`, `/api/design-system/tokens`, `POST /api/design-system/lint`
-- Agent: design-system (claude-4.7-sonnet)
+- Agent: design-system (claude-opus-4-8)
 - Skill: design-lint
 
 ## Media Production Pipeline (Phase 1 — Core Intelligence)
 Multi-engine media production: Remotion (programmable video as React code), Google Vids (prompt-to-production with consistent avatars), Blender MCP (text-to-3D environments). Template-driven with parameterized inputs.
 - API: `/api/media/productions`, `/api/media/templates`, `/api/media/stats`, `POST /api/media/produce`
-- Agent: media-producer (claude-4.7-sonnet)
+- Agent: media-producer (gemini-omni-flash)
 - Skill: media-produce
 
 ## Continuous Loop Workflows (Phase 1 — Core Intelligence)
 CRON-scheduled autonomous routines that run at defined intervals — ad variation generation, competitor price monitoring, analytics digests, content repurposing. Rate-limited with cooldowns and batch processing.
 - API: `/api/routines`, `/api/routines/stats`, `PUT /api/routines/:id/toggle`, `POST /api/routines/:id/run`, `POST /api/routines`
-- Agent: routine-runner (claude-4.7-haiku, batch tier)
+- Agent: routine-runner (claude-opus-4-8, batch tier)
 
 ## Product Factory (Phase 2 — Monetization)
 AI-generates high-ticket digital products (spreadsheets, Notion templates, toolkits) using Claude + openpyxl. Published to Etsy and Gumroad with SEO-optimized listings.
 - API: `/api/products`, `/api/products/stats`, `/api/products/templates`, `POST /api/products`
-- Agent: product-factory (claude-4.7-sonnet)
+- Agent: product-factory (claude-opus-4-8)
 
 ## Lead Generation Pipeline (Phase 2 — Monetization)
 Automated scraping, enrichment, achievement discovery, and personalized outreach. Scores leads 0-100, generates custom messages referencing specific accomplishments.
 - API: `/api/leads`, `/api/leads/stats`, `/api/leads/campaigns`, `POST /api/leads/scrape`, `POST /api/leads/:id/outreach`
-- Agent: lead-gen (claude-4.7-sonnet)
+- Agent: lead-gen (claude-opus-4-8)
 
 ## Marketing Hub (Phase 2 — Monetization)
 End-to-end content pipelines — transforms source content into multi-platform distribution. Tracks channels, engagement, and growth. Content queue with scheduling.
 - API: `/api/marketing/pipelines`, `/api/marketing/channels`, `/api/marketing/queue`, `/api/marketing/stats`, `POST /api/marketing/queue`
-- Agent: marketing-hub (claude-4.7-sonnet)
+- Agent: marketing-hub (claude-opus-4-8)
 
 ## Golden Loop (Phase 2 — Monetization)
 Connects Gemini Gems (custom AI personas) to NotebookLM notebooks for real-time sync. The AI expert always has access to the latest research and docs.
 - API: `/api/golden-loop`, `/api/golden-loop/stats`, `POST /api/golden-loop/:id/sync`, `POST /api/golden-loop`
-- Agent: golden-loop (claude-4.7-sonnet)
+- Agent: golden-loop (claude-opus-4-8)
 
 ## Vibe Design Studio (Phase 3 — Creative Studio)
 Prompt-driven UI generation replacing traditional wireframing. Accepts natural language, voice, sketches, and reference URLs. Generates screens with predictive heat maps and granular style controls.
 - API: `/api/vibe-design/projects`, `/api/vibe-design/stats`, `/api/vibe-design/controls`, `POST /api/vibe-design/projects`, `POST /api/vibe-design/:id/heatmap`
-- Agent: vibe-designer (claude-4.7-sonnet)
+- Agent: vibe-designer (gemini-omni-flash)
 
 ## 3D Production Studio (Phase 3 — Creative Studio)
 Blender MCP text-to-3D — generates environments, product renders, and abstract visualizations from natural language. Multiple lighting presets, resolutions up to 4K.
 - API: `/api/3d/scenes`, `/api/3d/stats`, `/api/3d/presets`, `POST /api/3d/scenes`
-- Agent: blender-3d (claude-4.7-sonnet)
+- Agent: blender-3d (claude-opus-4-8)
 
 ## Predictive Analytics (Phase 3 — Creative Studio)
 AI-estimated forecasts for revenue, engagement, costs, and churn. Trained models with confidence scores and contributing factor analysis.

@@ -1356,9 +1356,9 @@ app.post('/api/chat', requireAdmin, async (req, res) => {
 
 const COST_RATES = {
   // Opus 4.8 — effort-based routing (single model, three tiers)
-  'opus-4.8-xhigh':    { input: 10.00, output: 50.00 },   // per 1M tokens — fast mode, strategic work
+  'opus-4.8-xhigh':    { input: 5.00,  output: 25.00 },   // per 1M — flat Opus 4.8 rate; xhigh spends more TOKENS (deeper thinking), not a higher per-token rate
   'opus-4.8-high':     { input: 5.00,  output: 25.00 },   // standard — professional work
-  'opus-4.8-low':      { input: 5.00,  output: 25.00 },   // standard — scout/quick tasks (same rate, less thinking)
+  'opus-4.8-low':      { input: 5.00,  output: 25.00 },   // standard — scout/quick tasks (fewer tokens, same flat rate)
   // Legacy aliases (for backward compat with existing ledger entries)
   'claude-4.7-opus':   { input: 15.00, output: 75.00 },
   'claude-4.7-sonnet': { input: 3.00,  output: 15.00 },
@@ -1451,10 +1451,16 @@ function getCostSummary() {
 
   // Per-tier breakdown
   const tierMap = {
+    // Current effort-tier model strings — what the ledger actually records
+    'opus-4.8-xhigh': 'strategic',
+    'opus-4.8-high': 'professional',
+    'opus-4.8-low': 'scout',
+    'deepseek-v4': 'economy',
+    'gemini-omni': 'creative',
+    // Legacy aliases — map ledger entries persisted before the Opus 4.8 consolidation
     'claude-4.7-opus': 'strategic',
     'claude-4.7-sonnet': 'professional',
     'claude-4.7-haiku': 'scout',
-    'deepseek-v4': 'economy',
   };
   const byTier = {};
   monthly.forEach(e => {
@@ -1595,12 +1601,12 @@ if (DEMO_MODE && techRadarReports.length === 0) techRadarReports.push({
   findings: [
     {
       id: 'f-001',
-      title: 'Claude 4.7 Opus released with 400K context window',
-      summary: 'Anthropic released Claude 4.7 Opus with doubled context window (400K tokens) and improved tool use reliability. Benchmarks show 15% improvement on agentic tasks.',
+      title: 'Claude Opus 4.8 available with 1M context and effort-based routing',
+      summary: 'Anthropic\'s Opus 4.8 offers a 1M-token context window at standard pricing and effort controls (low/medium/high/xhigh/max) that tune reasoning depth on a single model. AI OS uses effort levels for its strategic/professional/scout tiers.',
       category: 'models',
       impact: 'high',
       relevance: 9,
-      source: 'https://anthropic.com/blog',
+      source: 'https://www.anthropic.com/news',
       date: new Date().toISOString(),
     },
     {
@@ -1625,12 +1631,12 @@ if (DEMO_MODE && techRadarReports.length === 0) techRadarReports.push({
     },
     {
       id: 'f-004',
-      title: 'Critical Node.js security patch (CVE-2026-XXXX)',
-      summary: 'A high-severity vulnerability in Node.js HTTP/2 implementation affects versions < 22.5.1. Upgrade recommended for all production servers.',
+      title: 'Node.js 20 (Iron) reaches end-of-life 2026-04-30',
+      summary: 'Node.js 20 LTS exits maintenance on 2026-04-30 — no further security patches. Node 22 (Jod) is Maintenance LTS through 2027-04-30. Production hosts on Node 20 should plan a forward upgrade following deploy/UPGRADE-NODE.md.',
       category: 'security',
-      impact: 'critical',
-      relevance: 10,
-      source: 'https://nodejs.org/blog/vulnerability',
+      impact: 'high',
+      relevance: 9,
+      source: 'https://nodejs.org/en/about/previous-releases',
       date: new Date().toISOString(),
     },
     {
@@ -1647,61 +1653,30 @@ if (DEMO_MODE && techRadarReports.length === 0) techRadarReports.push({
   status: 'completed',
 });
 
-updateProposals.push(
+// Demo-only seed for the Tech Radar view. GATED behind DEMO_MODE && empty so it
+// never re-seeds on a production box (DEMO_MODE=false) and never accumulates on
+// restart — an earlier ungated push() here re-added these every boot, which is
+// how the dashboard ended up with dozens of orphaned "pending" proposals.
+// The single sample is a correctly-verified, manual-only proposal (real Node EOL,
+// apply_via implied manual-vps) — a positive example of the scout.md gate, not
+// the fabricated "Node 22.5.1 critical CVE" slop it replaced.
+if (DEMO_MODE && updateProposals.length === 0) updateProposals.push(
   {
     id: 'prop-001',
     radarId: 'radar-001',
     findingId: 'f-004',
-    title: 'Upgrade Node.js to v22.5.1 (Security Patch)',
-    finding: 'Critical Node.js security patch (CVE-2026-XXXX)',
-    impact: 'critical',
-    category: 'security',
-    action: {
-      type: 'dependency_upgrade',
-      target: 'Node.js runtime',
-      description: 'Upgrade Node.js from current version to 22.5.1 to patch HTTP/2 vulnerability',
-      effort: 'low',
-      risk: 'Minimal — patch release, backward compatible',
-    },
-    rollback: 'Revert to previous Node.js version via nvm',
-    status: 'pending',
-    created: new Date().toISOString(),
-  },
-  {
-    id: 'prop-002',
-    radarId: 'radar-001',
-    findingId: 'f-002',
-    title: 'Integrate Firecrawl MCP server for web intelligence',
-    finding: 'Firecrawl v2.0 adds structured extraction and MCP server',
+    title: 'Plan VPS Node.js 20 → 22 upgrade before EOL (2026-04-30)',
+    finding: 'Node.js 20 (Iron) reaches end-of-life 2026-04-30',
     impact: 'high',
-    category: 'tools',
+    category: 'infrastructure',
     action: {
-      type: 'new_tool',
-      target: '.claude/claude.md (MCP config)',
-      description: 'Add Firecrawl MCP server to the stack for structured web crawling. Replaces manual WebFetch calls in scout agent with schema-driven extraction.',
+      type: 'manual-vps',
+      target: 'VPS runtime (deploy/UPGRADE-NODE.md)',
+      description: 'Node 20 hits EOL 2026-04-30 (no further security patches). Move the host to Node 22 (Jod, Maintenance LTS through 2027-04-30) following the documented runbook. This is a host runtime operation — the dashboard cannot and must not auto-apply it.',
       effort: 'medium',
-      risk: 'New dependency — requires API key and adds to monthly costs (~$20/month)',
+      risk: 'Crosses a major version: native addons (n8n sqlite3, agent-worker LiveKit) must be rebuilt. Run in a babysat maintenance window with a snapshot first.',
     },
-    rollback: 'Remove Firecrawl MCP server config, revert scout to WebFetch',
-    status: 'pending',
-    created: new Date().toISOString(),
-  },
-  {
-    id: 'prop-003',
-    radarId: 'radar-001',
-    findingId: 'f-001',
-    title: 'Migrate to Opus 4.8 effort-based routing',
-    finding: 'Claude Opus 4.8 released with 1M context, effort controls, dynamic workflows, and adaptive thinking',
-    impact: 'high',
-    category: 'models',
-    action: {
-      type: 'config_change',
-      target: '.claude/agents/*.md + server.js',
-      description: 'Consolidate Opus/Sonnet/Haiku into single Opus 4.8 model with effort routing (xhigh=strategic, high=professional, low=scout). Enables 1M context, dynamic workflows for mission orchestration, and improved tool triggering.',
-      effort: 'medium',
-      risk: 'Effort-level token allocation differs from 4.7 — monitor cost and latency during transition',
-    },
-    rollback: 'Revert to separate Opus 4.7/Sonnet/Haiku model routing',
+    rollback: 'Restore the pre-upgrade snapshot, or reinstall Node 20 and rebuild native modules.',
     status: 'pending',
     created: new Date().toISOString(),
   }

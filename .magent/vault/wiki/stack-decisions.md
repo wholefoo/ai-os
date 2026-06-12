@@ -8,7 +8,7 @@ updated: 2026-05-24
 # Stack Architecture Decisions
 
 ## Engine Selection
-- **Primary**: Claude Code (Opus/Sonnet/Haiku) — chosen for native tool use, agentic reliability
+- **Primary**: Claude Code (Opus 4.8 across xhigh/high/low effort tiers) — chosen for native tool use, agentic reliability
 - **Economy**: DeepSeek Tui (V4) — cost-optimized bulk processing at ~10% the cost
 - **Decision date**: 2026-05-23
 - **Rationale**: 4-tier routing maximizes quality-per-dollar

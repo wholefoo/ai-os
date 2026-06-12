@@ -1,7 +1,8 @@
 ---
 name: automator
 description: "Fires external automations (N8N workflows, Zapier zaps, custom webhooks) behind HITL approval gates. Use when an agent needs a real-world side effect like sending email, posting to Slack, or updating a CRM; do NOT use for in-browser interaction (use browser-agent) or bulk content generation (use batch-runner)."
-model: claude-4.7-sonnet
+model: claude-opus-4-8
+effort: high
 tools: [Read, Write, Bash, WebFetch]
 trigger: dispatched
 ---
