@@ -83,10 +83,17 @@ MIN_BYTES=10240
 
 # Optional cron install
 if [ "${1:-}" = "--install" ]; then
-  CRON_LINE="30 3 * * * /bin/bash ${APP_DIR}/deploy/backup.sh >> ${APP_DIR}/logs/backup.log 2>&1"
-  # `|| true` guards the case where root has no existing crontab (crontab -l exits non-zero).
-  ( crontab -l 2>/dev/null | grep -v 'deploy/backup.sh' || true; echo "$CRON_LINE" ) | crontab -
-  log "Cron installed (root): nightly at 3:30am"
+  if ! command -v crontab >/dev/null 2>&1; then
+    warn "cron is not installed on this host — nightly schedule NOT set up."
+    echo "    Install cron, then re-run this with --install:"
+    echo "      sudo apt-get update && sudo apt-get install -y cron && sudo systemctl enable --now cron"
+    echo "      sudo bash ${APP_DIR}/deploy/backup.sh --install"
+  else
+    CRON_LINE="30 3 * * * /bin/bash ${APP_DIR}/deploy/backup.sh >> ${APP_DIR}/logs/backup.log 2>&1"
+    # `|| true` guards the case where root has no existing crontab (crontab -l exits non-zero).
+    ( crontab -l 2>/dev/null | grep -v 'deploy/backup.sh' || true; echo "$CRON_LINE" ) | crontab -
+    log "Cron installed (root): nightly at 3:30am"
+  fi
 fi
 
 echo ""

@@ -69,7 +69,10 @@ step "[1/${TOTAL_STEPS}] System Updates"
 # ============================================================
 apt-get update -qq
 apt-get upgrade -y -qq
-apt-get install -y -qq curl wget git build-essential unzip jq software-properties-common
+apt-get install -y -qq curl wget git build-essential unzip jq software-properties-common cron
+# Minimal cloud images often ship without cron; the health-check and backup
+# schedules depend on it. Ensure the daemon is installed and running.
+systemctl enable --now cron 2>/dev/null || true
 log "System packages updated"
 
 # ============================================================
