@@ -208,18 +208,18 @@
             <p class="docs-endpoint-desc">Execute a headless browser task. Heavy rate limited.</p>
           </div>
 
-          <h2 id="tenant--branding">Tenant &amp; Branding</h2>
+          <h2 id="branding">Branding</h2>
 
           <div class="docs-endpoint">
             <span class="docs-endpoint-method get">GET</span>
             <span class="docs-endpoint-path">/api/tenant/branding</span>
-            <p class="docs-endpoint-desc">Returns the current tenant's branding (company name, tagline, logo, colors). Public, no auth required.</p>
+            <p class="docs-endpoint-desc">Returns this instance's branding (company name, tagline, logo, colors). Public, no auth required.</p>
           </div>
 
           <div class="docs-endpoint">
-            <span class="docs-endpoint-method get">GET</span>
-            <span class="docs-endpoint-path">/api/templates</span>
-            <p class="docs-endpoint-desc">List available industry templates (digital agency, law firm, ecommerce, SaaS, real estate, healthcare, consulting, trades).</p>
+            <span class="docs-endpoint-method post">POST</span>
+            <span class="docs-endpoint-path">/api/branding</span>
+            <p class="docs-endpoint-desc">Update this instance's branding — theme your own self-hosted dashboard with your company name, logo, and colors. Admin only.</p>
           </div>
 
           <h2 id="knowledge-graph">Knowledge Graph</h2>

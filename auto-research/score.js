@@ -42,7 +42,7 @@ function score() {
   details.subWordCount = sub.split(/\s+/).length; pts += inRange(sub.split(/\s+/).length, 15, 35, 5);
 
   // 2. Keyword coverage (25 pts) — terms buyers and answer engines associate with the product
-  const KEYWORDS = ['ai agents', 'multi-agent', 'self-hosted', 'open-source', 'white-label', 'virtual corporate hq'];
+  const KEYWORDS = ['ai agents', 'multi-agent', 'self-hosted', 'open-source', 'virtual corporate hq'];
   const lower = all.toLowerCase();
   const hits = KEYWORDS.filter(k => lower.includes(k));
   details.keywordsHit = hits;

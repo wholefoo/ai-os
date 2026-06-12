@@ -68,8 +68,7 @@ ai-os/
 │   ├── index.js          ← License validation + module loader
 │   ├── loader.js         ← Graceful fallback when no license key
 │   ├── lib/              ← license-validator, tier-resolver, feature-gate
-│   ├── modules/          ← 14 feature modules (each exports registerRoutes)
-│   │   ├── multi-tenant/
+│   ├── modules/          ← 12 feature modules (each exports registerRoutes)
 │   │   ├── creative-studio/
 │   │   ├── advanced-reporting/
 │   │   ├── lead-gen/
@@ -78,7 +77,6 @@ ai-os/
 │   │   ├── self-improving/
 │   │   ├── video-meetings/
 │   │   ├── grok-intel/
-│   │   ├── white-label/
 │   │   ├── browser-agent/
 │   │   ├── youtube-intel/
 │   │   ├── design-system/

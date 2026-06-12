@@ -9,7 +9,7 @@ Six elements, each marked with an `<!-- element: ... -->` comment. Keep the comm
 ## What "Better" Means
 The score (0-100) measures, deterministically:
 - Title and meta-description length discipline (search-result truncation limits)
-- Keyword coverage: the asset must naturally carry the terms buyers and AI search engines associate with the product ("AI agents", "multi-agent", "self-hosted", "open-source", "white-label", "Virtual Corporate HQ")
+- Keyword coverage: the asset must naturally carry the terms buyers and AI search engines associate with the product ("AI agents", "multi-agent", "self-hosted", "open-source", "Virtual Corporate HQ")
 - Concrete facts present (agent count, department count, pricing) — AEO answers cite specifics
 - Zero filler phrases and unevidenced superlatives
 - Distinctness: title, OG title, and H1 must not be near-duplicates of each other

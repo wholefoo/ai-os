@@ -11,8 +11,8 @@
 - **Bandwidth**: 1 TB/month minimum
 
 ### Business / Enterprise Edition
-- **CPU**: 2+ vCPU (4 recommended for multi-tenant)
-- **RAM**: 4 GB minimum (8 GB for multi-tenant with n8n)
+- **CPU**: 2+ vCPU (4 recommended for heavy media/knowledge-graph use)
+- **RAM**: 4 GB minimum (8 GB with n8n + media production)
 - **Storage**: 40-80 GB SSD (depends on knowledge graph + media production usage)
 - **OS**: Ubuntu 22.04 or 24.04 LTS
 - **Network**: Public IPv4, ports 80/443/22
@@ -52,7 +52,7 @@ Add to the above:
 #### 1. Hetzner Cloud — Best value in Europe
 
 - **Entry**: ~$4.50/mo (CX22: 2 vCPU, 4 GB, 40 GB SSD)
-- **Recommended for AI OS**: CX22 at ~$4.50/mo or CX32 at ~$9.50/mo for multi-tenant
+- **Recommended for AI OS**: CX22 at ~$4.50/mo or CX32 at ~$9.50/mo for heavier workloads
 - **Pros**: Incredible price/performance ratio. EU data centers are ideal for GDPR compliance. Snapshots are included at no extra cost. ARM-based CAX line is even cheaper and runs Node.js perfectly. 20 TB bandwidth included on all plans.
 - **Cons**: US data centers were only recently added (Ashburn and Hillsboro) so latency to US users is higher from EU locations. Smaller ecosystem compared to AWS/DO. Support is ticket-only, no live chat.
 - **Best for**: Cost-conscious deployments, EU-based businesses, anyone who wants the most server for the least money.
@@ -117,8 +117,8 @@ Add to the above:
 | Testing / Development | Oracle Cloud | Free Tier ARM | $0 |
 | Community Edition (solo) | Hetzner | CX22 | ~$4.50 |
 | Community + n8n | DigitalOcean | Regular 4GB | $24 |
-| Business (single tenant) | DigitalOcean | Regular 4GB | $24 |
-| Business (multi-tenant) | Hetzner | CX32 | ~$9.50 |
+| Business | DigitalOcean | Regular 4GB | $24 |
+| Business + heavy media | Hetzner | CX32 | ~$9.50 |
 | Enterprise | DigitalOcean | Premium 8GB | $48 |
 | Enterprise + n8n + media | Hetzner | CX42 | ~$18 |
 
