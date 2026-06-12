@@ -19,12 +19,22 @@
     },
     {
       "parameters": {
-        "command": "cd /opt/ai-os && node auto-research/run-loop.js --iterations 10 2>&1 | tail -5 && tail -3 /opt/ai-os/auto-research/history/log.jsonl"
+        "command": "cd /opt/ai-os && node auto-research/run-loop.js --iterations 10 2>&1 | tail -5"
       },
       "name": "Run Optimization Loop",
       "type": "n8n-nodes-base.executeCommand",
       "typeVersion": 1,
-      "position": [220, 0]
+      "position": [220, 0],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "command": "cd /opt/ai-os && node auto-research/notify.js"
+      },
+      "name": "Notify Verdict",
+      "type": "n8n-nodes-base.executeCommand",
+      "typeVersion": 1,
+      "position": [440, 0]
     }
   ],
   "connections": {
@@ -33,6 +43,17 @@
         [
           {
             "node": "Run Optimization Loop",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Run Optimization Loop": {
+      "main": [
+        [
+          {
+            "node": "Notify Verdict",
             "type": "main",
             "index": 0
           }
