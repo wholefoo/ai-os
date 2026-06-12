@@ -130,15 +130,6 @@
         <a href="#" class="nav-item" data-view="seo-agency">
           <span class="nav-icon">&#128269;</span> SEO Agency
         </a>
-        <a href="#" class="nav-item" data-view="licensing">
-          <span class="nav-icon">&#127968;</span> Licensing
-        </a>
-        <a href="#" class="nav-item" data-view="tenants">
-          <span class="nav-icon">&#127760;</span> Tenants
-        </a>
-        <a href="#" class="nav-item" data-view="training">
-          <span class="nav-icon">&#129504;</span> AI Training
-        </a>
         <a href="#" class="nav-item" data-view="plugins">
           <span class="nav-icon">&#129513;</span> Plugins
         </a>
@@ -150,9 +141,6 @@
         </a>
         <a href="#" class="nav-item" data-view="platform">
           <span class="nav-icon">&#128736;</span> Platform
-        </a>
-        <a href="#" class="nav-item" data-view="monitoring">
-          <span class="nav-icon">&#128200;</span> Monitoring
         </a>
         <a href="#" class="nav-item" data-view="avatar-chat">
           <span class="nav-icon">&#129489;</span> Avatar Chat
@@ -1285,37 +1273,6 @@
           </section>
         </div>
 
-        <!-- White-Label License Management View -->
-        <div class="view" id="view-licensing">
-          <div class="radar-header">
-            <div class="radar-header-left">
-              <h2 class="radar-title">Open-Core Licensing</h2>
-              <span class="radar-subtitle">Self-hosted deployment — Community Free, Business $1,997 one-time, Enterprise $4,997 one-time</span>
-            </div>
-          </div>
-
-          <div class="franchise-stats" id="licenseStats"></div>
-
-          <div class="franchise-layout">
-            <section class="panel">
-              <h3 class="panel-title">License Applications</h3>
-              <div id="licenseList">
-                <div class="empty-state">No applications yet.</div>
-              </div>
-            </section>
-
-            <section class="panel">
-              <h3 class="panel-title">Program Details</h3>
-              <div id="licenseInfo"></div>
-            </section>
-          </div>
-
-          <!-- Participant detail modal -->
-          <div id="licenseModal" class="hq-modal" style="display:none;">
-            <div class="hq-modal-content" id="licenseDetail" style="max-width:620px;"></div>
-          </div>
-        </div>
-
         <!-- Platform Self-Improvement View -->
         <div class="view" id="view-platform">
           <div class="radar-header">
@@ -1421,148 +1378,6 @@
                 <button class="avatar-send-btn" onclick="sendAvatarMessage()">&#10148;</button>
               </div>
             </div>
-          </div>
-        </div>
-
-        <!-- Monitoring & Analytics View -->
-        <div class="view" id="view-monitoring">
-          <div class="radar-header">
-            <div class="radar-header-left">
-              <h2 class="radar-title">Monitoring &amp; Analytics</h2>
-              <span class="radar-subtitle">Cross-tenant monitoring, usage analytics, cost tracking, and lead metrics</span>
-            </div>
-          </div>
-
-          <!-- Onboarding wizard (shows if not all done) -->
-          <div id="onboardingWizard" style="display:none;"></div>
-
-          <div class="hq-stats" id="monitoringStats"></div>
-
-          <div style="display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-bottom:16px;">
-            <section class="panel">
-              <h3 class="panel-title">Cost by Model</h3>
-              <div id="monitoringByModel"><div class="empty-state">Loading...</div></div>
-            </section>
-            <section class="panel">
-              <h3 class="panel-title">Top Agents by Usage</h3>
-              <div id="monitoringByAgent"><div class="empty-state">Loading...</div></div>
-            </section>
-          </div>
-
-          <section class="panel">
-            <h3 class="panel-title">Tenant Health</h3>
-            <div id="monitoringTenants"><div class="empty-state">Loading...</div></div>
-          </section>
-        </div>
-
-        <!-- Tenant Management View -->
-        <div class="view" id="view-tenants">
-          <div class="radar-header">
-            <div class="radar-header-left">
-              <h2 class="radar-title">Tenant Management</h2>
-              <span class="radar-subtitle">Multi-tenant franchise instances — provision, configure, and monitor</span>
-            </div>
-            <div class="radar-actions">
-              <button class="btn btn-primary" onclick="showProvisionTenantModal()">+ New Tenant</button>
-            </div>
-          </div>
-
-          <div class="hq-stats" id="tenantStats"></div>
-
-          <section class="panel">
-            <h3 class="panel-title">Active Tenants</h3>
-            <div id="tenantList"><div class="empty-state">Loading tenants...</div></div>
-          </section>
-
-          <!-- Provision modal -->
-          <div id="tenantModal" class="hq-modal" style="display:none;">
-            <div class="hq-modal-content" id="tenantModalContent" style="max-width:560px;"></div>
-          </div>
-        </div>
-
-        <!-- Training Center View -->
-        <div class="view" id="view-training">
-          <div class="radar-header">
-            <div class="radar-header-left">
-              <h2 class="radar-title">AI Training Center</h2>
-              <span class="radar-subtitle">Custom instructions, knowledge base, and custom agent personas for your tenant</span>
-            </div>
-            <div class="radar-actions">
-              <span class="badge" id="trainingPlanBadge">Business+</span>
-            </div>
-          </div>
-
-          <!-- Custom Instructions -->
-          <section class="panel settings-section">
-            <h3 class="panel-title settings-section-title">
-              <span class="settings-section-icon">&#128221;</span> Custom Instructions
-            </h3>
-            <p class="settings-desc">These instructions are injected into every agent call for your tenant. Define your brand voice, industry context, and mandatory rules.</p>
-
-            <div class="settings-field">
-              <label>Global Instructions</label>
-              <textarea id="trainingGlobal" rows="4" placeholder="e.g., You are working for Acme Corp, a B2B SaaS company in the fintech space. Always be professional and data-driven."></textarea>
-              <small>Injected into every agent's system prompt. Max 5,000 chars.</small>
-            </div>
-
-            <div class="settings-field">
-              <label>Brand Voice &amp; Tone</label>
-              <textarea id="trainingBrandVoice" rows="3" placeholder="e.g., Confident but not arrogant. Use active voice. Avoid jargon. Speak like a trusted advisor, not a salesperson."></textarea>
-              <small>Controls how agents write and communicate. Max 3,000 chars.</small>
-            </div>
-
-            <div class="settings-field">
-              <label>Industry Context</label>
-              <textarea id="trainingIndustry" rows="3" placeholder="e.g., We serve mid-market healthcare SaaS companies. Our customers are CTOs and VP Engineering at 50-500 person companies."></textarea>
-              <small>Helps agents understand your market and audience. Max 2,000 chars.</small>
-            </div>
-
-            <div class="settings-field">
-              <label>Mandatory Rules</label>
-              <div id="trainingRulesList"></div>
-              <div style="display:flex; gap:8px; margin-top:8px;">
-                <input type="text" id="trainingNewRule" placeholder="e.g., Never mention competitor X by name" style="flex:1;">
-                <button class="btn btn-sm" onclick="addTrainingRule()">+ Add Rule</button>
-              </div>
-              <small>Hard rules all agents must follow. Max 50 rules.</small>
-            </div>
-
-            <button class="btn btn-primary" onclick="saveTrainingInstructions()">Save Instructions</button>
-          </section>
-
-          <!-- Knowledge Base -->
-          <section class="panel settings-section">
-            <h3 class="panel-title settings-section-title">
-              <span class="settings-section-icon">&#128218;</span> Tenant Knowledge Base
-            </h3>
-            <p class="settings-desc">Upload company-specific documents that get injected as context into agent calls. Product docs, FAQs, guidelines, playbooks.</p>
-
-            <div class="radar-actions" style="margin-bottom:16px;">
-              <button class="btn btn-primary" onclick="showAddKnowledgeModal()">+ Add Document</button>
-              <span class="text-muted" id="trainingKBCount">0 documents</span>
-            </div>
-
-            <div id="trainingKBList"><div class="empty-state">No knowledge documents yet. Add your first one above.</div></div>
-          </section>
-
-          <!-- Custom Agent Personas -->
-          <section class="panel settings-section">
-            <h3 class="panel-title settings-section-title">
-              <span class="settings-section-icon">&#129302;</span> Custom Agent Personas
-            </h3>
-            <p class="settings-desc">Create custom agents beyond the 51 built-in fleet. Define their name, role, system prompt, and model tier.</p>
-
-            <div class="radar-actions" style="margin-bottom:16px;">
-              <button class="btn btn-primary" onclick="showAddAgentModal()">+ Create Agent</button>
-              <span class="text-muted" id="trainingAgentCount">0 custom agents</span>
-            </div>
-
-            <div id="trainingAgentList"><div class="empty-state">No custom agents yet. Create your first one above.</div></div>
-          </section>
-
-          <!-- Training Modal (shared for knowledge docs and custom agents) -->
-          <div id="trainingModal" class="hq-modal" style="display:none;">
-            <div class="hq-modal-content" id="trainingModalContent" style="max-width:640px;"></div>
           </div>
         </div>
 

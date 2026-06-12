@@ -1,6 +1,6 @@
 ---
 name: contract-specialist
-description: "Generates standard contracts from templates (NDA, SLA, vendor, partnership), reviews incoming contracts for unfavorable terms, and manages contract lifecycle and renewals. Use for routine contract work; do NOT use for regulatory/privacy audits (use compliance-officer), franchise agreements (use franchise-attorney), or novel legal questions — escalate those to general-counsel."
+description: "Generates standard contracts from templates (NDA, SLA, vendor, partnership), reviews incoming contracts for unfavorable terms, and manages contract lifecycle and renewals. Use for routine contract work; do NOT use for regulatory/privacy audits (use compliance-officer), software/commercial license agreements (use franchise-attorney), or novel legal questions — escalate those to general-counsel."
 model: opus-4.8
 effort: high
 tier: professional

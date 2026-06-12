@@ -49,8 +49,8 @@ node -e "process.env.AIOS_SIGNING_SECRET='your-secret'; console.log(require('./c
 | Tier | Price | Agents | Departments | Key Features |
 |------|-------|--------|-------------|--------------|
 | Community | Free | 15 | 5 | Core platform, SEO (1 audit/mo), open-source |
-| Business | $1,997 one-time | 43 | 10 | Multi-tenant, Creative Studio, unlimited SEO, Grok Intel, lead gen |
-| Enterprise | $4,997 one-time | 43 | 10 | Everything in Business + SSO, SLA, custom agents, 1yr priority support |
+| Business | $1,997 one-time | 51 | 10 | All 51 agents, Creative Studio, unlimited SEO, Grok Intel, lead gen, self-instance theming |
+| Enterprise | $4,997 one-time | 51 | 10 | Everything in Business + SSO, priority support, custom agents, 1yr priority support |
 
 ## Security
 

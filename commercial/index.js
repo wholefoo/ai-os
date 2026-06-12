@@ -65,7 +65,6 @@ function registerRoutes(app, ctx) {
   // Load and register each module's routes
   const moduleDir = path.join(__dirname, 'modules');
   const moduleNames = [
-    'multi-tenant',
     'creative-studio',
     'seo-unlimited',
     'youtube-intel',
@@ -74,7 +73,6 @@ function registerRoutes(app, ctx) {
     'video-meetings',
     'lead-gen',
     'grok-intel',
-    'white-label',
     'self-improving',
     'hermes-advanced',
     'browser-agent',

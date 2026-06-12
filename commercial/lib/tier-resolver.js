@@ -26,7 +26,6 @@ function getFeaturesForTier(tier) {
   const isEnterprise = meetsRequirement(tier, 'enterprise');
 
   return {
-    multiTenant: isBusiness,
     creativeStudio: isBusiness,
     youtubeIntel: isBusiness,
     unlimitedSeo: isBusiness,
@@ -37,7 +36,6 @@ function getFeaturesForTier(tier) {
     videoMeetings: isBusiness,
     agentBuilder: isEnterprise,
     selfImproving: isEnterprise,
-    whiteLabel: isEnterprise,
     hermesAdvanced: isBusiness,
     batchQueue: isBusiness,
     designSystem: isBusiness,

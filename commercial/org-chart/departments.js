@@ -40,9 +40,9 @@ const COMMERCIAL_DEPARTMENTS = [
   {
     id: 'legal', name: 'Legal Department', icon: '⚖️', color: '#78716c',
     employees: [
-      { id: 'legal-gc', title: 'General Counsel', name: 'Justice', agent: 'general-counsel', tier: 'strategic', avatar: '⚖️', status: 'active', reportsTo: 'ceo', desc: 'Chief Legal Officer — franchise agreements, IP protection, regulatory compliance, dispute resolution' },
+      { id: 'legal-gc', title: 'General Counsel', name: 'Justice', agent: 'general-counsel', tier: 'strategic', avatar: '⚖️', status: 'active', reportsTo: 'ceo', desc: 'Chief Legal Officer — software license agreements, IP protection, regulatory compliance, dispute resolution' },
       { id: 'legal-compliance', title: 'Compliance Officer', name: 'Shield', agent: 'compliance-officer', tier: 'professional', avatar: '🛡️', status: 'active', reportsTo: 'legal-gc', desc: 'GDPR/CCPA compliance, audit trails, policy enforcement, regulatory monitoring' },
-      { id: 'legal-franchise', title: 'Licensing Attorney', name: 'Covenant', agent: 'franchise-attorney', tier: 'professional', avatar: '📜', status: 'active', reportsTo: 'legal-gc', desc: 'Software License Agreements, white-label terms, SaaS licensing, usage rights and restrictions' },
+      { id: 'legal-franchise', title: 'Licensing Attorney', name: 'Covenant', agent: 'franchise-attorney', tier: 'professional', avatar: '📜', status: 'active', reportsTo: 'legal-gc', desc: 'Business and Enterprise license agreements, EULAs, commercial licensing, usage rights and restrictions' },
       { id: 'legal-contracts', title: 'Contract Specialist', name: 'Clause', agent: 'contract-specialist', tier: 'professional', avatar: '📝', status: 'active', reportsTo: 'legal-gc', desc: 'Contract generation, review, lifecycle management, template library' },
     ]
   },

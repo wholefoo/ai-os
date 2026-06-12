@@ -1,6 +1,6 @@
 # AI OS — The Agentic Operating System
 
-A multi-agentic AI operating system built as a Virtual Corporate Headquarters, orchestrating 51 specialized sub-agents across 10 departments and 7 model tiers. Research, create, analyze, scrape, and monetize — all from a single dashboard. Open-source core (Community edition) with commercial licenses: Business $1,997 one-time (white-label, all 51 agents, multi-tenant) and Enterprise $4,997 one-time (everything in Business + 1 year priority support, custom agents, priority response times).
+A multi-agentic AI operating system built as a Virtual Corporate Headquarters, orchestrating 51 specialized sub-agents across 10 departments and 7 model tiers. Research, create, analyze, scrape, and monetize — all from a single dashboard. Self-hosted, single-customer, open-source core (Community edition) with commercial licenses: Business $1,997 one-time (all 51 agents, all production tools, self-instance theming) and Enterprise $4,997 one-time (everything in Business + 1 year priority support, custom agents, priority response times). All tiers run on your own infrastructure.
 
 ## Architecture
 
@@ -102,14 +102,14 @@ Each virtual employee maps to an AI agent with a specific model tier, can receiv
 ### Legal Department
 - **General Counsel** — License agreements, IP protection, regulatory compliance, dispute resolution
 - **Compliance Officer** — GDPR/CCPA enforcement, audit trails, policy monitoring
-- **Licensing Attorney** — Software license agreements, white-label terms, SaaS licensing
+- **Licensing Attorney** — Software license agreements, software-licensing terms, SaaS licensing
 - **Contract Specialist** — Contract generation, review, lifecycle management, template library
 
 ### Licensing (Open-Core Model)
 
 **Community Edition (Free)** — Open-source core, self-hosted with custom domain support. Perpetual, royalty-free license for personal and commercial use. Includes 15 agents, 5 departments, Scout + Pro model tiers, 5 SEO audits/month, Knowledge Graph, Tech Radar, and community support via GitHub Issues. Must retain "Powered by AI OS" attribution. You provide your own API keys and are responsible for hosting, security, and backups. [Full license](/docs/license-community)
 
-**Business License ($1,997 one-time)** — Everything in Community plus all 51 agents, all 10 departments, all 7 model tiers, unlimited SEO audits, Gemini Omni Creative Studio, YouTube Intelligence, Agent Builder, white-label branding (custom name, logo, colors, domain — no attribution required), multi-tenant client management, lead generation, product factory, marketing hub, advanced reporting, browser agent, Grok Intel, design system, video meetings, and batch queue. Priority email support included. Per-organization license (one production deployment per key). Lifetime software updates. 14-day refund policy. [Full license](/docs/license-business)
+**Business License ($1,997 one-time)** — Everything in Community plus all 51 agents, all 10 departments, all 7 model tiers, unlimited SEO audits, Gemini Omni Creative Studio, YouTube Intelligence, Agent Builder, self-instance theming (brand your own private instance with custom name, logo, colors, and domain — no attribution required), lead generation, product factory, marketing hub, advanced reporting, browser agent, Grok Intel, design system, video meetings, and batch queue. Priority email support included. Self-hosted, single-customer license (one production deployment per key). Lifetime software updates. 14-day refund policy. [Full license](/docs/license-business)
 
 **Enterprise License ($4,997 one-time)** — Everything in Business plus SSO/SAML integration, priority support with target response times (~4hr critical / ~8hr high / ~24hr medium, Mon-Fri 9am-6pm EST), dedicated Slack channel, custom agent development assistance (up to 5 custom agents in Year 1), priority bug fixes, early access to new features, and deployment architecture review. Includes 1 year of priority support; optional $997/year renewal extends support and Slack access (platform works permanently without renewal). Upgrade from Business: $3,000 difference. [Full license](/docs/license-enterprise)
 
@@ -124,7 +124,7 @@ All tiers are self-hosted — you run on your own infrastructure with your own d
 
 ### Interactive Tour Guide
 - **Atlas avatar** — animated floating widget on landing page with pulsing glow
-- **Guided tours** — visitors choose topics (Overview, SEO, Creative, Franchise, Pricing, Models)
+- **Guided tours** — visitors choose topics (Overview, SEO, Creative, Pricing, Models)
 - **Free-text input** — keyword matching routes typed questions to relevant tour paths
 - **Quick reply buttons** — contextual options after each tour segment
 - **Typing animation** — bot-style message bubbles with progressive disclosure
@@ -164,7 +164,7 @@ AI OS follows an open-core model. The Community edition is free and open-source 
 |---|---|---|---|
 | Free Demo | $0 | Hosted at aiosorchestrationlab.com | Limited preview, 3 agents, 1 SEO audit/mo |
 | Community | Free | Self-hosted | 15 agents, 5 departments, full source code |
-| Business | $1,997 one-time | Self-hosted | All 51 agents, white-label, multi-tenant |
+| Business | $1,997 one-time | Self-hosted | All 51 agents, all production tools, self-instance theming |
 | Enterprise | $4,997 one-time | Self-hosted | Everything in Business + 1 year priority support, custom agents, priority response times |
 
 Enterprise includes optional $997/yr renewal to extend priority support.
@@ -306,16 +306,8 @@ GET  /api/omni/capabilities         List generation types
 POST /api/youtube/analyze           Launch YouTube video analysis
 GET  /api/youtube/analyses          List all video analyses
 GET  /api/youtube/analysis/:id      Full analysis with frames + transcript
-GET  /api/license/info               License program info (public)
-POST /api/license/apply              Submit license application
-GET  /api/license/participants       List all licensees (admin)
-PUT  /api/license/participant/:id    Update licensee status
-POST /api/license/checkout/:id       Generate Stripe payment link
-GET  /api/license/stats              License revenue dashboard
-GET  /api/tenants                    List all tenants (admin)
-POST /api/tenants                    Provision new tenant
-GET  /api/tenant/branding            Current tenant branding (public)
-GET  /api/templates                  Industry templates
+GET  /api/tenant/branding            Current instance branding (public)
+POST /api/branding                   Update instance branding (admin)
 POST /api/platform/propose           Self-improvement proposal
 GET  /api/platform/proposals         List proposals
 POST /api/grok/query                Real-time Grok query
@@ -330,7 +322,6 @@ GET  /api/stripe/checkout?plan=pro  Start Stripe checkout
 | Mobile App / PWA | Progressive Web App with offline support, push notifications, native-feel on iOS and Android | Planned |
 | Webhook Integrations Marketplace | Browse and install pre-built webhook integrations (Zapier, Make, Slack, HubSpot, Salesforce, etc.) | Planned |
 | Plugin / Extension System | Typed SDK for building custom agent tools — extend any agent with new capabilities and data sources | Built |
-| White-Label Mobile App | Fully branded mobile app for Enterprise tenants — custom icon, colors, App Store listing | Planned |
 | Advanced Reporting | Scheduled PDF/CSV reports, custom dashboards, date-range comparisons, executive summaries | Built |
 | Video Avatar Meetings | Face-to-face video calls with AI employees via Gemini Omni real-time video — screen sharing, whiteboarding, multi-agent roundtables | Built |
 

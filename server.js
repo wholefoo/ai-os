@@ -15,7 +15,6 @@ const morgan = require('morgan');
 const rateLimit = require('express-rate-limit');
 const cookieParser = require('cookie-parser');
 const bcrypt = require('bcryptjs');
-const { defaultTenantSettings } = require('./lib/default-settings');
 
 const app = express();
 const server = http.createServer(app);
@@ -54,198 +53,47 @@ function requireCommercial(featureFlag) {
   };
 }
 
-// --- Multi-Tenant System ---
-// Each franchise participant gets an isolated tenant with its own state, users, and config.
-// The platform owner (you) is tenant 'master'. Franchise tenants are identified by subdomain or tenant header.
+// --- Instance Branding ---
+// AI OS is self-hosted, single-customer. Business/Enterprise licensees can theme
+// their own instance — company name, tagline, logo, colors — persisted in state.
 
-const TENANTS_DIR = path.join(MAGENT_DIR, 'tenants');
-if (!fs.existsSync(TENANTS_DIR)) fs.mkdirSync(TENANTS_DIR, { recursive: true });
-
+// Legacy single-instance scope id. Multi-tenancy was removed; this constant remains
+// as the default storage scope passed by commercial modules (advanced-reporting,
+// video-meetings) into de-tenanted helpers that ignore it.
 const MASTER_TENANT_ID = 'master';
 
-// Tenant registry — loaded from disk, maps tenantId to config
-const tenantRegistry = loadState('tenant_registry', {
-  [MASTER_TENANT_ID]: {
-    id: MASTER_TENANT_ID,
-    name: 'AI OS Corp',
-    domain: process.env.PRIMARY_DOMAIN || 'aiosorchestrationlab.com',
-    subdomain: null,
-    ownerId: process.env.ADMIN_EMAIL || 'wholefoo@gmail.com',
-    plan: 'enterprise',
-    status: 'active',
-    branding: {
-      companyName: 'AI OS Corp',
-      tagline: 'The Agentic Operating System',
-      logo: null,
-      primaryColor: '#3b82f6',
-      accentColor: '#8b5cf6',
-    },
-    industry: null,
-    template: null,
-    createdAt: new Date().toISOString(),
-    franchiseId: null,
-  },
+const instanceBranding = loadState('branding', {
+  companyName: process.env.INSTANCE_NAME || 'AI OS Corp',
+  tagline: 'The Agentic Operating System',
+  logo: null,
+  primaryColor: '#3b82f6',
+  accentColor: '#8b5cf6',
 });
 
-// Ensure each tenant has a state directory
-function ensureTenantDir(tenantId) {
-  const dir = path.join(TENANTS_DIR, tenantId);
-  if (!fs.existsSync(dir)) {
-    fs.mkdirSync(dir, { recursive: true });
-    // Initialize empty state files
-    ['users', 'settings', 'seo_audits', 'yt_analyses', 'franchises'].forEach(f => {
-      const fp = path.join(dir, `${f}.json`);
-      if (!fs.existsSync(fp)) fs.writeFileSync(fp, f === 'users' ? '[]' : '{}');
-    });
-    console.log(`[TENANT] Created state directory for tenant: ${tenantId}`);
-  }
-  return dir;
-}
-
-// Tenant-scoped state read/write
-function saveTenantState(tenantId, key, data) {
-  try {
-    if (tenantId === MASTER_TENANT_ID) return saveState(key, data);
-    const dir = ensureTenantDir(tenantId);
-    fs.writeFileSync(path.join(dir, `${key}.json`), JSON.stringify(data, null, 2));
-  } catch (e) {
-    console.error(`[TENANT] Failed to save ${key} for tenant ${tenantId}:`, e.message);
-  }
-}
-
-function loadTenantState(tenantId, key, fallback) {
-  if (tenantId === MASTER_TENANT_ID) return loadState(key, fallback);
-  const defaults = typeof fallback === 'function' ? fallback() : fallback;
-  try {
-    const fp = path.join(TENANTS_DIR, tenantId, `${key}.json`);
-    if (fs.existsSync(fp)) {
-      const data = JSON.parse(fs.readFileSync(fp, 'utf-8'));
-      // Deep-merge defaults
-      if (defaults && typeof defaults === 'object' && !Array.isArray(defaults)) {
-        for (const [section, vals] of Object.entries(defaults)) {
-          if (typeof vals === 'object' && !Array.isArray(vals) && vals !== null) {
-            if (!data[section]) data[section] = {};
-            for (const [k, v] of Object.entries(vals)) {
-              if (!(k in data[section])) data[section][k] = v;
-            }
-          } else if (!(section in data)) {
-            data[section] = vals;
-          }
-        }
-      }
-      return data;
-    }
-  } catch (e) {
-    console.error(`[TENANT] Failed to load ${key} for tenant ${tenantId}:`, e.message);
-  }
-  return defaults;
-}
-
-// Resolve tenant from request — checks subdomain, header, or defaults to master
-function resolveTenant(req) {
-  // 1. Explicit header (for API clients and testing)
-  const headerTenant = req.headers['x-tenant-id'];
-  if (headerTenant && tenantRegistry[headerTenant]) return tenantRegistry[headerTenant];
-
-  // 2. Subdomain-based (franchise.aiosorchestrationlab.com)
-  const host = req.hostname || req.headers.host || '';
-  const primaryDomain = tenantRegistry[MASTER_TENANT_ID]?.domain || '';
-  if (primaryDomain && host !== primaryDomain && host.endsWith(primaryDomain)) {
-    const subdomain = host.replace(`.${primaryDomain}`, '');
-    const tenant = Object.values(tenantRegistry).find(t => t.subdomain === subdomain && t.status === 'active');
-    if (tenant) return tenant;
-  }
-
-  // 3. Custom domain mapping
-  const byDomain = Object.values(tenantRegistry).find(t => t.domain === host && t.status === 'active');
-  if (byDomain) return byDomain;
-
-  // 4. Default to master
-  return tenantRegistry[MASTER_TENANT_ID];
-}
-
-// Middleware: attach tenant to every request
-app.use((req, res, next) => {
-  req.tenant = resolveTenant(req);
-  req.tenantId = req.tenant?.id || MASTER_TENANT_ID;
-  next();
-});
-
-// --- Industry Templates ---
-const INDUSTRY_TEMPLATES = {
-  'digital-agency': {
-    name: 'Digital Marketing Agency',
-    tagline: 'AI-Powered Digital Marketing',
-    description: 'Pre-configured for SEO, content marketing, social media management, and client reporting.',
-    departments: ['marketing', 'creative', 'seo-agency', 'customer-service'],
-    settings: {},
-  },
-  'law-firm': {
-    name: 'Law Firm',
-    tagline: 'AI-Powered Legal Operations',
-    description: 'Contract review, compliance monitoring, legal research, and client communication.',
-    departments: ['legal', 'customer-service', 'product'],
-    settings: {},
-  },
-  'ecommerce': {
-    name: 'E-Commerce Business',
-    tagline: 'AI-Powered Online Retail',
-    description: 'Product listings, inventory management, customer support, and marketing automation.',
-    departments: ['marketing', 'creative', 'customer-service', 'product'],
-    settings: {},
-  },
-  'saas': {
-    name: 'SaaS Company',
-    tagline: 'AI-Powered Software Operations',
-    description: 'Engineering, DevOps, customer support, product management, and growth marketing.',
-    departments: ['engineering', 'tech-support', 'marketing', 'product'],
-    settings: {},
-  },
-  'real-estate': {
-    name: 'Real Estate Agency',
-    tagline: 'AI-Powered Property Sales',
-    description: 'Lead generation, property listing optimization, client communication, and market analysis.',
-    departments: ['marketing', 'customer-service', 'product'],
-    settings: {},
-  },
-  'healthcare': {
-    name: 'Healthcare Practice',
-    tagline: 'AI-Powered Healthcare Admin',
-    description: 'Patient communication, scheduling, compliance, documentation, and billing support.',
-    departments: ['customer-service', 'legal', 'operations'],
-    settings: {},
-  },
-  'consulting': {
-    name: 'Consulting Firm',
-    tagline: 'AI-Powered Consulting',
-    description: 'Research, analysis, report generation, client deliverables, and knowledge management.',
-    departments: ['product', 'creative', 'marketing'],
-    settings: {},
-  },
-  'trades': {
-    name: 'Trades & Home Services',
-    tagline: 'AI-Powered Service Business',
-    description: 'Local SEO, lead generation, scheduling, customer follow-up, and review management.',
-    departments: ['marketing', 'customer-service', 'operations'],
-    settings: {},
-  },
-};
-
-// --- Tenant Management API ---
-// Tenant CRUD routes extracted to commercial/modules/multi-tenant/index.js
-// Branding route (public, no auth)
+// Branding routes — registered after auth middleware is defined (called near startup).
 function registerTenantRoutes() {
+  // Public: the dashboard reads this on load to theme itself.
   app.get('/api/tenant/branding', (req, res) => {
-    const tenant = req.tenant || tenantRegistry[MASTER_TENANT_ID];
     res.json({
-      tenantId: tenant.id,
-      companyName: tenant.branding?.companyName || 'AI OS Corp',
-      tagline: tenant.branding?.tagline || 'The Agentic Operating System',
-      logo: tenant.branding?.logo || null,
-      primaryColor: tenant.branding?.primaryColor || '#3b82f6',
-      accentColor: tenant.branding?.accentColor || '#8b5cf6',
-      industry: tenant.industry,
+      companyName: instanceBranding.companyName || 'AI OS Corp',
+      tagline: instanceBranding.tagline || 'The Agentic Operating System',
+      logo: instanceBranding.logo || null,
+      primaryColor: instanceBranding.primaryColor || '#3b82f6',
+      accentColor: instanceBranding.accentColor || '#8b5cf6',
     });
+  });
+
+  // Admin: update this instance's branding (self-instance theming).
+  app.post('/api/branding', requireAdmin, (req, res) => {
+    const { companyName, tagline, logo, primaryColor, accentColor } = req.body || {};
+    if (companyName !== undefined) instanceBranding.companyName = String(companyName).slice(0, 100);
+    if (tagline !== undefined) instanceBranding.tagline = String(tagline).slice(0, 200);
+    if (logo !== undefined) instanceBranding.logo = logo;
+    if (primaryColor !== undefined) instanceBranding.primaryColor = String(primaryColor).slice(0, 32);
+    if (accentColor !== undefined) instanceBranding.accentColor = String(accentColor).slice(0, 32);
+    saveState('branding', instanceBranding);
+    logActivity('settings', 'Instance branding updated');
+    res.json({ ok: true, branding: instanceBranding });
   });
 } // end registerTenantRoutes
 
@@ -312,7 +160,7 @@ function authMiddleware(req, res, next) {
   const url = req.originalUrl.split('?')[0]; // strip query string
   const publicPaths = ['/api/health', '/api/auth/login', '/api/auth/logout', '/api/auth/me',
     '/api/stripe/webhook', '/api/stripe/checkout', '/api/stripe/success',
-    '/api/license/info', '/api/hq/stats', '/api/hq/org'];
+    '/api/tenant/branding', '/api/hq/stats', '/api/hq/org'];
   if (publicPaths.includes(url)) return next();
   // Allow session-cookie auth (logged-in dashboard users)
   const sessionToken = req.cookies?.['ai-os-session'];
@@ -412,6 +260,48 @@ app.get('/api/stripe/checkout', async (req, res) => {
   }
 });
 
+// Fulfill a PAID checkout session — idempotent, shared by the success redirect
+// and the checkout.session.completed webhook (the backstop when the customer
+// never returns to the success URL).
+function fulfillCheckoutSession(stripeSession, source) {
+  if (stripeSession.payment_status !== 'paid') {
+    console.warn(`[STRIPE] Fulfillment refused (${source}): session ${stripeSession.id} payment_status=${stripeSession.payment_status}`);
+    return null;
+  }
+  const email = stripeSession.customer_details?.email || stripeSession.customer_email;
+  if (!email) {
+    console.error(`[STRIPE] Fulfillment failed (${source}): session ${stripeSession.id} has no customer email`);
+    return null;
+  }
+  const plan = stripeSession.metadata?.plan || 'pro';
+  const customerId = stripeSession.customer;
+
+  // Create or update user
+  let user = findUserByEmail(email);
+  if (!user) {
+    user = { id: uuidv4(), email, plan, stripeCustomerId: customerId, createdAt: new Date().toISOString() };
+    users.push(user);
+  } else {
+    user.plan = plan;
+    user.stripeCustomerId = customerId;
+  }
+  // Track support expiration for enterprise/business plans (1 year from purchase)
+  if (plan === 'enterprise' || plan === 'business') {
+    user.purchasedAt = user.purchasedAt || new Date().toISOString();
+    user.supportExpiresAt = user.supportExpiresAt || new Date(Date.now() + 365 * 86400000).toISOString();
+  }
+  if (plan === 'enterprise-renewal') {
+    // Extend support by 1 year from current expiration (or from now if expired)
+    const currentExpiry = user.supportExpiresAt ? new Date(user.supportExpiresAt) : new Date();
+    const base = currentExpiry > new Date() ? currentExpiry : new Date();
+    user.supportExpiresAt = new Date(base.getTime() + 365 * 86400000).toISOString();
+    user.plan = 'enterprise'; // Keep them on enterprise tier
+  }
+  saveState('users', users);
+  logActivity('billing', `Checkout fulfilled (${source}): ${email} → ${plan}`, { sessionId: stripeSession.id });
+  return user;
+}
+
 // Stripe success callback
 app.get('/api/stripe/success', async (req, res) => {
   const sessionId = req.query.session_id;
@@ -419,36 +309,12 @@ app.get('/api/stripe/success', async (req, res) => {
 
   try {
     const stripeSession = await stripe.checkout.sessions.retrieve(sessionId);
-    const email = stripeSession.customer_details?.email || stripeSession.customer_email;
-    const plan = stripeSession.metadata?.plan || 'pro';
-    const customerId = stripeSession.customer;
-
-    // Create or update user
-    let user = findUserByEmail(email);
-    if (!user) {
-      user = { id: uuidv4(), email, plan, stripeCustomerId: customerId, createdAt: new Date().toISOString() };
-      users.push(user);
-    } else {
-      user.plan = plan;
-      user.stripeCustomerId = customerId;
-    }
-    // Track support expiration for enterprise/business plans (1 year from purchase)
-    if (plan === 'enterprise' || plan === 'business') {
-      user.purchasedAt = new Date().toISOString();
-      user.supportExpiresAt = new Date(Date.now() + 365 * 86400000).toISOString();
-    }
-    if (plan === 'enterprise-renewal') {
-      // Extend support by 1 year from current expiration (or from now if expired)
-      const currentExpiry = user.supportExpiresAt ? new Date(user.supportExpiresAt) : new Date();
-      const base = currentExpiry > new Date() ? currentExpiry : new Date();
-      user.supportExpiresAt = new Date(base.getTime() + 365 * 86400000).toISOString();
-      user.plan = 'enterprise'; // Keep them on enterprise tier
-    }
-    saveState('users', users);
+    const user = fulfillCheckoutSession(stripeSession, 'success-redirect');
+    if (!user) return res.redirect('/?stripe=unpaid');
 
     // Create session
     const token = generateToken();
-    sessions.set(token, { email, plan, stripeCustomerId: customerId, expiresAt: new Date(Date.now() + 30 * 86400000).toISOString() });
+    sessions.set(token, { email: user.email, plan: user.plan, stripeCustomerId: user.stripeCustomerId, expiresAt: new Date(Date.now() + 30 * 86400000).toISOString() });
 
     // Set cookie and redirect to dashboard
     res.cookie('ai-os-session', token, {
@@ -477,6 +343,12 @@ app.post('/api/stripe/webhook', express.raw({ type: 'application/json' }), (req,
   }
 
   switch (event.type) {
+    case 'checkout.session.completed': {
+      // Backstop fulfillment: guarantees the purchase lands even if the
+      // customer never reaches the success redirect. Idempotent with it.
+      fulfillCheckoutSession(event.data.object, 'webhook');
+      break;
+    }
     case 'customer.subscription.deleted':
     case 'customer.subscription.paused': {
       const sub = event.data.object;
@@ -580,7 +452,6 @@ app.get('/sitemap.xml', (req, res) => {
     { url: '/compare/ai-os-vs-lindy-ai', priority: '0.7', freq: 'monthly' },
     { url: '/compare/ai-os-vs-taskade', priority: '0.7', freq: 'monthly' },
     { url: '/compare/ai-os-vs-langchain', priority: '0.7', freq: 'monthly' },
-    { url: '/lifetime', priority: '0.8', freq: 'monthly' },
     { url: '/docs', priority: '0.8', freq: 'weekly' },
     { url: '/docs/getting-started', priority: '0.9', freq: 'monthly' },
     { url: '/docs/architecture', priority: '0.7', freq: 'monthly' },
@@ -611,72 +482,6 @@ ${pages.map(p => `  <url>
 </urlset>`;
   res.set('Content-Type', 'application/xml');
   res.send(xml);
-});
-
-app.get('/lifetime', (req, res) => {
-  res.sendFile(path.join(BASE, 'dashboard', 'lifetime.html'));
-});
-
-app.get('/lifetime/success', (req, res) => {
-  const licenseId = req.query.license;
-  if (licenseId) {
-    const license = licenses.find(l => l.id === licenseId);
-    if (license && license.status === 'payment') {
-      license.status = 'active';
-      license.activatedAt = new Date().toISOString();
-
-      // Auto-provision tenant
-      if (!license.tenantId) {
-        const tenantId = uuidv4().substring(0, 12);
-        const subdomain = (license.company || license.name).toLowerCase().replace(/[^a-z0-9]/g, '-').replace(/-+/g, '-').substring(0, 20);
-        const tenant = {
-          id: tenantId, name: license.company || license.name, domain: null, subdomain,
-          ownerId: license.email, plan: 'lifetime', status: 'active',
-          branding: { companyName: license.company || license.name, tagline: 'Powered by AI OS', logo: null, primaryColor: '#3b82f6', accentColor: '#8b5cf6' },
-          industry: license.industry || null, template: null, createdAt: new Date().toISOString(), franchiseId: license.id,
-        };
-        ensureTenantDir(tenantId);
-        saveTenantState(tenantId, 'users', [{ email: license.email, passwordHash: null, plan: 'lifetime', role: 'admin', tenantId, createdAt: new Date().toISOString() }]);
-        saveTenantState(tenantId, 'settings', defaultTenantSettings());
-        tenantRegistry[tenantId] = tenant;
-        saveState('tenant_registry', tenantRegistry);
-        license.tenantId = tenantId;
-        license.instanceUrl = `https://${subdomain}.aiosorchestrationlab.com`;
-        logActivity('license', `Lifetime license activated + tenant provisioned: ${license.name} (${tenantId})`, { licenseId, tenantId });
-      }
-      saveState('licenses', licenses);
-    }
-  }
-  res.send(`<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>Welcome to AI OS!</title><link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="/css/landing.css">
-<style>.success-page{max-width:600px;margin:0 auto;padding:120px 24px;text-align:center;}
-.success-icon{font-size:80px;margin-bottom:20px;}
-.success-page h1{font-size:36px;font-weight:800;margin-bottom:12px;}
-.success-page p{font-size:16px;color:var(--text-secondary);line-height:1.7;margin-bottom:24px;}
-.success-next{text-align:left;background:var(--bg-secondary);border:1px solid var(--border);border-radius:12px;padding:24px;margin:24px 0;}
-.success-next h3{margin-bottom:12px;font-size:16px;}
-.success-next ol{padding-left:20px;font-size:14px;line-height:2;color:var(--text-secondary);}
-</style></head><body>
-<nav class="landing-nav"><div class="nav-container"><a href="/" class="nav-brand"><span class="nav-logo">&#9678;</span><span class="nav-name">AI OS</span></a></div></nav>
-<div class="success-page">
-<div class="success-icon">&#127881;</div>
-<h1>Welcome to AI OS!</h1>
-<p>Your license is now active. Your Virtual Corporate HQ is being provisioned.</p>
-<div class="success-next">
-<h3>Next Steps:</h3>
-<ol>
-<li>Check your email for your login credentials</li>
-<li>Log in to your dashboard and go to <strong>Settings</strong></li>
-<li>Enter your API keys (Anthropic, Gemini, etc.)</li>
-<li>Explore your Virtual HQ — 51 agents are ready</li>
-</ol>
-</div>
-<a href="/login" class="btn-primary-cta btn-lg">Go to Dashboard &rarr;</a>
-</div>
-<footer class="site-footer"><div class="footer-bottom"><p>&copy; 2026 AI OS Orchestration Lab.</p></div></footer>
-</body></html>`);
 });
 
 // Onboarding wizard — tracks setup progress for new users
@@ -1307,38 +1112,18 @@ async function loadAgentPrompt(agentName) {
 }
 
 async function executeAgent(agentName, task, options = {}) {
-  const { tenantId = MASTER_TENANT_ID, maxTokens = 4096, context = '' } = options;
+  const { maxTokens = 4096, context = '' } = options;
   const routing = getAgentEffort(agentName);
   const startTime = Date.now();
 
-  // Check if this is a custom tenant agent first
-  let systemPrompt = null;
-  let isCustomAgent = false;
-  if (tenantId !== MASTER_TENANT_ID) {
-    try {
-      const trainingConfig = loadTrainingConfig(tenantId);
-      const customAgent = trainingConfig.customAgents?.find(a => a.name === agentName);
-      if (customAgent) {
-        systemPrompt = customAgent.prompt;
-        isCustomAgent = true;
-      }
-    } catch {}
-  }
-
-  // Fall back to built-in agent prompt from .md file
-  if (!systemPrompt) {
-    systemPrompt = await loadAgentPrompt(agentName);
-  }
+  // Load the built-in agent prompt from its .md file
+  const systemPrompt = await loadAgentPrompt(agentName);
   if (!systemPrompt) {
     return { ok: false, error: `Agent "${agentName}" not found`, model: routing.model };
   }
 
-  // Inject tenant-specific training context (custom instructions, brand voice, knowledge base)
-  const tenantContext = buildTenantContext(tenantId);
-
   // Build the full system message
   let fullSystem = systemPrompt;
-  if (tenantContext) fullSystem += tenantContext;
   if (context) fullSystem += `\n\n--- Current Context ---\n${context}`;
 
   let result, inputTokens = 0, outputTokens = 0, model = routing.model;
@@ -1529,7 +1314,6 @@ app.post('/api/agent/execute', requireAdmin, async (req, res) => {
   }
 
   const result = await executeAgent(agent, task, {
-    tenantId: req.tenantId,
     context: context || '',
     maxTokens: maxTokens || 4096,
     skill: req.body.skill || 'dispatch',
@@ -4460,97 +4244,18 @@ registerTenantRoutes();
 // --- Commercial Module Routes ---
 // Moved to end of file (after all globals/helpers are defined) so modules have full access
 
-// --- Custom AI Training per Tenant ---
-// Business+ plans can customize agent behavior with custom instructions, knowledge docs, and custom agent personas.
-
-// Helper: get tenant training directory
-function getTrainingDir(tenantId) {
-  const dir = path.join(TENANTS_DIR, tenantId, 'training');
-  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-  return dir;
-}
-
-// Helper: get tenant training config
-function loadTrainingConfig(tenantId) {
-  const defaults = {
-    instructions: {
-      global: '',           // Injected into every agent call
-      brandVoice: '',       // Tone, style, terminology
-      industry: '',         // Industry-specific context
-      rules: [],            // Hard rules (never say X, always include Y)
-    },
-    knowledgeBase: [],       // Array of { id, title, content, category, createdAt }
-    customAgents: [],        // Array of { id, name, title, prompt, modelTier, avatar, department, createdAt }
-    updatedAt: null,
-  };
-  return loadTenantState(tenantId, 'training', defaults);
-}
-
-function saveTrainingConfig(tenantId, config) {
-  config.updatedAt = new Date().toISOString();
-  saveTenantState(tenantId, 'training', config);
-}
-
-// Training routes extracted to commercial/modules/multi-tenant/index.js
-
-// --- Tenant Context Injection ---
-// Builds the per-tenant context string injected into every agent call
-
-function buildTenantContext(tenantId) {
-  if (tenantId === MASTER_TENANT_ID) return '';
-
-  try {
-    const config = loadTrainingConfig(tenantId);
-    const parts = [];
-
-    // Custom instructions
-    if (config.instructions.global) {
-      parts.push(`## Tenant Custom Instructions\n${config.instructions.global}`);
-    }
-    if (config.instructions.brandVoice) {
-      parts.push(`## Brand Voice & Tone\n${config.instructions.brandVoice}`);
-    }
-    if (config.instructions.industry) {
-      parts.push(`## Industry Context\n${config.instructions.industry}`);
-    }
-    if (config.instructions.rules?.length > 0) {
-      parts.push(`## Mandatory Rules\n${config.instructions.rules.map((r, i) => `${i + 1}. ${r}`).join('\n')}`);
-    }
-
-    // Knowledge base — inject relevant docs (first 10 by recency, up to 15K chars total)
-    if (config.knowledgeBase.length > 0) {
-      const sorted = [...config.knowledgeBase].sort((a, b) => (b.updatedAt || b.createdAt || '').localeCompare(a.updatedAt || a.createdAt || ''));
-      let kbText = '';
-      let charCount = 0;
-      const maxChars = 15000;
-      for (const doc of sorted.slice(0, 10)) {
-        const entry = `### ${doc.title} [${doc.category}]\n${doc.content}\n\n`;
-        if (charCount + entry.length > maxChars) break;
-        kbText += entry;
-        charCount += entry.length;
-      }
-      if (kbText) {
-        parts.push(`## Tenant Knowledge Base\n${kbText}`);
-      }
-    }
-
-    return parts.length > 0 ? `\n\n--- Tenant-Specific Training ---\n${parts.join('\n\n')}` : '';
-  } catch (e) {
-    console.error(`[TRAINING] Failed to build tenant context for ${tenantId}:`, e.message);
-    return '';
-  }
-}
-
 // ========================================================================
-//  PLUGIN / EXTENSION SYSTEM — Custom agent tools per tenant
+//  PLUGIN / EXTENSION SYSTEM — Custom agent tools (single instance)
 // ========================================================================
 
 const PLUGIN_LIMITS = {
   free: 0, pro: 5, business: 20, enterprise: 100
 };
 
-function getPluginsDir(tenantId) {
-  const dir = path.join(BASE, '.magent', 'tenants', tenantId, 'plugins');
+// Single-instance storage. The tenantId param is accepted but ignored — kept so
+// the advanced-reporting module's call signature continues to work unchanged.
+function getPluginsDir(_tenantId) {
+  const dir = path.join(BASE, '.magent', 'state', 'plugins');
   if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
   return dir;
 }
@@ -4576,8 +4281,9 @@ const REPORT_LIMITS = {
   free: 0, pro: 5, business: 20, enterprise: 100
 };
 
-function getReportsDir(tenantId) {
-  const dir = path.join(BASE, '.magent', 'tenants', tenantId, 'reports');
+// Single-instance storage; tenantId param accepted but ignored (see getPluginsDir).
+function getReportsDir(_tenantId) {
+  const dir = path.join(BASE, '.magent', 'state', 'reports');
   if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
   return dir;
 }
@@ -5037,7 +4743,7 @@ app.post('/api/hq/dispatch/:employeeId', requireAdmin, (req, res) => {
 
   if (!DEMO_MODE && settings.ai.anthropic_api_key) {
     // Real agent execution
-    executeAgent(employee.agent, task, { skill: 'hq-dispatch', tenantId: req.tenantId }).then(result => {
+    executeAgent(employee.agent, task, { skill: 'hq-dispatch' }).then(result => {
       broadcast({ event: 'hq_task_complete', data: {
         taskId, employee: employee.id, name: employee.name,
         result: result.ok ? result.content : `${employee.name} encountered an error: ${result.error}`,
@@ -5060,193 +4766,6 @@ app.post('/api/hq/dispatch/:employeeId', requireAdmin, (req, res) => {
 
   res.json({ ok: true, taskId, employee: employee.name, title: employee.title, department: department.name, model: routing.model });
 });
-
-// --- White-Label License Management ---
-
-const LICENSE_CONFIG = {
-  tiers: {
-    community:  { price: 0,    interval: 'free', name: 'Community' },
-    business:   { price: 1997, interval: 'one-time', name: 'Business License' },
-    enterprise: { price: 4997, interval: 'one-time', name: 'Enterprise License' },
-  },
-  renewals: {
-    enterprise: { price: 997,  interval: 'year', name: 'Enterprise Priority Support Renewal' },
-  },
-  currency: 'usd',
-  name: 'AI OS Open-Core License',
-  description: 'Complete AI-powered Virtual Corporate HQ with 51 agents, 10 departments, self-hosted deployment, and all integrations.',
-  includes: [
-    'Virtual Corporate HQ with 51 AI agents across 10 departments',
-    'SEO Agency with 5 parallel audit sub-agents and post-audit actions',
-    'Gemini Omni Creative Studio (video, image, audio, thumbnails)',
-    'YouTube Video Intelligence pipeline',
-    'All API integrations (Anthropic, Gemini, DeepSeek, Grok, Firecrawl, Tavily, Apify)',
-    'White-label branding (your name, logo, colors, domain)',
-    'Admin dashboard with full settings management',
-    'Stripe integration to charge your own customers',
-    'Industry templates (8 verticals)',
-    'Multi-tenant isolation with dedicated state',
-    'Self-improving platform with Telegram/Slack approval bot',
-    'Lifetime updates and platform upgrades',
-    '30-day onboarding support',
-  ],
-};
-
-const licenses = loadState('licenses', []);
-
-// GET /api/license/info — public franchise opportunity info
-app.get('/api/license/info', (req, res) => {
-  const active = licenses.filter(f => f.status === 'active').length;
-  const remaining = LICENSE_CONFIG.maxLifetime - active;
-  res.json({
-    ...LICENSE_CONFIG,
-    active,
-    remaining,
-    available: remaining > 0,
-    soldPercentage: Math.round((active / LICENSE_CONFIG.maxLifetime) * 100),
-  });
-});
-
-// White Label routes extracted to commercial/modules/white-label/index.js
-
-// POST /api/license/apply — submit application and go straight to Stripe checkout
-app.post('/api/license/apply', async (req, res) => {
-  const { name, email, company, industry, website, phone, message } = req.body;
-  if (!name || !email) return res.status(400).json({ error: 'Name and email are required' });
-
-  const active = licenses.filter(f => f.status === 'active' || f.status === 'pending' || f.status === 'payment').length;
-  if (active >= LICENSE_CONFIG.maxLifetime) {
-    return res.status(400).json({ error: 'Lifetime license program is full — all 100 spots claimed' });
-  }
-
-  // Check for duplicate email
-  const existing = licenses.find(f => f.email === email && f.status !== 'rejected');
-  if (existing) {
-    return res.status(400).json({ error: 'An application with this email already exists' });
-  }
-
-  const application = {
-    id: uuidv4(),
-    name,
-    email,
-    company: company || '',
-    industry: industry || '',
-    website: website || '',
-    phone: phone || '',
-    message: message || '',
-    status: 'payment',       // goes straight to payment
-    appliedAt: new Date().toISOString(),
-    approvedAt: new Date().toISOString(),
-    activatedAt: null,
-    paymentId: null,
-    instanceUrl: null,
-    territory: null,
-    tenantId: null,
-    notes: '',
-  };
-
-  licenses.push(application);
-  saveState('licenses', licenses);
-
-  logActivity('license', `Lifetime license application + checkout: ${name} (${email})`, { id: application.id, company });
-  broadcast({ event: 'license_application', data: { id: application.id, name, email, company } });
-
-  // Create Stripe checkout session immediately
-  if (!stripe) {
-    return res.json({ ok: true, id: application.id, checkoutUrl: null, message: 'Application saved — Stripe not configured. Admin will send payment link.' });
-  }
-
-  try {
-    const session = await stripe.checkout.sessions.create({
-      payment_method_types: ['card'],
-      line_items: [{
-        price_data: {
-          currency: 'usd',
-          product_data: {
-            name: LICENSE_CONFIG.name + ' — Enterprise License',
-            description: 'One-time payment. Self-hosted deployment. ' + LICENSE_CONFIG.description,
-          },
-          unit_amount: LICENSE_CONFIG.tiers.enterprise.price * 100, // cents
-        },
-        quantity: 1,
-      }],
-      mode: 'payment',
-      success_url: `https://${req.headers.host || 'aiosorchestrationlab.com'}/lifetime/success?session_id={CHECKOUT_SESSION_ID}&license=${application.id}`,
-      cancel_url: `https://${req.headers.host || 'aiosorchestrationlab.com'}/lifetime?cancelled=true`,
-      customer_email: email,
-      metadata: {
-        license_id: application.id,
-        participant_name: name,
-        company: company || '',
-        industry: industry || '',
-      },
-    });
-
-    application.paymentId = session.id;
-    saveState('licenses', licenses);
-
-    res.json({ ok: true, id: application.id, checkoutUrl: session.url });
-  } catch (e) {
-    console.error('[STRIPE] Lifetime checkout error:', e.message);
-    res.json({ ok: true, id: application.id, checkoutUrl: null, message: 'Application saved — payment link will be sent separately. Error: ' + e.message });
-  }
-});
-
-// White Label participant update route extracted to commercial/modules/white-label/index.js
-
-// POST /api/license/checkout/:id — generate Stripe checkout for franchise fee
-app.post('/api/license/checkout/:id', async (req, res) => {
-  const f = licenses.find(p => p.id === req.params.id);
-  if (!f) return res.status(404).json({ error: 'Participant not found' });
-  if (f.status !== 'approved') return res.status(400).json({ error: 'Application must be approved before payment' });
-
-  if (DEMO_MODE) {
-    f.status = 'payment';
-    f.paymentId = `demo_pay_${uuidv4().substring(0, 8)}`;
-    saveState('licenses', licenses);
-    return res.json({
-      ok: true,
-      checkoutUrl: '#demo-checkout',
-      message: 'Demo mode — Stripe checkout simulated',
-      paymentId: f.paymentId,
-    });
-  }
-
-  // Real Stripe checkout (when configured)
-  if (!stripe) return res.status(500).json({ error: 'Stripe not configured' });
-
-  try {
-    const session = await stripe.checkout.sessions.create({
-      payment_method_types: ['card'],
-      line_items: [{
-        price_data: {
-          currency: 'usd',
-          product_data: {
-            name: LICENSE_CONFIG.name,
-            description: `White-label lifetime license — ${LICENSE_CONFIG.description}`,
-          },
-          unit_amount: LICENSE_CONFIG.tiers.lifetime.price * 100, // cents
-        },
-        quantity: 1,
-      }],
-      mode: 'payment',
-      success_url: `https://${req.headers.host}/license/success?session_id={CHECKOUT_SESSION_ID}&participant=${f.id}`,
-      cancel_url: `https://${req.headers.host}/license/cancel?participant=${f.id}`,
-      customer_email: f.email,
-      metadata: { license_id: f.id, participant_name: f.name },
-    });
-
-    f.status = 'payment';
-    f.paymentId = session.id;
-    saveState('licenses', licenses);
-
-    res.json({ ok: true, checkoutUrl: session.url, paymentId: session.id });
-  } catch (e) {
-    res.json({ ok: false, error: `Stripe error: ${e.message}` });
-  }
-});
-
-// White Label stats route extracted to commercial/modules/white-label/index.js
 
 // --- Self-Improving Platform (Telegram/Slack Approval Bot) ---
 
@@ -5581,7 +5100,7 @@ function checkForSelfImprovements() {
   // Check agent count
   const agentDir = path.join(CLAUDE_DIR, 'agents');
   const agentCount = fs.existsSync(agentDir) ? fs.readdirSync(agentDir).filter(f => f.endsWith('.md')).length : 0;
-  console.log(`[SELF-IMPROVE] ${agentCount} agents, ${Object.keys(tenantRegistry).length} tenants`);
+  console.log(`[SELF-IMPROVE] ${agentCount} agents`);
 }
 
 // Run on startup
@@ -6579,23 +6098,20 @@ if (commercial.registerRoutes) {
     saveState, loadState, uuidv4, validateBody, fs, path,
     // Config & constants
     ACTIVE_TIER, COMMERCIAL_FEATURES, PLAN_LEVELS, DEMO_MODE, BASE,
-    COST_RATES, MASTER_TENANT_ID, TENANTS_DIR, STATE_DIR, MAGENT_DIR, CLAUDE_DIR,
+    COST_RATES, MASTER_TENANT_ID, STATE_DIR, MAGENT_DIR, CLAUDE_DIR,
     IDENTITY_DIR: path.join(CLAUDE_DIR, 'identity'),
     OPUS_MODEL, GEMINI_OMNI_MODEL, EFFORT_ROUTING,
-    INDUSTRY_TEMPLATES, LICENSE_CONFIG, PROPOSAL_TYPES, BLOCKED_PATHS, SAFE_OPERATIONS,
+    PROPOSAL_TYPES, BLOCKED_PATHS, SAFE_OPERATIONS,
     PLUGIN_LIMITS, REPORT_LIMITS, YT_ANALYSIS_DIR,
     ORG_CHART,
     // Shared data structures
-    tenantRegistry, costLedger, licenses, settings, users, seoAudits, freeAuditLog,
+    costLedger, settings, users, seoAudits, freeAuditLog,
     browserTasks, grokQueries, grokCache,
     knowledgeGraph, designSystem, mediaProductions, mediaTemplates,
     vibeDesign, blender3d, routines, batchQueue: batchQueue,
     productFactory, leadPipeline, marketingHub, predictiveAnalytics,
     pendingApprovals, ytAnalyses,
-    // Tenant helpers
-    ensureTenantDir, saveTenantState, loadTenantState,
-    loadTrainingConfig, saveTrainingConfig, buildTenantContext, getTrainingDir,
-    // Plugin & report helpers
+    // Plugin & report helpers (single-instance)
     loadPluginRegistry, savePluginRegistry, getPluginsDir,
     loadReportConfig, saveReportConfig, getReportsDir,
     // AI model callers

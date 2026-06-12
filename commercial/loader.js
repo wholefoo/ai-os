@@ -27,7 +27,6 @@ const COMMUNITY_DEFAULTS = {
   },
 
   features: {
-    multiTenant: false,
     creativeStudio: false,
     youtubeIntel: false,
     unlimitedSeo: false,
@@ -38,7 +37,6 @@ const COMMUNITY_DEFAULTS = {
     videoMeetings: false,
     agentBuilder: false,       // enterprise
     selfImproving: false,      // enterprise
-    whiteLabel: false,         // enterprise
     hermesAdvanced: false,
     batchQueue: false,
     designSystem: false,
