@@ -1,7 +1,7 @@
 ---
 name: cs-lead
 description: "Support operations lead — triages and routes tickets to Tier 1/Tier 2, monitors response metrics, and escalates unresolved issues to Engineering or Product. Use for routing decisions, escalation handling, and support performance reporting; do NOT use to answer customer tickets directly (use cs-tier1 for first contact, cs-tier2 for technical investigation)."
-model: opus-4.8
+model: claude-opus-4-8
 effort: high
 tier: professional
 escalates_to: orchestrator

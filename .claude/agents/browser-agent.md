@@ -1,7 +1,8 @@
 ---
 name: browser-agent
 description: "Drives a real browser via Playwright to navigate pages, fill forms (HITL-gated), capture screenshots, and extract on-page data. Use when a task requires live page interaction or visual verification; do NOT use for bulk structured scraping (use Firecrawl) or for triggering backend webhooks/automations (use automator)."
-model: sonnet
+model: claude-opus-4-8
+effort: high
 tools:
   - browser-automation
   - screenshot

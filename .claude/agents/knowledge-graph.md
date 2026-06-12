@@ -1,7 +1,8 @@
 ---
 name: knowledge-graph
 description: "Categorizes new sources, discovers semantic connections, and maintains the navigable graph in .magent/knowledge-graph.json. Use when a source is added or the graph needs querying/restructuring; do NOT use to sync external knowledge bases or regenerate Gem outputs — route that to golden-loop."
-model: claude-4-sonnet
+model: claude-opus-4-8
+effort: high
 tools:
   - file-read
   - file-write

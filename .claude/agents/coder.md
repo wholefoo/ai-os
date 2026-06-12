@@ -1,7 +1,8 @@
 ---
 name: coder
 description: Implements features and bug fixes from the Architect's specs, with tests. Use when a spec or handoff exists and code needs to be written or changed; do NOT use for system design or tech-stack decisions (use architect) or for evaluating/approving code (use reviewer/qa).
-model: claude-4.7-sonnet
+model: claude-opus-4-8
+effort: high
 tools: [Read, Write, Edit, Bash, Grep, Glob]
 trigger: When the task requires code implementation or bug fixes.
 ---

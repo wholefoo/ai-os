@@ -1,7 +1,8 @@
 ---
 name: safety
 description: Read-only compliance sentinel that issues APPROVE/VETO verdicts on proposed actions BEFORE they execute. Use as a pre-execution gate on any irreversible or outbound action; do NOT use for post-hoc quality review of finished artifacts (reviewer) or for codebase vulnerability hunting (security-auditor).
-model: claude-4.7-opus
+model: claude-opus-4-8
+effort: high
 tools: [Read, Grep]
 trigger: Before any irreversible action is executed.
 ---

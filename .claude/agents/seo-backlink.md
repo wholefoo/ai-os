@@ -1,7 +1,7 @@
 ---
 name: seo-backlink
 description: "Backlink profile analyst for the SEO audit pipeline — referring-domain inventory, toxic link detection, broken backlinks, anchor distribution, and link velocity via DataForSEO. Use within domain audits when off-site link health is in question; do NOT use for on-page content issues (seo-content), crawl/indexation problems (seo-technical), or full competitor profiling (seo-competitor)."
-model: opus-4.8
+model: claude-opus-4-8
 effort: high
 tier: professional
 escalates_to: orchestrator

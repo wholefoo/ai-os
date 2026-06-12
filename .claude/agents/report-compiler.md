@@ -1,7 +1,8 @@
 ---
 name: report-compiler
 description: Assembles raw research outputs from multiple agents into a publication-ready document with normalized citations, executive summary, and TOC. Use as the final step after researcher and research-architect have produced their artifacts; do NOT use to gather new information (researcher) or to design the study structure (research-architect).
-model: claude-4.7-sonnet
+model: claude-opus-4-8
+effort: high
 tools: [Read, Write]
 trigger: dispatched
 source: https://github.com/wholefoo/academic-research-skills

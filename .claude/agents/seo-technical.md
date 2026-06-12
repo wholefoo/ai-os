@@ -1,7 +1,7 @@
 ---
 name: seo-technical
 description: "Technical SEO auditor for the SEO audit pipeline — crawlability, HTTP status codes, Core Web Vitals, mobile usability, HTTPS, and structured data. Use within domain audits for site-infrastructure health; do NOT use for content quality or meta copy (seo-content), keyword strategy (seo-keyword), or off-site links (seo-backlink)."
-model: opus-4.8
+model: claude-opus-4-8
 effort: high
 tier: professional
 escalates_to: orchestrator

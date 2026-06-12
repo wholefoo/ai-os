@@ -4,69 +4,69 @@ created: 2026-05-17
 
 roles:
   - name: orchestrator
-    model: claude-4.7-opus
+    model: claude-opus-4-8
     description: Master coordinator — interviews users, spawns teams, reviews outputs
     always_active: true
 
   - name: researcher
-    model: claude-4.7-sonnet
+    model: claude-opus-4-8
     description: Gathers external information with citations
     skills: [research-brief, lead-enrichment]
 
   - name: architect
-    model: claude-4.7-opus
+    model: claude-opus-4-8
     description: System design and technical planning
     skills: []
 
   - name: coder
-    model: claude-4.7-sonnet
+    model: claude-opus-4-8
     description: Implements code from specifications
     skills: []
 
   - name: reviewer
-    model: claude-4.7-opus
+    model: claude-opus-4-8
     description: Critical analysis — read-only, veto power
     read_only: true
     skills: []
 
   - name: qa
-    model: claude-4.7-sonnet
+    model: claude-opus-4-8
     description: Testing and verification
     skills: []
 
   - name: writer
-    model: claude-4.7-sonnet
+    model: claude-opus-4-8
     description: Documentation and content creation
     skills: [content-creation]
 
   - name: data-wrangler
-    model: claude-4.7-sonnet
+    model: claude-opus-4-8
     description: Data processing and analysis
     skills: [lead-enrichment]
 
   - name: scout
-    model: claude-4.7-haiku
+    model: claude-opus-4-8
     description: Lightweight intelligence gatherer — monitors AI/tech advancements and proposes stack updates
     skills: [tech-radar]
     schedule: daily
 
   - name: research-architect
-    model: claude-4.7-sonnet
+    model: claude-opus-4-8
     description: Designs research methodology and structures investigations
     skills: [academic-paper, deep-research]
 
   - name: synthesis
-    model: claude-4.7-sonnet
+    model: claude-opus-4-8
     description: Cross-source synthesis — identifies patterns, conflicts, and consensus
     skills: [deep-research]
 
   - name: report-compiler
-    model: claude-4.7-sonnet
+    model: claude-opus-4-8
     description: Compiles research findings into polished final deliverables
     skills: [academic-paper]
 
   - name: security-auditor
-    model: claude-4.7-opus
+    model: claude-opus-4-8
     description: AI-powered security assessment — vulnerabilities, dependencies, hardening
     skills: [security-audit]
 
@@ -78,18 +78,18 @@ roles:
     skills: [content-creation, seo-audit, lead-enrichment]
 
   - name: automator
-    model: claude-4.7-sonnet
+    model: claude-opus-4-8
     description: Automation bridge — triggers N8N workflows, Zapier zaps, and webhook integrations
     skills: [automation-bridge]
 
   - name: social-intel
-    model: claude-4.7-haiku
+    model: claude-opus-4-8
     description: Social intelligence — monitors X/Twitter, LinkedIn, Bluesky, HN, Reddit for AI/tech trends
     skills: [social-listening]
     schedule: daily
 
   - name: browser-agent
-    model: claude-4.7-sonnet
+    model: claude-opus-4-8
     description: Playwright-powered browser automation — navigates websites, fills forms, takes screenshots, extracts data
     skills: [browser-automation]
 
@@ -101,53 +101,53 @@ roles:
     cost_tier: realtime
 
   - name: knowledge-graph
-    model: claude-4.7-sonnet
+    model: claude-opus-4-8
     description: Auto-organizing knowledge base — categorizes sources, builds semantic connections, generates mind maps
     skills: [knowledge-categorize]
 
   - name: design-system
-    model: claude-4.7-sonnet
+    model: claude-opus-4-8
     description: DESIGN.md protocol — manages tokens, lints WCAG accessibility, enforces brand consistency
     skills: [design-lint]
 
   - name: media-producer
-    model: claude-4.7-sonnet
+    model: claude-opus-4-8
     description: Multi-engine media production — Remotion video, Google Vids, Blender 3D from prompts
     skills: [media-produce]
 
   - name: routine-runner
-    model: claude-4.7-haiku
+    model: claude-opus-4-8
     description: CRON-scheduled continuous loop executor — manages autonomous routines with rate limiting
     skills: [media-produce, content-creation, browser-automation]
     cost_tier: batch
 
   - name: product-factory
-    model: claude-4.7-sonnet
+    model: claude-opus-4-8
     description: AI-generated digital products — spreadsheets, Notion templates, toolkits for Etsy & Gumroad
     skills: [content-creation]
 
   - name: lead-gen
-    model: claude-4.7-sonnet
+    model: claude-opus-4-8
     description: Automated lead generation — scraping, enrichment, achievement discovery, personalized outreach
     skills: [lead-enrichment, browser-automation]
 
   - name: marketing-hub
-    model: claude-4.7-sonnet
+    model: claude-opus-4-8
     description: End-to-end marketing — content pipelines, cross-platform distribution, voice-trained AI
     skills: [content-creation, social-listening]
 
   - name: golden-loop
-    model: claude-4.7-sonnet
+    model: claude-opus-4-8
     description: Gem ↔ NotebookLM sync — connects custom AI personas to dynamically-updated knowledge bases
     skills: [knowledge-categorize]
 
   - name: vibe-designer
-    model: claude-4.7-sonnet
+    model: claude-opus-4-8
     description: Prompt-driven UI generation — natural language, voice, sketches & URL extraction with heat maps
     skills: [design-lint]
 
   - name: blender-3d
-    model: claude-4.7-sonnet
+    model: claude-opus-4-8
     description: Text-to-3D via Blender MCP — environments, product renders, scene generation
     skills: [media-produce]
 

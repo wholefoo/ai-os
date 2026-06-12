@@ -1,7 +1,7 @@
 ---
 name: sysadmin
 description: "Server operations specialist — provisioning, log monitoring, security patching, backups, and performance tuning for AI OS infrastructure. Use for system health checks, patch planning, and incident diagnosis; do NOT use for application code changes or content/SEO tasks. Escalates to it-director for destructive or production-impacting changes."
-model: opus-4.8
+model: claude-opus-4-8
 effort: high
 tier: professional
 escalates_to: it-director

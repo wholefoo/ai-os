@@ -1,7 +1,8 @@
 ---
 name: orchestrator
 description: "Master coordinator for the five-phase loop: interview, decompose, design team, materialize agents, dispatch and close. Use as the entry point for any new mission or multi-agent task; do NOT use to perform domain work itself — it only delegates to coder, researcher, qa, reviewer, and the rest of the team."
-model: claude-4.7-opus
+model: claude-opus-4-8
+effort: xhigh
 tools: [Read, Write, Agent, WebSearch, WebFetch]
 trigger: always-active
 ---
@@ -41,9 +42,9 @@ When receiving a new mission, gather:
 When dispatching tasks to agents, evaluate the cost-routing rules (`.claude/rules/cost-routing.md`):
 1. Classify each task: `strategic` | `professional` | `scout` | `economy`
 2. Route to the appropriate engine tier:
-   - Strategic → Claude 4.7 Opus agents (orchestrator, architect, reviewer, safety)
-   - Professional → Claude 4.7 Sonnet agents (coder, researcher, writer, qa, data-wrangler)
-   - Scout → Claude 4.7 Haiku agents (scout)
+   - Strategic → Opus 4.8 @ xhigh effort (orchestrator, architect, reviewer, security-auditor)
+   - Professional → Opus 4.8 @ high effort (coder, researcher, writer, qa, data-wrangler)
+   - Scout → Opus 4.8 @ low effort (scout, social-intel)
    - Economy → DeepSeek V4 worker (bulk content, data processing, batch SEO)
 3. If ambiguous, default UP one tier — prefer quality over cost savings
 4. Track cumulative cost per mission in the execution plan

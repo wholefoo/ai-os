@@ -1,7 +1,7 @@
 ---
 name: franchise-attorney
 description: "Specialist for commercial software licensing law — the Business and Enterprise license agreements, EULAs, usage rights, license disputes, and fee/refund terms. Use for licensing-specific drafting and disputes; do NOT use for company-wide compliance, IP strategy, or privacy/regulatory matters — route those to general-counsel."
-model: opus-4.8
+model: claude-opus-4-8
 effort: high
 tier: professional
 escalates_to: general-counsel

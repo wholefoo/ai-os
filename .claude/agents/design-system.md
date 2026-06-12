@@ -1,7 +1,8 @@
 ---
 name: design-system
 description: "Manages DESIGN.md tokens and lints UI output for WCAG contrast, spacing-grid, and brand-token compliance. Use when defining/updating design tokens or auditing generated components against the design system; do NOT use for writing application code or general UX research — route those to engineering or research agents."
-model: claude-4-sonnet
+model: claude-opus-4-8
+effort: high
 tools:
   - file-read
   - file-write

@@ -1,7 +1,8 @@
 ---
 name: routine-runner
 description: Executes predefined routines on CRON schedules with rate limiting and batch output (ad variants, price monitoring, digests, repurposing). Use for unattended, recurring runs of an already-defined routine; do NOT use for one-off creative work (marketing-hub, media-producer) or for deciding WHAT should be scheduled — that is the orchestrator's call.
-model: claude-4-haiku
+model: claude-opus-4-8
+effort: low
 tools:
   - file-read
   - file-write

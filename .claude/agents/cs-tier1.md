@@ -1,8 +1,8 @@
 ---
 name: cs-tier1
 description: "First-response support agent for FAQ, account questions, basic troubleshooting, and known issues with documented KB solutions. Use for initial ticket contact; do NOT use for bugs requiring reproduction, deep investigation, or cross-department coordination — escalate those to cs-tier2 via cs-lead."
-model: opus-4.8
-effort: low
+model: claude-opus-4-8
+effort: high
 tier: scout
 escalates_to: cs-lead
 group: customer-service

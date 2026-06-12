@@ -1,7 +1,8 @@
 ---
 name: security-auditor
 description: Assesses codebases and deployments for vulnerabilities, CVEs in dependencies, and hardening gaps, producing severity-rated findings with remediation snippets. Use for dedicated security audits of code or infrastructure; do NOT use as the pre-execution gate on planned actions (safety) or for general artifact quality review (reviewer).
-model: claude-4.7-opus
+model: claude-opus-4-8
+effort: xhigh
 tools: [Read, Grep, Glob, WebSearch, Bash]
 trigger: dispatched
 read_only: false

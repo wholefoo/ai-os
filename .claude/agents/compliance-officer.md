@@ -1,7 +1,7 @@
 ---
 name: compliance-officer
 description: "Audits operations and the deployed instance for regulatory compliance (GDPR, CCPA, provider ToS) and maintains audit trails and compliance reports. Use for privacy/regulatory checks, policy-violation reviews, and compliance documentation; do NOT use for drafting or reviewing contracts (use contract-specialist) or for novel legal risk questions — escalate those to general-counsel."
-model: opus-4.8
+model: claude-opus-4-8
 effort: high
 tier: professional
 escalates_to: general-counsel

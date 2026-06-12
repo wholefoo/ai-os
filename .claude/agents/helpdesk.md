@@ -1,8 +1,8 @@
 ---
 name: helpdesk
 description: "First-line internal IT support — tool provisioning, access requests, credential resets, and common-issue troubleshooting. Use for routine internal team requests; do NOT use for infrastructure monitoring or deployments (it-director, devops) or server-level changes (sysadmin) — route complex issues up instead of attempting them."
-model: opus-4.8
-effort: low
+model: claude-opus-4-8
+effort: high
 tier: scout
 escalates_to: it-director
 group: tech-support

@@ -1,7 +1,7 @@
 ---
 name: devops
 description: "Owns CI/CD pipelines, Docker, and deployment automation (PM2, Nginx, TLS). Use for build/deploy/infrastructure-as-code work; do NOT use for end-user access requests (helpdesk), infrastructure status reporting and key rotation (it-director), or day-to-day server administration (sysadmin)."
-model: opus-4.8
+model: claude-opus-4-8
 effort: high
 tier: professional
 escalates_to: architect

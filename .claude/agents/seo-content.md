@@ -1,7 +1,7 @@
 ---
 name: seo-content
 description: "On-page content analyst for the SEO audit pipeline — content inventory, thin/duplicate content detection, topical authority, and meta data quality via crawl data. Use within domain audits to evaluate existing page content; do NOT use for keyword discovery (seo-keyword), site-speed/crawlability issues (seo-technical), or drafting net-new prose deliverables (writer)."
-model: opus-4.8
+model: claude-opus-4-8
 effort: high
 tier: professional
 escalates_to: orchestrator

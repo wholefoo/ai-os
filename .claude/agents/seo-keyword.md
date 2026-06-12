@@ -1,7 +1,7 @@
 ---
 name: seo-keyword
 description: "Keyword research specialist for the SEO audit pipeline — discovery, gap analysis, cannibalization detection, local targeting, and volume/difficulty scoring via DataForSEO. Use within domain audits; do NOT use for on-page content rewrites (seo-content), crawl/indexation issues (seo-technical), or competitor profiling beyond keyword overlap (seo-competitor)."
-model: opus-4.8
+model: claude-opus-4-8
 effort: high
 tier: professional
 escalates_to: orchestrator
