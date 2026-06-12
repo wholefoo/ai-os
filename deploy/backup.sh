@@ -69,10 +69,12 @@ if [ "$(date +%u)" = "7" ]; then
   log "Promoted to weekly-${STAMP}.tar.gz"
 fi
 
-# Rotation
-ls -1t "${BACKUP_DIR}"/daily-*.tar.gz 2>/dev/null | tail -n +$((KEEP_DAILY + 1)) | xargs -r rm -f
-ls -1t "${BACKUP_DIR}"/weekly-*.tar.gz 2>/dev/null | tail -n +$((KEEP_WEEKLY + 1)) | xargs -r rm -f
-COUNT=$(ls -1 "${BACKUP_DIR}" | wc -l)
+# Rotation. The `|| true` is REQUIRED: with `set -e`/`pipefail`, an empty glob
+# (e.g. no weekly-*.tar.gz on a fresh box) makes `ls` exit non-zero and would
+# otherwise abort the whole script before the cron install below.
+ls -1t "${BACKUP_DIR}"/daily-*.tar.gz 2>/dev/null | tail -n +$((KEEP_DAILY + 1)) | xargs -r rm -f || true
+ls -1t "${BACKUP_DIR}"/weekly-*.tar.gz 2>/dev/null | tail -n +$((KEEP_WEEKLY + 1)) | xargs -r rm -f || true
+COUNT=$(ls -1 "${BACKUP_DIR}" 2>/dev/null | wc -l)
 log "Rotation done — ${COUNT} archive(s) retained (${KEEP_DAILY} daily + ${KEEP_WEEKLY} weekly max)"
 
 # Freshness sanity: warn if the archive is implausibly small (state loss upstream?)
@@ -82,7 +84,8 @@ MIN_BYTES=10240
 # Optional cron install
 if [ "${1:-}" = "--install" ]; then
   CRON_LINE="30 3 * * * /bin/bash ${APP_DIR}/deploy/backup.sh >> ${APP_DIR}/logs/backup.log 2>&1"
-  ( crontab -l 2>/dev/null | grep -v 'deploy/backup.sh'; echo "$CRON_LINE" ) | crontab -
+  # `|| true` guards the case where root has no existing crontab (crontab -l exits non-zero).
+  ( crontab -l 2>/dev/null | grep -v 'deploy/backup.sh' || true; echo "$CRON_LINE" ) | crontab -
   log "Cron installed (root): nightly at 3:30am"
 fi
 
