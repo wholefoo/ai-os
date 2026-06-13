@@ -1,6 +1,6 @@
 # AI OS — The Agentic Operating System
 
-A multi-agentic AI operating system built as a Virtual Corporate Headquarters, orchestrating 51 specialized sub-agents across 10 departments and 7 model tiers. Research, create, analyze, scrape, and monetize — all from a single dashboard. Self-hosted, single-customer, open-source core (Community edition) with commercial licenses: Business $1,997 one-time (all 51 agents, all production tools, self-instance theming) and Enterprise $4,997 one-time (everything in Business + 1 year priority support, custom agents, priority response times). All tiers run on your own infrastructure.
+A multi-agentic AI operating system built as a Virtual Corporate Headquarters, orchestrating 51 specialized sub-agents across 10 departments and 6 model tiers. Research, create, analyze, scrape, and monetize — all from a single dashboard. Self-hosted, single-customer, open-source core (Community edition) with commercial licenses: Business $1,997 one-time (all 51 agents, all production tools, self-instance theming) and Enterprise $4,997 one-time (everything in Business + 1 year priority support, custom agents, priority response times). All tiers run on your own infrastructure.
 
 ## Architecture
 
@@ -19,7 +19,7 @@ A multi-agentic AI operating system built as a Virtual Corporate Headquarters, o
           │                      │                      │
    ┌──────▼──────┐      ┌───────▼───────┐      ┌───────▼───────┐
    │  CEO Atlas   │      │  Agent Fleet  │      │  Memory Vault │
-   │(Opus 4.8 xh)│──────│  47 agents    │──────│  .magent/     │
+   │(Opus 4.8 xh)│──────│  51 agents    │──────│  .magent/     │
    └──────────────┘      └───────────────┘      └───────────────┘
           │                      │
    ┌──────▼──────────────────────▼──────┐
@@ -51,7 +51,7 @@ AI OS presents its agent fleet as a virtual company with named employees, depart
 | **Operations & Hermes** | 6 | Hermes Director, Scheduler, Compliance Officer, Scout, Batch Processor, Intel Analyst |
 | **Legal Department** | 4 | General Counsel (Justice), Compliance Officer (Shield), Licensing Attorney (Covenant), Contract Specialist (Clause) |
 
-Each virtual employee maps to an AI agent with a specific model tier, can receive dispatched tasks, and reports through a corporate hierarchy.
+Each virtual employee maps to an AI agent with a specific model tier, can receive dispatched tasks, and reports through a corporate hierarchy. The org chart names the department-facing roles; the full fleet of 51 agents — including the SEO Agency sub-agents and the external-model worker agents (DeepSeek, Grok) — is broken down by model tier in **Agent Fleet** below.
 
 ## Features
 
@@ -60,6 +60,8 @@ Each virtual employee maps to an AI agent with a specific model tier, can receiv
 - **Design System** — DESIGN.md dual-structure protocol, WCAG linter, brand clone from URL
 - **Tech Radar** — Automated intelligence sweeps with proposal system and upgrade tracking
 - **Continuous Loops** — CRON-scheduled autonomous routines with rate limiting
+- **Adversarial Verification** — Agent deliverables pass a skeptic-panel stage where independent verifiers try to refute each finding before it ships, catching plausible-but-wrong output
+- **Cross-Model Review** — A second-model review seat (OpenAI Codex / GPT-5.5) independently checks code and findings for verification diversity — distinct from the Claude work tiers, never used for production work
 
 ### SEO Agency
 - **Automated SEO Audits** — 5 parallel sub-agents (Keyword, Technical, Competitor, Content, Backlink)
@@ -107,9 +109,9 @@ Each virtual employee maps to an AI agent with a specific model tier, can receiv
 
 ### Licensing (Open-Core Model)
 
-**Community Edition (Free)** — Open-source core, self-hosted with custom domain support. Perpetual, royalty-free license for personal and commercial use. Includes 15 agents, 5 departments, Scout + Pro model tiers, 5 SEO audits/month, Knowledge Graph, Tech Radar, and community support via GitHub Issues. Must retain "Powered by AI OS" attribution. You provide your own API keys and are responsible for hosting, security, and backups. [Full license](/docs/license-community)
+**Community Edition (Free)** — Open-source core, self-hosted with custom domain support. Perpetual, royalty-free license for personal and commercial use. Includes 15 agents, 5 departments, Scout + Professional effort tiers, 5 SEO audits/month, Knowledge Graph, Tech Radar, and community support via GitHub Issues. Must retain "Powered by AI OS" attribution. You provide your own API keys and are responsible for hosting, security, and backups. [Full license](/docs/license-community)
 
-**Business License ($1,997 one-time)** — Everything in Community plus all 51 agents, all 10 departments, all 7 model tiers, unlimited SEO audits, Gemini Omni Creative Studio, YouTube Intelligence, Agent Builder, self-instance theming (brand your own private instance with custom name, logo, colors, and domain — no attribution required), lead generation, product factory, marketing hub, advanced reporting, browser agent, Grok Intel, design system, video meetings, and batch queue. Priority email support included. Self-hosted, single-customer license (one production deployment per key). Lifetime software updates. 14-day refund policy. [Full license](/docs/license-business)
+**Business License ($1,997 one-time)** — Everything in Community plus all 51 agents, all 10 departments, all 6 model tiers, unlimited SEO audits, Gemini Omni Creative Studio, YouTube Intelligence, Agent Builder, self-instance theming (brand your own private instance with custom name, logo, colors, and domain — no attribution required), lead generation, product factory, marketing hub, advanced reporting, browser agent, Grok Intel, design system, video meetings, and batch queue. Priority email support included. Self-hosted, single-customer license (one production deployment per key). Lifetime software updates. 14-day refund policy. [Full license](/docs/license-business)
 
 **Enterprise License ($4,997 one-time)** — Everything in Business plus SSO/SAML integration, priority support with target response times (~4hr critical / ~8hr high / ~24hr medium, Mon-Fri 9am-6pm EST), dedicated Slack channel, custom agent development assistance (up to 5 custom agents in Year 1), priority bug fixes, early access to new features, and deployment architecture review. Includes 1 year of priority support; optional $997/year renewal extends support and Slack access (platform works permanently without renewal). Upgrade from Business: $3,000 difference. [Full license](/docs/license-enterprise)
 
@@ -268,21 +270,29 @@ server.js        Express + WebSocket backend (~9000 lines)
 ecosystem.config.js  PM2 process manager config
 ```
 
-## Agent Fleet — 7 Model Tiers
+## Agent Fleet — 6 Model Tiers
+
+All 51 agents route across six model tiers. The three Anthropic tiers are one model
+(`claude-opus-4-8`) at three effort levels; the other three are external models for
+specialized work:
 
 | Tier | Model | Effort | Count | Role |
 |------|-------|--------|-------|------|
-| Strategic | Opus 4.8 | xhigh | 6 | Deep reasoning, architecture, code review, legal counsel |
-| Professional | Opus 4.8 | high | 23 | Research, coding, writing, support, IT, licensing, compliance |
-| Scout | Opus 4.8 | low | 4 | Fast lookups, triage, routine running |
-| Creative | Gemini Omni | — | 5 | Video, image, audio generation |
-| Economy | DeepSeek V4 | — | 2 | Bulk text processing |
+| Strategic | Opus 4.8 | xhigh | 4 | Orchestration, architecture, critical review, security audit |
+| Professional | Opus 4.8 | high | 36 | Research, coding, writing, SEO, marketing, support, IT, legal, compliance, creative direction |
+| Scout | Opus 4.8 | low | 3 | Fast lookups, triage, scheduled monitoring |
+| Creative | Gemini Omni | — | 5 | Video, image, audio, UI generation |
+| Economy | DeepSeek V4 | — | 2 | Bulk text/content processing |
 | Realtime | Grok-3 | — | 1 | Live web search, trending topics |
-| Persistent | Hermes MCP | — | 3 | Background tasks, walkaway mode |
+| **Total** | | | **51** | |
 
-### SEO Agency Sub-Agents (5)
+Hermes MCP is the persistence layer (background / walkaway execution) that any tier
+routes into — it's infrastructure, not a separate model or agent count.
 
-Keyword Analysis, Technical Audit, Competitor Analysis, Content Analysis, Backlink Profile
+### SEO Agency Sub-Agents
+
+The 5 SEO sub-agents (Keyword, Technical, Competitor, Content, Backlink) are part of the
+Professional tier above — grouped here for the SEO audit pipeline.
 
 ## API
 
