@@ -25,7 +25,7 @@ done
 
 APP_DIR="/opt/ai-os"
 APP_USER="aios"
-NODE_VERSION="22"   # Node 22 (Jod) — Maintenance LTS through 2027-04-30. Node 20 went EOL 2026-04-30.
+NODE_VERSION="24"   # Node 24 (Active LTS) — security support through ~2028-04. Node 20 went EOL 2026-04-30.
 REPO_URL="https://github.com/wholefoo/ai-os.git"
 TOTAL_STEPS=16
 

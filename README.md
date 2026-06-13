@@ -145,7 +145,7 @@ All tiers are self-hosted — you run on your own infrastructure with your own d
 
 | Layer | Technology |
 |-------|-----------|
-| Runtime | Node.js 22 + Express |
+| Runtime | Node.js 24 + Express |
 | Dashboard | Vanilla HTML/CSS/JS with WebSocket live updates |
 | AI Models | Claude Opus 4.8 (effort routing), Gemini Omni Flash, DeepSeek V4, Grok-3 |
 | Web Scraping | Firecrawl, Apify (25K+ actors), Tavily (AI search) |
