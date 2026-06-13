@@ -158,6 +158,27 @@ roles:
     skills: [content-creation]
     cost_tier: economy
 
+  # --- Web Studio department (static site studio + on-box hosting) ---
+  - name: web-studio-lead
+    model: claude-opus-4-8
+    description: AI Web Studio lead — turns a brief into a built, deployed static site by planning IA and sequencing the studio team
+    skills: []
+
+  - name: web-builder
+    model: claude-opus-4-8
+    description: Compiles design + tokens + copy into a static Astro + Tailwind build and runs the WCAG gate
+    skills: [design-lint]
+
+  - name: content-writer
+    model: claude-opus-4-8
+    description: Production page copy, metadata, OpenGraph/Twitter tags, and accessible alt text for generated sites
+    skills: [content-creation]
+
+  - name: hosting-ops
+    model: claude-opus-4-8
+    description: Deploys + hosts generated sites — nginx vhost, certbot TLS, custom domains, tier site-count, rollback
+    skills: []
+
 escalation_path:
   - sub-agent fails -> reviewer
   - reviewer rejects -> orchestrator

@@ -1076,9 +1076,9 @@ const GEMINI_OMNI_MODEL = 'gemini-omni-flash';
 // Effort-level routing: maps agent tiers to Opus 4.8 effort levels
 const EFFORT_ROUTING = {
   // Strategic tier — full reasoning power, complex planning, architecture decisions
-  strategic: { effort: 'xhigh', agents: ['orchestrator', 'architect', 'reviewer', 'security-auditor'] },
+  strategic: { effort: 'xhigh', agents: ['orchestrator', 'architect', 'reviewer', 'security-auditor', 'web-studio-lead'] },
   // Professional tier — balanced quality/speed for most agent work
-  professional: { effort: 'high', agents: ['researcher', 'coder', 'writer', 'synthesis', 'research-architect', 'report-compiler', 'data-wrangler', 'design-system', 'lead-gen', 'marketing-hub', 'product-factory', 'knowledge-graph', 'golden-loop', 'automator', 'browser-agent'] },
+  professional: { effort: 'high', agents: ['researcher', 'coder', 'writer', 'synthesis', 'research-architect', 'report-compiler', 'data-wrangler', 'design-system', 'lead-gen', 'marketing-hub', 'product-factory', 'knowledge-graph', 'golden-loop', 'automator', 'browser-agent', 'web-builder', 'content-writer', 'hosting-ops'] },
   // Scout tier — fast, lightweight tasks
   scout: { effort: 'low', agents: ['scout', 'social-intel', 'routine-runner'] },
   // Creative tier — Gemini Omni for multimodal generation (video, image, audio)
