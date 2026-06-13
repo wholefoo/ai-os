@@ -1285,7 +1285,7 @@ function buildOpusRequest(messages, { effort = 'high', systemMessages = [], maxT
     messages,
   };
   // Effort controls thinking depth
-  if (effort) body.effort = effort;
+  if (effort) body.output_config = { effort };
   // Mid-conversation system messages (new in 4.8)
   if (systemMessages.length > 0) {
     // Insert system messages after user turns where needed
@@ -1379,7 +1379,7 @@ async function callAnthropic(systemPrompt, task, effort, maxTokens) {
     system: systemPrompt,
     messages: [{ role: 'user', content: task }],
   };
-  if (effort) body.effort = effort;
+  if (effort) body.output_config = { effort };
 
   const res = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
