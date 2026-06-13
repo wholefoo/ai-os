@@ -40,11 +40,21 @@ function getFeaturesForTier(tier) {
     batchQueue: isBusiness,
     designSystem: isBusiness,
     productFactory: isBusiness,
+    // Web Studio — the base (create/edit/host 1 site) lives in CORE so Community
+    // gets it without loading any commercial module. These flags gate the EXTRAS.
+    webStudioImport: isBusiness,        // GitHub / Firecrawl import
+    webStudioCustomDomains: isBusiness, // custom domains on additional sites (Community's 1 is core)
+    webStudioQualityGate: isBusiness,   // blocking WCAG gate (Community is warn-only)
+    webStudioVisualQA: isBusiness,      // browser-agent visual/responsive QA
+    webStudioWhiteLabel: isBusiness,    // theming (partial=business, full=enterprise)
+    webStudioClientHandoff: isBusiness, // scoped sub-admin client access
+    webStudioAnalytics: isBusiness,     // per-site analytics
     // Enterprise-only
     sso: isEnterprise,
     customAgentBuilder: isEnterprise,
     slaConfig: isEnterprise,
     prioritySupport: isEnterprise,
+    webStudioCodexReview: isEnterprise, // cross-model code review of generated sites
   };
 }
 
@@ -65,6 +75,7 @@ function getLimitsForTier(tier) {
       reports: 100,
       customAgents: 50,
       customDocs: 500,
+      sites: Infinity,        // Web Studio hosted sites
     };
   }
 
@@ -79,10 +90,13 @@ function getLimitsForTier(tier) {
       reports: 20,
       customAgents: 10,
       customDocs: 100,
+      sites: 10,              // Web Studio hosted sites
     };
   }
 
-  // Community fallback (should not reach here in commercial module)
+  // Community fallback — READ BY CORE for the open-core base (the commercial module
+  // never loads for community, so this block is the source of truth for its limits).
+  // sites:1 is load-bearing: core gates the single-site limit on it.
   return {
     seoAuditsPerMonth: 1,
     memoryEntries: 100,
@@ -93,6 +107,7 @@ function getLimitsForTier(tier) {
     reports: 0,
     customAgents: 0,
     customDocs: 0,
+    sites: 1,                // Web Studio: one free hosted site (with 1 custom domain)
   };
 }
 

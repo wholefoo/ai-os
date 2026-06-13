@@ -364,6 +364,57 @@ nginx -t && systemctl reload nginx
 log "Nginx configured for ${DOMAIN}"
 
 # ============================================================
+# Web Studio — multi-site static hosting substrate
+# ============================================================
+# Per-site built output lives under ${APP_DIR}/sites/<domain>/current (served by
+# nginx). Custom-domain vhosts + TLS are created at RUNTIME by the app via three
+# root-owned scripts; here we only lay down the substrate + the privilege boundary.
+
+# Hosted-site content root (aios owns it; nginx/www-data needs read + traverse).
+mkdir -p "${APP_DIR}/sites"
+chown ${APP_USER}:${APP_USER} "${APP_DIR}/sites"
+chmod 755 "${APP_DIR}/sites"
+# Least-privilege traverse: let www-data reach sites/<domain>/current without joining
+# the aios group. o+x grants traversal only (NOT listing/reading) of the app dir.
+chmod o+x "${APP_DIR}" || true
+
+# Shared ACME http-01 webroot — certbot writes challenges here; every per-site HTTP
+# vhost serves /.well-known/acme-challenge/ from it.
+mkdir -p /var/www/aios-acme/.well-known/acme-challenge
+chown -R ${APP_USER}:${APP_USER} /var/www/aios-acme
+chmod -R 755 /var/www/aios-acme
+
+# Optional ACME registration email (root-managed; site-cert.sh reads it). Set by
+# exporting LE_EMAIL before running the installer; otherwise certs register w/o email.
+mkdir -p /etc/aios
+if [ -n "${LE_EMAIL:-}" ]; then
+  printf '%s\n' "${LE_EMAIL}" > /etc/aios/acme-email
+  chmod 644 /etc/aios/acme-email
+fi
+
+# Install the THREE privilege-boundary scripts ROOT-OWNED at /usr/local/sbin.
+# SECURITY INVARIANT: they MUST stay root:root 755 (NOT aios-writable) — otherwise
+# the sudoers grant below becomes a root escalation. `install` enforces owner/mode.
+if [ -d "${APP_DIR}/deploy/hosting" ]; then
+  install -o root -g root -m 755 "${APP_DIR}/deploy/hosting/site-vhost.sh"  /usr/local/sbin/aios-site-vhost
+  install -o root -g root -m 755 "${APP_DIR}/deploy/hosting/site-cert.sh"   /usr/local/sbin/aios-site-cert
+  install -o root -g root -m 755 "${APP_DIR}/deploy/hosting/site-remove.sh" /usr/local/sbin/aios-site-remove
+
+  # Install the sudoers allowlist, validating the STAGED copy first — a malformed
+  # sudoers file can lock the box out of sudo entirely.
+  install -o root -g root -m 440 "${APP_DIR}/deploy/hosting/aios-hosting.sudoers" /etc/sudoers.d/aios-hosting.tmp
+  if visudo -cf /etc/sudoers.d/aios-hosting.tmp >/dev/null 2>&1; then
+    mv -f /etc/sudoers.d/aios-hosting.tmp /etc/sudoers.d/aios-hosting
+    log "Web Studio hosting: scripts + sudoers installed (3 root-owned domain ops)"
+  else
+    rm -f /etc/sudoers.d/aios-hosting.tmp
+    warn "aios-hosting.sudoers failed visudo -c — NOT installed; Web Studio domain ops disabled"
+  fi
+else
+  warn "deploy/hosting not found — skipping Web Studio hosting substrate"
+fi
+
+# ============================================================
 step "[14/${TOTAL_STEPS}] Environment, PM2 & Log Rotation"
 # ============================================================
 # Create .env if it doesn't exist

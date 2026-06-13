@@ -1,0 +1,20 @@
+# /etc/sudoers.d/aios-hosting
+# Allow the unprivileged `aios` service user to invoke ONLY the three root-owned
+# Web Studio hosting scripts — nothing else. Each script re-validates its domain
+# argument internally (positive char allowlist + whole-string FQDN match), so
+# allowing any args here is safe; the allowlist restricts WHICH binaries run as root.
+#
+# Install: install -o root -g root -m 440 deploy/hosting/aios-hosting.sudoers /etc/sudoers.d/aios-hosting
+# Verify:  visudo -cf /etc/sudoers.d/aios-hosting
+#
+# SECURITY INVARIANTS:
+#  - The three scripts must stay root:root, mode 755, NOT writable by aios or its
+#    group (install-vps.sh installs them so). Otherwise this grant becomes root escalation.
+#  - The per-command Defaults below pin a safe PATH and reset the environment so the
+#    grant does not depend on the global sudoers env_reset/secure_path staying intact.
+
+Cmnd_Alias AIOS_HOSTING = /usr/local/sbin/aios-site-vhost, /usr/local/sbin/aios-site-cert, /usr/local/sbin/aios-site-remove
+
+Defaults!AIOS_HOSTING secure_path="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin", env_reset
+
+aios ALL=(root) NOPASSWD: AIOS_HOSTING
