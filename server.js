@@ -1126,6 +1126,13 @@ app.get('/api/web-studio/sites/:id/preview/*', requireAdmin, (req, res) => {
   if (target !== dist && !target.startsWith(dist + path.sep)) return res.status(400).send('bad path');
   if (fs.existsSync(target) && fs.statSync(target).isDirectory()) target = path.join(target, 'index.html');
   if (!fs.existsSync(target)) { const idx = path.join(dist, 'index.html'); if (!fs.existsSync(idx)) return res.status(404).send('Not built yet'); target = idx; }
+  // Rewrite root-absolute asset URLs through the preview prefix so the in-dashboard
+  // iframe resolves Astro's /_astro/* bundles (absolute paths otherwise escape to the app root).
+  if (target.endsWith('.html')) {
+    const prefix = `/api/web-studio/sites/${site.id}/preview/`;
+    const html = fs.readFileSync(target, 'utf-8').replace(/(href|src)="\/(?!\/)/g, `$1="${prefix}`);
+    return res.type('html').send(html);
+  }
   res.sendFile(target);
 });
 
