@@ -145,7 +145,7 @@ All tiers are self-hosted — you run on your own infrastructure with your own d
 
 | Layer | Technology |
 |-------|-----------|
-| Runtime | Node.js 20 + Express |
+| Runtime | Node.js 22 + Express |
 | Dashboard | Vanilla HTML/CSS/JS with WebSocket live updates |
 | AI Models | Claude Opus 4.8 (effort routing), Gemini Omni Flash, DeepSeek V4, Grok-3 |
 | Web Scraping | Firecrawl, Apify (25K+ actors), Tavily (AI search) |
@@ -247,7 +247,7 @@ bash deploy/push-update.sh root@your-vps-ip
 ```
 .claude/
   agents/        51 agent role definitions (YAML frontmatter + instructions)
-  skills/        21 procedural skill files
+  skills/        22 procedural skill files
   rules/         Guardrails, cost routing, security
   identity/      Soul, user preferences, personality
   pipelines/     Declarative YAML skill chains
