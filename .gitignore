@@ -36,6 +36,9 @@ docs-export/
 # Tenant data
 .magent/tenants/
 
+# VPS self-improvement proposal staging + ingest ledger (maintainer-local)
+.magent/vps-proposals/
+
 # Temp files
 *.tmp
 *.bak
