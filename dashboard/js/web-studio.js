@@ -8,9 +8,17 @@
 
 const wsState = {
   sites: [], limit: 1, used: 0,
-  currentId: null, files: [], currentFile: null,
-  editor: null, dirty: false, wired: false,
+  currentId: null, currentSite: null, files: [], currentFile: null,
+  editor: null, dirty: false, wired: false, aiEditing: false,
   _monacoConfigured: false, _monacoTries: 0,
+};
+
+const WS_PUBLISH_PHASES = {
+  build: 'Building the site…',
+  deploy: 'Deploying files…',
+  vhost: 'Configuring the web server…',
+  cert: 'Requesting the TLS certificate…',
+  tls: 'Enabling HTTPS…',
 };
 
 const WS_MONACO_VS = 'https://cdn.jsdelivr.net/npm/monaco-editor@0.52.2/min/vs';
@@ -27,6 +35,9 @@ function loadWebStudio() {
     on('wsAiEditBtn', 'click', wsAiEdit);
     on('wsRefreshPreview', 'click', wsRefreshPreview);
     on('wsFileList', 'change', (e) => wsLoadFile(e.target.value));
+    on('wsDnsCheckBtn', 'click', wsDnsCheck);
+    on('wsPublishBtn', 'click', wsPublish);
+    on('wsUnpublishBtn', 'click', wsUnpublish);
   }
   if (!wsState.currentId) {
     const em = document.getElementById('wsEditorMode'); if (em) em.style.display = 'none';
@@ -101,12 +112,14 @@ async function wsOpen(id) {
   const site = wsState.sites.find((s) => s.id === id);
   if (!site) return;
   wsState.currentId = id;
+  wsState.currentSite = site;
   wsState.currentFile = null;
   document.getElementById('wsListMode').style.display = 'none';
   document.getElementById('wsEditorMode').style.display = 'block';
   document.getElementById('wsEditorTitle').textContent = site.name;
   wsSetEditorStatus(site.status);
   wsHint('');
+  wsRenderPublishState(site);
   wsRefreshPreview();
   await wsReloadFiles(true);
 }
@@ -163,9 +176,10 @@ async function wsAiEdit() {
   const ta = document.getElementById('wsAiInstruction');
   const instruction = (ta.value || '').trim();
   if (instruction.length < 4) { wsHint('Describe the change first.'); return; }
+  wsState.aiEditing = true;
   wsSetEditorStatus('building'); wsHint('AI is regenerating the site with your change…');
   const r = await fetchJSON(`/api/web-studio/sites/${wsState.currentId}/ai-edit`, { method: 'POST', body: { instruction } });
-  if (r && r.error) { wsHint(`AI edit failed: ${r.error}`); return; }
+  if (r && r.error) { wsState.aiEditing = false; wsHint(`AI edit failed: ${r.error}`); return; }
   ta.value = '';
   // the web_studio_site WS event flips status; we refresh preview + files when it reports ready
 }
@@ -191,18 +205,84 @@ function wsSetEditorStatus(status) {
 }
 function wsHint(t) { const el = document.getElementById('wsEditorHint'); if (el) el.textContent = t || ''; }
 
+// ---------- publish / custom domain ----------
+function wsPublishHint(t) { const el = document.getElementById('wsPublishHint'); if (el) el.textContent = t || ''; }
+
+function wsRenderPublishState(site) {
+  const dom = document.getElementById('wsDomain');
+  const unpub = document.getElementById('wsUnpublishBtn');
+  const link = document.getElementById('wsLiveLink');
+  const pub = document.getElementById('wsPublishBtn');
+  if (!dom) return;
+  if (site.domain && document.activeElement !== dom) dom.value = site.domain;
+  const isPub = !!(site.published && site.url);
+  if (unpub) unpub.style.display = isPub ? '' : 'none';
+  if (link) {
+    if (isPub) { link.style.display = ''; link.href = site.url; link.textContent = `Open ${site.domain} ↗`; }
+    else { link.style.display = 'none'; }
+  }
+  if (pub) pub.textContent = isPub ? 'Re-publish' : 'Publish with TLS';
+  if (isPub) wsPublishHint(`Live at ${site.url}`);
+  else if (site.status === 'publish_failed') wsPublishHint('Publish failed: ' + (site.publishError || 'see server logs.'));
+}
+
+async function wsDnsCheck() {
+  const domain = (document.getElementById('wsDomain').value || '').trim();
+  if (!domain) { wsPublishHint('Enter a domain first.'); return; }
+  wsPublishHint('Checking DNS…');
+  const r = await fetchJSON(`/api/web-studio/sites/${wsState.currentId}/dns-check?domain=${encodeURIComponent(domain)}`);
+  if (r && r.error) { wsPublishHint('DNS check: ' + r.error); return; }
+  if (r && r.ok) {
+    wsPublishHint('DNS OK' + (r.warning ? ' — ' + r.warning : (r.found && r.found.length ? ` — ${domain} → ${r.found.join(', ')}` : '')));
+  } else {
+    wsPublishHint('DNS not ready: ' + ((r && r.reason) || 'the domain does not point here yet.'));
+  }
+}
+
+async function wsPublish() {
+  const domain = (document.getElementById('wsDomain').value || '').trim();
+  if (!domain) { wsPublishHint('Enter a domain to publish to.'); return; }
+  if (!window.confirm(`Publish this site to ${domain} with HTTPS?\n\nMake sure ${domain}'s DNS A record already points to this server.`)) return;
+  wsPublishHint('Starting publish…');
+  const r = await fetchJSON(`/api/web-studio/sites/${wsState.currentId}/publish`, { method: 'POST', body: { domain } });
+  if (r && r.error) { wsPublishHint('Cannot publish: ' + r.error); return; }
+  wsPublishHint('Publishing — building, deploying and issuing TLS… this can take a minute or two.');
+}
+
+async function wsUnpublish() {
+  if (!window.confirm('Take this site offline? The TLS certificate is kept so re-publishing is fast.')) return;
+  wsPublishHint('Unpublishing…');
+  const r = await fetchJSON(`/api/web-studio/sites/${wsState.currentId}/unpublish`, { method: 'POST', body: {} });
+  if (r && r.error) { wsPublishHint('Unpublish failed: ' + r.error); return; }
+  wsPublishHint('Taken offline.');
+}
+
 // ---------- live updates from the server ----------
 function onWebStudioEvent(msg) {
+  const ev = msg && msg.event;
   const d = (msg && msg.data) || {};
   const id = d.id || d.siteId;
   const view = document.getElementById('view-web-studio');
   if (!view || !view.classList.contains('active')) return;
   const inEditor = document.getElementById('wsEditorMode').style.display !== 'none';
+
+  if (ev === 'web_studio_publish') {
+    if (inEditor && id === wsState.currentId) wsPublishHint(WS_PUBLISH_PHASES[d.phase] || `${d.phase}…`);
+    return;
+  }
+
   if (inEditor && id && id === wsState.currentId) {
     if (d.status) wsSetEditorStatus(d.status);
     if (d.phase) wsHint(`Pipeline: ${d.phase}…`);
-    if (d.status === 'ready' || d.status === 'gated') { wsHint('Updated.'); wsRefreshPreview(); wsReloadFiles(false); }
+    if (d.status === 'ready' || d.status === 'gated') {
+      wsRefreshPreview();
+      // Only reload source files when an AI edit rewrote them — never clobber unsaved edits
+      // on a plain build/publish completion.
+      if (wsState.aiEditing) { wsState.aiEditing = false; wsHint('Updated by AI.'); wsReloadFiles(false); }
+    }
     if (d.status === 'failed' || d.status === 'build_failed') wsHint('Build failed.');
+    // web_studio_site carries the full site object (has d.id) — reflect publish-state changes live.
+    if (d.id === wsState.currentId) { wsState.currentSite = d; wsRenderPublishState(d); }
   } else if (!inEditor) {
     wsFetchAndRenderSites();
   }

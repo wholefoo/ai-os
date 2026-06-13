@@ -970,9 +970,12 @@ function persistAllState() {
 const webStudioBuild = require('./lib/web-studio/build');
 const webStudioPipeline = require('./lib/web-studio/pipeline');
 const webStudioHosting = require('./lib/web-studio/hosting');
+const webStudioPublish = require('./lib/web-studio/publish');
+const webStudioDns = require('./lib/web-studio/dns');
 
 const webStudioSites = loadState('web_studio_sites', []); // [{id,name,brief,status,domain,createdAt,...}]
 const WS_ROOT = path.join(MAGENT_DIR, 'artifacts', 'web-studio');
+const WS_SITES_ROOT = path.join(BASE, 'sites'); // nginx serves <WS_SITES_ROOT>/<domain>/current
 const wsWorkspaceDir = (id) => path.join(WS_ROOT, id);
 
 // Tier site limit (the AI OS instance's OWN domain is the control plane — never a
@@ -1042,7 +1045,10 @@ app.delete('/api/web-studio/sites/:id', requireAdmin, async (req, res) => {
   const idx = webStudioSites.findIndex(s => s.id === req.params.id);
   if (idx < 0) return res.status(404).json({ error: 'Site not found' });
   const site = webStudioSites[idx];
-  if (site.domain) { try { await webStudioHosting.removeSite(site.domain, { dropCert: true }); } catch (e) { appendLog(`web-studio: vhost teardown failed for ${site.domain}: ${e.message}`); } }
+  if (site.domain) {
+    try { await webStudioHosting.removeSite(site.domain, { dropCert: true }); } catch (e) { appendLog(`web-studio: vhost teardown failed for ${site.domain}: ${e.message}`); }
+    try { webStudioPublish.removeSiteRoot(WS_SITES_ROOT, site.domain); } catch {}
+  }
   try { fs.rmSync(wsWorkspaceDir(site.id), { recursive: true, force: true }); } catch {}
   webStudioSites.splice(idx, 1);
   saveState('web_studio_sites', webStudioSites);
@@ -1115,6 +1121,87 @@ app.post('/api/web-studio/sites/:id/build', requireAdmin, async (req, res) => {
   saveState('web_studio_sites', webStudioSites);
   broadcast({ event: 'web_studio_site', data: site });
   res.json({ ok: result.ok, status: site.status, log: result.log });
+});
+
+// --- DNS pre-check for a custom domain (fast; the UI calls this before publishing) ---
+app.get('/api/web-studio/sites/:id/dns-check', requireAdmin, async (req, res) => {
+  const site = wsFindSite(req, res); if (!site) return;
+  let domain;
+  try { domain = webStudioHosting.normalizeDomain(req.query.domain); }
+  catch (e) { return res.status(400).json({ error: e.message }); }
+  try { res.json(await webStudioDns.checkDomainDns(domain)); }
+  catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// --- Publish a site to a custom domain with TLS (async; progress streamed over WS) ---
+app.post('/api/web-studio/sites/:id/publish', requireAdmin, async (req, res) => {
+  const site = wsFindSite(req, res); if (!site) return;
+  let domain;
+  try { domain = webStudioHosting.normalizeDomain((req.body || {}).domain); }
+  catch (e) { return res.status(400).json({ error: e.message }); }
+
+  // Collision guards: never the control-plane domain, never one another site already serves.
+  const primary = (process.env.AIOS_PRIMARY_DOMAIN || '').trim().toLowerCase();
+  if (primary && domain === primary) return res.status(400).json({ error: 'that domain hosts the AI OS control plane and cannot be used for a site' });
+  const claimed = webStudioSites.find(s => s.id !== site.id && s.domain === domain && s.published);
+  if (claimed) return res.status(409).json({ error: `domain already in use by site "${claimed.name}"` });
+
+  // Mandatory DNS pre-check — never start certbot against a domain that isn't pointed here.
+  let dns;
+  try { dns = await webStudioDns.checkDomainDns(domain); }
+  catch (e) { return res.status(500).json({ error: `DNS check failed: ${e.message}` }); }
+  if (!dns.ok) return res.status(400).json({ error: dns.reason, dns });
+
+  res.json({ ok: true, status: 'publishing', domain, dns });
+
+  // Background: build-if-needed -> deploy release -> HTTP vhost -> cert -> HTTPS vhost.
+  (async () => {
+    const emit = (phase, extra = {}) => broadcast({ event: 'web_studio_publish', data: { siteId: site.id, phase, ...extra } });
+    site.status = 'publishing'; broadcast({ event: 'web_studio_site', data: site });
+    try {
+      const ws = wsWorkspaceDir(site.id);
+      const distDir = path.join(ws, 'dist');
+      if (!fs.existsSync(path.join(distDir, 'index.html'))) {
+        emit('build');
+        const b = await webStudioBuild.runBuild(ws);
+        if (!b.ok) throw new Error('build failed before publish');
+      }
+      emit('deploy');
+      webStudioPublish.deployRelease(distDir, WS_SITES_ROOT, domain);
+      emit('vhost');
+      await webStudioHosting.createVhost(domain, { tls: false });
+      emit('cert');
+      await webStudioHosting.issueCert(domain);
+      emit('tls');
+      await webStudioHosting.createVhost(domain, { tls: true });
+
+      site.domain = domain;
+      site.published = true;
+      site.url = `https://${domain}`;
+      site.publishedAt = new Date().toISOString();
+      site.status = 'ready';
+      delete site.publishError;
+    } catch (e) {
+      site.status = 'publish_failed';
+      site.publishError = e.message;
+      appendLog(`web-studio: publish failed for ${domain}: ${e.message}`);
+    }
+    saveState('web_studio_sites', webStudioSites);
+    broadcast({ event: 'web_studio_site', data: site });
+  })();
+});
+
+// --- Unpublish: pull the vhost (keep the cert + release for a fast re-publish) ---
+app.post('/api/web-studio/sites/:id/unpublish', requireAdmin, async (req, res) => {
+  const site = wsFindSite(req, res); if (!site) return;
+  if (!site.domain) return res.status(400).json({ error: 'site is not published' });
+  try { await webStudioHosting.removeSite(site.domain, { dropCert: false }); }
+  catch (e) { return res.status(500).json({ error: e.message }); }
+  site.published = false;
+  site.status = 'ready';
+  saveState('web_studio_sites', webStudioSites);
+  broadcast({ event: 'web_studio_site', data: site });
+  res.json({ ok: true });
 });
 
 // --- Serve the built preview (static dist) for the in-dashboard iframe ---
