@@ -55,6 +55,7 @@ function switchView(view) {
     agents: loadAgents,
     skills: loadSkills,
     workflows: loadWorkflows,
+    'web-studio': loadWebStudio,
     mission: loadMission,
     inbox: loadInbox,
     timeline: loadTimeline,
@@ -159,6 +160,10 @@ function hideReconnectBanner() {
 
 function handleWsMessage(msg) {
   switch (msg.event) {
+    case 'web_studio_site':
+    case 'web_studio_build':
+      if (typeof onWebStudioEvent === 'function') onWebStudioEvent(msg);
+      break;
     case 'connected':
       state.health = msg.data.health;
       updateStats();
