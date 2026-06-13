@@ -1012,7 +1012,23 @@ function parseFrontmatter(text) {
 }
 
 function broadcast(data) {
-  const msg = JSON.stringify(data);
+  let msg;
+  try {
+    msg = JSON.stringify(data);
+  } catch (e) {
+    // Defensive: a non-serializable value (e.g. a live timer / cron handle) slipped into
+    // the payload. Drop circular refs rather than letting the whole broadcast throw and
+    // abort the caller (this is what bit the schedule_update broadcasts via sched._job).
+    const seen = new WeakSet();
+    msg = JSON.stringify(data, (_k, v) => {
+      if (v && typeof v === 'object') {
+        if (seen.has(v)) return undefined;
+        seen.add(v);
+      }
+      return v;
+    });
+    console.warn(`[broadcast] dropped circular refs from payload: ${e.message}`);
+  }
   wss.clients.forEach(c => { if (c.readyState === 1) c.send(msg); });
 }
 
@@ -2404,7 +2420,7 @@ function runScheduledAgent(scheduleId) {
   appendLog(`SCHEDULE_RUN: ${sched.agent} (${sched.skill}) [${scheduleId}]`);
 
   broadcast({ event: 'fleet_update', data: { agent: sched.agent, status: 'running' } });
-  broadcast({ event: 'schedule_update', data: sched });
+  broadcast({ event: 'schedule_update', data: { ...sched, _job: undefined } });
 
   // Simulate agent execution (in production, this would invoke Claude Code CLI or Codex)
   setTimeout(() => {
@@ -2414,7 +2430,7 @@ function runScheduledAgent(scheduleId) {
     runEntry.completedAt = new Date().toISOString();
 
     broadcast({ event: 'fleet_update', data: { agent: sched.agent, status: 'idle' } });
-    broadcast({ event: 'schedule_update', data: sched });
+    broadcast({ event: 'schedule_update', data: { ...sched, _job: undefined } });
 
     logActivity('schedule', `Scheduled run completed: ${sched.agent} → ${sched.skill}`);
 
