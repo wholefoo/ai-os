@@ -955,7 +955,179 @@ function persistAllState() {
   saveState('predictive_analytics', predictiveAnalytics);
   saveState('batch_queue', batchQueue);
   saveState('pending_approvals', pendingApprovals);
+  saveState('web_studio_sites', webStudioSites);
 }
+
+// ============================================================
+// AI Web Studio — core API (open-core base)
+// ------------------------------------------------------------
+// The single-site base (create/edit/build/preview) lives HERE in core so Community
+// gets its 1 site without loading any commercial module. The web-studio commercial
+// module (Business+) adds import, multi-domain, blocking gate, etc.
+// Hoisted fns (executeAgent/broadcast/loadState/saveState/appendLog) are callable here
+// even though some are declared lower in the file — registration runs at load, calls at request.
+// ============================================================
+const webStudioBuild = require('./lib/web-studio/build');
+const webStudioPipeline = require('./lib/web-studio/pipeline');
+const webStudioHosting = require('./lib/web-studio/hosting');
+
+const webStudioSites = loadState('web_studio_sites', []); // [{id,name,brief,status,domain,createdAt,...}]
+const WS_ROOT = path.join(MAGENT_DIR, 'artifacts', 'web-studio');
+const wsWorkspaceDir = (id) => path.join(WS_ROOT, id);
+
+// Tier site limit (the AI OS instance's OWN domain is the control plane — never a
+// web-studio site, so it is never counted here). Read from the commercial resolver.
+const wsSiteLimit = () => (commercial.limits && commercial.limits.sites != null) ? commercial.limits.sites : 1;
+const wsActiveCount = () => webStudioSites.filter(s => s.status !== 'failed' && s.status !== 'deleted').length;
+
+// Path-guard: resolve a relative path INSIDE a site's workspace, rejecting traversal,
+// absolute paths, dotfiles, and node_modules/dist (only src/ + public/ are editable).
+function wsResolveFile(id, rel) {
+  const base = wsWorkspaceDir(id);
+  const target = path.resolve(base, String(rel || ''));
+  if (target !== base && !target.startsWith(base + path.sep)) return null;
+  const within = path.relative(base, target);
+  if (/(^|[\\/])(node_modules|dist|\.astro)([\\/]|$)/.test(within)) return null;
+  if (within.split(/[\\/]/).some(seg => seg.startsWith('.'))) return null;
+  return target;
+}
+
+function wsFindSite(req, res) {
+  const site = webStudioSites.find(s => s.id === req.params.id);
+  if (!site) { res.status(404).json({ error: 'Site not found' }); return null; }
+  return site;
+}
+
+// --- List sites (+ tier limit for the UI badge) ---
+app.get('/api/web-studio/sites', requireAdmin, (req, res) => {
+  res.json({ sites: webStudioSites, limit: wsSiteLimit(), used: wsActiveCount() });
+});
+
+// --- Create from a brief (tier-limit gated; pipeline runs async) ---
+app.post('/api/web-studio/sites', requireAdmin, async (req, res) => {
+  const { name, brief } = req.body || {};
+  if (!brief || String(brief).trim().length < 10) return res.status(400).json({ error: 'A brief of at least 10 characters is required' });
+  const limit = wsSiteLimit();
+  if (wsActiveCount() >= limit) return res.status(403).json({ error: `Site limit reached for your plan (${limit}). Upgrade for more sites.`, limit });
+
+  const id = uuidv4();
+  const site = { id, name: String(name || 'Untitled site').slice(0, 80), brief: String(brief).slice(0, 4000), status: 'building', domain: null, createdAt: new Date().toISOString(), lastBuiltAt: null, pages: [] };
+  webStudioSites.push(site);
+  saveState('web_studio_sites', webStudioSites);
+  logActivity('web-studio', `Site build started: ${site.name}`, { id });
+  res.json({ ok: true, site }); // respond now; build continues in the background
+
+  try {
+    const result = await webStudioPipeline.createSiteFromBrief(
+      { siteId: id, workspaceDir: wsWorkspaceDir(id), brief: site.brief },
+      { executeAgent, broadcast, log: appendLog }
+    );
+    site.status = result.ok ? result.status : 'failed';
+    site.lastBuiltAt = new Date().toISOString();
+    site.pages = result.pages || [];
+    if (!result.ok) site.error = result.error;
+  } catch (e) { site.status = 'failed'; site.error = e.message; }
+  saveState('web_studio_sites', webStudioSites);
+  broadcast({ event: 'web_studio_site', data: site });
+});
+
+// --- Get one ---
+app.get('/api/web-studio/sites/:id', requireAdmin, (req, res) => {
+  const site = wsFindSite(req, res); if (!site) return;
+  res.json(site);
+});
+
+// --- Delete (+ best-effort hosting teardown) ---
+app.delete('/api/web-studio/sites/:id', requireAdmin, async (req, res) => {
+  const idx = webStudioSites.findIndex(s => s.id === req.params.id);
+  if (idx < 0) return res.status(404).json({ error: 'Site not found' });
+  const site = webStudioSites[idx];
+  if (site.domain) { try { await webStudioHosting.removeSite(site.domain, { dropCert: true }); } catch (e) { appendLog(`web-studio: vhost teardown failed for ${site.domain}: ${e.message}`); } }
+  try { fs.rmSync(wsWorkspaceDir(site.id), { recursive: true, force: true }); } catch {}
+  webStudioSites.splice(idx, 1);
+  saveState('web_studio_sites', webStudioSites);
+  res.json({ ok: true });
+});
+
+// --- Editor: list source files (src/ + public/) ---
+app.get('/api/web-studio/sites/:id/files', requireAdmin, (req, res) => {
+  const site = wsFindSite(req, res); if (!site) return;
+  const base = wsWorkspaceDir(site.id);
+  const out = [];
+  for (const dir of ['src', 'public']) {
+    const root = path.join(base, dir);
+    if (!fs.existsSync(root)) continue;
+    const walk = (d) => { for (const e of fs.readdirSync(d, { withFileTypes: true })) {
+      const full = path.join(d, e.name);
+      if (e.isDirectory()) walk(full); else out.push(path.relative(base, full).replace(/\\/g, '/'));
+    } };
+    walk(root);
+  }
+  res.json({ files: out.sort() });
+});
+
+// --- Editor: read a file ---
+app.get('/api/web-studio/sites/:id/file', requireAdmin, (req, res) => {
+  if (!wsFindSite(req, res)) return;
+  const target = wsResolveFile(req.params.id, req.query.path);
+  if (!target || !fs.existsSync(target) || fs.statSync(target).isDirectory()) return res.status(404).json({ error: 'File not found or not allowed' });
+  res.json({ path: req.query.path, content: fs.readFileSync(target, 'utf-8') });
+});
+
+// --- Editor: write a file (Monaco save) — path-guarded ---
+app.put('/api/web-studio/sites/:id/file', requireAdmin, (req, res) => {
+  if (!wsFindSite(req, res)) return;
+  const target = wsResolveFile(req.params.id, (req.body || {}).path);
+  if (!target) return res.status(400).json({ error: 'Path not allowed' });
+  fs.mkdirSync(path.dirname(target), { recursive: true });
+  fs.writeFileSync(target, String((req.body || {}).content == null ? '' : req.body.content), 'utf-8');
+  res.json({ ok: true });
+});
+
+// --- AI natural-language edit: regenerate the site incorporating the change.
+//     (Coarse MVP — overwrites the workspace; surgical per-file edits are Phase 1.
+//     The Monaco editor is the precise-edit path between regenerations.) ---
+app.post('/api/web-studio/sites/:id/ai-edit', requireAdmin, async (req, res) => {
+  const site = wsFindSite(req, res); if (!site) return;
+  const instruction = String((req.body || {}).instruction || '').slice(0, 2000);
+  if (!instruction) return res.status(400).json({ error: 'instruction required' });
+  site.status = 'building'; broadcast({ event: 'web_studio_site', data: site });
+  res.json({ ok: true, note: 'Regenerating with your change' });
+  try {
+    const brief = `${site.brief}\n\nADDITIONAL CHANGE REQUESTED: ${instruction}`;
+    const result = await webStudioPipeline.createSiteFromBrief({ siteId: site.id, workspaceDir: wsWorkspaceDir(site.id), brief }, { executeAgent, broadcast, log: appendLog });
+    site.status = result.ok ? result.status : 'failed';
+    site.lastBuiltAt = new Date().toISOString();
+    if (!result.ok) site.error = result.error;
+  } catch (e) { site.status = 'failed'; site.error = e.message; }
+  saveState('web_studio_sites', webStudioSites);
+  broadcast({ event: 'web_studio_site', data: site });
+});
+
+// --- Rebuild from current workspace source (after Monaco edits) ---
+app.post('/api/web-studio/sites/:id/build', requireAdmin, async (req, res) => {
+  const site = wsFindSite(req, res); if (!site) return;
+  site.status = 'building'; broadcast({ event: 'web_studio_site', data: site });
+  const result = await webStudioBuild.runBuild(wsWorkspaceDir(site.id));
+  site.status = result.ok ? 'ready' : 'build_failed';
+  site.lastBuiltAt = new Date().toISOString();
+  if (!result.ok) site.error = result.error; else delete site.error;
+  saveState('web_studio_sites', webStudioSites);
+  broadcast({ event: 'web_studio_site', data: site });
+  res.json({ ok: result.ok, status: site.status, log: result.log });
+});
+
+// --- Serve the built preview (static dist) for the in-dashboard iframe ---
+app.get('/api/web-studio/sites/:id/preview/*', requireAdmin, (req, res) => {
+  const site = webStudioSites.find(s => s.id === req.params.id);
+  if (!site) return res.status(404).send('Not found');
+  const dist = path.join(wsWorkspaceDir(site.id), 'dist');
+  let target = path.resolve(dist, req.params[0] || 'index.html');
+  if (target !== dist && !target.startsWith(dist + path.sep)) return res.status(400).send('bad path');
+  if (fs.existsSync(target) && fs.statSync(target).isDirectory()) target = path.join(target, 'index.html');
+  if (!fs.existsSync(target)) { const idx = path.join(dist, 'index.html'); if (!fs.existsSync(idx)) return res.status(404).send('Not built yet'); target = idx; }
+  res.sendFile(target);
+});
 
 // Debounced auto-save: saves state 2s after last mutation
 let autoSaveTimer = null;
