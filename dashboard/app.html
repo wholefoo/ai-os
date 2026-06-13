@@ -1148,6 +1148,18 @@
                 <iframe class="ws-preview-frame" id="wsPreview" sandbox="allow-same-origin"></iframe>
               </section>
             </div>
+
+            <section class="panel" id="wsPublishPanel" style="margin-top:12px;">
+              <h3 class="panel-title">Publish to a custom domain</h3>
+              <div class="ws-row">
+                <input type="text" class="settings-input" id="wsDomain" placeholder="yourdomain.com" style="max-width:280px;" />
+                <button class="btn" id="wsDnsCheckBtn">Check DNS</button>
+                <button class="btn btn-primary" id="wsPublishBtn">Publish with TLS</button>
+                <button class="btn" id="wsUnpublishBtn" style="display:none;">Unpublish</button>
+                <a class="btn" id="wsLiveLink" href="#" target="_blank" rel="noopener" style="display:none;">Open live site &#8599;</a>
+              </div>
+              <div class="ws-hint" id="wsPublishHint" style="margin-top:8px;">Point your domain's DNS A record at this server, click Check DNS, then Publish. TLS is issued automatically.</div>
+            </section>
           </div>
         </div>
 
@@ -2040,8 +2052,8 @@
     </div>
   </div>
 
-  <script src="js/app.js?v=33"></script>
+  <script src="js/app.js?v=34"></script>
   <script src="https://cdn.jsdelivr.net/npm/monaco-editor@0.52.2/min/vs/loader.js"></script>
-  <script src="js/web-studio.js?v=1"></script>
+  <script src="js/web-studio.js?v=2"></script>
 </body>
 </html>

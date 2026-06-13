@@ -162,6 +162,7 @@ function handleWsMessage(msg) {
   switch (msg.event) {
     case 'web_studio_site':
     case 'web_studio_build':
+    case 'web_studio_publish':
       if (typeof onWebStudioEvent === 'function') onWebStudioEvent(msg);
       break;
     case 'connected':
