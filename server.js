@@ -1053,7 +1053,7 @@ app.post('/api/web-studio/sites', requireAdmin, async (req, res) => {
 
   try {
     const result = await webStudioPipeline.createSiteFromBrief(
-      { siteId: id, workspaceDir: wsWorkspaceDir(id), brief: wsBriefWithType(site) },
+      { siteId: id, workspaceDir: wsWorkspaceDir(id), brief: wsBriefWithType(site), domain: site.domain, siteName: site.name },
       { executeAgent, broadcast, log: appendLog }
     );
     site.status = result.ok ? result.status : 'failed';
@@ -1134,7 +1134,7 @@ app.post('/api/web-studio/sites/:id/ai-edit', requireAdmin, async (req, res) => 
   res.json({ ok: true, note: 'Regenerating with your change' });
   try {
     const brief = `${wsBriefWithType(site)}\n\nADDITIONAL CHANGE REQUESTED: ${instruction}`;
-    const result = await webStudioPipeline.createSiteFromBrief({ siteId: site.id, workspaceDir: wsWorkspaceDir(site.id), brief }, { executeAgent, broadcast, log: appendLog });
+    const result = await webStudioPipeline.createSiteFromBrief({ siteId: site.id, workspaceDir: wsWorkspaceDir(site.id), brief, domain: site.domain, siteName: site.name }, { executeAgent, broadcast, log: appendLog });
     site.status = result.ok ? result.status : 'failed';
     site.lastBuiltAt = new Date().toISOString();
     if (!result.ok) site.error = result.error;
