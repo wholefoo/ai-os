@@ -392,6 +392,14 @@ if [ -n "${LE_EMAIL:-}" ]; then
   chmod 644 /etc/aios/acme-email
 fi
 
+# Reload nginx after ANY cert renewal. We issue certs with `certbot certonly` (webroot),
+# which does NOT reload the web server on renewal — so without this hook a renewed cert
+# isn't actually served until a manual reload. This global deploy hook fires after every
+# successful renewal and covers every hosted site's cert.
+mkdir -p /etc/letsencrypt/renewal-hooks/deploy
+printf '#!/bin/sh\nsystemctl reload nginx\n' > /etc/letsencrypt/renewal-hooks/deploy/reload-nginx.sh
+chmod 755 /etc/letsencrypt/renewal-hooks/deploy/reload-nginx.sh
+
 # Install the THREE privilege-boundary scripts ROOT-OWNED at /usr/local/sbin.
 # SECURITY INVARIANT: they MUST stay root:root 755 (NOT aios-writable) — otherwise
 # the sudoers grant below becomes a root escalation. `install` enforces owner/mode.
