@@ -36,6 +36,7 @@ function loadWebStudio() {
     on('wsRefreshPreview', 'click', wsRefreshPreview);
     on('wsFileList', 'change', (e) => wsLoadFile(e.target.value));
     on('wsDnsCheckBtn', 'click', wsDnsCheck);
+    on('wsSetupHostingBtn', 'click', wsSetupHosting);
     on('wsPublishBtn', 'click', wsPublish);
     on('wsUnpublishBtn', 'click', wsUnpublish);
   }
@@ -88,15 +89,18 @@ function wsRenderSites(data) {
 async function wsCreate() {
   const name = (document.getElementById('wsName').value || '').trim();
   const brief = (document.getElementById('wsBrief').value || '').trim();
+  const siteType = (document.getElementById('wsType') || {}).value || '';
+  const domain = ((document.getElementById('wsCreateDomain') || {}).value || '').trim();
   const hint = document.getElementById('wsCreateHint');
   if (brief.length < 10) { if (hint) hint.textContent = 'Add a longer brief (at least 10 characters).'; return; }
   const btn = document.getElementById('wsCreateBtn');
   if (btn) btn.disabled = true;
   if (hint) hint.textContent = 'Generating — the studio team is planning, writing and building your site…';
-  const r = await fetchJSON('/api/web-studio/sites', { method: 'POST', body: { name, brief } });
+  const r = await fetchJSON('/api/web-studio/sites', { method: 'POST', body: { name, brief, siteType, domain } });
   if (r && r.error) { if (hint) hint.textContent = `Could not create: ${r.error}`; if (btn) btn.disabled = false; return; }
   document.getElementById('wsName').value = '';
   document.getElementById('wsBrief').value = '';
+  if (document.getElementById('wsCreateDomain')) document.getElementById('wsCreateDomain').value = '';
   await wsFetchAndRenderSites(); // shows the new "building" site; WS events flip its status
 }
 
@@ -212,18 +216,34 @@ function wsRenderPublishState(site) {
   const dom = document.getElementById('wsDomain');
   const unpub = document.getElementById('wsUnpublishBtn');
   const link = document.getElementById('wsLiveLink');
+  const httpLink = document.getElementById('wsHttpLink');
   const pub = document.getElementById('wsPublishBtn');
   if (!dom) return;
   if (site.domain && document.activeElement !== dom) dom.value = site.domain;
   const isPub = !!(site.published && site.url);
+  const isHosted = !!(site.hostingSetup && site.domain);
   if (unpub) unpub.style.display = isPub ? '' : 'none';
   if (link) {
     if (isPub) { link.style.display = ''; link.href = site.url; link.textContent = `Open ${site.domain} ↗`; }
     else { link.style.display = 'none'; }
   }
+  if (httpLink) {
+    if (isHosted && !isPub) { httpLink.style.display = ''; httpLink.href = `http://${site.domain}`; httpLink.textContent = `Open http://${site.domain} ↗`; }
+    else { httpLink.style.display = 'none'; }
+  }
   if (pub) pub.textContent = isPub ? 'Re-publish' : 'Publish with TLS';
-  if (isPub) wsPublishHint(`Live at ${site.url}`);
+  if (isPub) wsPublishHint(`Live (HTTPS) at ${site.url}`);
+  else if (isHosted) wsPublishHint(`HTTP hosting live at http://${site.domain}. Publish to add HTTPS.`);
   else if (site.status === 'publish_failed') wsPublishHint('Publish failed: ' + (site.publishError || 'see server logs.'));
+}
+
+async function wsSetupHosting() {
+  const domain = (document.getElementById('wsDomain').value || '').trim();
+  if (!domain) { wsPublishHint('Enter a domain first.'); return; }
+  wsPublishHint('Setting up HTTP hosting…');
+  const r = await fetchJSON(`/api/web-studio/sites/${wsState.currentId}/domain`, { method: 'POST', body: { domain } });
+  if (r && r.error) { wsPublishHint('Hosting setup failed: ' + r.error); return; }
+  wsPublishHint(r.served ? `Live over HTTP at http://${domain}` : `nginx configured for ${domain} — build to serve content (404 until then).`);
 }
 
 async function wsDnsCheck() {

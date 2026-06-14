@@ -983,6 +983,30 @@ const wsWorkspaceDir = (id) => path.join(WS_ROOT, id);
 const wsSiteLimit = () => (commercial.limits && commercial.limits.sites != null) ? commercial.limits.sites : 1;
 const wsActiveCount = () => webStudioSites.filter(s => s.status !== 'failed' && s.status !== 'deleted').length;
 
+// Site-type dropdown allowlist + brief flavoring (the type steers the generation plan).
+const WS_SITE_TYPES = ['Landing Page', 'Business', 'Portfolio', 'Blog', 'E-commerce', 'SaaS Product', 'Restaurant / Local', 'Event', 'Personal', 'Documentation'];
+const wsCleanType = (t) => { const s = String(t || '').trim(); return WS_SITE_TYPES.includes(s) ? s : ''; };
+const wsBriefWithType = (site) => site.siteType ? `Website type: ${site.siteType}.\n\n${site.brief}` : site.brief;
+
+// Write the HTTP nginx vhost for a domain NOW (TLS comes later at Publish), deploying the
+// current build if there is one so the domain serves over HTTP immediately. Throws with a
+// .code (DOMAIN_RESERVED / DOMAIN_CLAIMED) so callers can map a status code.
+async function wsSetupHosting(site, domainInput) {
+  const domain = webStudioHosting.normalizeDomain(domainInput);
+  const primary = (process.env.AIOS_PRIMARY_DOMAIN || '').trim().toLowerCase();
+  if (primary && domain === primary) { const e = new Error('that domain hosts the AI OS control plane and cannot be used for a site'); e.code = 'DOMAIN_RESERVED'; throw e; }
+  const claimed = webStudioSites.find(s => s.id !== site.id && s.domain === domain && (s.published || s.hostingSetup));
+  if (claimed) { const e = new Error(`domain already in use by site "${claimed.name}"`); e.code = 'DOMAIN_CLAIMED'; throw e; }
+  await webStudioHosting.createVhost(domain, { tls: false });
+  const distDir = path.join(wsWorkspaceDir(site.id), 'dist');
+  let served = false;
+  if (fs.existsSync(path.join(distDir, 'index.html'))) { webStudioPublish.deployRelease(distDir, WS_SITES_ROOT, domain); served = true; }
+  site.domain = domain; site.hostingSetup = true; site.httpUrl = `http://${domain}`;
+  saveState('web_studio_sites', webStudioSites);
+  broadcast({ event: 'web_studio_site', data: site });
+  return { domain, served, httpUrl: site.httpUrl };
+}
+
 // Path-guard: resolve a relative path INSIDE a site's workspace, rejecting traversal,
 // absolute paths, dotfiles, and node_modules/dist (only src/ + public/ are editable).
 function wsResolveFile(id, rel) {
@@ -1008,13 +1032,20 @@ app.get('/api/web-studio/sites', requireAdmin, (req, res) => {
 
 // --- Create from a brief (tier-limit gated; pipeline runs async) ---
 app.post('/api/web-studio/sites', requireAdmin, async (req, res) => {
-  const { name, brief } = req.body || {};
+  const { name, brief, siteType, domain } = req.body || {};
   if (!brief || String(brief).trim().length < 10) return res.status(400).json({ error: 'A brief of at least 10 characters is required' });
   const limit = wsSiteLimit();
   if (wsActiveCount() >= limit) return res.status(403).json({ error: `Site limit reached for your plan (${limit}). Upgrade for more sites.`, limit });
 
+  // Optional domain up front — validate now so a bad one fails fast; hosting is wired after the build.
+  let cfgDomain = null;
+  if (domain != null && String(domain).trim() !== '') {
+    try { cfgDomain = webStudioHosting.normalizeDomain(domain); }
+    catch (e) { return res.status(400).json({ error: e.message }); }
+  }
+
   const id = uuidv4();
-  const site = { id, name: String(name || 'Untitled site').slice(0, 80), brief: String(brief).slice(0, 4000), status: 'building', domain: null, createdAt: new Date().toISOString(), lastBuiltAt: null, pages: [] };
+  const site = { id, name: String(name || 'Untitled site').slice(0, 80), brief: String(brief).slice(0, 4000), siteType: wsCleanType(siteType), status: 'building', domain: cfgDomain, hostingSetup: false, published: false, createdAt: new Date().toISOString(), lastBuiltAt: null, pages: [] };
   webStudioSites.push(site);
   saveState('web_studio_sites', webStudioSites);
   logActivity('web-studio', `Site build started: ${site.name}`, { id });
@@ -1022,13 +1053,15 @@ app.post('/api/web-studio/sites', requireAdmin, async (req, res) => {
 
   try {
     const result = await webStudioPipeline.createSiteFromBrief(
-      { siteId: id, workspaceDir: wsWorkspaceDir(id), brief: site.brief },
+      { siteId: id, workspaceDir: wsWorkspaceDir(id), brief: wsBriefWithType(site) },
       { executeAgent, broadcast, log: appendLog }
     );
     site.status = result.ok ? result.status : 'failed';
     site.lastBuiltAt = new Date().toISOString();
     site.pages = result.pages || [];
     if (!result.ok) site.error = result.error;
+    // Domain set at creation -> wire HTTP hosting now that a build exists.
+    if (result.ok && site.domain) { try { await wsSetupHosting(site, site.domain); } catch (e) { appendLog(`web-studio: hosting setup failed for ${site.domain}: ${e.message}`); } }
   } catch (e) { site.status = 'failed'; site.error = e.message; }
   saveState('web_studio_sites', webStudioSites);
   broadcast({ event: 'web_studio_site', data: site });
@@ -1045,7 +1078,7 @@ app.delete('/api/web-studio/sites/:id', requireAdmin, async (req, res) => {
   const idx = webStudioSites.findIndex(s => s.id === req.params.id);
   if (idx < 0) return res.status(404).json({ error: 'Site not found' });
   const site = webStudioSites[idx];
-  if (site.domain) {
+  if (site.domain && (site.hostingSetup || site.published)) {
     try { await webStudioHosting.removeSite(site.domain, { dropCert: true }); } catch (e) { appendLog(`web-studio: vhost teardown failed for ${site.domain}: ${e.message}`); }
     try { webStudioPublish.removeSiteRoot(WS_SITES_ROOT, site.domain); } catch {}
   }
@@ -1100,11 +1133,13 @@ app.post('/api/web-studio/sites/:id/ai-edit', requireAdmin, async (req, res) => 
   site.status = 'building'; broadcast({ event: 'web_studio_site', data: site });
   res.json({ ok: true, note: 'Regenerating with your change' });
   try {
-    const brief = `${site.brief}\n\nADDITIONAL CHANGE REQUESTED: ${instruction}`;
+    const brief = `${wsBriefWithType(site)}\n\nADDITIONAL CHANGE REQUESTED: ${instruction}`;
     const result = await webStudioPipeline.createSiteFromBrief({ siteId: site.id, workspaceDir: wsWorkspaceDir(site.id), brief }, { executeAgent, broadcast, log: appendLog });
     site.status = result.ok ? result.status : 'failed';
     site.lastBuiltAt = new Date().toISOString();
     if (!result.ok) site.error = result.error;
+    // Keep the live HTTP site in sync after an AI regen, if hosting is already wired.
+    if (result.ok && site.hostingSetup && site.domain) { try { webStudioPublish.deployRelease(path.join(wsWorkspaceDir(site.id), 'dist'), WS_SITES_ROOT, site.domain); } catch (e) { appendLog(`web-studio: redeploy failed for ${site.domain}: ${e.message}`); } }
   } catch (e) { site.status = 'failed'; site.error = e.message; }
   saveState('web_studio_sites', webStudioSites);
   broadcast({ event: 'web_studio_site', data: site });
@@ -1118,9 +1153,26 @@ app.post('/api/web-studio/sites/:id/build', requireAdmin, async (req, res) => {
   site.status = result.ok ? 'ready' : 'build_failed';
   site.lastBuiltAt = new Date().toISOString();
   if (!result.ok) site.error = result.error; else delete site.error;
+  // Keep the live HTTP site in sync after an edit-rebuild, if hosting is already wired.
+  if (result.ok && site.hostingSetup && site.domain) { try { webStudioPublish.deployRelease(path.join(wsWorkspaceDir(site.id), 'dist'), WS_SITES_ROOT, site.domain); } catch (e) { appendLog(`web-studio: redeploy failed for ${site.domain}: ${e.message}`); } }
   saveState('web_studio_sites', webStudioSites);
   broadcast({ event: 'web_studio_site', data: site });
   res.json({ ok: result.ok, status: site.status, log: result.log });
+});
+
+// --- Configure a domain: write its HTTP nginx vhost now (TLS still comes at Publish) ---
+app.post('/api/web-studio/sites/:id/domain', requireAdmin, async (req, res) => {
+  const site = wsFindSite(req, res); if (!site) return;
+  let domain;
+  try { domain = webStudioHosting.normalizeDomain((req.body || {}).domain); }
+  catch (e) { return res.status(400).json({ error: e.message }); }
+  try {
+    const r = await wsSetupHosting(site, domain);
+    res.json({ ok: true, ...r });
+  } catch (e) {
+    const code = e.code === 'DOMAIN_RESERVED' ? 400 : e.code === 'DOMAIN_CLAIMED' ? 409 : 500;
+    res.status(code).json({ error: e.message });
+  }
 });
 
 // --- DNS pre-check for a custom domain (fast; the UI calls this before publishing) ---
@@ -1143,7 +1195,7 @@ app.post('/api/web-studio/sites/:id/publish', requireAdmin, async (req, res) => 
   // Collision guards: never the control-plane domain, never one another site already serves.
   const primary = (process.env.AIOS_PRIMARY_DOMAIN || '').trim().toLowerCase();
   if (primary && domain === primary) return res.status(400).json({ error: 'that domain hosts the AI OS control plane and cannot be used for a site' });
-  const claimed = webStudioSites.find(s => s.id !== site.id && s.domain === domain && s.published);
+  const claimed = webStudioSites.find(s => s.id !== site.id && s.domain === domain && (s.published || s.hostingSetup));
   if (claimed) return res.status(409).json({ error: `domain already in use by site "${claimed.name}"` });
 
   // Mandatory DNS pre-check — never start certbot against a domain that isn't pointed here.

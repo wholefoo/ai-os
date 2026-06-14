@@ -1104,6 +1104,22 @@
               <h3 class="panel-title">Create a new site</h3>
               <div class="ws-create">
                 <input type="text" class="settings-input" id="wsName" placeholder="Site name (e.g. Acme Coffee Roasters)" maxlength="80" />
+                <div class="ws-row">
+                  <select class="settings-input" id="wsType" style="max-width:220px;">
+                    <option value="">Type: General</option>
+                    <option>Landing Page</option>
+                    <option>Business</option>
+                    <option>Portfolio</option>
+                    <option>Blog</option>
+                    <option>E-commerce</option>
+                    <option>SaaS Product</option>
+                    <option>Restaurant / Local</option>
+                    <option>Event</option>
+                    <option>Personal</option>
+                    <option>Documentation</option>
+                  </select>
+                  <input type="text" class="settings-input" id="wsCreateDomain" placeholder="Domain (optional, e.g. acme.com)" style="max-width:260px;" />
+                </div>
                 <textarea class="settings-input" id="wsBrief" rows="3" placeholder="Describe the site: who it's for, the vibe, the pages you want, and the main call to action."></textarea>
                 <div class="ws-row">
                   <button class="btn btn-primary" id="wsCreateBtn">Generate site</button>
@@ -1154,8 +1170,10 @@
               <div class="ws-row">
                 <input type="text" class="settings-input" id="wsDomain" placeholder="yourdomain.com" style="max-width:280px;" />
                 <button class="btn" id="wsDnsCheckBtn">Check DNS</button>
+                <button class="btn" id="wsSetupHostingBtn">Set up hosting (HTTP)</button>
                 <button class="btn btn-primary" id="wsPublishBtn">Publish with TLS</button>
                 <button class="btn" id="wsUnpublishBtn" style="display:none;">Unpublish</button>
+                <a class="btn" id="wsHttpLink" href="#" target="_blank" rel="noopener" style="display:none;">Open HTTP &#8599;</a>
                 <a class="btn" id="wsLiveLink" href="#" target="_blank" rel="noopener" style="display:none;">Open live site &#8599;</a>
               </div>
               <div class="ws-hint" id="wsPublishHint" style="margin-top:8px;">Point your domain's DNS A record at this server, click Check DNS, then Publish. TLS is issued automatically.</div>
@@ -2054,6 +2072,6 @@
 
   <script src="js/app.js?v=34"></script>
   <script src="https://cdn.jsdelivr.net/npm/monaco-editor@0.52.2/min/vs/loader.js"></script>
-  <script src="js/web-studio.js?v=2"></script>
+  <script src="js/web-studio.js?v=3"></script>
 </body>
 </html>
