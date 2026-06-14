@@ -1059,6 +1059,7 @@ app.post('/api/web-studio/sites', requireAdmin, async (req, res) => {
     site.status = result.ok ? result.status : 'failed';
     site.lastBuiltAt = new Date().toISOString();
     site.pages = result.pages || [];
+    if (result.ok) { site.plan = result.plan; site.meta = result.meta || {}; }
     if (!result.ok) site.error = result.error;
     // Domain set at creation -> wire HTTP hosting now that a build exists.
     if (result.ok && site.domain) { try { await wsSetupHosting(site, site.domain); } catch (e) { appendLog(`web-studio: hosting setup failed for ${site.domain}: ${e.message}`); } }
@@ -1137,12 +1138,45 @@ app.post('/api/web-studio/sites/:id/ai-edit', requireAdmin, async (req, res) => 
     const result = await webStudioPipeline.createSiteFromBrief({ siteId: site.id, workspaceDir: wsWorkspaceDir(site.id), brief, domain: site.domain, siteName: site.name }, { executeAgent, broadcast, log: appendLog });
     site.status = result.ok ? result.status : 'failed';
     site.lastBuiltAt = new Date().toISOString();
+    if (result.ok) { site.plan = result.plan; site.meta = result.meta || {}; }
     if (!result.ok) site.error = result.error;
     // Keep the live HTTP site in sync after an AI regen, if hosting is already wired.
     if (result.ok && site.hostingSetup && site.domain) { try { webStudioPublish.deployRelease(path.join(wsWorkspaceDir(site.id), 'dist'), WS_SITES_ROOT, site.domain); } catch (e) { appendLog(`web-studio: redeploy failed for ${site.domain}: ${e.message}`); } }
   } catch (e) { site.status = 'failed'; site.error = e.message; }
   saveState('web_studio_sites', webStudioSites);
   broadcast({ event: 'web_studio_site', data: site });
+});
+
+// --- No-code Content editor: read the structured plan, and save edited copy ---
+app.get('/api/web-studio/sites/:id/content', requireAdmin, (req, res) => {
+  const site = wsFindSite(req, res); if (!site) return;
+  res.json({ plan: site.plan || null });
+});
+
+app.put('/api/web-studio/sites/:id/content', requireAdmin, async (req, res) => {
+  const site = wsFindSite(req, res); if (!site) return;
+  const plan = (req.body || {}).plan;
+  if (!plan || !Array.isArray(plan.pages) || plan.pages.length === 0) return res.status(400).json({ error: 'a plan with at least one page is required' });
+  const ws = wsWorkspaceDir(site.id);
+  if (!fs.existsSync(path.join(ws, 'package.json'))) return res.status(409).json({ error: 'site workspace not found — regenerate the site first' });
+  site.status = 'building'; broadcast({ event: 'web_studio_site', data: site });
+  try {
+    // Re-render from the edited plan (the typed text is authoritative) and rebuild.
+    webStudioPipeline.renderPlanToWorkspace(ws, plan, {});
+    const result = await webStudioBuild.runBuild(ws);
+    site.status = result.ok ? 'ready' : 'build_failed';
+    site.lastBuiltAt = new Date().toISOString();
+    if (result.ok) { site.plan = plan; delete site.error; } else { site.error = result.error; }
+    if (result.ok && site.hostingSetup && site.domain) { try { webStudioPublish.deployRelease(path.join(ws, 'dist'), WS_SITES_ROOT, site.domain); } catch (e) { appendLog(`web-studio: redeploy failed for ${site.domain}: ${e.message}`); } }
+    saveState('web_studio_sites', webStudioSites);
+    broadcast({ event: 'web_studio_site', data: site });
+    res.json({ ok: result.ok, status: site.status, log: result.log });
+  } catch (e) {
+    site.status = 'build_failed'; site.error = e.message;
+    saveState('web_studio_sites', webStudioSites);
+    broadcast({ event: 'web_studio_site', data: site });
+    res.status(500).json({ error: e.message });
+  }
 });
 
 // --- Rebuild from current workspace source (after Monaco edits) ---

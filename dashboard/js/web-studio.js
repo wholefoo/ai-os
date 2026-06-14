@@ -9,6 +9,7 @@
 const wsState = {
   sites: [], limit: 1, used: 0,
   currentId: null, currentSite: null, files: [], currentFile: null,
+  plan: null, tab: 'content',
   editor: null, dirty: false, wired: false, aiEditing: false,
   _monacoConfigured: false, _monacoTries: 0,
 };
@@ -35,6 +36,9 @@ function loadWebStudio() {
     on('wsAiEditBtn', 'click', wsAiEdit);
     on('wsRefreshPreview', 'click', wsRefreshPreview);
     on('wsFileList', 'change', (e) => wsLoadFile(e.target.value));
+    on('wsTabContent', 'click', () => wsSwitchTab('content'));
+    on('wsTabCode', 'click', () => wsSwitchTab('code'));
+    on('wsSaveContentBtn', 'click', wsSaveContent);
     on('wsDnsCheckBtn', 'click', wsDnsCheck);
     on('wsSetupHostingBtn', 'click', wsSetupHosting);
     on('wsPublishBtn', 'click', wsPublish);
@@ -126,6 +130,8 @@ async function wsOpen(id) {
   wsRenderPublishState(site);
   wsRefreshPreview();
   await wsReloadFiles(true);
+  await wsLoadContent();
+  wsSwitchTab('content');
 }
 
 async function wsReloadFiles(openFirst) {
@@ -298,7 +304,7 @@ function onWebStudioEvent(msg) {
       wsRefreshPreview();
       // Only reload source files when an AI edit rewrote them — never clobber unsaved edits
       // on a plain build/publish completion.
-      if (wsState.aiEditing) { wsState.aiEditing = false; wsHint('Updated by AI.'); wsReloadFiles(false); }
+      if (wsState.aiEditing) { wsState.aiEditing = false; wsHint('Updated by AI.'); wsReloadFiles(false); wsLoadContent(); }
     }
     if (d.status === 'failed' || d.status === 'build_failed') wsHint('Build failed.');
     // web_studio_site carries the full site object (has d.id) — reflect publish-state changes live.
@@ -306,6 +312,119 @@ function onWebStudioEvent(msg) {
   } else if (!inEditor) {
     wsFetchAndRenderSites();
   }
+}
+
+// ---------- no-code Content editor (edit the plan's text -> re-render) ----------
+function wsSwitchTab(tab) {
+  wsState.tab = tab;
+  const isContent = tab === 'content';
+  const pane = document.getElementById('wsContentPane');
+  const mon = document.getElementById('wsMonaco');
+  const saveBtn = document.getElementById('wsSaveContentBtn');
+  const cur = document.getElementById('wsCurrentFile');
+  if (pane) pane.style.display = isContent ? '' : 'none';
+  if (mon) mon.style.display = isContent ? 'none' : '';
+  if (saveBtn) saveBtn.style.display = isContent ? '' : 'none';
+  if (cur) cur.style.display = isContent ? 'none' : '';
+  const tc = document.getElementById('wsTabContent'); if (tc) tc.classList.toggle('ws-tab-active', isContent);
+  const tk = document.getElementById('wsTabCode'); if (tk) tk.classList.toggle('ws-tab-active', !isContent);
+  if (!isContent) {
+    // Code tab: open a file if none is loaded, then force Monaco to remeasure now that its
+    // container is visible (creating Monaco in a hidden/zero-height box leaves it blank).
+    if (!wsState.currentFile) { const sel = document.getElementById('wsFileList'); if (sel && sel.value) wsLoadFile(sel.value); }
+    setTimeout(() => { if (wsState.editor && wsState.editor.layout) wsState.editor.layout(); }, 60);
+  }
+}
+
+async function wsLoadContent() {
+  wsState.plan = null;
+  const r = await fetchJSON(`/api/web-studio/sites/${wsState.currentId}/content`);
+  wsState.plan = (r && r.plan) || null;
+  wsRenderContentForm(wsState.plan);
+}
+
+function wsCField(label, path, value, multiline) {
+  const v = escapeHtml(value == null ? '' : value);
+  const input = multiline
+    ? `<textarea class="settings-input" rows="2" data-path="${path}">${v}</textarea>`
+    : `<input type="text" class="settings-input" data-path="${path}" value="${v}" />`;
+  return `<div class="ws-cfield"><label>${escapeHtml(label)}</label>${input}</div>`;
+}
+
+function wsRenderContentForm(plan) {
+  const pane = document.getElementById('wsContentPane');
+  if (!pane) return;
+  if (!plan || !Array.isArray(plan.pages)) {
+    pane.innerHTML = '<div class="empty-state">No editable content for this site yet (it predates the content editor, or was hand-edited in Code). Use the Code tab, or regenerate the site.</div>';
+    return;
+  }
+  const out = [];
+  out.push('<div class="ws-cgroup"><div class="ws-cgroup-title">Site</div>');
+  out.push(wsCField('Brand / site name', 'siteName', plan.siteName));
+  out.push(wsCField('Footer', 'footer', plan.footer));
+  (plan.nav || []).forEach((n, i) => out.push(wsCField(`Nav label ${i + 1}`, `nav.${i}.label`, n.label)));
+  out.push('</div>');
+  (plan.pages || []).forEach((page, i) => {
+    out.push(`<div class="ws-cgroup"><div class="ws-cgroup-title">Page: ${escapeHtml(page.title || page.path || '/')}</div>`);
+    out.push(wsCField('Page title (SEO)', `pages.${i}.title`, page.title));
+    out.push(wsCField('Page description (SEO)', `pages.${i}.description`, page.description, true));
+    (page.sections || []).forEach((s, j) => {
+      const base = `pages.${i}.sections.${j}`;
+      out.push(`<div class="ws-cfield" style="border-top:1px dashed var(--border,#2a2a3a);padding-top:8px;margin-top:8px;"><label>${escapeHtml((s.type || 'section').toUpperCase())}</label></div>`);
+      if (s.heading != null) out.push(wsCField('Heading', `${base}.heading`, s.heading));
+      if (s.subheading != null) out.push(wsCField('Subheading', `${base}.subheading`, s.subheading, true));
+      if (s.type === 'hero' || s.type === 'cta') {
+        out.push(wsCField('Button text', `${base}.cta.label`, (s.cta || {}).label));
+        out.push(wsCField('Button link', `${base}.cta.href`, (s.cta || {}).href));
+      }
+      if (s.type === 'features') (s.items || []).forEach((it, k) => {
+        out.push(wsCField(`Feature ${k + 1} title`, `${base}.items.${k}.title`, it.title));
+        out.push(wsCField(`Feature ${k + 1} text`, `${base}.items.${k}.body`, it.body, true));
+      });
+      if (s.type === 'prose') {
+        if (Array.isArray(s.paragraphs)) s.paragraphs.forEach((p, k) => out.push(wsCField(`Paragraph ${k + 1}`, `${base}.paragraphs.${k}`, p, true)));
+        else out.push(wsCField('Body', `${base}.body`, s.body, true));
+      }
+      if (s.type === 'contact') {
+        out.push(wsCField('Body', `${base}.body`, s.body, true));
+        out.push(wsCField('Email', `${base}.email`, s.email));
+      }
+    });
+    out.push('</div>');
+  });
+  pane.innerHTML = out.join('');
+}
+
+function wsSetByPath(obj, pathStr, value) {
+  const parts = pathStr.split('.');
+  let cur = obj;
+  for (let i = 0; i < parts.length - 1; i++) {
+    const k = /^\d+$/.test(parts[i]) ? Number(parts[i]) : parts[i];
+    if (cur[k] == null) cur[k] = /^\d+$/.test(parts[i + 1]) ? [] : {};
+    cur = cur[k];
+  }
+  const last = parts[parts.length - 1];
+  cur[/^\d+$/.test(last) ? Number(last) : last] = value;
+}
+
+function wsCollectContent() {
+  const plan = JSON.parse(JSON.stringify(wsState.plan || {}));
+  document.querySelectorAll('#wsContentPane [data-path]').forEach((el) => {
+    wsSetByPath(plan, el.getAttribute('data-path'), el.value);
+  });
+  return plan;
+}
+
+async function wsSaveContent() {
+  if (!wsState.plan) { wsHint('No editable content — use the Code tab.'); return; }
+  const plan = wsCollectContent();
+  wsHint('Saving content & rebuilding…'); wsSetEditorStatus('building');
+  const r = await fetchJSON(`/api/web-studio/sites/${wsState.currentId}/content`, { method: 'PUT', body: { plan } });
+  if (r && r.error) { wsHint('Save failed: ' + r.error); wsSetEditorStatus('build_failed'); return; }
+  wsState.plan = plan;
+  wsSetEditorStatus(r.status || 'ready');
+  wsHint('Saved & rebuilt.');
+  wsRefreshPreview();
 }
 
 // ---------- Monaco (lazy) with a textarea fallback ----------
