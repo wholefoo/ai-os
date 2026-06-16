@@ -27,6 +27,7 @@ const BASE = __dirname;
 const MAGENT_DIR = path.join(BASE, '.magent');
 const CLAUDE_DIR = path.join(BASE, '.claude');
 const STATE_DIR = path.join(MAGENT_DIR, 'state');
+let crm = null; // CRM facade (lib/crm) — assigned in the CRM init block once node:sqlite opens; live seams call crm?.*
 
 // Ensure state directory exists for persistence
 if (!fs.existsSync(STATE_DIR)) fs.mkdirSync(STATE_DIR, { recursive: true });
@@ -298,6 +299,7 @@ function fulfillCheckoutSession(stripeSession, source) {
     user.plan = 'enterprise'; // Keep them on enterprise tier
   }
   saveState('users', users);
+  crm?.syncUser(user, { sessionId: stripeSession.id }); // CRM: mirror license/plan + log purchase (idempotent)
   logActivity('billing', `Checkout fulfilled (${source}): ${email} → ${plan}`, { sessionId: stripeSession.id });
   return user;
 }
@@ -1086,6 +1088,7 @@ app.delete('/api/web-studio/sites/:id', requireAdmin, async (req, res) => {
   try { fs.rmSync(wsWorkspaceDir(site.id), { recursive: true, force: true }); } catch {}
   webStudioSites.splice(idx, 1);
   saveState('web_studio_sites', webStudioSites);
+  crm?.unlinkSite(site.id); // CRM: prune any contact link to the deleted site
   res.json({ ok: true });
 });
 
@@ -5844,16 +5847,15 @@ const freeAuditLog = loadState('free_audit_log', []);
 
 // --- CRM: node:sqlite overlay indexing users / leads / audits / sites (all tiers, admin-only) ---
 try {
-  const crmDb = require('./lib/crm/db');
-  const crmSync = require('./lib/crm/sync');
-  const { registerCrmRoutes } = require('./lib/crm/routes');
-  crmDb.openDb(path.join(MAGENT_DIR, 'crm.sqlite'));
-  registerCrmRoutes(app, { requireAdmin, webStudioSites });
+  crm = require('./lib/crm');
+  crm.openDb(path.join(MAGENT_DIR, 'crm.sqlite'));
+  crm.registerCrmRoutes(app, { requireAdmin, webStudioSites, broadcast, users, seoAudits, freeAuditLog });
   // Boot reconcile from the JSON systems of record. Idempotent (upserts merge, activities
-  // deduped) — keeps the read-only CRM current across restarts until Phase 2 adds live seams.
-  const crmCounts = crmSync.backfillAll({ users, seoAudits, freeAuditLog, webStudioSites });
+  // deduped) — catches anything the live seams missed while the process was down.
+  const crmCounts = crm.backfillAll({ users, seoAudits, freeAuditLog, webStudioSites });
   appendLog(`[crm] backfill ${JSON.stringify(crmCounts)}`);
 } catch (e) {
+  crm = null;
   console.error('[crm] init failed:', e.message);
 }
 
@@ -5874,6 +5876,8 @@ app.post('/api/seo/free-audit', async (req, res) => {
   freeAuditLog.push(leadEntry);
   saveState('free_audit_log', freeAuditLog);
   logActivity('leads', `Free audit lead captured: ${email} — ${domain}`, { email, domain });
+  crm?.ingestLead({ email, name, domain, source: 'free-audit' }); // CRM: live lead capture
+  if (crm) broadcast({ event: 'crm_update', data: { email } });
 
   // Run the audit (same pipeline as authenticated)
   const auditId = uuidv4();
@@ -5999,6 +6003,10 @@ function finalizeSeoAudit(audit, auditId, { compositeScore, summary } = {}) {
   audit.actionPlan = generateActionPlan(audit);
   saveState('seo_audits', seoAudits);
   broadcast({ event: 'seo_audit_complete', data: { auditId, compositeScore: audit.compositeScore } });
+  if (audit.email) { // CRM: enrich the lead with the audit score + a deduped audit activity
+    crm?.attachAudit({ email: audit.email, auditId: audit.id, compositeScore: audit.compositeScore, domain: audit.domain });
+    if (crm) broadcast({ event: 'crm_update', data: { email: audit.email } });
+  }
 }
 
 async function runRealSeoAudit(audit, auditId) {
