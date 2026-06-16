@@ -974,6 +974,7 @@ const webStudioPipeline = require('./lib/web-studio/pipeline');
 const webStudioHosting = require('./lib/web-studio/hosting');
 const webStudioPublish = require('./lib/web-studio/publish');
 const webStudioDns = require('./lib/web-studio/dns');
+const webStudioImport = require('./lib/web-studio/import');
 
 const webStudioSites = loadState('web_studio_sites', []); // [{id,name,brief,status,domain,createdAt,...}]
 const WS_ROOT = path.join(MAGENT_DIR, 'artifacts', 'web-studio');
@@ -1047,7 +1048,7 @@ app.post('/api/web-studio/sites', requireAdmin, async (req, res) => {
   }
 
   const id = uuidv4();
-  const site = { id, name: String(name || 'Untitled site').slice(0, 80), brief: String(brief).slice(0, 4000), siteType: wsCleanType(siteType), status: 'building', domain: cfgDomain, hostingSetup: false, published: false, createdAt: new Date().toISOString(), lastBuiltAt: null, pages: [] };
+  const site = { id, name: String(name || 'Untitled site').slice(0, 80), brief: String(brief).slice(0, 4000), siteType: wsCleanType(siteType), kind: 'generated', status: 'building', domain: cfgDomain, hostingSetup: false, published: false, createdAt: new Date().toISOString(), lastBuiltAt: null, pages: [] };
   webStudioSites.push(site);
   saveState('web_studio_sites', webStudioSites);
   logActivity('web-studio', `Site build started: ${site.name}`, { id });
@@ -1068,6 +1069,50 @@ app.post('/api/web-studio/sites', requireAdmin, async (req, res) => {
   } catch (e) { site.status = 'failed'; site.error = e.message; }
   saveState('web_studio_sites', webStudioSites);
   broadcast({ event: 'web_studio_site', data: site });
+});
+
+// --- Import: host a site AS-IS from an uploaded ZIP (raw body) or a GitHub repo ---
+// Untrusted content: lib/web-studio/import.js sanitizes every path, caps size/count,
+// allows ONLY static asset types, and NEVER runs the import's build scripts. The result
+// is a kind:'imported' site that staticBuild() mirrors to dist/ (no Astro).
+function wsStartImport(name) {
+  const id = uuidv4();
+  const site = { id, name: String(name || 'Imported site').slice(0, 80), kind: 'imported', status: 'building', domain: null, hostingSetup: false, published: false, createdAt: new Date().toISOString(), lastBuiltAt: null, pages: [] };
+  webStudioSites.push(site);
+  saveState('web_studio_sites', webStudioSites);
+  return site;
+}
+async function wsFinishImport(site, importPromise) {
+  try {
+    const r = await importPromise;
+    const b = webStudioBuild.staticBuild(wsWorkspaceDir(site.id));
+    site.status = b.ok ? 'ready' : 'build_failed';
+    site.lastBuiltAt = new Date().toISOString();
+    site.importInfo = { files: r.count, dropped: (r.warnings || []).length, hasIndex: r.hasIndex };
+    site.error = b.ok ? undefined : 'no index.html at the imported site root (source-only repos must be built first)';
+  } catch (e) { site.status = 'failed'; site.error = e.message; }
+  saveState('web_studio_sites', webStudioSites);
+  broadcast({ event: 'web_studio_site', data: site });
+}
+
+app.post('/api/web-studio/import/archive', requireAdmin,
+  express.raw({ type: ['application/zip', 'application/x-zip-compressed', 'application/octet-stream'], limit: '30mb' }),
+  (req, res) => {
+    if (wsActiveCount() >= wsSiteLimit()) return res.status(403).json({ error: `Site limit reached for your plan (${wsSiteLimit()}).` });
+    if (!req.body || !req.body.length) return res.status(400).json({ error: 'empty upload (send the .zip as the raw request body)' });
+    const site = wsStartImport(req.query.name || 'Imported site');
+    res.json({ ok: true, site });
+    wsFinishImport(site, webStudioImport.importToWorkspace({ workspaceDir: wsWorkspaceDir(site.id), zipBuffer: req.body }));
+  });
+
+app.post('/api/web-studio/import/github', requireAdmin, (req, res) => {
+  if (wsActiveCount() >= wsSiteLimit()) return res.status(403).json({ error: `Site limit reached for your plan (${wsSiteLimit()}).` });
+  const { url, token, name } = req.body || {};
+  if (!url) return res.status(400).json({ error: 'repo url required' });
+  const site = wsStartImport(name || 'Imported repo');
+  site.importRepo = String(url).slice(0, 200); // store the repo URL, never the token
+  res.json({ ok: true, site });
+  wsFinishImport(site, webStudioImport.importToWorkspace({ workspaceDir: wsWorkspaceDir(site.id), githubUrl: url, githubToken: token }));
 });
 
 // --- Get one ---
@@ -1132,6 +1177,7 @@ app.put('/api/web-studio/sites/:id/file', requireAdmin, (req, res) => {
 //     The Monaco editor is the precise-edit path between regenerations.) ---
 app.post('/api/web-studio/sites/:id/ai-edit', requireAdmin, async (req, res) => {
   const site = wsFindSite(req, res); if (!site) return;
+  if (site.kind === 'imported') return res.status(400).json({ error: 'AI edit is for generated sites — edit imported sites in the Code tab.' });
   const instruction = String((req.body || {}).instruction || '').slice(0, 2000);
   if (!instruction) return res.status(400).json({ error: 'instruction required' });
   site.status = 'building'; broadcast({ event: 'web_studio_site', data: site });
@@ -1186,7 +1232,7 @@ app.put('/api/web-studio/sites/:id/content', requireAdmin, async (req, res) => {
 app.post('/api/web-studio/sites/:id/build', requireAdmin, async (req, res) => {
   const site = wsFindSite(req, res); if (!site) return;
   site.status = 'building'; broadcast({ event: 'web_studio_site', data: site });
-  const result = await webStudioBuild.runBuild(wsWorkspaceDir(site.id));
+  const result = site.kind === 'imported' ? webStudioBuild.staticBuild(wsWorkspaceDir(site.id)) : await webStudioBuild.runBuild(wsWorkspaceDir(site.id));
   site.status = result.ok ? 'ready' : 'build_failed';
   site.lastBuiltAt = new Date().toISOString();
   if (!result.ok) site.error = result.error; else delete site.error;

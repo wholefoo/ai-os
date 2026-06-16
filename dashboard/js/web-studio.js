@@ -30,6 +30,8 @@ function loadWebStudio() {
     wsState.wired = true;
     const on = (id, ev, fn) => { const el = document.getElementById(id); if (el) el.addEventListener(ev, fn); };
     on('wsCreateBtn', 'click', wsCreate);
+    on('wsImportZipBtn', 'click', wsImportZip);
+    on('wsImportGhBtn', 'click', wsImportGithub);
     on('wsBackBtn', 'click', wsBack);
     on('wsSaveBtn', 'click', wsSave);
     on('wsBuildBtn', 'click', wsBuild);
@@ -112,6 +114,44 @@ async function wsDelete(id) {
   if (!window.confirm('Delete this site? This removes its workspace and any hosting.')) return;
   await fetchJSON(`/api/web-studio/sites/${id}`, { method: 'DELETE' });
   if (wsState.currentId === id) wsBack();
+  await wsFetchAndRenderSites();
+}
+
+// ---------- import (host a site as-is) ----------
+async function wsImportZip() {
+  const fileEl = document.getElementById('wsImportFile');
+  const file = fileEl && fileEl.files && fileEl.files[0];
+  const hint = document.getElementById('wsImportHint');
+  if (!file) { if (hint) hint.textContent = 'Choose a .zip file first.'; return; }
+  if (hint) hint.textContent = `Uploading ${file.name}…`;
+  // Binary body — can't use fetchJSON (it JSON-stringifies). Raw POST with cookie + Bearer auth.
+  const headers = { 'Content-Type': 'application/zip' };
+  const token = localStorage.getItem('ai-os-token');
+  if (token) headers['Authorization'] = `Bearer ${token}`;
+  let r;
+  try {
+    const buf = await file.arrayBuffer();
+    const res = await fetch(`/api/web-studio/import/archive?name=${encodeURIComponent(file.name.replace(/\.zip$/i, ''))}`,
+      { method: 'POST', credentials: 'same-origin', headers, body: buf });
+    r = await res.json().catch(() => ({ error: `HTTP ${res.status}` }));
+  } catch (e) { r = { error: e.message }; }
+  if (r && r.error) { if (hint) hint.textContent = 'Import failed: ' + r.error; return; }
+  if (hint) hint.textContent = 'Importing — the site will appear below and build automatically.';
+  fileEl.value = '';
+  await wsFetchAndRenderSites();
+}
+
+async function wsImportGithub() {
+  const url = ((document.getElementById('wsImportRepo') || {}).value || '').trim();
+  const token = ((document.getElementById('wsImportToken') || {}).value || '').trim();
+  const hint = document.getElementById('wsImportHint');
+  if (!url) { if (hint) hint.textContent = 'Enter a GitHub repo URL (https://github.com/owner/repo).'; return; }
+  if (hint) hint.textContent = 'Cloning the repo…';
+  const r = await fetchJSON('/api/web-studio/import/github', { method: 'POST', body: { url, token } });
+  if (r && r.error) { if (hint) hint.textContent = 'Import failed: ' + r.error; return; }
+  if (hint) hint.textContent = 'Importing — the site will appear below and build automatically.';
+  document.getElementById('wsImportRepo').value = '';
+  document.getElementById('wsImportToken').value = '';
   await wsFetchAndRenderSites();
 }
 

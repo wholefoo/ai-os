@@ -1139,6 +1139,21 @@
               </div>
             </section>
             <section class="panel">
+              <h3 class="panel-title">Import a site (host as-is)</h3>
+              <div class="ws-create">
+                <div class="ws-row">
+                  <input type="file" id="wsImportFile" accept=".zip,application/zip" class="settings-input" style="flex:1;min-width:200px;" />
+                  <button class="btn" id="wsImportZipBtn">Import ZIP</button>
+                </div>
+                <div class="ws-row">
+                  <input type="text" class="settings-input" id="wsImportRepo" placeholder="https://github.com/owner/repo" style="flex:1;min-width:200px;" />
+                  <input type="password" class="settings-input" id="wsImportToken" placeholder="token (private repos / optional)" style="max-width:200px;" autocomplete="new-password" data-1p-ignore />
+                  <button class="btn" id="wsImportGhBtn">Import from GitHub</button>
+                </div>
+                <div class="ws-hint" id="wsImportHint">Upload a <strong>.zip of a built static site</strong>, or import a GitHub repo that already contains static HTML (a GitHub-Pages repo, or one with a <code>dist/</code>&middot;<code>build/</code>&middot;<code>public/</code> folder). For safety we never run a repo's build scripts &mdash; source-only repos must be built first. Edit imported sites in the Code tab.</div>
+              </div>
+            </section>
+            <section class="panel">
               <h3 class="panel-title">Your sites</h3>
               <div class="ws-sites" id="wsSites"><div class="empty-state">Loading&hellip;</div></div>
             </section>
@@ -2157,7 +2172,7 @@
 
   <script src="js/app.js?v=35"></script>
   <script src="https://cdn.jsdelivr.net/npm/monaco-editor@0.52.2/min/vs/loader.js"></script>
-  <script src="js/web-studio.js?v=4"></script>
+  <script src="js/web-studio.js?v=5"></script>
   <script src="js/crm.js?v=2"></script>
 </body>
 </html>
