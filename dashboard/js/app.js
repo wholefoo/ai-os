@@ -56,6 +56,7 @@ function switchView(view) {
     skills: loadSkills,
     workflows: loadWorkflows,
     'web-studio': loadWebStudio,
+    crm: loadCrm,
     mission: loadMission,
     inbox: loadInbox,
     timeline: loadTimeline,
@@ -164,6 +165,9 @@ function handleWsMessage(msg) {
     case 'web_studio_build':
     case 'web_studio_publish':
       if (typeof onWebStudioEvent === 'function') onWebStudioEvent(msg);
+      break;
+    case 'crm_update':
+      if (typeof onCrmEvent === 'function') onCrmEvent(msg);
       break;
     case 'connected':
       state.health = msg.data.health;

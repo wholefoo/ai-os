@@ -11,6 +11,11 @@ node_modules/
 .magent/vault/raw/
 .magent/state/
 
+# CRM embedded database (runtime data + WAL sidecars) — never commit
+.magent/crm.sqlite
+.magent/crm.sqlite-wal
+.magent/crm.sqlite-shm
+
 # Logs
 *.log
 logs/

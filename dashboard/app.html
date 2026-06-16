@@ -36,6 +36,9 @@
         <a href="#" class="nav-item" data-view="web-studio">
           <span class="nav-icon">&#127760;</span> Web Studio
         </a>
+        <a href="#" class="nav-item" data-view="crm">
+          <span class="nav-icon">&#128100;</span> CRM
+        </a>
         <a href="#" class="nav-item" data-view="mission">
           <span class="nav-icon">&#9733;</span> Mission
         </a>
@@ -1196,6 +1199,73 @@
           </div>
         </div>
 
+        <!-- CRM View -->
+        <div class="view" id="view-crm">
+          <style>
+            .crm-stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:10px;margin-bottom:12px;}
+            .crm-stat{border:1px solid var(--border,#2a2a3a);border-radius:10px;padding:12px 14px;}
+            .crm-stat-value{font-size:24px;font-weight:700;}
+            .crm-stat-label{font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:var(--text-secondary,#9aa);}
+            .crm-filters{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:12px;}
+            .crm-chip{font-size:12px;padding:5px 12px;}
+            .crm-chip-active{background:var(--brand,#4f46e5);color:#fff;border-color:var(--brand,#4f46e5);}
+            .crm-grid{display:grid;grid-template-columns:minmax(300px,2fr) 3fr;gap:12px;}
+            .crm-list{max-height:62vh;overflow:auto;}
+            .crm-row{display:flex;justify-content:space-between;gap:10px;padding:10px 12px;border:1px solid var(--border,#2a2a3a);border-radius:8px;margin-bottom:6px;cursor:pointer;}
+            .crm-row:hover{border-color:var(--brand,#4f46e5);}
+            .crm-row.active{border-color:var(--brand,#4f46e5);background:rgba(79,70,229,0.10);}
+            .crm-tag{font-size:10px;padding:2px 7px;border-radius:999px;border:1px solid var(--border,#2a2a3a);white-space:nowrap;}
+            .crm-tag.lead{color:#eab308;border-color:#eab308;}
+            .crm-tag.client{color:#22c55e;border-color:#22c55e;}
+            .crm-tag.license{color:#a855f7;border-color:#a855f7;}
+            .crm-muted{color:var(--text-secondary,#9aa);font-size:12px;}
+            .crm-detail-row{display:flex;justify-content:space-between;gap:12px;padding:6px 0;border-bottom:1px dashed var(--border,#2a2a3a);font-size:13px;}
+            .crm-act{border-left:2px solid var(--border,#2a2a3a);padding:3px 0 3px 10px;margin:6px 0;font-size:12px;}
+          </style>
+
+          <div class="radar-header">
+            <div class="radar-header-left">
+              <h2 class="radar-title">CRM</h2>
+              <span class="radar-subtitle">Leads, clients &amp; license holders &mdash; unified from your audits, sites and billing</span>
+            </div>
+            <div class="radar-actions"><button class="btn" id="crmRefresh">Refresh</button></div>
+          </div>
+
+          <div class="crm-stats" id="crmStats"></div>
+
+          <div class="crm-filters">
+            <input type="text" class="settings-input" id="crmSearch" placeholder="Search name, email, company, domain&hellip;" style="max-width:320px;" />
+            <div class="ws-row" id="crmFlagChips">
+              <button class="btn crm-chip crm-chip-active" data-flag="">All</button>
+              <button class="btn crm-chip" data-flag="lead">Leads</button>
+              <button class="btn crm-chip" data-flag="client">Clients</button>
+              <button class="btn crm-chip" data-flag="license">License</button>
+            </div>
+            <select class="settings-input" id="crmStage" style="max-width:150px;">
+              <option value="">Any stage</option>
+              <option value="lead">Lead</option>
+              <option value="audited">Audited</option>
+              <option value="onboarding">Onboarding</option>
+              <option value="customer">Customer</option>
+              <option value="churned">Churned</option>
+            </select>
+          </div>
+
+          <div class="crm-grid">
+            <section class="panel">
+              <div class="crm-list" id="crmList"><div class="empty-state">Loading&hellip;</div></div>
+            </section>
+            <section class="panel">
+              <div id="crmDetail"><div class="empty-state">Select a contact to see details.</div></div>
+            </section>
+          </div>
+
+          <section class="panel" id="crmUnassignedPanel" style="margin-top:12px;">
+            <h3 class="panel-title">Unassigned sites <span class="crm-muted" id="crmUnassignedCount"></span></h3>
+            <div id="crmUnassigned" class="crm-muted">&mdash;</div>
+          </section>
+        </div>
+
         <!-- 3D Studio View -->
         <div class="view" id="view-3d-studio">
           <div class="radar-header">
@@ -2085,8 +2155,9 @@
     </div>
   </div>
 
-  <script src="js/app.js?v=34"></script>
+  <script src="js/app.js?v=35"></script>
   <script src="https://cdn.jsdelivr.net/npm/monaco-editor@0.52.2/min/vs/loader.js"></script>
   <script src="js/web-studio.js?v=4"></script>
+  <script src="js/crm.js?v=1"></script>
 </body>
 </html>

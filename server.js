@@ -5842,6 +5842,21 @@ const seoAudits = loadState('seo_audits', []);
 // POST /api/seo/free-audit — public endpoint, no auth, email required for results
 const freeAuditLog = loadState('free_audit_log', []);
 
+// --- CRM: node:sqlite overlay indexing users / leads / audits / sites (all tiers, admin-only) ---
+try {
+  const crmDb = require('./lib/crm/db');
+  const crmSync = require('./lib/crm/sync');
+  const { registerCrmRoutes } = require('./lib/crm/routes');
+  crmDb.openDb(path.join(MAGENT_DIR, 'crm.sqlite'));
+  registerCrmRoutes(app, { requireAdmin, webStudioSites });
+  // Boot reconcile from the JSON systems of record. Idempotent (upserts merge, activities
+  // deduped) — keeps the read-only CRM current across restarts until Phase 2 adds live seams.
+  const crmCounts = crmSync.backfillAll({ users, seoAudits, freeAuditLog, webStudioSites });
+  appendLog(`[crm] backfill ${JSON.stringify(crmCounts)}`);
+} catch (e) {
+  console.error('[crm] init failed:', e.message);
+}
+
 app.post('/api/seo/free-audit', async (req, res) => {
   const { domain, email, name } = req.body;
   if (!domain) return res.status(400).json({ error: 'Domain is required' });
