@@ -1095,7 +1095,7 @@ async function wsFinishImport(site, importPromise) {
   broadcast({ event: 'web_studio_site', data: site });
 }
 
-app.post('/api/web-studio/import/archive', requireAdmin,
+app.post('/api/web-studio/import/archive', requireAdmin, heavyLimiter,
   express.raw({ type: ['application/zip', 'application/x-zip-compressed', 'application/octet-stream'], limit: '30mb' }),
   (req, res) => {
     if (wsActiveCount() >= wsSiteLimit()) return res.status(403).json({ error: `Site limit reached for your plan (${wsSiteLimit()}).` });
@@ -1105,7 +1105,7 @@ app.post('/api/web-studio/import/archive', requireAdmin,
     wsFinishImport(site, webStudioImport.importToWorkspace({ workspaceDir: wsWorkspaceDir(site.id), zipBuffer: req.body }));
   });
 
-app.post('/api/web-studio/import/github', requireAdmin, (req, res) => {
+app.post('/api/web-studio/import/github', requireAdmin, heavyLimiter, (req, res) => {
   if (wsActiveCount() >= wsSiteLimit()) return res.status(403).json({ error: `Site limit reached for your plan (${wsSiteLimit()}).` });
   const { url, token, name } = req.body || {};
   if (!url) return res.status(400).json({ error: 'repo url required' });
@@ -1343,6 +1343,10 @@ app.post('/api/web-studio/sites/:id/unpublish', requireAdmin, async (req, res) =
 app.get('/api/web-studio/sites/:id/preview/*', requireAdmin, (req, res) => {
   const site = webStudioSites.find(s => s.id === req.params.id);
   if (!site) return res.status(404).send('Not found');
+  // Untrusted site content (esp. imported): neuter scripts even on a TOP-LEVEL open of this
+  // URL — the iframe sandbox only covers the embed. CSP sandbox w/o allow-scripts + nosniff.
+  res.setHeader('Content-Security-Policy', "sandbox allow-same-origin; default-src 'self' data: blob:; script-src 'none'; style-src 'self' 'unsafe-inline'; object-src 'none'; base-uri 'none'");
+  res.setHeader('X-Content-Type-Options', 'nosniff');
   const dist = path.join(wsWorkspaceDir(site.id), 'dist');
   let target = path.resolve(dist, req.params[0] || 'index.html');
   if (target !== dist && !target.startsWith(dist + path.sep)) return res.status(400).send('bad path');
