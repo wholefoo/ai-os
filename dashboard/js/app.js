@@ -8126,7 +8126,7 @@ async function viewSeoAudit(auditId) {
     return `
       <div class="seo-agent-card">
         <div class="seo-agent-header">
-          <span class="seo-agent-name">${capitalize(name)} Analysis</span>
+          <span class="seo-agent-name">${name === 'aeo' ? 'AEO Readiness (AI Answer Engines)' : capitalize(name) + ' Analysis'}</span>
           <span class="seo-score seo-score-${scoreClass}">${data.score}<small>/100</small></span>
         </div>
         <div class="seo-findings">${findings}</div>

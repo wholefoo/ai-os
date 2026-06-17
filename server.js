@@ -975,6 +975,8 @@ const webStudioHosting = require('./lib/web-studio/hosting');
 const webStudioPublish = require('./lib/web-studio/publish');
 const webStudioDns = require('./lib/web-studio/dns');
 const webStudioImport = require('./lib/web-studio/import');
+const aeoReadability = require('./lib/aeo/readability');
+const aeoCrawlers = require('./lib/aeo/crawlers');
 
 const webStudioSites = loadState('web_studio_sites', []); // [{id,name,brief,status,domain,createdAt,...}]
 const WS_ROOT = path.join(MAGENT_DIR, 'artifacts', 'web-studio');
@@ -5947,6 +5949,7 @@ app.post('/api/seo/free-audit', async (req, res) => {
       competitor: { status: 'running', score: null, findings: [], startedAt: new Date().toISOString() },
       content:    { status: 'running', score: null, findings: [], startedAt: new Date().toISOString() },
       backlink:   { status: 'running', score: null, findings: [], startedAt: new Date().toISOString() },
+      aeo:        { status: 'running', score: null, findings: [], startedAt: new Date().toISOString() },
     },
     quickWins: [],
     actionPlan: [],
@@ -5969,20 +5972,25 @@ app.post('/api/seo/free-audit', async (req, res) => {
     });
   } else {
     // Demo mode fallback
-    const agentNames = ['keyword', 'technical', 'competitor', 'content', 'backlink'];
-    const delays = [2000, 3000, 2500, 3500, 4000];
+    // AEO runs FOR REAL even in demo mode (only needs an HTTP fetch, no API key); the
+    // classic-SEO agents are demo-fabricated when DataForSEO isn't configured.
+    const agentNames = ['keyword', 'technical', 'competitor', 'content', 'backlink', 'aeo'];
+    const delays = [2000, 3000, 2500, 3500, 4000, 0];
     agentNames.forEach((name, i) => {
-      setTimeout(() => {
-        const score = 40 + Math.floor(Math.random() * 50);
-        audit.agents[name].status = 'complete';
-        audit.agents[name].score = score;
-        audit.agents[name].completedAt = new Date().toISOString();
-        audit.agents[name].findings = generateSeoFindings(name, cleanDomain);
-        broadcast({ event: 'seo_agent_complete', data: { auditId, agent: name, score } });
-        const allDone = agentNames.every(n => audit.agents[n].status === 'complete');
-        if (allDone) {
-          const scores = agentNames.map(n => audit.agents[n].score);
-          finalizeSeoAudit(audit, auditId, { compositeScore: Math.round(scores.reduce((a, b) => a + b, 0) / scores.length) });
+      setTimeout(async () => {
+        if (name === 'aeo') {
+          const r = await runAeoAgent(cleanDomain);
+          audit.agents.aeo = { ...audit.agents.aeo, ...r, status: 'complete', completedAt: new Date().toISOString() };
+        } else {
+          audit.agents[name].status = 'complete';
+          audit.agents[name].score = 40 + Math.floor(Math.random() * 50);
+          audit.agents[name].completedAt = new Date().toISOString();
+          audit.agents[name].findings = generateSeoFindings(name, cleanDomain);
+        }
+        broadcast({ event: 'seo_agent_complete', data: { auditId, agent: name, score: audit.agents[name].score } });
+        if (agentNames.every(n => audit.agents[n].status === 'complete')) {
+          const scores = agentNames.map(n => audit.agents[n].score || 0).filter(s => s > 0);
+          finalizeSeoAudit(audit, auditId, { compositeScore: scores.length ? Math.round(scores.reduce((a, b) => a + b, 0) / scores.length) : 0 });
         }
       }, delays[i]);
     });
@@ -6063,15 +6071,16 @@ async function runRealSeoAudit(audit, auditId) {
   const domain = audit.domain;
   const location = settings.seo.default_location || 'United States';
   const language = settings.seo.default_language || 'en';
-  const agentNames = ['keyword', 'technical', 'competitor', 'content', 'backlink'];
+  const agentNames = ['keyword', 'technical', 'competitor', 'content', 'backlink', 'aeo'];
 
-  // Run all 5 agents in parallel
+  // Run all agents in parallel (AEO is zero-token: readability + AI-crawler check)
   const results = await Promise.allSettled([
     runKeywordAgent(domain, location, language),
     runTechnicalAgent(domain),
     runCompetitorAgent(domain, location, language),
     runContentAgent(domain),
     runBacklinkAgent(domain),
+    runAeoAgent(domain),
   ]);
 
   // Process results
@@ -6103,6 +6112,46 @@ async function runRealSeoAudit(audit, auditId) {
     compositeScore: validScores.length ? Math.round(validScores.reduce((a, b) => a + b, 0) / validScores.length) : 0,
   });
   logActivity('seo', `SEO audit complete (real): ${audit.domain} — score ${audit.compositeScore}/100`, { auditId });
+}
+
+// --- AEO Agent (deterministic, ZERO-token): AI Readiness score + AI-crawler access ---
+// Free + instant (just HTTP fetches), so it is safe on the public free-audit path.
+async function runAeoAgent(domain) {
+  const findings = [];
+  let score = 0;
+  try {
+    const r = await aeoReadability.scoreUrl(domain);
+    score = r.score || 0;
+    findings.push({
+      severity: 'info',
+      issue: `AEO Readiness ${r.score}/100 (grade ${r.grade}) — how well ChatGPT / Perplexity / Google AI Overviews can parse + cite this page`,
+      recommendation: r.recommendations && r.recommendations.length ? `Weakest areas: ${r.recommendations.map(x => x.area).join(', ')}.` : 'Strong AEO structure — well done.',
+    });
+    for (const rec of (r.recommendations || [])) {
+      findings.push({
+        severity: rec.current === 0 ? 'high' : 'medium',
+        issue: `AEO — ${rec.area}: ${rec.current}/${rec.max} (${rec.tip})`,
+        recommendation: `Improve ${rec.area.toLowerCase()} so answer engines can confidently extract + cite this content.`,
+      });
+    }
+    // AI-crawler gate: are GPTBot/ClaudeBot/PerplexityBot/Google-Extended allowed?
+    const crawlers = await aeoCrawlers.checkAiCrawlers(domain);
+    if (crawlers.blocked.length) {
+      score = Math.max(0, score - 15);
+      findings.push({
+        severity: 'critical',
+        issue: `${crawlers.blocked.length} AI crawler(s) BLOCKED in robots.txt: ${crawlers.blocked.map(b => b.ua).join(', ')}`,
+        recommendation: 'These answer engines cannot read your site, so they will never cite you. Allow them in robots.txt — AI OS can generate the exact allowlist.',
+      });
+    } else if (crawlers.hasRobots) {
+      findings.push({ severity: 'info', issue: 'All major AI crawlers (GPTBot, ClaudeBot, PerplexityBot, Google-Extended…) are allowed', recommendation: 'Good — answer engines can read + cite your content.' });
+    } else {
+      findings.push({ severity: 'low', issue: 'No robots.txt found', recommendation: 'Add a robots.txt that explicitly allows AI crawlers so answer engines index you intentionally.' });
+    }
+  } catch (e) {
+    findings.push({ severity: 'medium', issue: `AEO analysis error: ${e.message}`, recommendation: 'Retry the audit.' });
+  }
+  return { score, findings };
 }
 
 // --- Keyword Agent (DataForSEO Labs) ---

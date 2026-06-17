@@ -3,8 +3,8 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Free SEO Audit — AI OS | 5 AI Agents Analyze Your Site in 60 Seconds</title>
-  <meta name="description" content="Get a free SEO audit powered by 5 parallel AI agents. Keyword analysis, technical check, competitor comparison, content review, and backlink profile — no login required.">
+  <title>Free SEO &amp; AEO Audit — AI OS | 6 AI Agents Analyze Your Site in 60 Seconds</title>
+  <meta name="description" content="Get a free SEO + AEO audit powered by 6 parallel AI agents. Keyword, technical, competitor, content, and backlink analysis — plus an AEO Readiness score for ChatGPT, Perplexity &amp; Google AI Overviews. No login required.">
   <link rel="canonical" href="https://aiosorchestrationlab.com/free-audit">
   <meta property="og:title" content="Free SEO Audit — 5 AI Agents Analyze Your Site">
   <meta property="og:description" content="Enter your domain, get a composite score and action plan. No login, no credit card. Powered by AI OS.">
@@ -18,7 +18,7 @@
     "@context": "https://schema.org",
     "@type": "WebApplication",
     "name": "AI OS Free SEO Audit",
-    "description": "Free SEO audit powered by 5 parallel AI agents — keyword, technical, competitor, content, and backlink analysis.",
+    "description": "Free SEO + AEO audit powered by 6 parallel AI agents — keyword, technical, competitor, content, and backlink analysis plus an AEO Readiness score for AI answer engines.",
     "url": "https://aiosorchestrationlab.com/free-audit",
     "applicationCategory": "SEO Tool",
     "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" }
@@ -49,7 +49,7 @@
     .audit-submit { width: 100%; padding: 14px; background: linear-gradient(135deg, #3b82f6, #8b5cf6); color: #fff; border: none; border-radius: 10px; font-size: 16px; font-weight: 700; cursor: pointer; transition: transform 0.2s; }
     .audit-submit:hover { transform: translateY(-1px); }
     .audit-submit:disabled { opacity: 0.6; cursor: not-allowed; transform: none; }
-    .audit-agents { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; margin: 20px 0; }
+    .audit-agents { display: grid; grid-template-columns: repeat(6, 1fr); gap: 8px; margin: 20px 0; }
     .audit-agent { text-align: center; padding: 12px 4px; background: var(--bg-primary); border: 1px solid var(--border); border-radius: 8px; font-size: 11px; transition: all 0.3s; }
     .audit-agent-icon { font-size: 20px; margin-bottom: 4px; display: block; }
     .audit-agent.running { border-color: var(--primary); background: rgba(59,130,246,0.05); }
@@ -68,7 +68,7 @@
     .score-warn { color: #f59e0b; }
     .score-bad { color: #ef4444; }
     .audit-summary { padding: 16px; background: var(--bg-primary); border-radius: 10px; border-left: 3px solid var(--primary); font-size: 14px; line-height: 1.7; color: var(--text-secondary); margin-bottom: 20px; }
-    .audit-agents-result { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; margin-bottom: 20px; }
+    .audit-agents-result { display: grid; grid-template-columns: repeat(6, 1fr); gap: 8px; margin-bottom: 20px; }
     .audit-agent-result { text-align: center; padding: 14px 6px; background: var(--bg-primary); border: 1px solid var(--border); border-radius: 8px; }
     .audit-agent-result-score { font-size: 22px; font-weight: 800; }
     .audit-agent-result-name { font-size: 10px; color: var(--text-muted); margin-top: 4px; text-transform: uppercase; }
@@ -111,13 +111,14 @@
   <div class="audit-page">
     <div class="audit-hero">
       <h1>Free SEO Audit</h1>
-      <p>5 AI agents analyze your website in parallel — keyword opportunities, technical health, competitors, content depth, and backlink profile. No login required.</p>
+      <p>6 AI agents analyze your website in parallel — keyword opportunities, technical health, competitors, content depth, backlink profile, and your <strong>AEO Readiness</strong> for AI answer engines (ChatGPT, Perplexity, Google AI Overviews). No login required.</p>
       <div class="audit-badges">
         <span class="audit-badge">&#128269; Keyword Analysis</span>
         <span class="audit-badge">&#128736; Technical Audit</span>
         <span class="audit-badge">&#128200; Competitor Intel</span>
         <span class="audit-badge">&#128196; Content Review</span>
         <span class="audit-badge">&#128279; Backlink Profile</span>
+        <span class="audit-badge">&#129302; AEO / AI Search</span>
       </div>
     </div>
 
@@ -149,6 +150,7 @@
         <div class="audit-agent" id="fa-competitor"><span class="audit-agent-icon">&#128200;</span>Competitor</div>
         <div class="audit-agent" id="fa-content"><span class="audit-agent-icon">&#128196;</span>Content</div>
         <div class="audit-agent" id="fa-backlink"><span class="audit-agent-icon">&#128279;</span>Backlink</div>
+        <div class="audit-agent" id="fa-aeo"><span class="audit-agent-icon">&#129302;</span>AEO</div>
       </div>
       <div class="audit-progress">
         <div class="audit-progress-bar"><div class="audit-progress-fill" id="faProgressFill"></div></div>
@@ -231,10 +233,11 @@
       document.getElementById('auditRunning').style.display = 'block';
 
       // Animate agents
-      const agents = ['keyword', 'technical', 'competitor', 'content', 'backlink'];
+      const agents = ['keyword', 'technical', 'competitor', 'content', 'backlink', 'aeo'];
       agents.forEach((a, i) => {
         setTimeout(() => {
-          document.getElementById('fa-' + a).classList.add('running');
+          const el = document.getElementById('fa-' + a);
+          if (el) el.classList.add('running');
         }, i * 500);
       });
 
@@ -256,7 +259,7 @@
           agents.forEach(a => {
             const agentData = audit.agents?.[a];
             const el = document.getElementById('fa-' + a);
-            if (agentData?.status === 'complete' || agentData?.score !== null) {
+            if (el && (agentData?.status === 'complete' || agentData?.score != null)) {
               el.classList.remove('running');
               el.classList.add('complete');
             }
@@ -272,8 +275,8 @@
               renderFreeResult(audit);
             }, 800);
           } else {
-            const doneCount = agents.filter(a => audit.agents?.[a]?.status === 'complete' || audit.agents?.[a]?.score !== null).length;
-            label.textContent = `${doneCount}/5 agents complete...`;
+            const doneCount = agents.filter(a => audit.agents?.[a]?.status === 'complete' || audit.agents?.[a]?.score != null).length;
+            label.textContent = `${doneCount}/${agents.length} agents complete...`;
           }
         } catch {}
       }, 2000);
