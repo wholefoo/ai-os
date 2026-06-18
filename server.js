@@ -978,6 +978,7 @@ const webStudioHosting = require('./lib/web-studio/hosting');
 const webStudioPublish = require('./lib/web-studio/publish');
 const webStudioDns = require('./lib/web-studio/dns');
 const webStudioImport = require('./lib/web-studio/import');
+const webStudioExport = require('./lib/web-studio/export');
 const aeoReadability = require('./lib/aeo/readability');
 const aeoCrawlers = require('./lib/aeo/crawlers');
 
@@ -1118,6 +1119,52 @@ app.post('/api/web-studio/import/github', requireAdmin, heavyLimiter, (req, res)
   site.importRepo = String(url).slice(0, 200); // store the repo URL, never the token
   res.json({ ok: true, site });
   wsFinishImport(site, webStudioImport.importToWorkspace({ workspaceDir: wsWorkspaceDir(site.id), githubUrl: url, githubToken: token }));
+});
+
+// --- Export: download the built site as a ZIP, or push it to GitHub (one clean commit) ---
+// We export dist/ (the deployable static build). Admin-only + heavy-limited like import;
+// the GitHub token travels in headers only (see lib/web-studio/export.js) and is never stored.
+async function wsEnsureDist(site) {
+  const distDir = path.join(wsWorkspaceDir(site.id), 'dist');
+  if (fs.existsSync(path.join(distDir, 'index.html'))) return distDir;
+  // No build on disk yet — try to produce one so export always has something to ship.
+  const b = site.kind === 'imported'
+    ? webStudioBuild.staticBuild(wsWorkspaceDir(site.id))
+    : await webStudioBuild.runBuild(wsWorkspaceDir(site.id));
+  return b.ok ? distDir : null;
+}
+
+app.get('/api/web-studio/sites/:id/export.zip', requireAdmin, async (req, res) => {
+  const site = wsFindSite(req, res); if (!site) return;
+  const distDir = await wsEnsureDist(site);
+  if (!distDir) return res.status(400).json({ error: 'No built site to export yet — build or publish the site first.' });
+  let buf;
+  try { buf = webStudioExport.zipDir(distDir); }
+  catch (e) { return res.status(400).json({ error: e.message }); }
+  const safe = (site.name || 'site').replace(/[^A-Za-z0-9._-]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 60) || 'site';
+  res.setHeader('Content-Type', 'application/zip');
+  res.setHeader('Content-Disposition', `attachment; filename="${safe}.zip"`);
+  res.send(buf);
+});
+
+app.post('/api/web-studio/sites/:id/export/github', requireAdmin, heavyLimiter, async (req, res) => {
+  const site = wsFindSite(req, res); if (!site) return;
+  const { mode, repoName, repoUrl, token, private: isPrivate, message } = req.body || {};
+  if (mode !== 'new' && mode !== 'existing') return res.status(400).json({ error: "mode must be 'new' or 'existing'" });
+  if (!token) return res.status(400).json({ error: 'a GitHub token is required' });
+  if (mode === 'new' && !repoName) return res.status(400).json({ error: 'a repo name is required to create a new repo' });
+  if (mode === 'existing' && !repoUrl) return res.status(400).json({ error: 'a repo URL is required' });
+  const distDir = await wsEnsureDist(site);
+  if (!distDir) return res.status(400).json({ error: 'No built site to export yet — build or publish the site first.' });
+  try {
+    const r = await webStudioExport.exportToGitHub({ distDir, token, mode, repoName, isPrivate: !!isPrivate, repoUrl, message });
+    site.exportRepo = r.repoUrl; // store the repo URL, never the token
+    saveState('web_studio_sites', webStudioSites);
+    logActivity('web-studio', `Site exported to GitHub: ${site.name} -> ${r.owner}/${r.repo}`, { id: site.id });
+    res.json({ ok: true, ...r });
+  } catch (e) {
+    res.status(502).json({ error: `GitHub export failed: ${e.message}` });
+  }
 });
 
 // --- Get one ---

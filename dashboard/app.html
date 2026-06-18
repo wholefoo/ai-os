@@ -1211,6 +1211,26 @@
               </div>
               <div class="ws-hint" id="wsPublishHint" style="margin-top:8px;">Point your domain's DNS A record at this server, click Check DNS, then Publish. TLS is issued automatically.</div>
             </section>
+
+            <section class="panel" id="wsExportPanel" style="margin-top:12px;">
+              <h3 class="panel-title">Export this site</h3>
+              <div class="ws-row" style="margin-bottom:10px;">
+                <a class="btn btn-primary" id="wsExportZipBtn" href="#">&#11015; Download ZIP</a>
+                <span class="ws-hint">The built static site (<code>dist/</code>) &mdash; host it anywhere.</span>
+              </div>
+              <div class="ws-row" style="flex-wrap:wrap;gap:8px;">
+                <select class="settings-input" id="wsExportMode" style="max-width:210px;">
+                  <option value="new">Export to a new GitHub repo</option>
+                  <option value="existing">Push to an existing repo</option>
+                </select>
+                <input type="text" class="settings-input" id="wsExportRepoName" placeholder="new-repo-name" style="max-width:220px;" />
+                <input type="text" class="settings-input" id="wsExportRepoUrl" placeholder="https://github.com/owner/repo" style="max-width:280px;display:none;" />
+                <label class="ws-hint" id="wsExportPrivateWrap" style="display:flex;align-items:center;gap:4px;"><input type="checkbox" id="wsExportPrivate" /> Private</label>
+                <input type="password" class="settings-input" id="wsExportToken" placeholder="GitHub token (repo scope)" style="max-width:240px;" autocomplete="off" />
+                <button class="btn btn-primary" id="wsExportGhBtn">Export to GitHub</button>
+              </div>
+              <div class="ws-hint" id="wsExportHint" style="margin-top:8px;">Pushes the built site to GitHub as a single commit. The token is used once for this push and <strong>never stored</strong>. For an existing repo your files are added on its default branch (unrelated files are kept).</div>
+            </section>
           </div>
         </div>
 
@@ -2172,7 +2192,7 @@
 
   <script src="js/app.js?v=35"></script>
   <script src="https://cdn.jsdelivr.net/npm/monaco-editor@0.52.2/min/vs/loader.js"></script>
-  <script src="js/web-studio.js?v=5"></script>
+  <script src="js/web-studio.js?v=6"></script>
   <script src="js/crm.js?v=2"></script>
 </body>
 </html>

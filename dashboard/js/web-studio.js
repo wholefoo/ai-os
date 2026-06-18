@@ -45,6 +45,9 @@ function loadWebStudio() {
     on('wsSetupHostingBtn', 'click', wsSetupHosting);
     on('wsPublishBtn', 'click', wsPublish);
     on('wsUnpublishBtn', 'click', wsUnpublish);
+    on('wsExportZipBtn', 'click', (e) => { e.preventDefault(); wsExportZip(); });
+    on('wsExportGhBtn', 'click', wsExportGithub);
+    on('wsExportMode', 'change', wsExportModeChange);
   }
   if (!wsState.currentId) {
     const em = document.getElementById('wsEditorMode'); if (em) em.style.display = 'none';
@@ -321,6 +324,59 @@ async function wsUnpublish() {
   const r = await fetchJSON(`/api/web-studio/sites/${wsState.currentId}/unpublish`, { method: 'POST', body: {} });
   if (r && r.error) { wsPublishHint('Unpublish failed: ' + r.error); return; }
   wsPublishHint('Taken offline.');
+}
+
+// ---------- export (download ZIP / push to GitHub) ----------
+function wsExportHint(t) { const el = document.getElementById('wsExportHint'); if (el) el.textContent = t || ''; }
+
+function wsExportModeChange() {
+  const isNew = ((document.getElementById('wsExportMode') || {}).value || 'new') === 'new';
+  const show = (id, on) => { const el = document.getElementById(id); if (el) el.style.display = on ? '' : 'none'; };
+  show('wsExportRepoName', isNew);
+  show('wsExportPrivateWrap', isNew);
+  show('wsExportRepoUrl', !isNew);
+}
+
+async function wsExportZip() {
+  if (!wsState.currentId) return;
+  wsExportHint('Preparing ZIP…');
+  try {
+    const res = await fetch(`/api/web-studio/sites/${wsState.currentId}/export.zip`);
+    if (!res.ok) { let e = {}; try { e = await res.json(); } catch {} wsExportHint('Export failed: ' + (e.error || res.status)); return; }
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const name = (((wsState.currentSite || {}).name) || 'site').replace(/[^A-Za-z0-9._-]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 60) || 'site';
+    const a = document.createElement('a');
+    a.href = url; a.download = name + '.zip';
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 4000);
+    wsExportHint(`Downloaded ${name}.zip.`);
+  } catch (e) { wsExportHint('Export failed: ' + e.message); }
+}
+
+async function wsExportGithub() {
+  if (!wsState.currentId) return;
+  const mode = (document.getElementById('wsExportMode') || {}).value || 'new';
+  const token = ((document.getElementById('wsExportToken') || {}).value || '').trim();
+  if (!token) { wsExportHint('A GitHub token (repo scope) is required.'); return; }
+  const body = { mode, token };
+  if (mode === 'new') {
+    body.repoName = ((document.getElementById('wsExportRepoName') || {}).value || '').trim();
+    body.private = !!(document.getElementById('wsExportPrivate') || {}).checked;
+    if (!body.repoName) { wsExportHint('Enter a name for the new repo.'); return; }
+  } else {
+    body.repoUrl = ((document.getElementById('wsExportRepoUrl') || {}).value || '').trim();
+    if (!body.repoUrl) { wsExportHint('Enter the existing repo URL.'); return; }
+  }
+  wsExportHint('Pushing to GitHub — creating commit…');
+  const r = await fetchJSON(`/api/web-studio/sites/${wsState.currentId}/export/github`, { method: 'POST', body });
+  document.getElementById('wsExportToken').value = ''; // clear the token field either way
+  if (r && r.error) { wsExportHint('Export failed: ' + r.error); return; }
+  const el = document.getElementById('wsExportHint');
+  if (el) {
+    el.textContent = `Pushed ${r.files} files to ${r.owner}/${r.repo} (branch ${r.branch}). `;
+    if (r.commitUrl) el.innerHTML += `<a href="${r.commitUrl}" target="_blank" rel="noopener">View commit ↗</a> · <a href="${r.repoUrl}" target="_blank" rel="noopener">Open repo ↗</a>`;
+  }
 }
 
 // ---------- live updates from the server ----------
