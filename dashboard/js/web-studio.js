@@ -50,6 +50,7 @@ function loadWebStudio() {
     on('wsExportZipBtn', 'click', (e) => { e.preventDefault(); wsExportZip(); });
     on('wsExportGhBtn', 'click', wsExportGithub);
     on('wsExportMode', 'change', wsExportModeChange);
+    on('wsOptimizeBtn', 'click', wsOptimize);
   }
   if (!wsState.currentId) {
     const em = document.getElementById('wsEditorMode'); if (em) em.style.display = 'none';
@@ -430,6 +431,31 @@ async function wsExportGithub() {
     el.textContent = `Pushed ${r.files} files to ${r.owner}/${r.repo} (branch ${r.branch}). `;
     if (r.commitUrl) el.innerHTML += `<a href="${r.commitUrl}" target="_blank" rel="noopener">View commit ↗</a> · <a href="${r.repoUrl}" target="_blank" rel="noopener">Open repo ↗</a>`;
   }
+}
+
+// ---------- optimize with AI OS (AEO score + agent suggestions) ----------
+async function wsOptimize() {
+  if (!wsState.currentId) return;
+  const hint = document.getElementById('wsOptimizeHint');
+  const box = document.getElementById('wsOptimizeResult');
+  if (hint) hint.textContent = 'Scoring the built site + asking an AI OS agent…';
+  const r = await fetchJSON(`/api/web-studio/sites/${wsState.currentId}/optimize`, { method: 'POST', body: {} });
+  if (!r || r.error) { if (hint) hint.textContent = 'Could not optimize: ' + ((r && r.error) || 'error'); return; }
+  const a = r.aeo || {};
+  if (hint) hint.textContent = `AEO Readiness ${a.score}/100 (grade ${a.grade})${r.model ? ` · suggestions by ${r.model}` : ''}.`;
+  const col = a.score >= 80 ? '#10b981' : a.score >= 50 ? '#f59e0b' : '#ef4444';
+  let html = `<div style="font-size:28px;font-weight:700;color:${col};">${a.score}<span style="font-size:14px;color:var(--text-muted,#9aa);font-weight:400;">/100 &middot; grade ${escapeHtml(a.grade || '')}</span></div>`;
+  if (r.crawlers && r.crawlers.blocked && r.crawlers.blocked.length) {
+    html += `<div class="ws-hint" style="color:#ef4444;margin-top:4px;">&#9888; AI crawlers blocked in robots.txt: ${r.crawlers.blocked.map(escapeHtml).join(', ')}</div>`;
+  }
+  if (Array.isArray(a.recommendations) && a.recommendations.length) {
+    html += '<div style="margin-top:8px;"><strong>Weak areas:</strong><ul style="margin:4px 0 0 18px;">'
+      + a.recommendations.map((x) => `<li>${escapeHtml(x.area)} (${x.current}/${x.max}) &mdash; ${escapeHtml(x.tip)}</li>`).join('') + '</ul></div>';
+  }
+  if (r.suggestions) {
+    html += `<div style="margin-top:10px;"><strong>AI OS suggestions:</strong><div style="white-space:pre-wrap;font-size:13px;margin-top:4px;line-height:1.5;">${escapeHtml(r.suggestions)}</div></div>`;
+  }
+  if (box) { box.innerHTML = html; box.style.display = 'block'; }
 }
 
 // ---------- live updates from the server ----------

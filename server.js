@@ -1211,6 +1211,43 @@ app.post('/api/web-studio/sites/:id/export/github', requireAdmin, heavyLimiter, 
   }
 });
 
+// --- Optimize with AI OS: score the built site for AI search + have an agent improve it ---
+// Taps the platform: the zero-token AEO readability scorer + AI-crawler check, then an AI OS
+// content agent (auto-routed by task via EFFORT_ROUTING) for concrete fixes. Admin + heavy-limited.
+async function runSiteOptimization(site) {
+  const distDir = await wsEnsureDist(site);
+  if (!distDir) return { error: 'No built site to optimize — build or publish the site first.' };
+  const indexPath = path.join(distDir, 'index.html');
+  if (!fs.existsSync(indexPath)) return { error: 'No index.html in the build.' };
+  const html = fs.readFileSync(indexPath, 'utf-8');
+  const aeo = aeoReadability.scoreReadability(aeoReadability.extractSignals(html));
+  let crawlers = null;
+  if (site.domain) { try { const c = await aeoCrawlers.checkAiCrawlers(site.domain); crawlers = { hasRobots: c.hasRobots, blocked: c.blocked.map((b) => b.ua) }; } catch {} }
+
+  let suggestions = '', model = null;
+  try {
+    const weak = (aeo.recommendations || []).map((r) => `- ${r.area} (${r.current}/${r.max}): ${r.tip}`).join('\n');
+    const prompt = `You are optimizing a marketing web page for SEO and AEO (AI answer engines: ChatGPT, Perplexity, Google AI Overviews).
+Current AEO Readiness: ${aeo.score}/100 (grade ${aeo.grade}).
+Weak areas:
+${weak || '(none flagged)'}
+
+Give 5-8 SPECIFIC, actionable improvements (headings, meta description, an FAQ section, Schema.org/JSON-LD, clear entity definition, answer-ready phrasing). Be concrete about what to add or change. Plain text, one improvement per line, no preamble.`;
+    const r = await executeAgent('content-writer', prompt, { maxTokens: 2500 });
+    if (r && r.ok) { suggestions = r.content || ''; model = r.model; }
+    else suggestions = `(optimization agent unavailable: ${(r && r.error) || 'error'})`;
+  } catch (e) { suggestions = `(optimization agent error: ${e.message})`; }
+
+  return { aeo: { score: aeo.score, grade: aeo.grade, recommendations: aeo.recommendations }, crawlers, suggestions, model };
+}
+
+app.post('/api/web-studio/sites/:id/optimize', requireAdmin, heavyLimiter, async (req, res) => {
+  const site = wsFindSite(req, res); if (!site) return;
+  const r = await runSiteOptimization(site);
+  if (r.error) return res.status(400).json({ error: r.error });
+  res.json({ ok: true, ...r });
+});
+
 // --- Get one ---
 app.get('/api/web-studio/sites/:id', requireAdmin, (req, res) => {
   const site = wsFindSite(req, res); if (!site) return;

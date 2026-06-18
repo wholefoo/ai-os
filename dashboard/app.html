@@ -1243,6 +1243,15 @@
               </div>
               <div class="ws-hint" id="wsExportHint" style="margin-top:8px;">Pushes the built site to GitHub as a single commit. The token is used once for this push and <strong>never stored</strong>. For an existing repo your files are added on its default branch (unrelated files are kept).</div>
             </section>
+
+            <section class="panel" id="wsOptimizePanel" style="margin-top:12px;">
+              <h3 class="panel-title">Optimize with AI OS</h3>
+              <div class="ws-row">
+                <button class="btn btn-primary" id="wsOptimizeBtn">Analyze &amp; optimize</button>
+                <span class="ws-hint" id="wsOptimizeHint">Scores this site's AEO readiness (how well ChatGPT / Perplexity / Google AI Overviews can cite it) and asks an AI OS content agent for concrete improvements.</span>
+              </div>
+              <div id="wsOptimizeResult" style="display:none;margin-top:10px;"></div>
+            </section>
           </div>
         </div>
 
@@ -2204,7 +2213,7 @@
 
   <script src="js/app.js?v=35"></script>
   <script src="https://cdn.jsdelivr.net/npm/monaco-editor@0.52.2/min/vs/loader.js"></script>
-  <script src="js/web-studio.js?v=8"></script>
+  <script src="js/web-studio.js?v=9"></script>
   <script src="js/crm.js?v=2"></script>
 </body>
 </html>
