@@ -163,6 +163,9 @@ function authMiddleware(req, res, next) {
     '/api/stripe/webhook', '/api/stripe/checkout', '/api/stripe/success',
     '/api/tenant/branding', '/api/hq/stats', '/api/hq/org'];
   if (publicPaths.includes(url)) return next();
+  // Public lead magnet: the free SEO/AEO audit — POST create + GET /:id results polling.
+  // (Abuse is bounded by heavyLimiter on the POST + the per-email monthly cap in the handler.)
+  if (url === '/api/seo/free-audit' || url.startsWith('/api/seo/free-audit/')) return next();
   // Allow session-cookie auth (logged-in dashboard users)
   const sessionToken = req.cookies?.['ai-os-session'];
   if (sessionToken && isValidSession(sessionToken)) return next();
@@ -5911,7 +5914,7 @@ try {
   console.error('[crm] init failed:', e.message);
 }
 
-app.post('/api/seo/free-audit', async (req, res) => {
+app.post('/api/seo/free-audit', heavyLimiter, async (req, res) => {
   const { domain, email, name } = req.body;
   if (!domain) return res.status(400).json({ error: 'Domain is required' });
   if (!email) return res.status(400).json({ error: 'Email is required to receive your audit results' });
