@@ -1133,6 +1133,12 @@
                 </div>
                 <textarea class="settings-input" id="wsBrief" rows="3" placeholder="Describe the site: who it's for, the vibe, the pages you want, and the main call to action."></textarea>
                 <div class="ws-row" style="flex-wrap:wrap;gap:8px;">
+                  <input type="text" class="settings-input" id="wsTrendTopic" placeholder="Trending ideas for a topic (optional)" style="max-width:280px;" />
+                  <button class="btn" id="wsTrendBtn">Find trending</button>
+                  <span class="ws-hint" id="wsTrendHint">Pull what's hot from Google Trends, Reddit, Hacker News &amp; Google News &mdash; click a result to add it to your brief.</span>
+                </div>
+                <div id="wsTrendResults" style="display:none;margin-bottom:6px;"></div>
+                <div class="ws-row" style="flex-wrap:wrap;gap:8px;">
                   <input type="text" class="settings-input" id="wsCloneUrl" placeholder="Clone design from a URL (optional, e.g. https://stripe.com)" style="max-width:340px;" />
                   <button class="btn" id="wsClonePreviewBtn">Preview design</button>
                   <span id="wsCloneSwatches" style="display:inline-flex;gap:4px;align-items:center;"></span>
@@ -2198,7 +2204,7 @@
 
   <script src="js/app.js?v=35"></script>
   <script src="https://cdn.jsdelivr.net/npm/monaco-editor@0.52.2/min/vs/loader.js"></script>
-  <script src="js/web-studio.js?v=7"></script>
+  <script src="js/web-studio.js?v=8"></script>
   <script src="js/crm.js?v=2"></script>
 </body>
 </html>

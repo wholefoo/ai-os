@@ -980,6 +980,7 @@ const webStudioDns = require('./lib/web-studio/dns');
 const webStudioImport = require('./lib/web-studio/import');
 const webStudioExport = require('./lib/web-studio/export');
 const webStudioDesign = require('./lib/web-studio/design-extract');
+const trendsLib = require('./lib/trends');
 const aeoReadability = require('./lib/aeo/readability');
 const aeoCrawlers = require('./lib/aeo/crawlers');
 
@@ -1052,6 +1053,27 @@ app.post('/api/web-studio/design-extract', requireAdmin, heavyLimiter, async (re
   } catch (e) {
     res.status(400).json({ error: `Could not read that site: ${e.message}` });
   }
+});
+
+// --- Trending content: pull "what's hot" to seed a brief (admin-only) ---
+// Keyless sources run by default; X/social is opt-in (request sources=...,social) and routes
+// through the realtime agent, so the default path spends no model tokens.
+app.get('/api/web-studio/trends', requireAdmin, async (req, res) => {
+  const topic = String(req.query.topic || '').slice(0, 120);
+  const geo = String(req.query.geo || 'US').slice(0, 8);
+  const sources = req.query.sources ? String(req.query.sources).split(',').map(s => s.trim()).filter(Boolean).slice(0, 6) : undefined;
+  const deps = {
+    youtubeKey: (settings && settings.integrations && settings.integrations.youtube_key) || process.env.YOUTUBE_API_KEY || '',
+    socialFetch: (Array.isArray(sources) && sources.includes('social'))
+      ? async (t) => {
+          const r = await executeAgent('grok-realtime', `List the top 10 topics trending on X/Twitter right now${t ? ` about "${t}"` : ''}. Return ONLY a JSON array of short title strings.`, { maxTokens: 1200 });
+          const m = String((r && r.content) || '').match(/\[[\s\S]*\]/);
+          try { return m ? JSON.parse(m[0]) : []; } catch { return []; }
+        }
+      : null,
+  };
+  try { const data = await trendsLib.fetchTrending({ sources, topic, geo }, deps); res.json({ ok: true, topic, data }); }
+  catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 // --- Create from a brief (tier-limit gated; pipeline runs async) ---

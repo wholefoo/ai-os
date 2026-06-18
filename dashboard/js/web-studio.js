@@ -31,6 +31,7 @@ function loadWebStudio() {
     const on = (id, ev, fn) => { const el = document.getElementById(id); if (el) el.addEventListener(ev, fn); };
     on('wsCreateBtn', 'click', wsCreate);
     on('wsClonePreviewBtn', 'click', wsClonePreview);
+    on('wsTrendBtn', 'click', wsTrends);
     on('wsImportZipBtn', 'click', wsImportZip);
     on('wsImportGhBtn', 'click', wsImportGithub);
     on('wsBackBtn', 'click', wsBack);
@@ -115,6 +116,34 @@ async function wsCreate() {
   if (document.getElementById('wsCloneUrl')) document.getElementById('wsCloneUrl').value = '';
   const sw = document.getElementById('wsCloneSwatches'); if (sw) sw.innerHTML = '';
   await wsFetchAndRenderSites(); // shows the new "building" site; WS events flip its status
+}
+
+async function wsTrends() {
+  const topic = ((document.getElementById('wsTrendTopic') || {}).value || '').trim();
+  const hint = document.getElementById('wsTrendHint');
+  const box = document.getElementById('wsTrendResults');
+  if (hint) hint.textContent = 'Fetching trending topics…';
+  const r = await fetchJSON(`/api/web-studio/trends${topic ? `?topic=${encodeURIComponent(topic)}` : ''}`);
+  if (!r || r.error) { if (hint) hint.textContent = 'Could not fetch trends: ' + ((r && r.error) || 'error'); return; }
+  const data = r.data || {};
+  const labels = { google_trends: 'Google Trends', reddit: 'Reddit', hacker_news: 'Hacker News', google_news: 'Google News', youtube: 'YouTube', social: 'X / Social' };
+  let html = '', total = 0;
+  for (const [src, v] of Object.entries(data)) {
+    if (!v.items || !v.items.length) continue;
+    html += `<div style="margin:6px 0;"><div style="font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:var(--text-secondary,#9aa);margin-bottom:4px;">${escapeHtml(labels[src] || src)}</div><div style="display:flex;flex-wrap:wrap;gap:6px;">`;
+    html += v.items.map((it) => `<button type="button" class="btn ws-trend-item" data-t="${escapeHtml(it.title)}" style="font-size:12px;padding:4px 10px;text-align:left;max-width:100%;">${escapeHtml(it.title.slice(0, 80))}</button>`).join('');
+    html += '</div></div>';
+    total += v.items.length;
+  }
+  if (box) { box.innerHTML = html || '<span class="ws-hint">No trending items found.</span>'; box.style.display = 'block'; box.querySelectorAll('.ws-trend-item').forEach((b) => b.addEventListener('click', () => wsAddTrendToBrief(b.getAttribute('data-t')))); }
+  if (hint) hint.textContent = total ? `${total} ideas — click any to add it to your brief.` : 'No trending items found.';
+}
+
+function wsAddTrendToBrief(text) {
+  const ta = document.getElementById('wsBrief');
+  if (!ta || !text) return;
+  ta.value = (ta.value ? ta.value.trim() + '\n' : '') + `Cover this trending topic: ${text}`;
+  ta.focus();
 }
 
 async function wsClonePreview() {
