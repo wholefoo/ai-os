@@ -30,6 +30,7 @@ function loadWebStudio() {
     wsState.wired = true;
     const on = (id, ev, fn) => { const el = document.getElementById(id); if (el) el.addEventListener(ev, fn); };
     on('wsCreateBtn', 'click', wsCreate);
+    on('wsClonePreviewBtn', 'click', wsClonePreview);
     on('wsImportZipBtn', 'click', wsImportZip);
     on('wsImportGhBtn', 'click', wsImportGithub);
     on('wsBackBtn', 'click', wsBack);
@@ -100,17 +101,40 @@ async function wsCreate() {
   const brief = (document.getElementById('wsBrief').value || '').trim();
   const siteType = (document.getElementById('wsType') || {}).value || '';
   const domain = ((document.getElementById('wsCreateDomain') || {}).value || '').trim();
+  const cloneUrl = ((document.getElementById('wsCloneUrl') || {}).value || '').trim();
   const hint = document.getElementById('wsCreateHint');
   if (brief.length < 10) { if (hint) hint.textContent = 'Add a longer brief (at least 10 characters).'; return; }
   const btn = document.getElementById('wsCreateBtn');
   if (btn) btn.disabled = true;
-  if (hint) hint.textContent = 'Generating — the studio team is planning, writing and building your site…';
-  const r = await fetchJSON('/api/web-studio/sites', { method: 'POST', body: { name, brief, siteType, domain } });
+  if (hint) hint.textContent = cloneUrl ? 'Cloning design + generating your site…' : 'Generating — the studio team is planning, writing and building your site…';
+  const r = await fetchJSON('/api/web-studio/sites', { method: 'POST', body: { name, brief, siteType, domain, cloneUrl } });
   if (r && r.error) { if (hint) hint.textContent = `Could not create: ${r.error}`; if (btn) btn.disabled = false; return; }
   document.getElementById('wsName').value = '';
   document.getElementById('wsBrief').value = '';
   if (document.getElementById('wsCreateDomain')) document.getElementById('wsCreateDomain').value = '';
+  if (document.getElementById('wsCloneUrl')) document.getElementById('wsCloneUrl').value = '';
+  const sw = document.getElementById('wsCloneSwatches'); if (sw) sw.innerHTML = '';
   await wsFetchAndRenderSites(); // shows the new "building" site; WS events flip its status
+}
+
+async function wsClonePreview() {
+  const url = ((document.getElementById('wsCloneUrl') || {}).value || '').trim();
+  const hint = document.getElementById('wsCloneHint');
+  const sw = document.getElementById('wsCloneSwatches');
+  if (!url) { if (hint) hint.textContent = 'Enter a URL to clone its design from.'; return; }
+  if (hint) hint.textContent = 'Reading the site…';
+  if (sw) sw.innerHTML = '';
+  const r = await fetchJSON('/api/web-studio/design-extract', { method: 'POST', body: { url } });
+  if (!r || r.error) { if (hint) hint.textContent = 'Could not read that site: ' + ((r && r.error) || 'unknown error'); return; }
+  const p = r.profile || {};
+  if (sw && Array.isArray(p.swatches)) {
+    // Only render strict #rrggbb values — don't depend on the server's guarantee at this DOM sink.
+    sw.innerHTML = p.swatches.filter((c) => /^#[0-9a-fA-F]{6}$/.test(c)).map((c) =>
+      `<span title="${escapeHtml(c)}" style="width:16px;height:16px;border-radius:3px;border:1px solid rgba(0,0,0,.2);display:inline-block;background:${escapeHtml(c)};"></span>`).join('');
+  }
+  const fonts = [p.fonts && p.fonts.display, p.fonts && p.fonts.body].filter(Boolean).join(' / ');
+  const secs = (p.sections || []).join(' → ');
+  if (hint) hint.textContent = `Captured ${(p.swatches || []).length} colors${fonts ? `, fonts: ${fonts}` : ''}${secs ? `, structure: ${secs}` : ''}. Click Generate to apply.`;
 }
 
 async function wsDelete(id) {

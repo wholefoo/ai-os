@@ -1132,6 +1132,12 @@
                   <input type="text" class="settings-input" id="wsCreateDomain" placeholder="Domain (optional, e.g. acme.com)" style="max-width:260px;" />
                 </div>
                 <textarea class="settings-input" id="wsBrief" rows="3" placeholder="Describe the site: who it's for, the vibe, the pages you want, and the main call to action."></textarea>
+                <div class="ws-row" style="flex-wrap:wrap;gap:8px;">
+                  <input type="text" class="settings-input" id="wsCloneUrl" placeholder="Clone design from a URL (optional, e.g. https://stripe.com)" style="max-width:340px;" />
+                  <button class="btn" id="wsClonePreviewBtn">Preview design</button>
+                  <span id="wsCloneSwatches" style="display:inline-flex;gap:4px;align-items:center;"></span>
+                  <span class="ws-hint" id="wsCloneHint">Borrows the palette, fonts &amp; section structure &mdash; your copy stays original.</span>
+                </div>
                 <div class="ws-row">
                   <button class="btn btn-primary" id="wsCreateBtn">Generate site</button>
                   <span class="ws-hint" id="wsCreateHint"></span>
@@ -2192,7 +2198,7 @@
 
   <script src="js/app.js?v=35"></script>
   <script src="https://cdn.jsdelivr.net/npm/monaco-editor@0.52.2/min/vs/loader.js"></script>
-  <script src="js/web-studio.js?v=6"></script>
+  <script src="js/web-studio.js?v=7"></script>
   <script src="js/crm.js?v=2"></script>
 </body>
 </html>

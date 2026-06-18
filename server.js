@@ -979,6 +979,7 @@ const webStudioPublish = require('./lib/web-studio/publish');
 const webStudioDns = require('./lib/web-studio/dns');
 const webStudioImport = require('./lib/web-studio/import');
 const webStudioExport = require('./lib/web-studio/export');
+const webStudioDesign = require('./lib/web-studio/design-extract');
 const aeoReadability = require('./lib/aeo/readability');
 const aeoCrawlers = require('./lib/aeo/crawlers');
 
@@ -1039,9 +1040,23 @@ app.get('/api/web-studio/sites', requireAdmin, (req, res) => {
   res.json({ sites: webStudioSites, limit: wsSiteLimit(), used: wsActiveCount() });
 });
 
+// --- Clone design from a URL: preview the extracted palette/fonts/structure ---
+// Untrusted URL — lib/web-studio/design-extract.js is SSRF-guarded (http(s) only, private
+// IPs blocked, redirects re-validated, body capped). Returns tokens for a UI preview.
+app.post('/api/web-studio/design-extract', requireAdmin, heavyLimiter, async (req, res) => {
+  const url = String((req.body || {}).url || '').trim().slice(0, 2000);
+  if (!url) return res.status(400).json({ error: 'a URL is required' });
+  try {
+    const profile = await webStudioDesign.extractProfile(url);
+    res.json({ ok: true, profile });
+  } catch (e) {
+    res.status(400).json({ error: `Could not read that site: ${e.message}` });
+  }
+});
+
 // --- Create from a brief (tier-limit gated; pipeline runs async) ---
 app.post('/api/web-studio/sites', requireAdmin, async (req, res) => {
-  const { name, brief, siteType, domain } = req.body || {};
+  const { name, brief, siteType, domain, cloneUrl } = req.body || {};
   if (!brief || String(brief).trim().length < 10) return res.status(400).json({ error: 'A brief of at least 10 characters is required' });
   const limit = wsSiteLimit();
   if (wsActiveCount() >= limit) return res.status(403).json({ error: `Site limit reached for your plan (${limit}). Upgrade for more sites.`, limit });
@@ -1061,8 +1076,15 @@ app.post('/api/web-studio/sites', requireAdmin, async (req, res) => {
   res.json({ ok: true, site }); // respond now; build continues in the background
 
   try {
+    // Optional "clone design from a URL" — extract a design profile to seed the build.
+    // Best-effort: a failed/blocked extraction just falls back to a default palette.
+    let design = null;
+    if (cloneUrl && String(cloneUrl).trim()) {
+      try { design = await webStudioDesign.extractProfile(String(cloneUrl).trim()); site.clonedFrom = design.sourceUrl; appendLog(`web-studio: design cloned from ${design.sourceUrl}`); }
+      catch (e) { appendLog(`web-studio: design clone failed (${cloneUrl}): ${e.message}`); }
+    }
     const result = await webStudioPipeline.createSiteFromBrief(
-      { siteId: id, workspaceDir: wsWorkspaceDir(id), brief: wsBriefWithType(site), domain: site.domain, siteName: site.name },
+      { siteId: id, workspaceDir: wsWorkspaceDir(id), brief: wsBriefWithType(site), domain: site.domain, siteName: site.name, design },
       { executeAgent, broadcast, log: appendLog }
     );
     site.status = result.ok ? result.status : 'failed';
