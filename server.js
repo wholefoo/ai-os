@@ -1063,7 +1063,7 @@ app.get('/api/web-studio/trends', requireAdmin, async (req, res) => {
   const geo = String(req.query.geo || 'US').slice(0, 8);
   const sources = req.query.sources ? String(req.query.sources).split(',').map(s => s.trim()).filter(Boolean).slice(0, 6) : undefined;
   const deps = {
-    youtubeKey: (settings && settings.integrations && settings.integrations.youtube_key) || process.env.YOUTUBE_API_KEY || '',
+    youtubeKey: (settings.ai && settings.ai.youtube_api_key) || process.env.YOUTUBE_API_KEY || '',
     socialFetch: (Array.isArray(sources) && sources.includes('social'))
       ? async (t) => {
           const r = await executeAgent('grok-realtime', `List the top 10 topics trending on X/Twitter right now${t ? ` about "${t}"` : ''}. Return ONLY a JSON array of short title strings.`, { maxTokens: 1200 });
@@ -4705,6 +4705,7 @@ const settings = loadState('settings', {
     cartesia_api_key: process.env.CARTESIA_API_KEY || '',
     heygen_api_key: process.env.HEYGEN_API_KEY || '',
     did_api_key: process.env.DID_API_KEY || '',
+    youtube_api_key: process.env.YOUTUBE_API_KEY || '',
   },
   mcp: {
     hermes_url: process.env.HERMES_MCP_URL || 'http://127.0.0.1:8420',
@@ -4866,6 +4867,7 @@ app.get('/api/settings', requireAdmin, (req, res) => {
       deepgram_api_key: { value: maskKey(settings.ai.deepgram_api_key), configured: !!settings.ai.deepgram_api_key },
       cartesia_api_key: { value: maskKey(settings.ai.cartesia_api_key), configured: !!settings.ai.cartesia_api_key },
       heygen_api_key: { value: maskKey(settings.ai.heygen_api_key), configured: !!settings.ai.heygen_api_key },
+      youtube_api_key: { value: maskKey(settings.ai.youtube_api_key), configured: !!settings.ai.youtube_api_key },
     },
     mcp: {
       hermes_url: settings.mcp.hermes_url,

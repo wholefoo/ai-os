@@ -1899,6 +1899,14 @@
                   </div>
                 </div>
                 <div class="settings-field">
+                  <label class="settings-label">YouTube Data API Key <span class="settings-tier">Web Studio trending — YouTube source</span></label>
+                  <div class="settings-input-row">
+                    <input type="text" class="settings-input settings-secret" id="set-youtube_api_key" placeholder="AIza..." autocomplete="new-password" data-lpignore="true" data-1p-ignore spellcheck="false">
+                    <button type="button" class="btn btn-sm settings-eye" onclick="toggleKeyVisibility(this)" title="Show/hide">&#128065;</button>
+                    <span class="settings-status" id="status-youtube_api_key"></span>
+                  </div>
+                </div>
+                <div class="settings-field">
                   <label class="settings-label">LiveKit API Key <span class="settings-tier">Real-time avatar pipeline (alternative)</span></label>
                   <div class="settings-input-row">
                     <input type="text" class="settings-input settings-secret" id="set-livekit_api_key" placeholder="API..." autocomplete="new-password" data-lpignore="true" data-1p-ignore spellcheck="false">
@@ -2211,7 +2219,7 @@
     </div>
   </div>
 
-  <script src="js/app.js?v=35"></script>
+  <script src="js/app.js?v=36"></script>
   <script src="https://cdn.jsdelivr.net/npm/monaco-editor@0.52.2/min/vs/loader.js"></script>
   <script src="js/web-studio.js?v=9"></script>
   <script src="js/crm.js?v=2"></script>
