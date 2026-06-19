@@ -813,8 +813,8 @@ function sendChatMessage() {
   input.value = '';
 
   // Simulate orchestrator response
-  setTimeout(() => {
-    const response = processCommand(text);
+  setTimeout(async () => {
+    const response = await processCommand(text);
     appendChatMsg('orchestrator', response);
   }, 600);
 }
@@ -828,18 +828,44 @@ function appendChatMsg(role, text) {
   container.scrollTop = container.scrollHeight;
 }
 
-function processCommand(text) {
+async function processCommand(text) {
   const lower = text.toLowerCase();
 
   if (lower.includes('status') || lower.includes('health')) {
     return `System healthy. ${state.health.agents} agents idle, ${state.health.skills} skills available. ${state.inbox.filter(i=>i.status==='pending').length} items awaiting approval. Context at 12% capacity.`;
   }
   if (lower.includes('run ') || lower.includes('execute ') || lower.includes('launch ')) {
-    const skillMatch = state.skills.find(s => lower.includes(s.meta?.name?.toLowerCase() || ''));
-    if (skillMatch) {
-      return `Queuing "${skillMatch.meta.name}" for execution. Check the Workflows view for progress. Shall I configure any parameters first?`;
+    // Actually launch (no longer canned). Pipelines first (multi-stage), then skills.
+    let pipelines = state.pipelines;
+    if (!Array.isArray(pipelines)) { try { pipelines = await fetchJSON('/api/pipelines'); state.pipelines = pipelines; } catch { pipelines = []; } }
+    const pMatch = (pipelines || []).find((p) => {
+      const n = (p.name || '').toLowerCase(); if (!n) return false;
+      if (lower.includes(n) || lower.includes(n.replace(/-/g, ' '))) return true;
+      const first = n.split('-')[0];
+      return first.length >= 4 && new RegExp('\\b' + first + '\\b').test(lower);
+    });
+    if (pMatch) {
+      const req = Object.entries(pMatch.parameters || {}).filter(([, v]) => v && v.required);
+      const topic = (text.match(/\b(?:on|about|for)\s+(.+)$/i) || [])[1];
+      const params = {};
+      if (req.length) {
+        if (topic) params[req[0][0]] = topic.trim();
+        else return `"${pMatch.name}" needs: ${req.map(([k]) => k).join(', ')}. Try "run ${pMatch.name.split('-')[0]} pipeline on <your ${req[0][0]}>", or open the Pipelines view to fill the form.`;
+      }
+      const r = await fetchJSON(`/api/pipelines/${pMatch.name}/execute`, { method: 'POST', body: { params } });
+      if (r && r.error) return `Couldn't launch ${pMatch.name}: ${r.error}`;
+      if (typeof loadPipelineRuns === 'function') loadPipelineRuns();
+      const n = (pMatch.stages || []).length;
+      return `Launched pipeline "${pMatch.name}"${topic ? ` on "${topic.trim()}"` : ''} — ${n} stage(s) running for real. Watch the Pipelines view; it pauses at any approval gate. (Spends model tokens.)`;
     }
-    return `I couldn't match a skill to that. Available skills: ${state.skills.map(s => s.meta?.name).join(', ')}. Which would you like to run?`;
+    const skillMatch = state.skills.find((s) => s.meta?.name && lower.includes(s.meta.name.toLowerCase()));
+    if (skillMatch) {
+      const r = await fetchJSON(`/api/skills/${skillMatch.filename}/execute`, { method: 'POST', body: { params: {} } });
+      if (r && r.error) return `Couldn't run ${skillMatch.meta.name}: ${r.error}`;
+      return `Running skill "${skillMatch.meta.name}" — check the Workflows view for progress.`;
+    }
+    const pNames = (pipelines || []).map((p) => p.name).join(', ');
+    return `I couldn't match that to a pipeline or skill. Pipelines: ${pNames || 'none'}. Skills: ${state.skills.map((s) => s.meta?.name).filter(Boolean).join(', ')}.`;
   }
   if (lower.includes('team') || lower.includes('agents')) {
     const running = Object.entries(state.fleetStatus).filter(([,s]) => s === 'running').map(([n]) => n);
@@ -2434,19 +2460,37 @@ function renderPipelineRuns(runs) {
 }
 
 async function launchPipeline(name) {
+  let def = null;
+  try { const defs = await fetchJSON('/api/pipelines'); def = (defs || []).find((p) => p.name === name); } catch {}
+  const params = (def && def.parameters) || {};
+  const fields = Object.entries(params).map(([key, p]) => {
+    const req = p.required ? ' <span style="color:#ef4444;">*</span>' : '';
+    const desc = p.description ? `<div style="font-size:11px;color:var(--text-secondary);margin-bottom:3px;">${escapeHtml(p.description)}</div>` : '';
+    let field;
+    if (p.type === 'enum' && Array.isArray(p.options)) {
+      field = `<select class="settings-input" data-param="${escapeHtml(key)}">${p.options.map((o) => `<option ${o === p.default ? 'selected' : ''}>${escapeHtml(o)}</option>`).join('')}</select>`;
+    } else {
+      field = `<input class="settings-input" data-param="${escapeHtml(key)}" data-required="${p.required ? '1' : ''}" placeholder="${escapeHtml(p.default || (p.type === 'string' ? 'enter ' + key : ''))}">`;
+    }
+    return `<div style="margin-bottom:10px;"><label style="font-size:12px;font-weight:600;display:block;margin-bottom:2px;">${escapeHtml(key)}${req}</label>${desc}${field}</div>`;
+  }).join('');
   showModal('Launch Pipeline', `
     <p>Execute <strong>${capitalize(name.replace(/-/g, ' '))}</strong>?</p>
-    <p style="color: var(--text-secondary); font-size: 13px; margin-top: 8px;">
-      This will chain multiple skills and agents together in sequence. You'll see real-time progress in the pipeline view.
-    </p>
+    ${fields || '<p style="color:var(--text-secondary);font-size:13px;">No parameters required.</p>'}
+    <div id="launchErr" style="color:#ef4444;font-size:12px;margin-top:4px;"></div>
+    <p style="color: var(--text-secondary); font-size: 12px; margin-top: 8px;">Chains agents in sequence with real model calls (spends tokens). Live progress in the Pipelines view.</p>
   `, [
     { label: 'Cancel', class: 'btn-secondary', action: closeModal },
     { label: 'Execute', class: 'btn-success', action: async () => {
+      const collected = {};
+      document.querySelectorAll('#modalBody [data-param]').forEach((el) => { if (el.value.trim()) collected[el.getAttribute('data-param')] = el.value.trim(); });
+      const missing = Object.entries(params).filter(([k, p]) => p.required && !collected[k]).map(([k]) => k);
+      if (missing.length) { const e = document.getElementById('launchErr'); if (e) e.textContent = `Required: ${missing.join(', ')}`; return; }
       closeModal();
-      await fetchJSON(`/api/pipelines/${name}/execute`, { method: 'POST', body: { params: {} } });
-      addTimelineEvent('pipeline', `Pipeline launched: ${name}`);
+      const r = await fetchJSON(`/api/pipelines/${name}/execute`, { method: 'POST', body: { params: collected } });
+      addTimelineEvent('pipeline', r && r.error ? `Pipeline launch failed: ${r.error}` : `Pipeline launched: ${name}`);
       loadPipelineRuns();
-    }},
+    } },
   ]);
 }
 
