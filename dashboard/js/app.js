@@ -8031,6 +8031,46 @@ function renderOmniResult(type, result) {
 // --- SEO Agency ---
 let seoAudits = [];
 
+async function runShareOfModel() {
+  const brand = (document.getElementById('somBrand').value || '').trim();
+  const domain = (document.getElementById('somDomain').value || '').trim();
+  const prompts = (document.getElementById('somPrompts').value || '').split('\n').map((s) => s.trim()).filter(Boolean);
+  const competitors = (document.getElementById('somCompetitors').value || '').split(',').map((s) => s.trim()).filter(Boolean);
+  const hint = document.getElementById('somHint');
+  const box = document.getElementById('somResult');
+  if (!brand) { hint.textContent = 'Enter your brand name.'; return; }
+  if (!prompts.length) { hint.textContent = 'Enter at least one buyer-intent question (one per line).'; return; }
+  const btn = document.getElementById('somRunBtn'); if (btn) btn.disabled = true;
+  hint.textContent = 'Querying the AI engines in parallel… this can take 20–40s.';
+  const r = await fetchJSON('/api/aeo/share-of-model', { method: 'POST', body: { brand, domain, prompts, competitors } });
+  if (btn) btn.disabled = false;
+  if (!r || r.error) { hint.textContent = 'Failed: ' + ((r && r.error) || 'error'); return; }
+  const engines = r.engines || [];
+  hint.textContent = `${r.brand} cited in ${Math.round((r.citationShare || 0) * 100)}% of answers across ${engines.length} engine(s): ${engines.join(', ')}.`;
+  const pct = Math.round((r.citationShare || 0) * 100);
+  const col = pct >= 50 ? '#10b981' : pct >= 25 ? '#f59e0b' : '#ef4444';
+  let html = `<div style="font-size:32px;font-weight:700;color:${col};">${pct}%<span style="font-size:13px;color:var(--text-muted,#9aa);font-weight:400;"> citation share</span></div>`;
+  html += '<div style="margin-top:10px;"><strong>By engine:</strong><div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:6px;">';
+  for (const [eng, d] of Object.entries(r.byEngine || {})) {
+    html += `<span class="settings-status" style="padding:4px 10px;">${escapeHtml(eng)}: ${Math.round((d.rate || 0) * 100)}% (${d.mentioned}/${d.of})</span>`;
+  }
+  html += '</div></div>';
+  if ((r.competitors || []).some((c) => c.mentions > 0)) {
+    html += '<div style="margin-top:10px;"><strong>Competitor mentions:</strong><ul style="margin:4px 0 0 18px;">'
+      + r.competitors.map((c) => `<li>${escapeHtml(c.name)}: ${c.mentions}</li>`).join('') + '</ul></div>';
+  }
+  if ((r.byPrompt || []).length) {
+    html += '<div style="margin-top:10px;overflow-x:auto;"><strong>By question:</strong><table style="width:100%;font-size:12px;margin-top:6px;border-collapse:collapse;"><tr><th style="text-align:left;padding:3px 6px;">Question</th>'
+      + engines.map((e) => `<th style="padding:3px 6px;">${escapeHtml(e)}</th>`).join('') + '</tr>';
+    for (const bp of r.byPrompt) {
+      html += `<tr><td style="padding:3px 6px;border-top:1px solid var(--border,#2a2a3a);">${escapeHtml(bp.prompt)}</td>`
+        + engines.map((e) => { const v = bp.engines[e]; return `<td style="text-align:center;border-top:1px solid var(--border,#2a2a3a);">${v === true ? '&#9989;' : v === false ? '&mdash;' : '&middot;'}</td>`; }).join('') + '</tr>';
+    }
+    html += '</table></div>';
+  }
+  box.innerHTML = html; box.style.display = 'block';
+}
+
 async function loadSeoAgency() {
   const data = await fetchJSON('/api/seo/audits');
   if (Array.isArray(data)) seoAudits = data;

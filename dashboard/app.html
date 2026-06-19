@@ -1522,6 +1522,22 @@
             </div>
           </section>
 
+          <section class="panel" style="margin-top:16px;">
+            <h3 class="panel-title">Share of Model <span style="font-size:11px;font-weight:400;color:var(--text-secondary);">&mdash; do AI answer engines cite your brand?</span></h3>
+            <p style="font-size:13px;color:var(--text-secondary);margin-bottom:12px;">Ask the configured AI engines buyer-intent questions and measure whether your brand gets mentioned vs. competitors. Admin-only &middot; uses your model API keys (configure them in Settings).</p>
+            <div class="settings-input-row" style="max-width:600px;flex-wrap:wrap;gap:8px;">
+              <input type="text" class="settings-input" id="somBrand" placeholder="Your brand name (e.g. AI OS)" style="max-width:260px;">
+              <input type="text" class="settings-input" id="somDomain" placeholder="yourdomain.com (optional)" style="max-width:240px;">
+            </div>
+            <textarea class="settings-input" id="somPrompts" rows="3" placeholder="Buyer-intent questions, one per line (e.g. best AI platform for agencies)" style="max-width:600px;margin-top:8px;display:block;"></textarea>
+            <input type="text" class="settings-input" id="somCompetitors" placeholder="Competitors, comma-separated (optional)" style="max-width:600px;margin-top:8px;display:block;">
+            <div class="settings-input-row" style="margin-top:8px;">
+              <button class="btn btn-primary" id="somRunBtn" onclick="runShareOfModel()">Run Share of Model</button>
+              <span class="ws-hint" id="somHint" style="color:var(--text-secondary);"></span>
+            </div>
+            <div id="somResult" style="display:none;margin-top:14px;"></div>
+          </section>
+
           <div id="seoAuditDetail" style="display:none;"></div>
 
           <section class="panel" style="margin-top:20px;">
@@ -2219,7 +2235,7 @@
     </div>
   </div>
 
-  <script src="js/app.js?v=36"></script>
+  <script src="js/app.js?v=37"></script>
   <script src="https://cdn.jsdelivr.net/npm/monaco-editor@0.52.2/min/vs/loader.js"></script>
   <script src="js/web-studio.js?v=9"></script>
   <script src="js/crm.js?v=2"></script>
