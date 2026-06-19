@@ -3758,91 +3758,85 @@ function executePipeline(pipelineName, params) {
 
   broadcast({ event: 'pipeline_update', data: run });
 
-  // Simulate sequential stage execution
-  simulatePipelineStages(run);
+  // Real sequential stage execution (fire-and-forget; streams over the WebSocket).
+  runPipelineStages(run, 0).catch((e) => {
+    run.status = 'failed'; run.error = e.message;
+    appendLog(`PIPELINE_ERR: ${run.pipeline} -> ${e.message}`);
+    broadcast({ event: 'pipeline_update', data: run });
+  });
 
   return run;
 }
 
-function simulatePipelineStages(run) {
-  let stageIndex = 0;
-  const stageDelays = [2000, 3000, 2500, 3500, 2000]; // varied timing
+// REAL sequential pipeline runner — each stage actually calls its agent via executeAgent,
+// threading earlier stages' outputs forward. Cost comes from real token usage (executeAgent
+// already logs the ledger entry; we total it onto run.cost). Blocking gates pause AFTER a
+// stage produces its output and resume from /approve. Fire-and-forget (async); the route has
+// already responded, and progress streams over the existing pipeline_update WebSocket.
+async function runPipelineStages(run, startIdx = 0) {
+  for (let i = startIdx; i < run.stages.length; i++) {
+    const stage = run.stages[i];
+    if (stage.status === 'completed') continue; // already done (pre-gate stages, on resume)
 
-  function advanceStage() {
-    if (stageIndex >= run.stages.length) {
-      run.status = 'completed';
-      run.completedAt = new Date().toISOString();
-      broadcast({ event: 'pipeline_update', data: run });
-      logActivity('pipeline', `Pipeline completed: ${run.pipeline}`, { runId: run.id });
-      appendLog(`PIPELINE_COMPLETE: ${run.pipeline} -> ${run.id}`);
-
-      // Track cost for each stage
-      run.stages.forEach(s => {
-        const modelMap = {
-          'researcher': 'opus-4.8-high', 'synthesis': 'opus-4.8-high',
-          'research-architect': 'opus-4.8-high', 'report-compiler': 'opus-4.8-high',
-          'writer': 'opus-4.8-high', 'reviewer': 'opus-4.8-xhigh',
-          'security-auditor': 'opus-4.8-xhigh', 'orchestrator': 'opus-4.8-xhigh',
-          'deepseek-worker': 'deepseek-v4', 'scout': 'opus-4.8-low',
-        };
-        const model = modelMap[s.agent] || 'opus-4.8-high';
-        const inputTokens = 15000 + Math.floor(Math.random() * 25000);
-        const outputTokens = 4000 + Math.floor(Math.random() * 12000);
-        const rates = COST_RATES[model] || COST_RATES['opus-4.8-high'];
-        const cost = (inputTokens / 1_000_000) * rates.input + (outputTokens / 1_000_000) * rates.output;
-        costLedger.push({
-          id: uuidv4(),
-          agent: s.agent,
-          model,
-          skill: s.skill,
-          inputTokens,
-          outputTokens,
-          cost: Math.round(cost * 10000) / 10000,
-          timestamp: new Date().toISOString(),
-        });
-      });
-
-      return;
-    }
-
-    const stage = run.stages[stageIndex];
     stage.status = 'running';
     stage.startedAt = new Date().toISOString();
-    run.currentStage = stageIndex;
-
-    // Update fleet status
+    run.currentStage = i;
+    run.status = 'running';
     broadcast({ event: 'fleet_update', data: { agent: stage.agent, status: 'running' } });
     broadcast({ event: 'pipeline_update', data: run });
 
-    const delay = stageDelays[stageIndex % stageDelays.length];
-    setTimeout(() => {
-      stage.status = 'completed';
+    // Build the stage task from its skill objective + pipeline params + earlier outputs.
+    const prior = run.stages.slice(0, i).filter((s) => s.output)
+      .map((s) => `### From stage "${s.id}" (${s.agent})\n${String(s.output).slice(0, 4000)}`).join('\n\n');
+    const paramsLine = run.params && Object.keys(run.params).length ? `Pipeline inputs: ${JSON.stringify(run.params)}\n` : '';
+    const task = `You are the "${stage.id}" stage of the "${run.pipeline}" pipeline.\n`
+      + `Objective (skill): ${stage.skill || stage.id}.\n${paramsLine}`
+      + (prior ? `\nDeliverables from earlier stages (build on these):\n${prior}\n` : '')
+      + '\nProduce this stage\'s deliverable directly and concisely.';
+
+    const r = await executeAgent(stage.agent, task, { maxTokens: 4000 });
+    broadcast({ event: 'fleet_update', data: { agent: stage.agent, status: 'idle' } });
+
+    if (!r || !r.ok) {
+      stage.status = 'failed';
+      stage.error = (r && r.error) || 'agent failed';
       stage.completedAt = new Date().toISOString();
-      broadcast({ event: 'fleet_update', data: { agent: stage.agent, status: 'idle' } });
+      run.status = 'failed';
+      run.completedAt = new Date().toISOString();
+      logActivity('pipeline', `Stage failed: ${stage.id} (${stage.agent}) — ${stage.error}`, { runId: run.id });
+      appendLog(`PIPELINE_FAIL: ${run.pipeline}/${stage.id} -> ${stage.error}`);
+      broadcast({ event: 'pipeline_update', data: run });
+      return;
+    }
 
-      logActivity('pipeline', `Stage completed: ${stage.id} (${stage.agent} → ${stage.skill})`, { runId: run.id });
+    stage.status = 'completed';
+    stage.completedAt = new Date().toISOString();
+    stage.output = String(r.content || '');
+    stage.model = r.model;
+    const rates = (COST_RATES && (COST_RATES[r.model] || COST_RATES['opus-4.8-high'])) || { input: 0, output: 0 };
+    run.cost = Math.round((((run.cost || 0) + ((r.inputTokens || 0) / 1e6) * rates.input + ((r.outputTokens || 0) / 1e6) * rates.output)) * 10000) / 10000;
+    logActivity('pipeline', `Stage completed: ${stage.id} (${stage.agent} → ${stage.skill}) [${r.model}]`, { runId: run.id });
+    broadcast({ event: 'pipeline_update', data: run });
 
-      // If stage has a gate, pause for approval
-      if (stage.gate) {
-        stage.status = 'awaiting_approval';
-        run.status = 'awaiting_approval';
-        broadcast({ event: 'pipeline_update', data: run });
-
-        // Send notification
-        sendNotification(
-          `Pipeline gate: ${stage.gate}`,
-          `Stage "${stage.id}" in pipeline "${run.pipeline}" requires ${stage.gate} approval.`,
-          stage.gate === 'blocking' ? 'critical' : 'normal'
-        );
-        return; // pause — will be resumed by API call
-      }
-
-      stageIndex++;
-      advanceStage();
-    }, delay);
+    // Blocking gate: pause AFTER producing the output; await human approval to continue.
+    if (stage.gate) {
+      stage.status = 'awaiting_approval';
+      run.status = 'awaiting_approval';
+      broadcast({ event: 'pipeline_update', data: run });
+      sendNotification(
+        `Pipeline gate: ${stage.gate}`,
+        `Stage "${stage.id}" in pipeline "${run.pipeline}" produced its result and needs ${stage.gate} approval to continue.`,
+        stage.gate === 'blocking' ? 'critical' : 'normal'
+      );
+      return; // resumed by POST /api/pipelines/runs/:id/approve
+    }
   }
 
-  advanceStage();
+  run.status = 'completed';
+  run.completedAt = new Date().toISOString();
+  logActivity('pipeline', `Pipeline completed: ${run.pipeline} ($${run.cost || 0})`, { runId: run.id });
+  appendLog(`PIPELINE_COMPLETE: ${run.pipeline} -> ${run.id} ($${run.cost || 0})`);
+  broadcast({ event: 'pipeline_update', data: run });
 }
 
 app.get('/api/pipelines', (req, res) => {
@@ -3882,11 +3876,15 @@ app.post('/api/pipelines/runs/:id/approve', (req, res) => {
   logActivity('pipeline', `Gate approved in pipeline: ${run.pipeline}`);
   broadcast({ event: 'pipeline_update', data: run });
 
-  // Resume from next stage
+  // Resume real execution from the next stage
   const nextIdx = run.stages.indexOf(gateStage) + 1;
   if (nextIdx < run.stages.length) {
     run.currentStage = nextIdx;
-    simulatePipelineStages({ ...run, stages: run.stages.slice(nextIdx) });
+    runPipelineStages(run, nextIdx).catch((e) => {
+      run.status = 'failed'; run.error = e.message;
+      appendLog(`PIPELINE_ERR: ${run.pipeline} -> ${e.message}`);
+      broadcast({ event: 'pipeline_update', data: run });
+    });
   } else {
     run.status = 'completed';
     run.completedAt = new Date().toISOString();
