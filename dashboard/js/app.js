@@ -2802,9 +2802,9 @@ function showManualVerifyModal() {
       <div class="form-group">
         <label>Strictness</label>
         <select id="verify-strictness">
-          <option value="lenient">Lenient (60% threshold)</option>
-          <option value="standard" selected>Standard (75% threshold)</option>
-          <option value="strict">Strict (90% threshold)</option>
+          <option value="lenient">Lenient (pass ≥ 70)</option>
+          <option value="standard" selected>Standard (pass ≥ 80)</option>
+          <option value="strict">Strict (pass ≥ 85)</option>
         </select>
       </div>
     </div>

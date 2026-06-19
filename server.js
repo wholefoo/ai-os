@@ -2487,51 +2487,80 @@ function getRubricForCategory(category) {
   };
 }
 
-function simulateVerification(rubric, strictness = 'standard') {
-  // Simulate verification scoring for each check
-  const thresholds = { lenient: 0.6, standard: 0.75, strict: 0.9 };
-  const passThreshold = thresholds[strictness] || 0.75;
+// --- Real verification: grade the ACTUAL produced output against a rubric with a reviewer agent ---
+// Replaces the old Math.random() simulation. Each rubric check is graded by the `reviewer` agent
+// against the real output (fenced as untrusted DATA — the output itself may contain model/scraped
+// text). An adversarial panel (orchestrator.adversarialVerify) then independently tries to refute
+// that the output clears the bar, and can downgrade a borderline pass to "review".
+function aggregateScoreOf(results) {
+  const totalWeight = results.reduce((s, r) => s + (r.weight || 1), 0);
+  const totalWeighted = results.reduce((s, r) => s + (r.weightedScore || 0), 0);
+  return totalWeight > 0 ? Math.round(totalWeighted / totalWeight) : 0;
+}
 
-  const results = rubric.checks.map(check => {
-    // Simulate realistic scores — most pass, some partial, rare fails
-    const rand = Math.random();
-    let score, status, notes;
-
-    if (rand > 0.15) {
-      score = 85 + Math.floor(Math.random() * 15); // 85-100
-      status = 'pass';
-      notes = 'Meets criteria';
-    } else if (rand > 0.03) {
-      score = 55 + Math.floor(Math.random() * 25); // 55-80
-      status = 'partial';
-      notes = `Partially meets criteria — ${check.description.toLowerCase()} needs improvement`;
-    } else {
-      score = 20 + Math.floor(Math.random() * 35); // 20-55
-      status = 'fail';
-      notes = `Does not meet criteria — ${check.description.toLowerCase()} is missing or inadequate`;
-    }
-
-    return {
-      ...check,
-      score,
-      status,
-      notes,
-      weightedScore: Math.round(score * check.weight),
-    };
+async function gradeCheckAgainstOutput(check, output, strictness, rubricName) {
+  const stance = {
+    lenient: 'Give the benefit of the doubt; only penalize clear, material failures.',
+    standard: 'Be balanced and fair — reward solid work, flag real gaps.',
+    strict: 'Hold a high bar; anything short of excellent loses points.',
+  }[strictness] || 'Be balanced and fair — reward solid work, flag real gaps.';
+  const prompt =
+    `Grade ONE quality check against the produced work output (provided as fenced DATA).\n` +
+    `Rubric: ${rubricName}\n` +
+    `Check: ${check.name || check.id || 'criterion'}\n` +
+    `Criterion: ${check.description || ''}\n` +
+    `Grading stance: ${stance}\n\n` +
+    `Reply with EXACTLY two lines and nothing else:\n` +
+    `SCORE: <integer 0-100>\n` +
+    `NOTE: <one sentence, grounded in the actual output>`;
+  const r = await executeAgent('reviewer', prompt, {
+    maxTokens: 500,
+    skill: 'verification',
+    untrusted: { label: 'WORK OUTPUT TO GRADE', text: String(output || '') },
   });
+  const t = r.ok ? String(r.content || '') : '';
+  const sm = t.match(/SCORE:\s*(\d{1,3})/i);
+  const score = sm ? Math.max(0, Math.min(100, parseInt(sm[1], 10))) : (r.ok ? 60 : 0);
+  const nm = t.match(/NOTE:\s*(.+)/i);
+  const notes = nm ? nm[1].trim().slice(0, 240)
+    : (r.ok ? (t.trim().slice(0, 240) || 'No rationale returned') : `Grader unavailable: ${r.error}`);
+  const status = score >= 80 ? 'pass' : score >= 55 ? 'partial' : 'fail';
+  return { ...check, score, status, notes, weightedScore: Math.round(score * (check.weight || 1)), model: r.model, graded: !!r.ok };
+}
 
-  // Calculate aggregate score
-  const totalWeight = results.reduce((sum, r) => sum + r.weight, 0);
-  const totalWeightedScore = results.reduce((sum, r) => sum + r.weightedScore, 0);
-  const aggregateScore = totalWeight > 0 ? Math.round(totalWeightedScore / totalWeight) : 0;
+async function runRealVerification(report, rubric, output, strictness) {
+  // Grade every check concurrently; stream each result as it lands (real progress, no setTimeout).
+  const results = await Promise.all((rubric.checks || []).map(async (check) => {
+    const res = await gradeCheckAgainstOutput(check, output, strictness, rubric.name);
+    report.results.push(res);
+    report.checksPassed = report.results.filter(r => r.status === 'pass').length;
+    report.checksPartial = report.results.filter(r => r.status === 'partial').length;
+    report.checksFailed = report.results.filter(r => r.status === 'fail').length;
+    report.score = aggregateScoreOf(report.results);
+    broadcast({ event: 'verification_update', data: report });
+    return res;
+  }));
 
-  // Determine verdict
-  let verdict;
-  if (aggregateScore >= 80) verdict = 'pass';
-  else if (aggregateScore >= 60) verdict = 'review';
-  else verdict = 'fail';
+  const aggregateScore = aggregateScoreOf(results);
 
-  return { results, aggregateScore, verdict, strictness };
+  // Adversarial overall gate: independent skeptics try to refute that the output meets the rubric.
+  let adversarial = null;
+  try {
+    adversarial = await orchestrator.adversarialVerify(
+      `Rubric "${rubric.name}". The work output below is claimed to satisfy this rubric's quality bar. Is that claim SOUND?\n\nOUTPUT:\n${String(output || '').slice(0, 12000)}`,
+      { runAgent: executeAgent, log: appendLog },
+      { n: 3, verifier: 'reviewer', agentOpts: { maxTokens: 500, skill: 'verification' } }
+    );
+  } catch (e) { /* adversarial pass is best-effort — never blocks the score */ }
+
+  // Strictness-adjusted verdict bands.
+  const [passBar, reviewBar] = strictness === 'strict' ? [85, 70]
+    : strictness === 'lenient' ? [70, 50] : [80, 60];
+  let verdict = aggregateScore >= passBar ? 'pass' : aggregateScore >= reviewBar ? 'review' : 'fail';
+  // A majority-refute downgrades a clean pass to human review.
+  if (adversarial && adversarial.refuted && verdict === 'pass') verdict = 'review';
+
+  return { results, aggregateScore, verdict, strictness, adversarial };
 }
 
 // Seed some verification history
@@ -2655,24 +2684,32 @@ app.get('/api/verify/:id', (req, res) => {
 });
 
 // API: Run verification on an execution
-app.post('/api/verify/run', (req, res) => {
+app.post('/api/verify/run', requireAdmin, heavyLimiter, async (req, res) => {
   const { executionId, rubricCategory, strictness = 'standard', autoApprove = true } = req.body;
+
+  const exec = executionId ? workflows.get(executionId) : null;
 
   // Determine category — auto-detect from execution or use provided
   let category = rubricCategory || 'default';
-  if (executionId && category === 'auto') {
-    const exec = workflows.get(executionId);
-    if (exec) {
-      const skill = readDir(path.join(CLAUDE_DIR, 'skills')).find(s => s.filename === exec.skill);
-      category = skill?.meta?.category || 'default';
-    }
+  if (exec && (category === 'auto' || category === 'default')) {
+    const skill = readDir(path.join(CLAUDE_DIR, 'skills')).find(s => s.filename === exec.skill);
+    category = skill?.meta?.category || exec.category || category;
   }
 
   const rubric = getRubricForCategory(category);
-  const verification = simulateVerification(rubric, strictness);
+
+  // The ACTUAL output to grade: explicit body.output, else the linked execution's result/steps.
+  let output = typeof req.body.output === 'string' ? req.body.output : '';
+  if (!output && exec) {
+    output = exec.result
+      || (Array.isArray(exec.steps) ? exec.steps.map(s => s.output).filter(Boolean).join('\n\n') : '')
+      || '';
+  }
+  if (!String(output).trim()) {
+    return res.status(400).json({ error: 'Nothing to verify — provide "output" text or an "executionId" of a completed run.' });
+  }
 
   const id = uuidv4();
-  const exec = executionId ? workflows.get(executionId) : null;
   const report = {
     id,
     executionId: executionId || null,
@@ -2697,37 +2734,24 @@ app.post('/api/verify/run', (req, res) => {
   broadcast({ event: 'verification_update', data: report });
   logActivity('verification', `Verification started: ${report.skillName}`, { verificationId: id });
 
-  // Simulate progressive check execution
-  const checkDuration = 800;
-  verification.results.forEach((result, i) => {
-    setTimeout(() => {
-      report.results.push(result);
-      report.checksPassed = report.results.filter(r => r.status === 'pass').length;
-      report.checksPartial = report.results.filter(r => r.status === 'partial').length;
-      report.checksFailed = report.results.filter(r => r.status === 'fail').length;
-      report.score = verification.aggregateScore;
-      broadcast({ event: 'verification_update', data: report });
-    }, checkDuration * (i + 1));
-  });
+  // Return immediately; grade for real in the background, streaming each check as it lands.
+  res.json(report);
 
-  // Complete verification
-  setTimeout(() => {
+  runRealVerification(report, rubric, output, strictness).then((v) => {
     report.status = 'completed';
-    report.verdict = verification.verdict;
-    report.score = verification.aggregateScore;
+    report.verdict = v.verdict;
+    report.score = v.aggregateScore;
+    report.adversarial = v.adversarial
+      ? { refuted: v.adversarial.refuted, sound: v.adversarial.sound, refuteCount: v.adversarial.refuteCount, answered: v.adversarial.answered }
+      : null;
     report.completedAt = new Date().toISOString();
-    report.results = verification.results;
-    report.checksPassed = verification.results.filter(r => r.status === 'pass').length;
-    report.checksPartial = verification.results.filter(r => r.status === 'partial').length;
-    report.checksFailed = verification.results.filter(r => r.status === 'fail').length;
+    report.checksPassed = report.results.filter(r => r.status === 'pass').length;
+    report.checksPartial = report.results.filter(r => r.status === 'partial').length;
+    report.checksFailed = report.results.filter(r => r.status === 'fail').length;
 
     // If linked to an execution, update its verification status
     if (exec) {
-      exec.verification = {
-        id,
-        verdict: report.verdict,
-        score: report.score,
-      };
+      exec.verification = { id, verdict: report.verdict, score: report.score };
       broadcast({ event: 'workflow_update', data: exec });
     }
 
@@ -2754,9 +2778,13 @@ app.post('/api/verify/run', (req, res) => {
 
     broadcast({ event: 'verification_update', data: report });
     appendLog(`VERIFY: ${report.skillName} -> ${report.verdict} (${report.score}/100)`);
-  }, checkDuration * verification.results.length + 500);
-
-  res.json(report);
+  }).catch((e) => {
+    report.status = 'failed';
+    report.error = e.message;
+    report.completedAt = new Date().toISOString();
+    broadcast({ event: 'verification_update', data: report });
+    appendLog(`VERIFY ERROR: ${report.skillName} -> ${e.message}`);
+  });
 });
 
 // API: Override verification verdict (human override)
