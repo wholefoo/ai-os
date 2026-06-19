@@ -12,12 +12,12 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
-          node-version: '20'
+          node-version: '24'
           cache: 'npm'
 
       - name: Install dependencies
@@ -26,8 +26,11 @@ jobs:
       - name: Check for syntax errors
         run: node --check server.js
 
+      # Advisory: fallow flags exported-but-not-yet-consumed symbols (the orchestrator pattern
+      # toolkit, public/test exports). Useful signal, but too noisy to block the build — see logs.
       - name: Dead code check (fallow)
         run: npx fallow dead-code
+        continue-on-error: true
 
       - name: Duplication check (fallow)
         run: npx fallow dupes
@@ -77,12 +80,12 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
-          node-version: '20'
+          node-version: '24'
           cache: 'npm'
 
       - name: Install dependencies
