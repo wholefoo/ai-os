@@ -982,6 +982,7 @@ const webStudioExport = require('./lib/web-studio/export');
 const webStudioDesign = require('./lib/web-studio/design-extract');
 const trendsLib = require('./lib/trends');
 const { fenceUntrusted } = require('./lib/safety/untrusted');
+const orchestrator = require('./lib/orchestrator');
 const aeoReadability = require('./lib/aeo/readability');
 const aeoCrawlers = require('./lib/aeo/crawlers');
 const shareOfModel = require('./lib/aeo/share-of-model');
@@ -2360,7 +2361,7 @@ app.get('/api/skills/:name', (req, res) => {
   });
 });
 
-app.post('/api/skills/:name/execute', (req, res) => {
+app.post('/api/skills/:name/execute', requireAdmin, heavyLimiter, (req, res) => {
   const name = req.params.name;
   const fpath = path.join(CLAUDE_DIR, 'skills', name);
   if (!fs.existsSync(fpath)) return res.status(404).json({ error: 'Skill not found' });
@@ -2368,66 +2369,89 @@ app.post('/api/skills/:name/execute', (req, res) => {
   const content = fs.readFileSync(fpath, 'utf-8');
   const parsed = parseFrontmatter(content);
   const steps = parseSkillSteps(parsed.body);
-  const agents = parseSkillAgents(parsed.body);
+  const agentList = parseSkillAgents(parsed.body).map((a) => a.name).filter(Boolean);
   const skillName = parsed.meta?.name || name.replace('.md', '');
 
   const id = uuidv4();
   const execution = {
-    id,
-    skill: name,
-    skillName,
-    status: 'queued',
+    id, skill: name, skillName, status: 'running',
     params: req.body.params || {},
     steps: steps.map((s, i) => ({ ...s, status: 'pending', index: i })),
-    agents: agents.map(a => a.name),
+    agents: agentList,
     startedAt: new Date().toISOString(),
-    log: [],
-    progress: 0,
+    log: [], progress: 0,
   };
   workflows.set(id, execution);
-  logActivity('skill', `Skill queued: ${skillName}`, { executionId: id });
+  logActivity('skill', `Skill started: ${skillName}`, { executionId: id });
   appendLog(`SKILL_EXEC: ${skillName} -> ${id}`);
+  res.json(execution); // respond now; the skill runs for REAL in the background
 
-  // Simulate step-by-step execution with progress
-  const stepCount = Math.max(steps.length, 3);
-  const stepDuration = 1500;
-
-  setTimeout(() => {
-    execution.status = 'running';
-    execution.log.push({ t: Date.now(), msg: `Orchestrator assigned: executing "${skillName}"` });
-    if (execution.steps.length > 0) {
-      execution.steps[0].status = 'running';
-    }
+  runSkillExecution(execution, parsed.body, agentList).catch((e) => {
+    execution.status = 'failed'; execution.error = e.message;
+    execution.completedAt = new Date().toISOString();
     broadcast({ event: 'workflow_update', data: execution });
-    broadcast({ event: 'skill_progress', data: { id, progress: 0, step: execution.steps[0]?.name || 'Initializing' } });
-  }, 400);
+    appendLog(`SKILL_ERR: ${skillName} -> ${e.message}`);
+  });
+});
 
-  for (let i = 0; i < stepCount; i++) {
-    setTimeout(() => {
-      if (execution.steps[i]) {
-        execution.steps[i].status = 'completed';
-        if (execution.steps[i + 1]) execution.steps[i + 1].status = 'running';
-      }
-      execution.progress = Math.round(((i + 1) / stepCount) * 100);
-      const stepName = execution.steps[i]?.name || `Step ${i + 1}`;
-      execution.log.push({ t: Date.now(), msg: `${stepName} completed` });
-      broadcast({ event: 'workflow_update', data: execution });
-      broadcast({ event: 'skill_progress', data: { id, progress: execution.progress, step: stepName } });
-    }, 400 + stepDuration * (i + 1));
+// Run each "## Process" step as a REAL agent call (kernel runSequential), threading outputs
+// forward and streaming progress. Step agents come from the skill's "## Agents Used"
+// (round-robin); falls back to a general writer. Spends real tokens (route is admin + limited).
+async function runSkillExecution(execution, body, agentList) {
+  const fallback = agentList[0] || 'writer';
+  const steps = execution.steps;
+
+  if (!steps.length) {
+    // No parsed Process steps — run the whole skill body as one agent task.
+    const r = await executeAgent(fallback, `Execute the skill "${execution.skillName}".\n\n${String(body).slice(0, 4000)}\n\nInputs: ${JSON.stringify(execution.params)}`, { maxTokens: 4000 });
+    execution.result = r.ok ? r.content : `(failed: ${r.error})`;
+    execution.status = r.ok ? 'completed' : 'failed';
+    execution.progress = 100; execution.completedAt = new Date().toISOString();
+    broadcast({ event: 'workflow_update', data: execution });
+    broadcast({ event: 'skill_progress', data: { id: execution.id, progress: 100, step: 'Complete' } });
+    logActivity('skill', `Skill ${execution.status}: ${execution.skillName}`, { executionId: execution.id });
+    return;
   }
 
-  setTimeout(() => {
-    execution.status = 'completed';
-    execution.completedAt = new Date().toISOString();
-    execution.progress = 100;
-    execution.log.push({ t: Date.now(), msg: 'All steps completed successfully.' });
-    broadcast({ event: 'workflow_update', data: execution });
-    broadcast({ event: 'skill_progress', data: { id, progress: 100, step: 'Complete' } });
-    logActivity('skill', `Skill completed: ${skillName}`, { executionId: id });
-  }, 400 + stepDuration * stepCount + 500);
+  const stages = steps.map((s, i) => ({
+    id: s.name || `step-${i + 1}`,
+    agent: agentList.length ? agentList[i % agentList.length] : fallback,
+    buildTask: (ctx) => {
+      const prior = Object.entries(ctx.outputs).map(([k, v]) => `### ${k}\n${String(v).slice(0, 3000)}`).join('\n\n');
+      return `Skill: "${execution.skillName}". Step ${i + 1}/${steps.length}: ${s.name}.\n`
+        + (s.description ? `Detail: ${s.description}\n` : '')
+        + (Object.keys(execution.params).length ? `Inputs: ${JSON.stringify(execution.params)}\n` : '')
+        + (prior ? `\nDeliverables from earlier steps:\n${prior}\n` : '')
+        + '\nCarry out this step and return its deliverable concisely.';
+    },
+  }));
 
-  res.json(execution);
-});
+  const result = await orchestrator.runSequential(stages, { runAgent: executeAgent, broadcast, log: appendLog }, {
+    params: execution.params,
+    onStage: (stage, i, status, out) => {
+      const step = execution.steps[i];
+      if (step) {
+        step.status = status;
+        if (out && out.content) step.output = out.content;
+        if (out && out.model) step.model = out.model;
+        if (out && out.error) step.error = out.error;
+      }
+      execution.progress = Math.round((execution.steps.filter((s) => s.status === 'completed').length) / execution.steps.length * 100);
+      execution.log.push({ t: Date.now(), msg: `${stage.id}: ${status}` });
+      broadcast({ event: 'workflow_update', data: execution });
+      broadcast({ event: 'skill_progress', data: { id: execution.id, progress: execution.progress, step: stage.id } });
+    },
+  });
+
+  const completed = (result.outputs || []).filter((o) => o.ok);
+  execution.result = completed.length ? completed[completed.length - 1].content : '';
+  execution.status = result.ok ? 'completed' : 'failed';
+  execution.progress = 100;
+  execution.completedAt = new Date().toISOString();
+  broadcast({ event: 'workflow_update', data: execution });
+  broadcast({ event: 'skill_progress', data: { id: execution.id, progress: 100, step: execution.status === 'completed' ? 'Complete' : 'Failed' } });
+  logActivity('skill', `Skill ${execution.status}: ${execution.skillName}`, { executionId: execution.id });
+}
 
 // --- Verification Protocols (Plan-Execute-Verify) ---
 const verifications = new Map();
