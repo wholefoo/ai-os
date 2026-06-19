@@ -161,7 +161,8 @@ function authMiddleware(req, res, next) {
   const url = req.originalUrl.split('?')[0]; // strip query string
   const publicPaths = ['/api/health', '/api/auth/login', '/api/auth/logout', '/api/auth/me',
     '/api/stripe/webhook', '/api/stripe/checkout', '/api/stripe/success',
-    '/api/tenant/branding', '/api/hq/stats', '/api/hq/org'];
+    '/api/tenant/branding', '/api/hq/stats', '/api/hq/org',
+    '/api/provenance/public-key', '/api/provenance/verify'];
   if (publicPaths.includes(url)) return next();
   // Public lead magnet: the free SEO/AEO audit — POST create + GET /:id results polling.
   // (Abuse is bounded by heavyLimiter on the POST + the per-email monthly cap in the handler.)
@@ -988,6 +989,20 @@ const aeoReadability = require('./lib/aeo/readability');
 const aeoCrawlers = require('./lib/aeo/crawlers');
 const shareOfModel = require('./lib/aeo/share-of-model');
 const approvalPolicy = require('./lib/safety/approval');
+const provenanceLib = require('./lib/provenance');
+
+// Server-wide Ed25519 provenance signing key (lazy-generated under .magent/provenance, or supplied
+// via AIOS_PROVENANCE_PRIVATE_KEY). The issuer origin = the control-plane public URL so a sidecar's
+// kid resolves to /.well-known/provenance-keys.json. signProvenance is null if init fails — in which
+// case generated sites simply carry no signed sidecar (provenance degrades gracefully).
+const PROVENANCE_ISSUER = (process.env.AIOS_PUBLIC_URL || (process.env.AIOS_PRIMARY_DOMAIN ? 'https://' + process.env.AIOS_PRIMARY_DOMAIN : '')).replace(/\/+$/, '');
+let provenanceKeys = null;
+try {
+  const _kp = provenanceLib.ensureKeypair(path.join(MAGENT_DIR, 'provenance'));
+  provenanceKeys = { privateKey: _kp.privateKey, publicKey: _kp.publicKey, publicKeyId: provenanceLib.getPublicKeyId(_kp.publicKey, PROVENANCE_ISSUER) };
+  if (_kp.generated) console.log(`[PROVENANCE] generated Ed25519 signing key (kid ${provenanceKeys.publicKeyId})`);
+} catch (e) { console.error('[PROVENANCE] keypair init failed — provenance disabled:', e.message); }
+const signProvenance = provenanceKeys ? (payload) => provenanceLib.sign(payload, provenanceKeys.privateKey, { publicKeyId: provenanceKeys.publicKeyId }) : null;
 
 const webStudioSites = loadState('web_studio_sites', []); // [{id,name,brief,status,domain,createdAt,...}]
 const brandKits = loadState('brand_kits', []); // reusable design profiles [{id,name,contactId,sourceUrl,design,createdAt,updatedAt}]
@@ -1105,6 +1120,62 @@ app.delete('/api/brand-kits/:id', requireAdmin, (req, res) => {
   res.json({ ok: true });
 });
 
+// ============================================================
+//  Content provenance — public verify + key publication for the Ed25519-signed sidecars that
+//  generated sites carry (built in lib/web-studio/pipeline via lib/provenance). HONEST framing:
+//  this is a C2PA-VOCABULARY-ALIGNED credential, NOT an embedded C2PA manifest; trust is
+//  key-to-domain (the published public key), never a CA trust list.
+// ============================================================
+app.get('/api/provenance/public-key', (req, res) => {
+  if (!provenanceKeys) return res.status(503).json({ error: 'provenance signing not initialized' });
+  res.json({
+    alg: 'Ed25519',
+    public_key_id: provenanceKeys.publicKeyId,
+    public_key_pem: provenanceLib.getPublicKeyPem(provenanceKeys.publicKey),
+    issued_for_origin: PROVENANCE_ISSUER || null,
+    note: 'Verifies AI-OS provenance sidecars (Ed25519 over canonical JSON). Trust is key-to-domain, not a CA trust list; not interoperable with generic C2PA / Content Credentials tools.',
+  });
+});
+
+app.post('/api/provenance/verify', heavyLimiter, (req, res) => {
+  if (!provenanceKeys) return res.status(503).json({ error: 'provenance verification not available' });
+  const sidecar = (req.body && req.body.credential) ? req.body.credential : req.body;
+  if (!sidecar || typeof sidecar !== 'object' || !sidecar.signature) {
+    return res.status(400).json({ error: 'POST a signed credential (the .well-known/aios-provenance.json sidecar), optionally { credential, content }' });
+  }
+  const sigKid = sidecar.signature.public_key_id || null;
+  const key_trusted_for_origin = sigKid === provenanceKeys.publicKeyId; // v1: only OUR origin key
+  const v = provenanceLib.verify(sidecar, provenanceKeys.publicKey);
+  // Optional content-hash binding check if the caller supplies the raw content bytes.
+  let content_hash_matches = null;
+  const bound = sidecar.content_binding && sidecar.content_binding.hash;
+  if (bound && typeof (req.body && req.body.content) === 'string') {
+    content_hash_matches = provenanceLib.sha256Hex(Buffer.from(req.body.content, 'utf8')) === bound;
+  }
+  res.json({
+    signature_valid: v.ok,
+    key_trusted_for_origin,
+    content_hash_matches,
+    kid: sigKid,
+    reasons: v.reasons,
+    caveat: 'Trust is key-to-domain binding for this origin, not a CA trust list; this is not a C2PA Content Credentials verification.',
+  });
+});
+
+// Publish the origin's public key(s) so third-party verifiers can resolve a sidecar's kid.
+// Outside /api/ so authMiddleware does not gate it. This is the key-to-domain trust root.
+app.get('/.well-known/provenance-keys.json', (req, res) => {
+  if (!provenanceKeys) return res.status(503).json({ error: 'provenance not initialized' });
+  res.json({ keys: [{ kid: provenanceKeys.publicKeyId, alg: 'Ed25519', public_key_pem: provenanceLib.getPublicKeyPem(provenanceKeys.publicKey) }] });
+});
+
+// Admin: the stored provenance record (incl. model list) for a generated site.
+app.get('/api/web-studio/sites/:id/provenance', requireAdmin, (req, res) => {
+  const site = wsFindSite(req, res); if (!site) return;
+  if (!site.provenance) return res.status(404).json({ error: 'no provenance record (imported site, or built before provenance was enabled)' });
+  res.json(site.provenance);
+});
+
 // --- List sites (+ tier limit for the UI badge) ---
 app.get('/api/web-studio/sites', requireAdmin, (req, res) => {
   res.json({ sites: webStudioSites, limit: wsSiteLimit(), used: wsActiveCount() });
@@ -1181,12 +1252,12 @@ app.post('/api/web-studio/sites', requireAdmin, async (req, res) => {
     }
     const result = await webStudioPipeline.createSiteFromBrief(
       { siteId: id, workspaceDir: wsWorkspaceDir(id), brief: wsBriefWithType(site), domain: site.domain, siteName: site.name, design },
-      { executeAgent, broadcast, log: appendLog }
+      { executeAgent, broadcast, log: appendLog, signProvenance }
     );
     site.status = result.ok ? result.status : 'failed';
     site.lastBuiltAt = new Date().toISOString();
     site.pages = result.pages || [];
-    if (result.ok) { site.plan = result.plan; site.meta = result.meta || {}; }
+    if (result.ok) { site.plan = result.plan; site.meta = result.meta || {}; if (result.provenance) site.provenance = result.provenance; }
     if (!result.ok) site.error = result.error;
     // Domain set at creation -> wire HTTP hosting now that a build exists.
     if (result.ok && site.domain) { try { await wsSetupHosting(site, site.domain); } catch (e) { appendLog(`web-studio: hosting setup failed for ${site.domain}: ${e.message}`); } }
@@ -1513,10 +1584,10 @@ app.post('/api/web-studio/sites/:id/ai-edit', requireAdmin, async (req, res) => 
   res.json({ ok: true, note: 'Regenerating with your change' });
   try {
     const brief = `${wsBriefWithType(site)}\n\nADDITIONAL CHANGE REQUESTED: ${instruction}`;
-    const result = await webStudioPipeline.createSiteFromBrief({ siteId: site.id, workspaceDir: wsWorkspaceDir(site.id), brief, domain: site.domain, siteName: site.name }, { executeAgent, broadcast, log: appendLog });
+    const result = await webStudioPipeline.createSiteFromBrief({ siteId: site.id, workspaceDir: wsWorkspaceDir(site.id), brief, domain: site.domain, siteName: site.name }, { executeAgent, broadcast, log: appendLog, signProvenance });
     site.status = result.ok ? result.status : 'failed';
     site.lastBuiltAt = new Date().toISOString();
-    if (result.ok) { site.plan = result.plan; site.meta = result.meta || {}; }
+    if (result.ok) { site.plan = result.plan; site.meta = result.meta || {}; if (result.provenance) site.provenance = result.provenance; }
     if (!result.ok) site.error = result.error;
     // Keep the live HTTP site in sync after an AI regen, if hosting is already wired.
     if (result.ok && site.hostingSetup && site.domain) { try { webStudioPublish.deployRelease(path.join(wsWorkspaceDir(site.id), 'dist'), WS_SITES_ROOT, site.domain); } catch (e) { appendLog(`web-studio: redeploy failed for ${site.domain}: ${e.message}`); } }
@@ -1531,6 +1602,19 @@ app.get('/api/web-studio/sites/:id/content', requireAdmin, (req, res) => {
   res.json({ plan: site.plan || null });
 });
 
+// Provenance metadata for a (re)build: carry a generated site's original generation facts
+// (models, design source) forward with a fresh timestamp, so a re-sign never invents new ones.
+function wsProvMeta(site) {
+  const prev = site && site.provenance;
+  return {
+    generator: (prev && prev.generator) || 'AI OS Web Studio',
+    generatedAt: new Date().toISOString(),
+    briefHash: (prev && prev.briefHash) || null,
+    designClonedFrom: (prev && prev.designClonedFrom) || null,
+    models: (prev && prev.models) || [],
+  };
+}
+
 app.put('/api/web-studio/sites/:id/content', requireAdmin, async (req, res) => {
   const site = wsFindSite(req, res); if (!site) return;
   const plan = (req.body || {}).plan;
@@ -1540,11 +1624,18 @@ app.put('/api/web-studio/sites/:id/content', requireAdmin, async (req, res) => {
   site.status = 'building'; broadcast({ event: 'web_studio_site', data: site });
   try {
     // Re-render from the edited plan (the typed text is authoritative) and rebuild.
+    const provMeta = wsProvMeta(site);
+    plan.provenance = { generatedAt: provMeta.generatedAt }; // re-emit the HTML AI-disclosure
     webStudioPipeline.renderPlanToWorkspace(ws, plan, {});
     const result = await webStudioBuild.runBuild(ws);
     site.status = result.ok ? 'ready' : 'build_failed';
     site.lastBuiltAt = new Date().toISOString();
-    if (result.ok) { site.plan = plan; delete site.error; } else { site.error = result.error; }
+    if (result.ok) {
+      site.plan = plan; delete site.error;
+      // Re-sign the sidecar against the freshly built index.html so content_binding stays valid.
+      try { const pr = webStudioPipeline.writeProvenanceSidecar(ws, path.join(ws, 'dist'), plan, provMeta, signProvenance); if (pr) site.provenance = { ...provMeta, contentHash: pr.contentHash, credential: pr.credential }; }
+      catch (e) { appendLog(`web-studio: provenance re-sign skipped: ${e.message}`); }
+    } else { site.error = result.error; }
     if (result.ok && site.hostingSetup && site.domain) { try { webStudioPublish.deployRelease(path.join(ws, 'dist'), WS_SITES_ROOT, site.domain); } catch (e) { appendLog(`web-studio: redeploy failed for ${site.domain}: ${e.message}`); } }
     saveState('web_studio_sites', webStudioSites);
     broadcast({ event: 'web_studio_site', data: site });
@@ -1565,6 +1656,15 @@ app.post('/api/web-studio/sites/:id/build', requireAdmin, async (req, res) => {
   site.status = result.ok ? 'ready' : 'build_failed';
   site.lastBuiltAt = new Date().toISOString();
   if (!result.ok) site.error = result.error; else delete site.error;
+  // Re-sign the provenance sidecar against the freshly built index.html (generated sites only) so a
+  // Monaco-edited rebuild never serves a stale, content-mismatched credential.
+  if (result.ok && site.kind !== 'imported') {
+    try {
+      const ws = wsWorkspaceDir(site.id); const provMeta = wsProvMeta(site);
+      const pr = webStudioPipeline.writeProvenanceSidecar(ws, path.join(ws, 'dist'), site.plan || {}, provMeta, signProvenance);
+      if (pr) site.provenance = { ...provMeta, contentHash: pr.contentHash, credential: pr.credential };
+    } catch (e) { appendLog(`web-studio: provenance re-sign skipped: ${e.message}`); }
+  }
   // Keep the live HTTP site in sync after an edit-rebuild, if hosting is already wired.
   if (result.ok && site.hostingSetup && site.domain) { try { webStudioPublish.deployRelease(path.join(wsWorkspaceDir(site.id), 'dist'), WS_SITES_ROOT, site.domain); } catch (e) { appendLog(`web-studio: redeploy failed for ${site.domain}: ${e.message}`); } }
   saveState('web_studio_sites', webStudioSites);

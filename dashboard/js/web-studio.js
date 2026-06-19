@@ -51,6 +51,7 @@ function loadWebStudio() {
     on('wsExportGhBtn', 'click', wsExportGithub);
     on('wsExportMode', 'change', wsExportModeChange);
     on('wsOptimizeBtn', 'click', wsOptimize);
+    on('wsVerifyProvBtn', 'click', wsVerifyProvenance);
   }
   if (!wsState.currentId) {
     const em = document.getElementById('wsEditorMode'); if (em) em.style.display = 'none';
@@ -241,10 +242,51 @@ async function wsOpen(id) {
   wsSetEditorStatus(site.status);
   wsHint('');
   wsRenderPublishState(site);
+  wsRenderProvenance(site);
   wsRefreshPreview();
   await wsReloadFiles(true);
   await wsLoadContent();
   wsSwitchTab('content');
+}
+
+// Content-provenance panel: the signed sidecar's summary + a verify action. Reads site.provenance
+// (persisted on the site object). Honest framing — this is OUR Ed25519 credential, not C2PA.
+function wsRenderProvenance(site) {
+  const body = document.getElementById('wsProvenanceBody');
+  const btn = document.getElementById('wsVerifyProvBtn');
+  const vh = document.getElementById('wsProvVerifyHint');
+  if (vh) vh.textContent = '';
+  const p = site && site.provenance;
+  if (!p) {
+    if (body) body.textContent = 'No provenance record — imported sites, or sites built before provenance was enabled, carry none.';
+    if (btn) btn.style.display = 'none';
+    return;
+  }
+  const models = (p.models || []).filter((m) => m && m.model).map((m) => `${escapeHtml(m.agent)}: ${escapeHtml(m.model)}`).join(', ');
+  const kid = (p.credential && p.credential.signature && p.credential.signature.public_key_id) || '—';
+  if (body) body.innerHTML =
+    `<div><span class="ws-badge ready">AI-generated &middot; signed</span></div>`
+    + `<div style="margin-top:6px;font-size:13px;line-height:1.6;">`
+    + `<div>Generator: ${escapeHtml(p.generator || 'AI OS Web Studio')}</div>`
+    + `<div>Generated: ${escapeHtml(p.generatedAt || '—')}</div>`
+    + (models ? `<div>Models: ${models}</div>` : '')
+    + (p.designClonedFrom ? `<div>Design source: ${escapeHtml(p.designClonedFrom)}</div>` : '')
+    + `<div>Key id: <code style="font-size:11px;">${escapeHtml(kid)}</code></div>`
+    + `<div style="margin-top:4px;color:var(--text-secondary,#9aa);">Ed25519-signed sidecar at <code>/.well-known/aios-provenance.json</code> (C2PA-vocabulary-aligned; verifiable by AI OS via key-to-domain, not a C2PA Content Credentials check).</div>`
+    + `</div>`;
+  if (btn) btn.style.display = p.credential ? '' : 'none';
+}
+
+async function wsVerifyProvenance() {
+  const site = wsState.currentSite;
+  const vh = document.getElementById('wsProvVerifyHint');
+  if (!site || !site.provenance || !site.provenance.credential) return;
+  if (vh) vh.textContent = 'Verifying…';
+  const r = await fetchJSON('/api/provenance/verify', { method: 'POST', body: { credential: site.provenance.credential } });
+  if (r && r.error) { if (vh) vh.textContent = 'Verify failed: ' + r.error; return; }
+  if (vh) vh.textContent = r.signature_valid
+    ? `✓ Signature valid${r.key_trusted_for_origin ? ', key trusted for this origin' : ''}.`
+    : `✗ Signature invalid (${(r.reasons || []).join('; ')}).`;
 }
 
 async function wsReloadFiles(openFirst) {
@@ -501,7 +543,7 @@ function onWebStudioEvent(msg) {
     }
     if (d.status === 'failed' || d.status === 'build_failed') wsHint('Build failed.');
     // web_studio_site carries the full site object (has d.id) — reflect publish-state changes live.
-    if (d.id === wsState.currentId) { wsState.currentSite = d; wsRenderPublishState(d); }
+    if (d.id === wsState.currentId) { wsState.currentSite = d; wsRenderPublishState(d); wsRenderProvenance(d); }
   } else if (!inEditor) {
     wsFetchAndRenderSites();
   }

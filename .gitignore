@@ -16,6 +16,9 @@ node_modules/
 .magent/crm.sqlite-wal
 .magent/crm.sqlite-shm
 
+# Content-provenance Ed25519 signing key — a leak forges every provenance record; never commit
+.magent/provenance/
+
 # Logs
 *.log
 logs/
