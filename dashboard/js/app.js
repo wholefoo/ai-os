@@ -56,6 +56,7 @@ function switchView(view) {
     skills: loadSkills,
     workflows: loadWorkflows,
     'web-studio': loadWebStudio,
+    'brand-kits': loadBrandKits,
     crm: loadCrm,
     mission: loadMission,
     inbox: loadInbox,

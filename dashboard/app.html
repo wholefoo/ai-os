@@ -36,6 +36,9 @@
         <a href="#" class="nav-item" data-view="web-studio">
           <span class="nav-icon">&#127760;</span> Web Studio
         </a>
+        <a href="#" class="nav-item" data-view="brand-kits">
+          <span class="nav-icon">&#127912;</span> Brand Kits
+        </a>
         <a href="#" class="nav-item" data-view="crm">
           <span class="nav-icon">&#128100;</span> CRM
         </a>
@@ -1139,6 +1142,10 @@
                 </div>
                 <div id="wsTrendResults" style="display:none;margin-bottom:6px;"></div>
                 <div class="ws-row" style="flex-wrap:wrap;gap:8px;">
+                  <select class="settings-input" id="wsBrandKit" style="max-width:340px;"><option value="">Brand kit: none (or clone a URL below)</option></select>
+                  <span class="ws-hint">Apply a saved brand kit — takes precedence over a URL clone.</span>
+                </div>
+                <div class="ws-row" style="flex-wrap:wrap;gap:8px;">
                   <input type="text" class="settings-input" id="wsCloneUrl" placeholder="Clone design from a URL (optional, e.g. https://stripe.com)" style="max-width:340px;" />
                   <button class="btn" id="wsClonePreviewBtn">Preview design</button>
                   <span id="wsCloneSwatches" style="display:inline-flex;gap:4px;align-items:center;"></span>
@@ -1253,6 +1260,34 @@
               <div id="wsOptimizeResult" style="display:none;margin-top:10px;"></div>
             </section>
           </div>
+        </div>
+
+        <!-- Brand Kits View -->
+        <div class="view" id="view-brand-kits">
+          <div class="radar-header">
+            <div class="radar-header-left">
+              <h2 class="radar-title">Brand Kits</h2>
+              <span class="radar-subtitle">Save a site's palette, fonts &amp; structure as a reusable kit — apply it to new sites without re-cloning</span>
+            </div>
+          </div>
+          <section class="panel">
+            <h3 class="panel-title">Save a brand kit from a URL</h3>
+            <div class="ws-create">
+              <input type="text" class="settings-input" id="bkName" placeholder="Kit name (e.g. Acme brand)" maxlength="80" />
+              <div class="ws-row" style="flex-wrap:wrap;gap:8px;">
+                <input type="text" class="settings-input" id="bkUrl" placeholder="Extract design from a URL (e.g. https://stripe.com)" style="flex:1;min-width:260px;" />
+                <select class="settings-input" id="bkContact" style="max-width:240px;"><option value="">No owner (unassigned)</option></select>
+              </div>
+              <div class="ws-row">
+                <button class="btn btn-primary" id="bkCreateBtn">Save brand kit</button>
+                <span class="ws-hint" id="bkHint">Borrows the palette, fonts &amp; section structure — owners come from your CRM contacts.</span>
+              </div>
+            </div>
+          </section>
+          <section class="panel">
+            <h3 class="panel-title">Your brand kits</h3>
+            <div class="ws-sites" id="bkList"><div class="empty-state">Loading&hellip;</div></div>
+          </section>
         </div>
 
         <!-- CRM View -->
@@ -2254,9 +2289,10 @@
     </div>
   </div>
 
-  <script src="js/app.js?v=40"></script>
+  <script src="js/app.js?v=41"></script>
   <script src="https://cdn.jsdelivr.net/npm/monaco-editor@0.52.2/min/vs/loader.js"></script>
-  <script src="js/web-studio.js?v=9"></script>
+  <script src="js/web-studio.js?v=10"></script>
   <script src="js/crm.js?v=2"></script>
+  <script src="js/brand-kits.js?v=1"></script>
 </body>
 </html>

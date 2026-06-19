@@ -961,6 +961,7 @@ function persistAllState() {
   saveState('batch_queue', batchQueue);
   saveState('pending_approvals', pendingApprovals);
   saveState('web_studio_sites', webStudioSites);
+  saveState('brand_kits', brandKits);
 }
 
 // ============================================================
@@ -989,6 +990,7 @@ const shareOfModel = require('./lib/aeo/share-of-model');
 const approvalPolicy = require('./lib/safety/approval');
 
 const webStudioSites = loadState('web_studio_sites', []); // [{id,name,brief,status,domain,createdAt,...}]
+const brandKits = loadState('brand_kits', []); // reusable design profiles [{id,name,contactId,sourceUrl,design,createdAt,updatedAt}]
 const WS_ROOT = path.join(MAGENT_DIR, 'artifacts', 'web-studio');
 const WS_SITES_ROOT = path.join(BASE, 'sites'); // nginx serves <WS_SITES_ROOT>/<domain>/current
 const wsWorkspaceDir = (id) => path.join(WS_ROOT, id);
@@ -1040,6 +1042,69 @@ function wsFindSite(req, res) {
   return site;
 }
 
+// ============================================================
+//  Brand Kits — reusable design profiles (palette/fonts/section structure) saved from a URL,
+//  optionally owned by a CRM contact, and applied when generating a site (instead of re-cloning).
+//  A kit's `design` is the design-extract profile stored VERBATIM, so applying it is just
+//  `design = kit.design` into the existing pipeline opts.design — no pipeline change, no re-derive.
+// ============================================================
+function bkFindKit(req, res) {
+  const kit = brandKits.find(k => k.id === req.params.id);
+  if (!kit) { res.status(404).json({ error: 'Brand kit not found' }); return null; }
+  return kit;
+}
+
+app.get('/api/brand-kits', requireAdmin, (req, res) => {
+  res.json({ kits: brandKits });
+});
+
+app.post('/api/brand-kits', requireAdmin, heavyLimiter, async (req, res) => {
+  const { name, url, contactId } = req.body || {};
+  if (!url || !String(url).trim()) return res.status(400).json({ error: 'a URL to extract the design from is required' });
+  let design;
+  // SSRF-guarded fetch+parse (no model tokens); same extractor the live "clone from URL" path uses.
+  try { design = await webStudioDesign.extractProfile(String(url).trim()); }
+  catch (e) { return res.status(400).json({ error: `Could not read that site: ${e.message}` }); }
+  const now = new Date().toISOString();
+  const kit = {
+    id: uuidv4(),
+    name: String(name || design.title || 'Untitled kit').slice(0, 80),
+    contactId: contactId ? String(contactId).slice(0, 64) : null,
+    sourceUrl: design.sourceUrl,
+    design,                       // design-extract profile, stored verbatim (already sanitized at extract)
+    createdAt: now,
+    updatedAt: now,
+  };
+  brandKits.push(kit);
+  saveState('brand_kits', brandKits);
+  logActivity('brand-kits', `Brand kit created: ${kit.name}`, { id: kit.id });
+  res.json({ ok: true, kit });
+});
+
+app.get('/api/brand-kits/:id', requireAdmin, (req, res) => {
+  const kit = bkFindKit(req, res); if (!kit) return;
+  res.json(kit);
+});
+
+app.put('/api/brand-kits/:id', requireAdmin, (req, res) => {
+  const kit = bkFindKit(req, res); if (!kit) return;
+  const { name, contactId } = req.body || {};
+  if (name != null) kit.name = String(name).slice(0, 80);
+  if (contactId !== undefined) kit.contactId = contactId ? String(contactId).slice(0, 64) : null;
+  kit.updatedAt = new Date().toISOString();
+  saveState('brand_kits', brandKits);
+  res.json({ ok: true, kit });
+});
+
+app.delete('/api/brand-kits/:id', requireAdmin, (req, res) => {
+  const idx = brandKits.findIndex(k => k.id === req.params.id);
+  if (idx < 0) return res.status(404).json({ error: 'Brand kit not found' });
+  const [removed] = brandKits.splice(idx, 1);
+  saveState('brand_kits', brandKits);
+  logActivity('brand-kits', `Brand kit deleted: ${removed.name}`, { id: removed.id });
+  res.json({ ok: true });
+});
+
 // --- List sites (+ tier limit for the UI badge) ---
 app.get('/api/web-studio/sites', requireAdmin, (req, res) => {
   res.json({ sites: webStudioSites, limit: wsSiteLimit(), used: wsActiveCount() });
@@ -1082,7 +1147,7 @@ app.get('/api/web-studio/trends', requireAdmin, async (req, res) => {
 
 // --- Create from a brief (tier-limit gated; pipeline runs async) ---
 app.post('/api/web-studio/sites', requireAdmin, async (req, res) => {
-  const { name, brief, siteType, domain, cloneUrl } = req.body || {};
+  const { name, brief, siteType, domain, cloneUrl, brandKitId } = req.body || {};
   if (!brief || String(brief).trim().length < 10) return res.status(400).json({ error: 'A brief of at least 10 characters is required' });
   const limit = wsSiteLimit();
   if (wsActiveCount() >= limit) return res.status(403).json({ error: `Site limit reached for your plan (${limit}). Upgrade for more sites.`, limit });
@@ -1105,7 +1170,12 @@ app.post('/api/web-studio/sites', requireAdmin, async (req, res) => {
     // Optional "clone design from a URL" — extract a design profile to seed the build.
     // Best-effort: a failed/blocked extraction just falls back to a default palette.
     let design = null;
-    if (cloneUrl && String(cloneUrl).trim()) {
+    // A saved brand kit takes precedence over a fresh URL clone (it's already an extracted profile).
+    if (brandKitId) {
+      const kit = brandKits.find(k => k.id === brandKitId);
+      if (kit) { design = kit.design; site.brandKitId = kit.id; appendLog(`web-studio: applied brand kit ${kit.name}`); }
+    }
+    if (!design && cloneUrl && String(cloneUrl).trim()) {
       try { design = await webStudioDesign.extractProfile(String(cloneUrl).trim()); site.clonedFrom = design.sourceUrl; appendLog(`web-studio: design cloned from ${design.sourceUrl}`); }
       catch (e) { appendLog(`web-studio: design clone failed (${cloneUrl}): ${e.message}`); }
     }
@@ -6252,7 +6322,7 @@ const freeAuditLog = loadState('free_audit_log', []);
 try {
   crm = require('./lib/crm');
   crm.openDb(path.join(MAGENT_DIR, 'crm.sqlite'));
-  crm.registerCrmRoutes(app, { requireAdmin, webStudioSites, broadcast, users, seoAudits, freeAuditLog });
+  crm.registerCrmRoutes(app, { requireAdmin, webStudioSites, brandKits, broadcast, users, seoAudits, freeAuditLog });
   // Boot reconcile from the JSON systems of record. Idempotent (upserts merge, activities
   // deduped) — catches anything the live seams missed while the process was down.
   const crmCounts = crm.backfillAll({ users, seoAudits, freeAuditLog, webStudioSites });

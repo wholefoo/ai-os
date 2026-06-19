@@ -57,6 +57,19 @@ function loadWebStudio() {
     const lm = document.getElementById('wsListMode'); if (lm) lm.style.display = 'block';
   }
   wsFetchAndRenderSites();
+  wsPopulateBrandKits();
+}
+
+// Fill the "apply a saved brand kit" picker in the create form from /api/brand-kits.
+async function wsPopulateBrandKits() {
+  const sel = document.getElementById('wsBrandKit');
+  if (!sel) return;
+  const data = await fetchJSON('/api/brand-kits');
+  const kits = (data && data.kits) || [];
+  const cur = sel.value;
+  sel.innerHTML = '<option value="">Brand kit: none (or clone a URL below)</option>'
+    + kits.map((k) => `<option value="${escapeHtml(k.id)}">${escapeHtml(k.name)}</option>`).join('');
+  if (cur) sel.value = cur;
 }
 
 async function wsFetchAndRenderSites() {
@@ -104,12 +117,13 @@ async function wsCreate() {
   const siteType = (document.getElementById('wsType') || {}).value || '';
   const domain = ((document.getElementById('wsCreateDomain') || {}).value || '').trim();
   const cloneUrl = ((document.getElementById('wsCloneUrl') || {}).value || '').trim();
+  const brandKitId = ((document.getElementById('wsBrandKit') || {}).value || '').trim();
   const hint = document.getElementById('wsCreateHint');
   if (brief.length < 10) { if (hint) hint.textContent = 'Add a longer brief (at least 10 characters).'; return; }
   const btn = document.getElementById('wsCreateBtn');
   if (btn) btn.disabled = true;
-  if (hint) hint.textContent = cloneUrl ? 'Cloning design + generating your site…' : 'Generating — the studio team is planning, writing and building your site…';
-  const r = await fetchJSON('/api/web-studio/sites', { method: 'POST', body: { name, brief, siteType, domain, cloneUrl } });
+  if (hint) hint.textContent = (brandKitId || cloneUrl) ? 'Applying design + generating your site…' : 'Generating — the studio team is planning, writing and building your site…';
+  const r = await fetchJSON('/api/web-studio/sites', { method: 'POST', body: { name, brief, siteType, domain, cloneUrl, brandKitId } });
   if (r && r.error) { if (hint) hint.textContent = `Could not create: ${r.error}`; if (btn) btn.disabled = false; return; }
   document.getElementById('wsName').value = '';
   document.getElementById('wsBrief').value = '';
