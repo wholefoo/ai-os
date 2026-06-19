@@ -2032,6 +2032,17 @@
               <p class="settings-desc">External automation bridges for n8n workflows and team webhook integrations.</p>
               <div class="settings-fields">
                 <div class="settings-field">
+                  <label class="settings-label">Auto-Mode (approval gating)</label>
+                  <div class="settings-input-row">
+                    <select class="settings-input" id="set-mode">
+                      <option value="manual">Manual — approve every risky action</option>
+                      <option value="supervised">Supervised — approve outward/irreversible actions (recommended)</option>
+                      <option value="auto">Auto — run everything without asking</option>
+                    </select>
+                  </div>
+                  <p class="settings-desc" style="margin-top:6px;">Server-enforced gate on publish/TLS, GitHub push, and site deletion. <strong>Supervised</strong> is the safe default; <strong>Auto</strong> bypasses all gates.</p>
+                </div>
+                <div class="settings-field">
                   <label class="settings-label">n8n Webhook Base URL</label>
                   <div class="settings-input-row">
                     <input type="text" class="settings-input" id="set-n8n_webhook_base" placeholder="http://localhost:5678" autocomplete="off">
@@ -2052,6 +2063,14 @@
                 </div>
               </div>
               <button class="btn btn-primary settings-save" onclick="saveSettings('automation')">Save Automation</button>
+
+              <div class="settings-fields" style="margin-top:18px;">
+                <div class="settings-field" style="display:flex;align-items:center;justify-content:space-between;">
+                  <label class="settings-label" style="margin:0;">Pending Approvals</label>
+                  <button class="btn btn-secondary" style="padding:4px 10px;" onclick="loadApprovals()">Refresh</button>
+                </div>
+                <div id="approvals-list" class="approvals-list"><p class="settings-desc">Loading…</p></div>
+              </div>
             </section>
 
             <!-- Stripe -->
@@ -2235,7 +2254,7 @@
     </div>
   </div>
 
-  <script src="js/app.js?v=39"></script>
+  <script src="js/app.js?v=40"></script>
   <script src="https://cdn.jsdelivr.net/npm/monaco-editor@0.52.2/min/vs/loader.js"></script>
   <script src="js/web-studio.js?v=9"></script>
   <script src="js/crm.js?v=2"></script>

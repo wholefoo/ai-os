@@ -5227,7 +5227,7 @@ const settingsFieldMap = {
   ai: ['anthropic_api_key', 'openai_api_key', 'deepseek_api_key', 'xai_api_key', 'gemini_api_key', 'perplexity_api_key', 'firecrawl_api_key', 'tavily_api_key', 'apify_api_token', 'manus_api_key', 'heygen_api_key', 'did_api_key', 'youtube_api_key', 'livekit_api_key', 'livekit_api_secret', 'livekit_url', 'deepgram_api_key', 'cartesia_api_key'],
   mcp: ['hermes_url', 'hermes_enabled'],
   notifications: ['telegram_bot_token', 'telegram_chat_id', 'slack_webhook_url'],
-  automation: ['n8n_webhook_base', 'n8n_api_key', 'team_webhook_url'],
+  automation: ['mode', 'n8n_webhook_base', 'n8n_api_key', 'team_webhook_url'],
   stripe: ['secret_key', 'webhook_secret', 'business_price_id', 'enterprise_price_id', 'enterprise_renewal_price_id'],
   seo: ['dataforseo_login', 'dataforseo_password', 'default_location', 'default_language'],
   general: ['demo_mode', 'cors_origin', 'api_token'],
@@ -5263,6 +5263,54 @@ async function loadSettings() {
       }
     }
   }
+  loadApprovals();
+}
+
+// ---------- Auto-Mode approvals inbox ----------
+async function loadApprovals() {
+  const box = document.getElementById('approvals-list');
+  if (!box) return;
+  const items = await fetchJSON('/api/approvals?status=pending');
+  if (!Array.isArray(items)) { box.innerHTML = '<p class="settings-desc">Could not load approvals.</p>'; return; }
+  if (!items.length) { box.innerHTML = '<p class="settings-desc">No pending approvals.</p>'; return; }
+  box.innerHTML = items.map(a => {
+    const risk = (a.risk || 'medium').toUpperCase();
+    const color = risk === 'CRITICAL' ? '#ef4444' : risk === 'HIGH' ? '#f59e0b' : '#94a3b8';
+    const when = a.createdAt ? new Date(a.createdAt).toLocaleString() : '';
+    const needs = (a.needsSecrets || []).join(',');
+    return `<div style="border:1px solid var(--border,#333);border-radius:8px;padding:10px 12px;margin-bottom:8px;">
+      <div style="display:flex;justify-content:space-between;gap:10px;align-items:center;">
+        <strong>${escapeHtml(a.summary || a.type)}</strong>
+        <span style="font-size:11px;font-weight:700;color:${color};border:1px solid ${color};border-radius:4px;padding:1px 6px;">${risk}</span>
+      </div>
+      <div class="settings-desc" style="margin:4px 0;">${escapeHtml(a.type)} · requested by ${escapeHtml(a.requestedBy || 'operator')}${when ? ' · ' + escapeHtml(when) : ''}</div>
+      <div style="display:flex;gap:8px;margin-top:6px;">
+        <button class="btn btn-success" style="padding:4px 12px;" onclick="approveAction('${a.id}','${needs}')">Approve</button>
+        <button class="btn btn-danger" style="padding:4px 12px;" onclick="rejectAction('${a.id}')">Reject</button>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+async function approveAction(id, needsCsv) {
+  const secrets = {};
+  for (const k of (needsCsv ? needsCsv.split(',') : [])) {
+    if (!k) continue;
+    const v = window.prompt(`This action needs "${k}" (not stored on the server). Enter it to approve:`);
+    if (v == null || v === '') return; // cancelled
+    secrets[k] = v;
+  }
+  const r = await fetchJSON(`/api/approvals/${id}/approve`, { method: 'POST', body: { secrets } });
+  if (r && r.error) { alert('Approval failed: ' + r.error); }
+  await loadApprovals();
+  if (typeof wsFetchAndRenderSites === 'function') { try { await wsFetchAndRenderSites(); } catch {} }
+}
+
+async function rejectAction(id) {
+  if (!window.confirm('Reject this action? It will not run.')) return;
+  const r = await fetchJSON(`/api/approvals/${id}/reject`, { method: 'POST', body: {} });
+  if (r && r.error) { alert('Reject failed: ' + r.error); }
+  await loadApprovals();
 }
 
 async function saveSettings(section) {

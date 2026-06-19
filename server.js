@@ -986,6 +986,7 @@ const orchestrator = require('./lib/orchestrator');
 const aeoReadability = require('./lib/aeo/readability');
 const aeoCrawlers = require('./lib/aeo/crawlers');
 const shareOfModel = require('./lib/aeo/share-of-model');
+const approvalPolicy = require('./lib/safety/approval');
 
 const webStudioSites = loadState('web_studio_sites', []); // [{id,name,brief,status,domain,createdAt,...}]
 const WS_ROOT = path.join(MAGENT_DIR, 'artifacts', 'web-studio');
@@ -1181,6 +1182,124 @@ async function wsEnsureDist(site) {
   return b.ok ? distDir : null;
 }
 
+// ============================================================
+//  Auto-Mode approval gating — server-enforced gate for irreversible / outward-facing actions.
+//  Risk + mode policy lives in lib/safety/approval.js. `gateAction` either runs the action NOW
+//  (when the current automation mode allows its risk band) or queues a pending approval; either
+//  way the action runs through exactly one ACTION_EXECUTORS entry, so the immediate path and the
+//  approve-later path can never diverge. Secrets (e.g. a GitHub token) are NEVER persisted — they
+//  are stripped from a queued approval and must be re-supplied at approve time.
+// ============================================================
+
+// The publish flow (build -> deploy -> HTTP vhost -> cert -> HTTPS vhost) runs in the background and
+// streams progress; extracted so both the route (auto) and the approve endpoint can start it.
+function startPublishBackground(site, domain) {
+  (async () => {
+    const emit = (phase, extra = {}) => broadcast({ event: 'web_studio_publish', data: { siteId: site.id, phase, ...extra } });
+    site.status = 'publishing'; broadcast({ event: 'web_studio_site', data: site });
+    try {
+      const ws = wsWorkspaceDir(site.id);
+      const distDir = path.join(ws, 'dist');
+      if (!fs.existsSync(path.join(distDir, 'index.html'))) {
+        emit('build');
+        const b = await webStudioBuild.runBuild(ws);
+        if (!b.ok) throw new Error('build failed before publish');
+      }
+      emit('deploy');
+      webStudioPublish.deployRelease(distDir, WS_SITES_ROOT, domain);
+      emit('vhost');
+      await webStudioHosting.createVhost(domain, { tls: false });
+      emit('cert');
+      await webStudioHosting.issueCert(domain);
+      emit('tls');
+      await webStudioHosting.createVhost(domain, { tls: true });
+
+      site.domain = domain;
+      site.published = true;
+      site.url = `https://${domain}`;
+      site.publishedAt = new Date().toISOString();
+      site.status = 'ready';
+      delete site.publishError;
+    } catch (e) {
+      site.status = 'publish_failed';
+      site.publishError = e.message;
+      appendLog(`web-studio: publish failed for ${domain}: ${e.message}`);
+    }
+    saveState('web_studio_sites', webStudioSites);
+    broadcast({ event: 'web_studio_site', data: site });
+  })();
+}
+
+// Reconstructable side effects — invoked by gateAction (immediate) or the approve endpoint
+// (deferred). Each throws on failure; callers translate that to an HTTP error.
+const ACTION_EXECUTORS = {
+  'web-studio.github-push': async ({ siteId, mode, repoName, repoUrl, isPrivate, message, token }) => {
+    const site = webStudioSites.find(s => s.id === siteId);
+    if (!site) throw new Error('Site not found');
+    if (!token) throw new Error('a GitHub token is required');
+    const distDir = await wsEnsureDist(site);
+    if (!distDir) throw new Error('No built site to export yet — build or publish the site first.');
+    const r = await webStudioExport.exportToGitHub({ distDir, token, mode, repoName, isPrivate: !!isPrivate, repoUrl, message });
+    site.exportRepo = r.repoUrl; // store the repo URL, never the token
+    saveState('web_studio_sites', webStudioSites);
+    logActivity('web-studio', `Site exported to GitHub: ${site.name} -> ${r.owner}/${r.repo}`, { id: site.id });
+    return r;
+  },
+  'web-studio.publish': async ({ siteId, domain }) => {
+    const site = webStudioSites.find(s => s.id === siteId);
+    if (!site) throw new Error('Site not found');
+    startPublishBackground(site, domain);
+    return { status: 'publishing', domain };
+  },
+  'web-studio.delete-site': async ({ siteId }) => {
+    const idx = webStudioSites.findIndex(s => s.id === siteId);
+    if (idx < 0) throw new Error('Site not found');
+    const site = webStudioSites[idx];
+    if (site.domain && (site.hostingSetup || site.published)) {
+      try { await webStudioHosting.removeSite(site.domain, { dropCert: true }); } catch (e) { appendLog(`web-studio: vhost teardown failed for ${site.domain}: ${e.message}`); }
+      try { webStudioPublish.removeSiteRoot(WS_SITES_ROOT, site.domain); } catch {}
+    }
+    try { fs.rmSync(wsWorkspaceDir(site.id), { recursive: true, force: true }); } catch {}
+    webStudioSites.splice(idx, 1);
+    saveState('web_studio_sites', webStudioSites);
+    crm?.unlinkSite(site.id); // CRM: prune any contact link to the deleted site
+    return { deleted: true, id: siteId };
+  },
+};
+
+// gateAction({type, summary, target, params, secrets[], req}) -> {executed, result} | {pending, approval}
+async function gateAction({ type, summary, target = null, params = {}, secrets = [], req }) {
+  const mode = (settings.automation && settings.automation.mode) || 'supervised';
+  const d = approvalPolicy.decide(type, mode);
+  const actor = (req && req.user && (req.user.email || req.user.name)) || 'operator';
+
+  if (d.allow) {
+    logActivity('approval', `Auto-approved (${d.mode} mode): ${summary}`, { type, risk: d.risk });
+    const result = await ACTION_EXECUTORS[type](params);
+    return { executed: true, result, decision: d };
+  }
+
+  // Gate it. Persist the request WITHOUT secrets; they are re-supplied when approving.
+  const stored = { ...params };
+  for (const k of secrets) delete stored[k];
+  const approval = {
+    id: uuidv4(), kind: 'action', type, risk: d.risk, mode: d.mode,
+    summary, target, params: stored, needsSecrets: secrets,
+    status: 'pending', requestedBy: actor, createdAt: new Date().toISOString(),
+  };
+  pendingApprovals.push(approval);
+  saveState('pending_approvals', pendingApprovals);
+  logActivity('approval', `Approval required (${d.risk}): ${summary}`, { type, approvalId: approval.id });
+  broadcast({ event: 'approval_pending', data: approval });
+  broadcast({ event: 'notification', data: {
+    title: `Approval required: ${summary}`,
+    message: `${d.risk.toUpperCase()} action queued — review it in Approvals.`,
+    priority: (d.risk === 'critical' || d.risk === 'high') ? 'high' : 'medium',
+    timestamp: new Date().toISOString(),
+  }});
+  return { pending: true, approval, decision: d };
+}
+
 app.get('/api/web-studio/sites/:id/export.zip', requireAdmin, async (req, res) => {
   const site = wsFindSite(req, res); if (!site) return;
   const distDir = await wsEnsureDist(site);
@@ -1201,14 +1320,17 @@ app.post('/api/web-studio/sites/:id/export/github', requireAdmin, heavyLimiter, 
   if (!token) return res.status(400).json({ error: 'a GitHub token is required' });
   if (mode === 'new' && !repoName) return res.status(400).json({ error: 'a repo name is required to create a new repo' });
   if (mode === 'existing' && !repoUrl) return res.status(400).json({ error: 'a repo URL is required' });
-  const distDir = await wsEnsureDist(site);
-  if (!distDir) return res.status(400).json({ error: 'No built site to export yet — build or publish the site first.' });
   try {
-    const r = await webStudioExport.exportToGitHub({ distDir, token, mode, repoName, isPrivate: !!isPrivate, repoUrl, message });
-    site.exportRepo = r.repoUrl; // store the repo URL, never the token
-    saveState('web_studio_sites', webStudioSites);
-    logActivity('web-studio', `Site exported to GitHub: ${site.name} -> ${r.owner}/${r.repo}`, { id: site.id });
-    res.json({ ok: true, ...r });
+    const gate = await gateAction({
+      type: 'web-studio.github-push',
+      summary: `Push site "${site.name}" to GitHub (${mode === 'new' ? repoName : repoUrl})`,
+      target: site.id,
+      params: { siteId: site.id, mode, repoName, repoUrl, isPrivate: !!isPrivate, message, token },
+      secrets: ['token'],
+      req,
+    });
+    if (gate.pending) return res.status(202).json({ pending: true, approvalId: gate.approval.id, risk: gate.approval.risk, message: 'GitHub push queued for approval — supply the token when approving.' });
+    res.json({ ok: true, ...gate.result });
   } catch (e) {
     res.status(502).json({ error: `GitHub export failed: ${e.message}` });
   }
@@ -1257,18 +1379,21 @@ app.get('/api/web-studio/sites/:id', requireAdmin, (req, res) => {
 
 // --- Delete (+ best-effort hosting teardown) ---
 app.delete('/api/web-studio/sites/:id', requireAdmin, async (req, res) => {
-  const idx = webStudioSites.findIndex(s => s.id === req.params.id);
-  if (idx < 0) return res.status(404).json({ error: 'Site not found' });
-  const site = webStudioSites[idx];
-  if (site.domain && (site.hostingSetup || site.published)) {
-    try { await webStudioHosting.removeSite(site.domain, { dropCert: true }); } catch (e) { appendLog(`web-studio: vhost teardown failed for ${site.domain}: ${e.message}`); }
-    try { webStudioPublish.removeSiteRoot(WS_SITES_ROOT, site.domain); } catch {}
+  const site = webStudioSites.find(s => s.id === req.params.id);
+  if (!site) return res.status(404).json({ error: 'Site not found' });
+  try {
+    const gate = await gateAction({
+      type: 'web-studio.delete-site',
+      summary: `Delete site "${site.name}"${site.domain ? ` (${site.domain})` : ''}`,
+      target: site.id,
+      params: { siteId: site.id },
+      req,
+    });
+    if (gate.pending) return res.status(202).json({ pending: true, approvalId: gate.approval.id, risk: gate.approval.risk, message: 'Deletion queued for approval.' });
+    res.json({ ok: true, ...gate.result });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
   }
-  try { fs.rmSync(wsWorkspaceDir(site.id), { recursive: true, force: true }); } catch {}
-  webStudioSites.splice(idx, 1);
-  saveState('web_studio_sites', webStudioSites);
-  crm?.unlinkSite(site.id); // CRM: prune any contact link to the deleted site
-  res.json({ ok: true });
 });
 
 // --- Editor: list source files (src/ + public/) ---
@@ -1421,43 +1546,19 @@ app.post('/api/web-studio/sites/:id/publish', requireAdmin, async (req, res) => 
   catch (e) { return res.status(500).json({ error: `DNS check failed: ${e.message}` }); }
   if (!dns.ok) return res.status(400).json({ error: dns.reason, dns });
 
-  res.json({ ok: true, status: 'publishing', domain, dns });
-
-  // Background: build-if-needed -> deploy release -> HTTP vhost -> cert -> HTTPS vhost.
-  (async () => {
-    const emit = (phase, extra = {}) => broadcast({ event: 'web_studio_publish', data: { siteId: site.id, phase, ...extra } });
-    site.status = 'publishing'; broadcast({ event: 'web_studio_site', data: site });
-    try {
-      const ws = wsWorkspaceDir(site.id);
-      const distDir = path.join(ws, 'dist');
-      if (!fs.existsSync(path.join(distDir, 'index.html'))) {
-        emit('build');
-        const b = await webStudioBuild.runBuild(ws);
-        if (!b.ok) throw new Error('build failed before publish');
-      }
-      emit('deploy');
-      webStudioPublish.deployRelease(distDir, WS_SITES_ROOT, domain);
-      emit('vhost');
-      await webStudioHosting.createVhost(domain, { tls: false });
-      emit('cert');
-      await webStudioHosting.issueCert(domain);
-      emit('tls');
-      await webStudioHosting.createVhost(domain, { tls: true });
-
-      site.domain = domain;
-      site.published = true;
-      site.url = `https://${domain}`;
-      site.publishedAt = new Date().toISOString();
-      site.status = 'ready';
-      delete site.publishError;
-    } catch (e) {
-      site.status = 'publish_failed';
-      site.publishError = e.message;
-      appendLog(`web-studio: publish failed for ${domain}: ${e.message}`);
-    }
-    saveState('web_studio_sites', webStudioSites);
-    broadcast({ event: 'web_studio_site', data: site });
-  })();
+  try {
+    const gate = await gateAction({
+      type: 'web-studio.publish',
+      summary: `Publish site "${site.name}" to ${domain} (provisions TLS)`,
+      target: site.id,
+      params: { siteId: site.id, domain },
+      req,
+    });
+    if (gate.pending) return res.status(202).json({ pending: true, approvalId: gate.approval.id, risk: gate.approval.risk, domain, dns, message: 'Publish queued for approval.' });
+    res.json({ ok: true, status: 'publishing', domain, dns });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
 });
 
 // --- Unpublish: pull the vhost (keep the cert + release for a fast re-publish) ---
@@ -4776,6 +4877,7 @@ const settings = loadState('settings', {
     slack_webhook_url: process.env.SLACK_WEBHOOK_URL || '',
   },
   automation: {
+    mode: process.env.AIOS_AUTOMATION_MODE || 'supervised', // manual | supervised | auto — Auto-Mode approval gating
     n8n_webhook_base: process.env.N8N_WEBHOOK_BASE || '',
     n8n_api_key: process.env.N8N_API_KEY || '',
     team_webhook_url: process.env.TEAM_WEBHOOK_URL || '',
@@ -4939,6 +5041,7 @@ app.get('/api/settings', requireAdmin, (req, res) => {
       slack_webhook_url: { value: maskKey(settings.notifications.slack_webhook_url), configured: !!settings.notifications.slack_webhook_url },
     },
     automation: {
+      mode: settings.automation.mode || 'supervised',
       n8n_webhook_base: settings.automation.n8n_webhook_base,
       n8n_api_key: { value: maskKey(settings.automation.n8n_api_key), configured: !!settings.automation.n8n_api_key },
       team_webhook_url: settings.automation.team_webhook_url,
@@ -4969,6 +5072,11 @@ app.get('/api/settings', requireAdmin, (req, res) => {
 app.put('/api/settings/:section', requireAdmin, (req, res) => {
   const { section } = req.params;
   if (!settings[section]) return res.status(400).json({ error: `Unknown section: ${section}` });
+
+  // Validate the Auto-Mode setting (gateAction also falls back to 'supervised' for bad values).
+  if (section === 'automation' && req.body && 'mode' in req.body && !approvalPolicy.MODES[req.body.mode]) {
+    return res.status(400).json({ error: `mode must be one of: ${Object.keys(approvalPolicy.MODES).join(', ')}` });
+  }
 
   const updates = req.body;
   const updated = [];
@@ -5361,6 +5469,56 @@ app.post('/api/hq/dispatch/:employeeId', requireAdmin, (req, res) => {
 // --- Self-Improving Platform (Telegram/Slack Approval Bot) ---
 
 const pendingApprovals = loadState('pending_approvals', []);
+
+// --- Auto-Mode approvals inbox (the server-enforced action gate; see gateAction) ---
+// These handle kind:'action' approvals only — self-improvement proposals keep their own routes.
+app.get('/api/approvals', requireAdmin, (req, res) => {
+  let items = pendingApprovals.filter(a => a.kind === 'action');
+  if (req.query.status) items = items.filter(a => a.status === req.query.status);
+  res.json(items.sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || '')));
+});
+
+app.post('/api/approvals/:id/approve', requireAdmin, heavyLimiter, async (req, res) => {
+  const a = pendingApprovals.find(x => x.id === req.params.id && x.kind === 'action');
+  if (!a) return res.status(404).json({ error: 'Approval not found' });
+  if (a.status !== 'pending') return res.status(409).json({ error: `Already ${a.status}` });
+  const exec = ACTION_EXECUTORS[a.type];
+  if (!exec) return res.status(400).json({ error: `No executor for action type ${a.type}` });
+  // Re-supply any stripped secrets (e.g. a GitHub token) from this request — never persisted.
+  const secrets = (req.body && req.body.secrets) || {};
+  const missing = (a.needsSecrets || []).filter(k => !secrets[k]);
+  if (missing.length) return res.status(400).json({ error: `This action needs: ${missing.join(', ')}. Send them as { "secrets": { ... } }.` });
+  try {
+    const result = await exec({ ...a.params, ...secrets });
+    a.status = 'approved';
+    a.approvedBy = (req.user && (req.user.email || req.user.name)) || 'operator';
+    a.approvedAt = new Date().toISOString();
+    saveState('pending_approvals', pendingApprovals);
+    logActivity('approval', `Approved + executed: ${a.summary}`, { type: a.type, approvalId: a.id });
+    broadcast({ event: 'approval_update', data: a });
+    res.json({ ok: true, approval: a, result });
+  } catch (e) {
+    a.status = 'failed';
+    a.error = e.message;
+    saveState('pending_approvals', pendingApprovals);
+    broadcast({ event: 'approval_update', data: a });
+    res.status(502).json({ error: `Action failed after approval: ${e.message}` });
+  }
+});
+
+app.post('/api/approvals/:id/reject', requireAdmin, (req, res) => {
+  const a = pendingApprovals.find(x => x.id === req.params.id && x.kind === 'action');
+  if (!a) return res.status(404).json({ error: 'Approval not found' });
+  if (a.status !== 'pending') return res.status(409).json({ error: `Already ${a.status}` });
+  a.status = 'rejected';
+  a.rejectedBy = (req.user && (req.user.email || req.user.name)) || 'operator';
+  a.rejectedAt = new Date().toISOString();
+  a.rejectReason = (req.body && req.body.reason) || '';
+  saveState('pending_approvals', pendingApprovals);
+  logActivity('approval', `Rejected: ${a.summary}`, { type: a.type, approvalId: a.id });
+  broadcast({ event: 'approval_update', data: a });
+  res.json({ ok: true, approval: a });
+});
 
 // Proposal types the platform can generate
 const PROPOSAL_TYPES = {

@@ -169,7 +169,9 @@ async function wsClonePreview() {
 
 async function wsDelete(id) {
   if (!window.confirm('Delete this site? This removes its workspace and any hosting.')) return;
-  await fetchJSON(`/api/web-studio/sites/${id}`, { method: 'DELETE' });
+  const r = await fetchJSON(`/api/web-studio/sites/${id}`, { method: 'DELETE' });
+  if (r && r.pending) { alert('Deletion queued for approval (Auto-Mode is on). Approve it in Settings → Automation → Pending Approvals.'); return; }
+  if (r && r.error) { alert('Delete failed: ' + r.error); return; }
   if (wsState.currentId === id) wsBack();
   await wsFetchAndRenderSites();
 }
@@ -368,6 +370,7 @@ async function wsPublish() {
   if (!window.confirm(`Publish this site to ${domain} with HTTPS?\n\nMake sure ${domain}'s DNS A record already points to this server.`)) return;
   wsPublishHint('Starting publish…');
   const r = await fetchJSON(`/api/web-studio/sites/${wsState.currentId}/publish`, { method: 'POST', body: { domain } });
+  if (r && r.pending) { wsPublishHint('Publish queued for approval (Auto-Mode is on) — approve it in Settings → Automation.'); return; }
   if (r && r.error) { wsPublishHint('Cannot publish: ' + r.error); return; }
   wsPublishHint('Publishing — building, deploying and issuing TLS… this can take a minute or two.');
 }
@@ -425,6 +428,7 @@ async function wsExportGithub() {
   wsExportHint('Pushing to GitHub — creating commit…');
   const r = await fetchJSON(`/api/web-studio/sites/${wsState.currentId}/export/github`, { method: 'POST', body });
   document.getElementById('wsExportToken').value = ''; // clear the token field either way
+  if (r && r.pending) { wsExportHint('GitHub push queued for approval (Auto-Mode is on). Approve it in Settings → Automation — you will re-enter the token there.'); return; }
   if (r && r.error) { wsExportHint('Export failed: ' + r.error); return; }
   const el = document.getElementById('wsExportHint');
   if (el) {
