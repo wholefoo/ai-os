@@ -21,18 +21,25 @@
     "/js/**"
   ],
   "ignoreExports": [
-    {
-      "file": "commercial/lib/license-validator.js",
-      "exports": [
-        "TIER_MAP"
-      ]
-    },
-    {
-      "file": "commercial/lib/tier-resolver.js",
-      "exports": [
-        "TIER_HIERARCHY"
-      ]
-    }
+    { "file": "commercial/lib/license-validator.js", "exports": ["TIER_MAP"] },
+    { "file": "commercial/lib/tier-resolver.js", "exports": ["TIER_HIERARCHY"] },
+
+    { "file": "lib/orchestrator.js", "exports": ["classifyAndAct", "fanOutAndSynthesize", "adversarialVerify", "generateAndFilter", "tournament", "loopUntilDone"] },
+    { "file": "lib/multiModel.js", "exports": ["scoreConsensus", "extractScore"] },
+
+    { "file": "lib/crm/repo.js", "exports": ["normEmail"] },
+    { "file": "lib/crm/sync.js", "exports": ["syncFromAudits", "syncFromLeads", "syncFromSites", "syncFromUsers", "backfillAll"] },
+    { "file": "lib/crm/db.js", "exports": ["openDb"] },
+    { "file": "lib/crm/routes.js", "exports": ["registerCrmRoutes"] },
+    { "file": "lib/crm/index.js", "exports": ["backfillAll", "openDb", "registerCrmRoutes"] },
+
+    { "file": "lib/web-studio/build.js", "exports": ["MAX_CONCURRENT"] },
+    { "file": "lib/web-studio/dns.js", "exports": ["getPublicIps"] },
+    { "file": "lib/web-studio/hosting.js", "exports": ["DOMAIN_RE", "attachDomainWithTls"] },
+    { "file": "lib/web-studio/import.js", "exports": ["MAX_FILES", "MAX_TOTAL_BYTES", "SAFE_EXT", "cloneGitHub", "extractZip", "findStaticRoot", "ingestDir", "sanitizeRelPath"] },
+    { "file": "lib/web-studio/pipeline.js", "exports": ["extractJson", "renderBase", "renderPage", "renderSection"] },
+    { "file": "lib/web-studio/publish.js", "exports": ["KEEP_RELEASES", "pruneReleases", "rollback"] },
+    { "file": "lib/web-studio/scaffold.js", "exports": ["tokensCss"] }
   ],
   "duplicates": {
     "minOccurrences": 3

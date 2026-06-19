@@ -26,11 +26,11 @@ jobs:
       - name: Check for syntax errors
         run: node --check server.js
 
-      # Advisory: fallow flags exported-but-not-yet-consumed symbols (the orchestrator pattern
-      # toolkit, public/test exports). Useful signal, but too noisy to block the build — see logs.
+      # Strict gate: dead-code must stay at zero. Intentional exports (orchestrator pattern
+      # toolkit, multiModel API, module internals, CRM facade) are whitelisted in
+      # .fallowrc.json ignoreExports — so a NEW unused export will (correctly) fail the build.
       - name: Dead code check (fallow)
         run: npx fallow dead-code
-        continue-on-error: true
 
       - name: Duplication check (fallow)
         run: npx fallow dupes
