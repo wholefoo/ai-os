@@ -984,6 +984,7 @@ const trendsLib = require('./lib/trends');
 const { fenceUntrusted } = require('./lib/safety/untrusted');
 const aeoReadability = require('./lib/aeo/readability');
 const aeoCrawlers = require('./lib/aeo/crawlers');
+const shareOfModel = require('./lib/aeo/share-of-model');
 
 const webStudioSites = loadState('web_studio_sites', []); // [{id,name,brief,status,domain,createdAt,...}]
 const WS_ROOT = path.join(MAGENT_DIR, 'artifacts', 'web-studio');
@@ -6159,6 +6160,53 @@ app.get('/api/seo/free-audit/:id', (req, res) => {
     upgradeMessage: 'Get the full report with all findings, content briefs, 12-week calendar, and meta tag optimization — clone the repo and self-host the Community edition for free.',
     upgradeUrl: '/#pricing',
   });
+});
+
+// --- Share of Model: do AI answer engines actually cite this brand? (flagship AEO metric) ---
+// Token-spending → admin-only + heavy-limited, NEVER on the public free-audit path. Wires the
+// multi-model consensus engine (lib/multiModel.js) over whichever provider keys are configured.
+function buildAeoCallers() {
+  const a = settings.ai || {};
+  const callers = [];
+  if (a.anthropic_api_key) callers.push({ name: 'claude', call: async (p, s) => (await callAnthropic(s, p, 'low', 1200)).content });
+  if (a.perplexity_api_key) callers.push({ name: 'perplexity', call: async (p, s) => (await callPerplexity(s, p, 1200)).content });
+  if (a.gemini_api_key) callers.push({ name: 'gemini', call: async (p, s) => (await callGemini(s, p, 1200)).content });
+  if (a.openai_api_key) callers.push({ name: 'openai', call: async (p, s) => (await callOpenAI(s, p, 1200)).content });
+  if (a.xai_api_key) callers.push({ name: 'grok', call: async (p, s) => (await callGrok(s, p, 1200)).content });
+  return callers;
+}
+
+app.post('/api/aeo/share-of-model', requireAdmin, heavyLimiter, async (req, res) => {
+  const { brand, domain, prompts, competitors } = req.body || {};
+  if (!brand || !String(brand).trim()) return res.status(400).json({ error: 'a brand name is required' });
+  const promptList = (Array.isArray(prompts) ? prompts : []).map((p) => String(p).slice(0, 300).trim()).filter(Boolean).slice(0, 8);
+  if (!promptList.length) return res.status(400).json({ error: 'at least one buyer-intent prompt is required (e.g. "best CRM for small business")' });
+  const comps = (Array.isArray(competitors) ? competitors : []).map((c) => String(c).slice(0, 80).trim()).filter(Boolean).slice(0, 10);
+  const brandTerms = [String(brand).trim()];
+  if (domain) {
+    const root = String(domain).replace(/^https?:\/\//i, '').replace(/^www\./i, '').split('/')[0].split('.')[0];
+    if (root && root.length > 1) brandTerms.push(root);
+  }
+  const callers = buildAeoCallers();
+  if (!callers.length) return res.status(400).json({ error: 'No AI provider keys configured. Add at least one (Anthropic / OpenAI / Gemini / Perplexity / Grok) in Settings.' });
+  const system = 'You are a knowledgeable buying advisor. Answer the question directly and concisely, naming specific real brands, vendors, or products where relevant.';
+  try {
+    const result = await shareOfModel.runShareOfModel({ callers, prompts: promptList, brandTerms, competitors: comps, system });
+    const snapshot = { id: uuidv4(), brand: String(brand).trim(), domain: domain || null, engines: callers.map((c) => c.name), prompts: promptList, ...result, at: new Date().toISOString() };
+    const snaps = loadState('aeo_share_snapshots', []); snaps.push(snapshot); saveState('aeo_share_snapshots', snaps.slice(-500));
+    logActivity('aeo', `Share-of-Model: ${snapshot.brand} cited ${Math.round(result.citationShare * 100)}% across ${callers.length} engines`, { brand: snapshot.brand });
+    res.json({ ok: true, ...snapshot });
+  } catch (e) {
+    res.status(502).json({ error: `Share-of-Model failed: ${e.message}` });
+  }
+});
+
+// History (trend over time) for a brand.
+app.get('/api/aeo/share-of-model', requireAdmin, (req, res) => {
+  const brand = String(req.query.brand || '').toLowerCase().trim();
+  let snaps = loadState('aeo_share_snapshots', []);
+  if (brand) snaps = snaps.filter((s) => String(s.brand || '').toLowerCase() === brand);
+  res.json({ snapshots: snaps.slice(-50).reverse() });
 });
 
 // SEO Unlimited routes extracted to commercial/modules/seo-unlimited/index.js
