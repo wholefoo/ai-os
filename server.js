@@ -4867,6 +4867,7 @@ app.get('/api/settings', requireAdmin, (req, res) => {
       deepgram_api_key: { value: maskKey(settings.ai.deepgram_api_key), configured: !!settings.ai.deepgram_api_key },
       cartesia_api_key: { value: maskKey(settings.ai.cartesia_api_key), configured: !!settings.ai.cartesia_api_key },
       heygen_api_key: { value: maskKey(settings.ai.heygen_api_key), configured: !!settings.ai.heygen_api_key },
+      did_api_key: { value: maskKey(settings.ai.did_api_key), configured: !!settings.ai.did_api_key },
       youtube_api_key: { value: maskKey(settings.ai.youtube_api_key), configured: !!settings.ai.youtube_api_key },
     },
     mcp: {
