@@ -120,6 +120,8 @@ async function crmOpenContact(id) {
     ${ro('Source', c.source)}
     ${ro('Created', c.created_at ? timeAgo(c.created_at) : '')}
 
+    ${crmManagedActions(c, data)}
+
     <h3 class="panel-title" style="margin-top:14px;">Sites (${data.sites.length})</h3>
     ${data.sites.length ? data.sites.map((s) => `<div class="crm-detail-row"><span>${escapeHtml(s.name || s.domain || s.id)}</span><span class="crm-muted">${escapeHtml(s.domain || '')} ${s.url ? `· <a href="${escapeHtml(s.url)}" target="_blank" rel="noopener">open</a>` : ''}</span></div>`).join('') : '<div class="crm-muted">No linked sites.</div>'}
     ${crmState.unassigned.length ? `<div class="ws-row" style="gap:8px;margin-top:8px;">
@@ -165,6 +167,56 @@ async function crmLinkSite(id) {
   await crmLoadUnassigned();
   crmOpenContact(id);
   crmLoadList(); crmLoadStats();
+}
+
+// ---------- Phase 4: managed-client operator actions ----------
+// Rendered into the detail panel only for a real managed client (data.managed, derived
+// server-side from the user's role/managedPurchases). Same wiring pattern as the rest of CRM.
+function crmManagedActions(c, data) {
+  const m = data.managed;
+  if (!m || !m.isClient) return '';
+  const planOpts = ['business', 'enterprise'].map((p) => `<option value="${p}" ${c.plan === p ? 'selected' : ''}>${p}</option>`).join('');
+  const onboard = m.hasPassword
+    ? '<span class="crm-muted">Account active (password set)</span>'
+    : `<button class="btn" onclick="crmResendInvite('${c.id}')">${m.pendingInvite ? 'Resend' : 'Send'} set-password invite</button> <span class="crm-muted">${m.pendingInvite ? 'invite pending' : 'not invited yet'}</span>`;
+  return `
+    <h3 class="panel-title" style="margin-top:14px;">Managed client <span class="crm-muted" style="font-weight:400;">· ${m.purchases} purchase${m.purchases === 1 ? '' : 's'}</span></h3>
+    <div style="display:grid;gap:8px;">
+      <div class="ws-row" style="gap:8px;align-items:center;"><span class="crm-muted" style="min-width:74px;">Onboarding</span>${onboard}</div>
+      <div class="ws-row" style="gap:8px;align-items:center;"><span class="crm-muted" style="min-width:74px;">Plan</span>
+        <select class="settings-input" id="cmPlan" style="max-width:150px;">${planOpts}</select>
+        <button class="btn" onclick="crmChangePlan('${c.id}')">Change</button></div>
+      <div class="ws-row" style="gap:8px;align-items:center;"><span class="crm-muted" style="min-width:74px;">Billing</span>
+        <button class="btn" onclick="crmBillingLink('${c.id}')">Generate billing / renewal link</button></div>
+      <div id="cmResult" style="word-break:break-all;font-size:13px;margin-top:2px;"></div>
+    </div>`;
+}
+
+function crmShowResult(html) { const el = document.getElementById('cmResult'); if (el) el.innerHTML = html; }
+function crmResultErr(msg) { crmShowResult(`<span style="color:#fca5a5;">${escapeHtml(msg)}</span>`); }
+function crmResultLink(label, url) {
+  return `<div class="crm-muted" style="margin-bottom:4px;">${escapeHtml(label)}</div><input class="settings-input" style="width:100%;" readonly value="${escapeHtml(url)}" onclick="this.select()" />`;
+}
+
+async function crmResendInvite(id) {
+  const r = await fetchJSON(`/api/crm/contacts/${id}/resend-invite`, { method: 'POST', body: {} });
+  if (!r || r.error) return crmResultErr((r && r.error) || 'Failed to issue invite');
+  let exp = ''; try { exp = ' (expires ' + new Date(r.expiresAt).toLocaleDateString() + ')'; } catch {}
+  crmShowResult(crmResultLink('Set-password link' + exp + ' — send to the client:', r.link));
+}
+
+async function crmChangePlan(id) {
+  const plan = crmVal('cmPlan');
+  const r = await fetchJSON(`/api/crm/contacts/${id}/change-plan`, { method: 'POST', body: { plan } });
+  if (!r || r.error) return crmResultErr((r && r.error) || 'Failed to change plan');
+  crmOpenContact(id); crmLoadList();
+}
+
+async function crmBillingLink(id) {
+  const r = await fetchJSON(`/api/crm/contacts/${id}/billing-link`, { method: 'POST', body: {} });
+  if (!r || r.error) return crmResultErr((r && r.error) || 'Failed to generate link');
+  const label = (r.kind === 'portal' ? 'Stripe billing portal link:' : 'Renewal link:') + (r.note ? ' (' + r.note + ')' : '');
+  crmShowResult(crmResultLink(label, r.url));
 }
 
 async function crmAddContact() {

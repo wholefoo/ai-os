@@ -1627,7 +1627,7 @@ const ACTION_EXECUTORS = {
 async function gateAction({ type, summary, target = null, params = {}, secrets = [], req }) {
   const mode = (settings.automation && settings.automation.mode) || 'supervised';
   const d = approvalPolicy.decide(type, mode);
-  const actor = (req && req.user && (req.user.email || req.user.name)) || 'operator';
+  const actor = (req && req.session && (req.session.email || req.session.name)) || 'operator';
 
   if (d.allow) {
     logActivity('approval', `Auto-approved (${d.mode} mode): ${summary}`, { type, risk: d.risk });
@@ -5904,7 +5904,7 @@ app.post('/api/approvals/:id/approve', requireAdmin, heavyLimiter, async (req, r
   try {
     const result = await exec({ ...a.params, ...secrets });
     a.status = 'approved';
-    a.approvedBy = (req.user && (req.user.email || req.user.name)) || 'operator';
+    a.approvedBy = (req.session && (req.session.email || req.session.name)) || 'operator';
     a.approvedAt = new Date().toISOString();
     saveState('pending_approvals', pendingApprovals);
     logActivity('approval', `Approved + executed: ${a.summary}`, { type: a.type, approvalId: a.id });
@@ -5924,7 +5924,7 @@ app.post('/api/approvals/:id/reject', requireAdmin, (req, res) => {
   if (!a) return res.status(404).json({ error: 'Approval not found' });
   if (a.status !== 'pending') return res.status(409).json({ error: `Already ${a.status}` });
   a.status = 'rejected';
-  a.rejectedBy = (req.user && (req.user.email || req.user.name)) || 'operator';
+  a.rejectedBy = (req.session && (req.session.email || req.session.name)) || 'operator';
   a.rejectedAt = new Date().toISOString();
   a.rejectReason = (req.body && req.body.reason) || '';
   saveState('pending_approvals', pendingApprovals);
@@ -6674,6 +6674,88 @@ try {
   crm = null;
   console.error('[crm] init failed:', e.message);
 }
+
+// --- CRM: managed-client operator actions (Phase 4) ---
+// These mutate the USER record / Stripe, so they live in server scope (not lib/crm). Admin-only
+// (requireAdmin); clientSurfaceGuard already 403s clients from every /api/crm/* path.
+const CRM_PUBLIC_BASE = (process.env.AIOS_PUBLIC_URL || (process.env.AIOS_PRIMARY_DOMAIN ? 'https://' + process.env.AIOS_PRIMARY_DOMAIN : 'https://aiosorchestrationlab.com')).replace(/\/+$/, '');
+// Resolve a CRM contact (by id) + its managed-client user. Case-insensitive email match: contact
+// emails are normalized lowercase, but user emails are stored as entered.
+function crmContactUser(contactId) {
+  const contact = (crm && crm.repo && crm.repo.contacts) ? crm.repo.contacts.get(contactId) : null;
+  if (!contact) return { contact: null, user: null };
+  // Prefer the stable user_id link (survives email-case differences). Fall back to a UNIQUE
+  // case-insensitive email match — null if zero or ambiguous, so we never act on the wrong user.
+  let user = contact.user_id ? (users.find(u => u && u.id === contact.user_id) || null) : null;
+  if (!user) {
+    const email = String(contact.email || '').toLowerCase();
+    const matches = users.filter(u => u && u.email && String(u.email).toLowerCase() === email);
+    user = matches.length === 1 ? matches[0] : null;
+  }
+  return { contact, user };
+}
+function crmLogAction(contact, type, body, req) {
+  const actor = (req && req.session && (req.session.email || req.session.name)) || 'operator';
+  try { crm && crm.repo && crm.repo.activities && crm.repo.activities.add({ contactId: contact.id, type, body, author: actor }); } catch {}
+  try { broadcast({ event: 'crm_update', data: { id: contact.id } }); } catch {}
+}
+
+// Issue / re-issue the one-time set-password invite for a managed client.
+app.post('/api/crm/contacts/:id/resend-invite', requireAdmin, (req, res) => {
+  const { contact, user } = crmContactUser(req.params.id);
+  if (!contact) return res.status(404).json({ error: 'contact not found' });
+  if (!user || user.role !== 'client' || !Array.isArray(user.managedPurchases) || !user.managedPurchases.length) {
+    return res.status(400).json({ error: 'not a managed client' });
+  }
+  // Refuse if they already have a password — set-password performs no current-password check,
+  // so re-issuing a token to an active account would be an account-takeover vector.
+  if (user.passwordHash) return res.status(409).json({ error: 'client already has a password — use a password reset, not an invite' });
+  user.setupToken = { token: generateToken(), expiresAt: new Date(Date.now() + 7 * 86400000).toISOString() };
+  saveState('users', users);
+  crmLogAction(contact, 'invite', 'Set-password invite issued', req);
+  res.json({ ok: true, link: `${CRM_PUBLIC_BASE}/set-password?token=${encodeURIComponent(user.setupToken.token)}`, expiresAt: user.setupToken.expiresAt });
+});
+
+// Change a managed client's service tier (business <-> enterprise). For clients the site limit
+// is driven by managedPurchases, not plan — this is the tier label, mirrored to the CRM contact.
+app.post('/api/crm/contacts/:id/change-plan', requireAdmin, (req, res) => {
+  const { contact, user } = crmContactUser(req.params.id);
+  if (!contact) return res.status(404).json({ error: 'contact not found' });
+  if (!user || user.role !== 'client') return res.status(400).json({ error: 'not a managed client' });
+  const plan = String((req.body || {}).plan || '');
+  if (plan !== 'business' && plan !== 'enterprise') return res.status(400).json({ error: 'plan must be business or enterprise' });
+  const prev = user.plan;
+  if (prev === plan) return res.json({ ok: true, plan, unchanged: true });
+  user.plan = plan;
+  saveState('users', users);
+  // Mirror just the tier label to the CRM contact. (NOT crm.syncUser — that logs a spurious
+  // "purchase" activity with a null dedupe key on every relabel.) The plan_change log is below.
+  try { crm && crm.repo && crm.repo.contacts && crm.repo.contacts.upsertByEmail({ email: user.email, plan }); } catch {}
+  crmLogAction(contact, 'plan_change', `Plan: ${prev || 'none'} → ${plan}`, req);
+  res.json({ ok: true, plan });
+});
+
+// Generate a billing-management link: a Stripe Customer Portal session (manage card / cancel)
+// when a customer is on file, else the renewal-checkout URL.
+app.post('/api/crm/contacts/:id/billing-link', requireAdmin, async (req, res) => {
+  const { contact, user } = crmContactUser(req.params.id);
+  if (!contact) return res.status(404).json({ error: 'contact not found' });
+  const customerId = (user && user.stripeCustomerId)
+    || (user && Array.isArray(user.managedPurchases) ? user.managedPurchases.map(p => p && p.customerId).filter(Boolean).pop() : null)
+    || contact.stripe_customer_id || null;
+  if (stripe && customerId) {
+    try {
+      const portal = await stripe.billingPortal.sessions.create({ customer: customerId, return_url: `${CRM_PUBLIC_BASE}/app` });
+      crmLogAction(contact, 'billing_link', 'Stripe billing portal link generated', req);
+      return res.json({ ok: true, kind: 'portal', url: portal.url });
+    } catch (e) {
+      console.error('[crm] billing portal:', e.message); // portal unconfigured / bad customer → fall through
+    }
+  }
+  crmLogAction(contact, 'billing_link', 'Renewal link generated', req);
+  res.json({ ok: true, kind: 'renewal', url: `${CRM_PUBLIC_BASE}/api/stripe/checkout?plan=enterprise-renewal`,
+    note: customerId ? 'Stripe billing portal unavailable — renewal link instead' : 'No Stripe customer on file — renewal link' });
+});
 
 app.post('/api/seo/free-audit', heavyLimiter, async (req, res) => {
   const { domain, email, name } = req.body;
