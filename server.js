@@ -363,23 +363,22 @@ app.post('/api/commerce/checkout', heavyLimiter, async (req, res) => {
   const { setup, monthly, currency, plan } = managedOfferConfig();
   const origin = `${req.protocol}://${req.get('host')}`;
   try {
+    // The one-time setup fee is a NON-recurring line item, billed once on the first invoice. Stripe
+    // Checkout supports mixing one-time + recurring prices in subscription mode (the "mixed cart" —
+    // up to 20 of each). NOTE: subscription_data.add_invoice_items is NOT a Checkout Session param
+    // (it belongs to the Subscriptions API) — Stripe rejects it with "unknown parameter".
+    const lineItems = [
+      { price_data: { currency, product_data: { name: 'Website hosting & maintenance (monthly)' }, unit_amount: monthly, recurring: { interval: 'month' } }, quantity: 1 },
+    ];
+    if (setup > 0) lineItems.push({ price_data: { currency, product_data: { name: 'Website setup (one-time)' }, unit_amount: setup }, quantity: 1 });
     const params = {
       mode: 'subscription',
       payment_method_types: ['card'],
-      line_items: [
-        { price_data: { currency, product_data: { name: 'Website hosting & maintenance (monthly)' }, unit_amount: monthly, recurring: { interval: 'month' } }, quantity: 1 },
-      ],
+      line_items: lineItems,
       success_url: `${origin}/api/stripe/success?session_id={CHECKOUT_SESSION_ID}`,
       cancel_url: `${origin}/buy?canceled=1`,
       metadata: { account: 'client', plan, offer: 'managed-website', buyerName: name },
-      subscription_data: {
-        metadata: { account: 'client', plan, offer: 'managed-website' },
-        // One-time setup fee added to the FIRST invoice — the canonical "subscription with a setup
-        // fee" shape (a non-recurring line_item is REJECTED in subscription mode).
-        add_invoice_items: [
-          { price_data: { currency, product_data: { name: 'Website setup (one-time)' }, unit_amount: setup }, quantity: 1 },
-        ],
-      },
+      subscription_data: { metadata: { account: 'client', plan, offer: 'managed-website' } },
     };
     // Reuse the buyer's existing Stripe customer on a repeat purchase (avoid duplicate customers).
     const existing = findUserByEmail(email);
