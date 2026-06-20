@@ -43,11 +43,25 @@ async function applyRoleGating() {
   const role = (me && me.role) || 'user';
   window.aiosRole = role;
   if (role !== 'client') return role;
-  const CLIENT_VIEWS = new Set(['web-studio']);
+  const CLIENT_VIEWS = new Set(['web-studio', 'seo-agency']); // web studio + their own SEO/AEO audits
   document.querySelectorAll('.nav-item').forEach((item) => {
     if (item.dataset.view && !CLIENT_VIEWS.has(item.dataset.view)) item.style.display = 'none';
   });
   document.body.classList.add('client-mode');
+  // Re-frame the operator "SEO Agency" surface as a client "SEO Audit" (the admin-only Share-of-Model
+  // panel + report Post-Audit Actions are hidden via body.client-mode CSS *and* server-gated).
+  const auditNav = document.querySelector('.nav-item[data-view="seo-agency"]');
+  if (auditNav) {
+    const icon = auditNav.querySelector('.nav-icon');
+    auditNav.textContent = '';
+    if (icon) auditNav.appendChild(icon);
+    auditNav.appendChild(document.createTextNode(' SEO Audit'));
+  }
+  const auditView = document.getElementById('view-seo-agency');
+  if (auditView) {
+    const t = auditView.querySelector('.radar-title'); if (t) t.textContent = 'SEO & AEO Audit';
+    const s = auditView.querySelector('.radar-subtitle'); if (s) s.textContent = 'Run a full SEO + AI-readiness audit on your site and get a prioritized action plan.';
+  }
   switchView('web-studio'); // the admin home would 403 — land them where they can work
   return role;
 }

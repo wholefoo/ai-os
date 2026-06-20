@@ -6,6 +6,13 @@
   <title>AI OS — Orchestration Lab</title>
   <link rel="stylesheet" href="css/styles.css?v=32">
   <link rel="stylesheet" href="css/avatars.css">
+  <style>
+    /* Phase 2b: hide operator-only controls from a managed-client (role:'client') session. These
+       actions are ALSO server-gated (requireAdmin / not in CLIENT_API_ALLOW → 403); this just removes
+       the non-functional controls from the client's view. */
+    body.client-mode .admin-only,
+    body.client-mode .seo-post-actions { display: none !important; }
+  </style>
   <script src="https://cdn.jsdelivr.net/npm/livekit-client@2/dist/livekit-client.umd.js" defer></script>
   <script src="https://cdn.jsdelivr.net/npm/@heygen/streaming-avatar/dist/index.umd.js" defer></script>
 </head>
@@ -1566,7 +1573,7 @@
             </div>
           </section>
 
-          <section class="panel" style="margin-top:16px;">
+          <section class="panel admin-only" style="margin-top:16px;">
             <h3 class="panel-title">Share of Model <span style="font-size:11px;font-weight:400;color:var(--text-secondary);">&mdash; do AI answer engines cite your brand?</span></h3>
             <p style="font-size:13px;color:var(--text-secondary);margin-bottom:12px;">Ask the configured AI engines buyer-intent questions and measure whether your brand gets mentioned vs. competitors. Admin-only &middot; uses your model API keys (configure them in Settings).</p>
             <div class="settings-input-row" style="max-width:600px;flex-wrap:wrap;gap:8px;">
@@ -2298,7 +2305,7 @@
     </div>
   </div>
 
-  <script src="js/app.js?v=42"></script>
+  <script src="js/app.js?v=43"></script>
   <script src="https://cdn.jsdelivr.net/npm/monaco-editor@0.52.2/min/vs/loader.js"></script>
   <script src="js/web-studio.js?v=12"></script>
   <script src="js/crm.js?v=2"></script>
