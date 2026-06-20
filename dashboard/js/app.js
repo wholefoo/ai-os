@@ -18,12 +18,14 @@ const state = {
 };
 
 // --- Init ---
-document.addEventListener('DOMContentLoaded', () => {
+document.addEventListener('DOMContentLoaded', async () => {
   setupNavigation();
   setupWebSocket();
   setupModal();
   setupChat();
   setupInboxFilters();
+  const role = await applyRoleGating();
+  if (role === 'client') return; // managed clients get a scoped Web Studio dashboard (handled above)
   loadDashboard();
   // Seed demo inbox items and fleet status
   seedInbox();
@@ -31,6 +33,24 @@ document.addEventListener('DOMContentLoaded', () => {
   seedTimeline();
   setupRadar();
 });
+
+// Restrict the dashboard to the client-facing surface for a managed client (role:'client'). The
+// server already ISOLATES the data + 403s everything off the allowlist (Phases 1a/1b); this is
+// presentation-only — hide the admin nav, land the client on Web Studio, skip the admin home load.
+async function applyRoleGating() {
+  let me = null;
+  try { me = await fetchJSON('/api/auth/me'); } catch (e) { /* not logged in / error */ }
+  const role = (me && me.role) || 'user';
+  window.aiosRole = role;
+  if (role !== 'client') return role;
+  const CLIENT_VIEWS = new Set(['web-studio']);
+  document.querySelectorAll('.nav-item').forEach((item) => {
+    if (item.dataset.view && !CLIENT_VIEWS.has(item.dataset.view)) item.style.display = 'none';
+  });
+  document.body.classList.add('client-mode');
+  switchView('web-studio'); // the admin home would 403 — land them where they can work
+  return role;
+}
 
 // --- Navigation ---
 function setupNavigation() {
