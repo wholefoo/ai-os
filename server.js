@@ -184,7 +184,8 @@ app.use('/api/', authMiddleware);
 // BEHIND per-route ownership scoping: enabling client login must never expose operator tools
 // (reports, predictions, knowledge-graph, plugins, CRM, settings, HQ, billing, …). Add a prefix
 // here ONLY after that surface is owner-scoped. Admin + anonymous sessions are unaffected.
-const CLIENT_API_ALLOW = ['/api/web-studio', '/api/auth', '/api/provenance', '/api/health'];
+const CLIENT_API_ALLOW = ['/api/web-studio', '/api/auth', '/api/provenance', '/api/health',
+  '/api/seo/audit', '/api/seo/audits', '/api/seo/report']; // audit family is owner-scoped per route
 function clientSurfaceGuard(req, res, next) {
   const url = req.originalUrl.split('?')[0];
   const token = req.cookies?.['ai-os-session'] || req.headers.authorization?.replace('Bearer ', '');
@@ -6688,10 +6689,10 @@ app.get('/api/aeo/share-of-model', requireAdmin, (req, res) => {
 // SEO Unlimited routes extracted to commercial/modules/seo-unlimited/index.js
 
 // DELETE /api/seo/audit/:id — delete an audit
-app.delete('/api/seo/audit/:id', requireAdmin, (req, res) => {
-  const idx = seoAudits.findIndex(a => a.id === req.params.id);
-  if (idx === -1) return res.status(404).json({ error: 'Audit not found' });
-  seoAudits.splice(idx, 1);
+app.delete('/api/seo/audit/:id', requireClientOrAdmin, (req, res) => {
+  const audit = seoAudits.find(a => a.id === req.params.id);
+  if (!audit || !wsOwns(req.session, audit)) return res.status(404).json({ error: 'Audit not found' });
+  seoAudits.splice(seoAudits.indexOf(audit), 1);
   saveState('seo_audits', seoAudits);
   res.json({ ok: true });
 });
@@ -7222,7 +7223,8 @@ wss.on('connection', (ws) => {
 if (commercial.registerRoutes) {
   commercial.registerRoutes(app, {
     // Middleware
-    requireAdmin, requirePlan, heavyLimiter,
+    requireAdmin, requireClientOrAdmin, requirePlan, heavyLimiter,
+    owns: wsOwns, isClient: wsIsClient, // per-client ownership helpers (Web Studio + scoped audits)
     // Messaging & logging
     broadcast, logActivity, appendLog,
     // Persistence & utilities
