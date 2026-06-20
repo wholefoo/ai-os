@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Get your AI website + hosting</title>
+<style>
+  body{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;background:#0b1020;color:#e7eaf3;font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;padding:24px;box-sizing:border-box;}
+  .card{width:100%;max-width:440px;background:#141a2e;border:1px solid #232c45;border-radius:16px;padding:30px;}
+  h1{font-size:22px;margin:0 0 6px;}
+  .sub{color:#9aa3bd;font-size:14px;margin:0 0 18px;line-height:1.5;}
+  .price{display:flex;gap:10px;margin:0 0 20px;}
+  .price .box{flex:1;background:#0e1426;border:1px solid #2b3552;border-radius:10px;padding:12px;text-align:center;}
+  .price .amt{font-size:22px;font-weight:700;}
+  .price .lbl{font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:#9aa3bd;margin-top:2px;}
+  label{display:block;font-size:12px;text-transform:uppercase;letter-spacing:.04em;color:#9aa3bd;margin:14px 0 6px;}
+  input{width:100%;box-sizing:border-box;padding:11px 12px;border-radius:8px;border:1px solid #2b3552;background:#0e1426;color:#e7eaf3;font-size:14px;}
+  button{width:100%;margin-top:20px;padding:12px;border:0;border-radius:8px;background:#4f46e5;color:#fff;font-weight:600;font-size:15px;cursor:pointer;}
+  button:disabled{opacity:.6;cursor:default;}
+  .msg{margin-top:12px;font-size:13px;min-height:18px;}
+  .err{color:#fca5a5;}
+  .fine{margin-top:14px;font-size:12px;color:#7e87a3;line-height:1.5;}
+</style>
+</head>
+<body>
+  <div class="card" id="card">
+    <h1 id="title">Loading…</h1>
+    <div class="sub" id="desc"></div>
+    <div class="price" id="price" style="display:none;">
+      <div class="box"><div class="amt" id="setup">—</div><div class="lbl">one-time setup</div></div>
+      <div class="box"><div class="amt" id="monthly">—</div><div class="lbl">per month</div></div>
+    </div>
+    <div id="form" style="display:none;">
+      <label for="name">Your name (optional)</label>
+      <input id="name" type="text" autocomplete="name" placeholder="Jane Doe" />
+      <label for="email">Email</label>
+      <input id="email" type="email" autocomplete="email" placeholder="you@example.com" />
+      <button id="go">Continue to secure checkout</button>
+      <div class="msg" id="msg"></div>
+      <div class="fine" id="fine"></div>
+    </div>
+  </div>
+<script>
+  var canceled = new URLSearchParams(location.search).get('canceled');
+  var msg = document.getElementById('msg');
+  function money(n, cur) { try { return new Intl.NumberFormat(undefined, { style: 'currency', currency: cur, maximumFractionDigits: 0 }).format(n); } catch (e) { return cur + ' ' + n; } }
+  (async function () {
+    try {
+      var data = await (await fetch('/api/commerce/offers')).json();
+      var o = (data.offers || [])[0];
+      if (!o) { document.getElementById('title').textContent = 'Not available'; document.getElementById('desc').textContent = 'This offer is not currently available.'; return; }
+      document.getElementById('title').textContent = o.name;
+      document.getElementById('desc').textContent = o.description;
+      document.getElementById('setup').textContent = money(o.setup_fee, o.currency);
+      document.getElementById('monthly').textContent = money(o.monthly_fee, o.currency);
+      document.getElementById('price').style.display = 'flex';
+      document.getElementById('form').style.display = 'block';
+      document.getElementById('fine').textContent = 'After payment you’ll set a password and get your own dashboard to build & manage your site. Cancel anytime.';
+      if (canceled) { msg.className = 'msg err'; msg.textContent = 'Checkout canceled — you have not been charged.'; }
+    } catch (e) { document.getElementById('title').textContent = 'Something went wrong'; }
+  })();
+  document.getElementById('go').addEventListener('click', async function () {
+    var email = (document.getElementById('email').value || '').trim();
+    var name = (document.getElementById('name').value || '').trim();
+    msg.className = 'msg';
+    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) { msg.className = 'msg err'; msg.textContent = 'Enter a valid email.'; return; }
+    var btn = document.getElementById('go'); btn.disabled = true; msg.textContent = 'Redirecting to secure checkout…';
+    try {
+      var r = await fetch('/api/commerce/checkout', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: email, name: name }) });
+      var d = await r.json();
+      if (!r.ok || d.error || !d.url) { msg.className = 'msg err'; msg.textContent = d.error || ('Error ' + r.status); btn.disabled = false; return; }
+      location.href = d.url;
+    } catch (e) { msg.className = 'msg err'; msg.textContent = 'Network error — try again.'; btn.disabled = false; }
+  });
+</script>
+</body>
+</html>

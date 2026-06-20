@@ -162,7 +162,8 @@ function authMiddleware(req, res, next) {
   const publicPaths = ['/api/health', '/api/auth/login', '/api/auth/logout', '/api/auth/me', '/api/auth/set-password',
     '/api/stripe/webhook', '/api/stripe/checkout', '/api/stripe/success',
     '/api/tenant/branding', '/api/hq/stats', '/api/hq/org',
-    '/api/provenance/public-key', '/api/provenance/verify'];
+    '/api/provenance/public-key', '/api/provenance/verify',
+    '/api/commerce/offers', '/api/commerce/checkout'];
   if (publicPaths.includes(url)) return next();
   // Public lead magnet: the free SEO/AEO audit — POST create + GET /:id results polling.
   // (Abuse is bounded by heavyLimiter on the POST + the per-email monthly cap in the handler.)
@@ -185,7 +186,8 @@ app.use('/api/', authMiddleware);
 // (reports, predictions, knowledge-graph, plugins, CRM, settings, HQ, billing, …). Add a prefix
 // here ONLY after that surface is owner-scoped. Admin + anonymous sessions are unaffected.
 const CLIENT_API_ALLOW = ['/api/web-studio', '/api/auth', '/api/provenance', '/api/health',
-  '/api/seo/audit', '/api/seo/audits', '/api/seo/report']; // audit family is owner-scoped per route
+  '/api/seo/audit', '/api/seo/audits', '/api/seo/report', // audit family is owner-scoped per route
+  '/api/commerce']; // public offer + checkout (a client may also buy another managed site)
 function clientSurfaceGuard(req, res, next) {
   const url = req.originalUrl.split('?')[0];
   const token = req.cookies?.['ai-os-session'] || req.headers.authorization?.replace('Bearer ', '');
@@ -296,6 +298,104 @@ app.get('/api/stripe/checkout', async (req, res) => {
   }
 });
 
+// ============================================================
+//  Agentic Commerce — the managed-website offer (one-time setup + monthly hosting), discoverable
+//  as structured data and buyable end-to-end by an AI agent OR a human. A RESELLER capability of
+//  Business/Enterprise instances: gated to those tiers. Prices come from settings (server-side —
+//  NEVER the request body), so they cannot be tampered with. On payment, fulfillCheckoutSession
+//  sees metadata.account==='client' and provisions a scoped managed-client account (Phase 0).
+// ============================================================
+function managedOfferConfig() {
+  const c = settings.commerce || {};
+  return {
+    setup: Math.max(0, parseInt(c.managed_setup_cents, 10) || 99700),
+    monthly: Math.max(0, parseInt(c.managed_monthly_cents, 10) || 25000),
+    currency: String(c.managed_currency || 'usd').toLowerCase(),
+    plan: c.managed_plan === 'enterprise' ? 'enterprise' : 'business',
+  };
+}
+function managedOfferActive() {
+  return !!stripe
+    && (ACTIVE_TIER === 'business' || ACTIVE_TIER === 'enterprise')
+    && String((settings.commerce || {}).managed_enabled) !== 'false';
+}
+
+// Public, machine-readable offer feed (schema.org Product/Offer) so AI shopping agents + humans can
+// discover the offering. Returns [] when the offer is not active on this instance.
+app.get('/api/commerce/offers', (req, res) => {
+  if (!managedOfferActive()) return res.json({ offers: [] });
+  const { setup, monthly, currency } = managedOfferConfig();
+  const origin = `${req.protocol}://${req.get('host')}`;
+  const cur = currency.toUpperCase();
+  res.json({ offers: [{
+    id: 'managed-website',
+    name: 'Done-for-you AI website + hosting',
+    description: 'We build your website with AI and host it on our infrastructure; you get a private dashboard to build, edit, and manage it.',
+    currency: cur,
+    setup_fee: setup / 100,
+    monthly_fee: monthly / 100,
+    billing: 'one-time setup fee + monthly hosting/maintenance subscription',
+    checkout: { method: 'POST', url: `${origin}/api/commerce/checkout`, body: { email: '<buyer email>', name: '<optional>' } },
+    schema_org: {
+      '@context': 'https://schema.org', '@type': 'Product',
+      name: 'Done-for-you AI website + hosting',
+      description: 'AI-built website hosted for you, with a self-serve management dashboard.',
+      brand: { '@type': 'Brand', name: 'AI OS Web Studio' },
+      offers: {
+        '@type': 'Offer', priceCurrency: cur, availability: 'https://schema.org/InStock', url: `${origin}/buy`,
+        priceSpecification: [
+          { '@type': 'UnitPriceSpecification', priceCurrency: cur, price: (setup / 100).toFixed(2), name: 'One-time setup fee' },
+          { '@type': 'UnitPriceSpecification', priceCurrency: cur, price: (monthly / 100).toFixed(2), name: 'Monthly hosting & maintenance', billingDuration: 'P1M' },
+        ],
+      },
+    },
+  }] });
+});
+
+// Programmatic checkout an AI agent (or the /buy page) completes. Public + heavy-limited. ONE Stripe
+// subscription-mode session: a recurring monthly price + a one-time setup line item (the canonical
+// "subscription with a setup fee" pattern). Prices are server-side; the caller only supplies email.
+app.post('/api/commerce/checkout', heavyLimiter, async (req, res) => {
+  if (!managedOfferActive()) return res.status(503).json({ error: 'The managed-website offer is not available on this instance.' });
+  const email = String((req.body && req.body.email) || '').trim().toLowerCase();
+  if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return res.status(400).json({ error: 'a valid email is required' });
+  const name = req.body && req.body.name ? String(req.body.name).slice(0, 120) : '';
+  const { setup, monthly, currency, plan } = managedOfferConfig();
+  const origin = `${req.protocol}://${req.get('host')}`;
+  try {
+    const params = {
+      mode: 'subscription',
+      payment_method_types: ['card'],
+      line_items: [
+        { price_data: { currency, product_data: { name: 'Website hosting & maintenance (monthly)' }, unit_amount: monthly, recurring: { interval: 'month' } }, quantity: 1 },
+      ],
+      success_url: `${origin}/api/stripe/success?session_id={CHECKOUT_SESSION_ID}`,
+      cancel_url: `${origin}/buy?canceled=1`,
+      metadata: { account: 'client', plan, offer: 'managed-website', buyerName: name },
+      subscription_data: {
+        metadata: { account: 'client', plan, offer: 'managed-website' },
+        // One-time setup fee added to the FIRST invoice — the canonical "subscription with a setup
+        // fee" shape (a non-recurring line_item is REJECTED in subscription mode).
+        add_invoice_items: [
+          { price_data: { currency, product_data: { name: 'Website setup (one-time)' }, unit_amount: setup }, quantity: 1 },
+        ],
+      },
+    };
+    // Reuse the buyer's existing Stripe customer on a repeat purchase (avoid duplicate customers).
+    const existing = findUserByEmail(email);
+    if (existing && existing.stripeCustomerId) params.customer = existing.stripeCustomerId;
+    else params.customer_email = email;
+    const session = await stripe.checkout.sessions.create(params);
+    res.json({ ok: true, url: session.url, sessionId: session.id });
+  } catch (e) {
+    console.error('[COMMERCE] checkout error:', e.message);
+    res.status(502).json({ error: `Checkout failed: ${e.message}` });
+  }
+});
+
+// Public buy page (outside /api/ so authMiddleware does not gate it).
+app.get('/buy', (req, res) => { res.sendFile(path.join(BASE, 'dashboard', 'buy.html')); });
+
 // Fulfill a PAID checkout session — idempotent, shared by the success redirect
 // and the checkout.session.completed webhook (the backstop when the customer
 // never returns to the success URL).
@@ -339,9 +439,14 @@ function fulfillCheckoutSession(stripeSession, source) {
   // webhook backstop), so only mint the token once and NEVER overwrite a password the client set.
   if (stripeSession.metadata?.account === 'client') {
     user.role = user.role || 'client';
+    if (stripeSession.metadata.buyerName && !user.name) user.name = String(stripeSession.metadata.buyerName).slice(0, 120);
     // Each managed purchase grants +1 site allowance; idempotent via the session id (double-fire safe).
     user.managedPurchases = Array.isArray(user.managedPurchases) ? user.managedPurchases : [];
-    if (!user.managedPurchases.includes(stripeSession.id)) user.managedPurchases.push(stripeSession.id);
+    // Track each managed subscription individually (id + customer) so ONE cancellation removes ONE
+    // site and never locks out a client whose other subscriptions are still paid. Idempotent by sessionId.
+    if (!user.managedPurchases.some(p => p && p.sessionId === stripeSession.id)) {
+      user.managedPurchases.push({ sessionId: stripeSession.id, subscriptionId: stripeSession.subscription || null, customerId: stripeSession.customer || null, at: new Date().toISOString() });
+    }
     // First-time client (no password yet): mint a one-time set-password token.
     if (!user.passwordHash && !user.setupToken) user.setupToken = { token: generateToken(), expiresAt: new Date(Date.now() + 7 * 86400000).toISOString() };
   }
@@ -406,6 +511,18 @@ app.post('/api/stripe/webhook', express.raw({ type: 'application/json' }), (req,
     case 'customer.subscription.deleted':
     case 'customer.subscription.paused': {
       const sub = event.data.object;
+      // Managed-client subscription? Match the SPECIFIC subscription stored at purchase, drop that
+      // one site's allowance, and only lock the client out once NO managed subscriptions remain —
+      // a multi-site client who cancels one must keep access to the rest.
+      const client = users.find(u => Array.isArray(u.managedPurchases) && u.managedPurchases.some(p => p && p.subscriptionId === sub.id));
+      if (client) {
+        client.managedPurchases = client.managedPurchases.filter(p => p && p.subscriptionId !== sub.id);
+        if (client.managedPurchases.length === 0) client.plan = 'free'; // no sites left → revoke access
+        saveState('users', users);
+        logActivity('billing', `Managed subscription cancelled for ${client.email} (${client.managedPurchases.length} site(s) remain)`);
+        break;
+      }
+      // Otherwise a license subscription (e.g. enterprise-renewal) — downgrade by customer.
       const user = users.find(u => u.stripeCustomerId === sub.customer);
       if (user) {
         user.plan = 'free';
@@ -5157,6 +5274,14 @@ const settings = loadState('settings', {
     enterprise_price_id: process.env.STRIPE_ENTERPRISE_PRICE_ID || '',
     enterprise_renewal_price_id: process.env.STRIPE_ENTERPRISE_RENEWAL_PRICE_ID || '',
   },
+  commerce: {
+    // Managed-website offer ($ amounts in CENTS, configurable per white-label operator).
+    managed_enabled: process.env.AIOS_MANAGED_ENABLED || 'true',         // 'true' | 'false'
+    managed_setup_cents: process.env.AIOS_MANAGED_SETUP_CENTS || '99700',    // $997 one-time
+    managed_monthly_cents: process.env.AIOS_MANAGED_MONTHLY_CENTS || '25000', // $250 / month
+    managed_currency: process.env.AIOS_MANAGED_CURRENCY || 'usd',
+    managed_plan: process.env.AIOS_MANAGED_PLAN || 'business',            // entitlement granted (business | enterprise)
+  },
   seo: {
     dataforseo_login: process.env.DATAFORSEO_LOGIN || '',
     dataforseo_password: process.env.DATAFORSEO_PASSWORD || '',
@@ -5333,6 +5458,13 @@ app.get('/api/settings', requireAdmin, (req, res) => {
       business_price_id: settings.stripe.business_price_id,
       enterprise_price_id: settings.stripe.enterprise_price_id,
       enterprise_renewal_price_id: settings.stripe.enterprise_renewal_price_id,
+    },
+    commerce: {
+      managed_enabled: settings.commerce.managed_enabled,
+      managed_setup_cents: settings.commerce.managed_setup_cents,
+      managed_monthly_cents: settings.commerce.managed_monthly_cents,
+      managed_currency: settings.commerce.managed_currency,
+      managed_plan: settings.commerce.managed_plan,
     },
     seo: {
       dataforseo_login: settings.seo.dataforseo_login || '',
