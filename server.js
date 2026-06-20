@@ -228,6 +228,14 @@ const STRIPE_PLANS = {
     amount: 99700, // $997/yr
     mode: 'subscription',
   },
+  // Business -> Enterprise upgrade: the customer pays the DIFFERENCE. The actual charge is the Stripe
+  // Price object (priceId) you create; `amount` here is just a reference ($4,997 - $1,997 = $3,000).
+  'enterprise-upgrade': {
+    name: 'Business → Enterprise Upgrade',
+    priceId: process.env.STRIPE_ENTERPRISE_UPGRADE_PRICE_ID || 'price_enterprise_upgrade_placeholder',
+    amount: 300000, // $3,000 one-time (Enterprise minus Business)
+    mode: 'payment',
+  },
 };
 
 // In-memory user/session store (replace with DB in production)
@@ -445,6 +453,12 @@ function fulfillCheckoutSession(stripeSession, source) {
     const base = currentExpiry > new Date() ? currentExpiry : new Date();
     user.supportExpiresAt = new Date(base.getTime() + 365 * 86400000).toISOString();
     user.plan = 'enterprise'; // Keep them on enterprise tier
+  }
+  if (plan === 'enterprise-upgrade') {
+    // Paid the Business→Enterprise difference — promote to enterprise tier + (re)start the support year.
+    user.plan = 'enterprise';
+    user.purchasedAt = user.purchasedAt || new Date().toISOString();
+    user.supportExpiresAt = new Date(Date.now() + 365 * 86400000).toISOString();
   }
   // Managed-site CLIENT account (metadata.account === 'client'): a scoped client ON THIS instance,
   // distinct from a license buyer who runs their OWN instance. Provision a login-capable client role
