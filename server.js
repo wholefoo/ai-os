@@ -159,7 +159,7 @@ function authMiddleware(req, res, next) {
   if (!API_TOKEN) return next(); // no token configured = open (dev mode)
   // Allow public endpoints without API token
   const url = req.originalUrl.split('?')[0]; // strip query string
-  const publicPaths = ['/api/health', '/api/auth/login', '/api/auth/logout', '/api/auth/me',
+  const publicPaths = ['/api/health', '/api/auth/login', '/api/auth/logout', '/api/auth/me', '/api/auth/set-password',
     '/api/stripe/webhook', '/api/stripe/checkout', '/api/stripe/success',
     '/api/tenant/branding', '/api/hq/stats', '/api/hq/org',
     '/api/provenance/public-key', '/api/provenance/verify'];
@@ -302,6 +302,14 @@ function fulfillCheckoutSession(stripeSession, source) {
     user.supportExpiresAt = new Date(base.getTime() + 365 * 86400000).toISOString();
     user.plan = 'enterprise'; // Keep them on enterprise tier
   }
+  // Managed-site CLIENT account (metadata.account === 'client'): a scoped client ON THIS instance,
+  // distinct from a license buyer who runs their OWN instance. Provision a login-capable client role
+  // + a one-time set-password token. IDEMPOTENT — fulfillment double-fires (success redirect + the
+  // webhook backstop), so only mint the token once and NEVER overwrite a password the client set.
+  if (stripeSession.metadata?.account === 'client' && !user.passwordHash) {
+    user.role = user.role || 'client';
+    if (!user.setupToken) user.setupToken = { token: generateToken(), expiresAt: new Date(Date.now() + 7 * 86400000).toISOString() };
+  }
   saveState('users', users);
   crm?.syncUser(user, { sessionId: stripeSession.id }); // CRM: mirror license/plan + log purchase (idempotent)
   logActivity('billing', `Checkout fulfilled (${source}): ${email} → ${plan}`, { sessionId: stripeSession.id });
@@ -318,9 +326,14 @@ app.get('/api/stripe/success', async (req, res) => {
     const user = fulfillCheckoutSession(stripeSession, 'success-redirect');
     if (!user) return res.redirect('/?stripe=unpaid');
 
-    // Create session
+    // A fresh managed-site client has no password yet → send them to set one before the dashboard.
+    if (user.role === 'client' && !user.passwordHash && user.setupToken) {
+      return res.redirect(`/set-password?token=${encodeURIComponent(user.setupToken.token)}`);
+    }
+
+    // Otherwise create a session and go to the dashboard.
     const token = generateToken();
-    sessions.set(token, { email: user.email, plan: user.plan, stripeCustomerId: user.stripeCustomerId, expiresAt: new Date(Date.now() + 30 * 86400000).toISOString() });
+    sessions.set(token, { email: user.email, plan: user.plan, role: user.role || 'user', ownerEmail: user.email, stripeCustomerId: user.stripeCustomerId, expiresAt: new Date(Date.now() + 30 * 86400000).toISOString() });
 
     // Set cookie and redirect to dashboard
     res.cookie('ai-os-session', token, {
@@ -399,6 +412,7 @@ app.post('/api/auth/login', async (req, res) => {
     email: user.email,
     plan: user.plan,
     role: user.role || 'user',
+    ownerEmail: user.email,
     expiresAt: new Date(Date.now() + 30 * 86400000).toISOString(),
   });
 
@@ -424,7 +438,35 @@ app.get('/api/auth/me', (req, res) => {
   const token = req.cookies?.['ai-os-session'] || req.headers.authorization?.replace('Bearer ', '');
   const session = isValidSession(token);
   if (!session) return res.status(401).json({ error: 'Not authenticated' });
-  res.json({ email: session.email, plan: session.plan });
+  res.json({ email: session.email, plan: session.plan, role: session.role || 'user', ownerEmail: session.ownerEmail || session.email });
+});
+
+// Set a password from a one-time setup token (managed-site client onboarding). Public (the buyer
+// is not logged in yet) — bounded by the token being a 256-bit unguessable value with a 7-day expiry.
+app.post('/api/auth/set-password', heavyLimiter, async (req, res) => {
+  const { token, password } = req.body || {};
+  if (!token || !password) return res.status(400).json({ error: 'token and password are required' });
+  if (String(password).length < 8) return res.status(400).json({ error: 'password must be at least 8 characters' });
+  const user = users.find(u => u.setupToken && u.setupToken.token === token);
+  if (!user) return res.status(400).json({ error: 'invalid or already-used setup link' });
+  if (user.setupToken.expiresAt && new Date(user.setupToken.expiresAt) < new Date()) {
+    return res.status(400).json({ error: 'this setup link has expired — ask the operator to resend it' });
+  }
+  user.passwordHash = await bcrypt.hash(String(password), 12);
+  user.role = user.role || 'client';
+  delete user.setupToken; // single-use
+  saveState('users', users);
+  // Log them straight in.
+  const sToken = generateToken();
+  sessions.set(sToken, { email: user.email, plan: user.plan, role: user.role || 'client', ownerEmail: user.email, expiresAt: new Date(Date.now() + 30 * 86400000).toISOString() });
+  res.cookie('ai-os-session', sToken, { httpOnly: true, secure: process.env.NODE_ENV === 'production', sameSite: 'lax', maxAge: 30 * 86400000 });
+  logActivity('auth', `Client set password: ${user.email}`, {});
+  res.json({ ok: true, redirect: '/app' });
+});
+
+// The set-password page (served outside /api/ so authMiddleware does not gate it).
+app.get('/set-password', (req, res) => {
+  res.sendFile(path.join(BASE, 'dashboard', 'set-password.html'));
 });
 
 // --- Dashboard Paywall ---
