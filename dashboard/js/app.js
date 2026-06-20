@@ -467,9 +467,13 @@ function applyTierGating() {
   if (tier === 'business' && header && !document.getElementById('upgradeEnterpriseBtn')) {
     const up = document.createElement('a');
     up.id = 'upgradeEnterpriseBtn';
-    up.href = '/api/stripe/checkout?plan=enterprise-upgrade';
+    // Absolute → the operator's instance, so the upgrade payment routes to THEIR Stripe (where the
+    // upgrade Price + key live), not the Business client's own instance. New tab keeps their dashboard open.
+    up.href = 'https://aiosorchestrationlab.com/api/stripe/checkout?plan=enterprise-upgrade';
+    up.target = '_blank';
+    up.rel = 'noopener';
     up.textContent = '⬆ Upgrade to Enterprise';
-    up.title = 'Upgrade this instance from Business to Enterprise (pay the difference)';
+    up.title = 'Upgrade from Business to Enterprise (pay the difference)';
     up.style.cssText = 'display:inline-block;margin-left:8px;padding:3px 12px;border-radius:12px;font-size:11px;font-weight:600;background:#8b5cf6;color:#fff;text-decoration:none;';
     const badgeEl = document.getElementById('tierBadge');
     if (badgeEl) badgeEl.insertAdjacentElement('afterend', up); else header.prepend(up);
