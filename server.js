@@ -178,6 +178,24 @@ function authMiddleware(req, res, next) {
 }
 app.use('/api/', authMiddleware);
 
+// --- Client surface guard: DENY-BY-DEFAULT for the managed CLIENT role ---
+// A logged-in client (role:'client') may reach ONLY this allowlist of client-facing /api surfaces;
+// every other /api path is 403 regardless of its per-route middleware. This is the safety net
+// BEHIND per-route ownership scoping: enabling client login must never expose operator tools
+// (reports, predictions, knowledge-graph, plugins, CRM, settings, HQ, billing, …). Add a prefix
+// here ONLY after that surface is owner-scoped. Admin + anonymous sessions are unaffected.
+const CLIENT_API_ALLOW = ['/api/web-studio', '/api/auth', '/api/provenance', '/api/health'];
+function clientSurfaceGuard(req, res, next) {
+  const url = req.originalUrl.split('?')[0];
+  const token = req.cookies?.['ai-os-session'] || req.headers.authorization?.replace('Bearer ', '');
+  const session = isValidSession(token);
+  if (session && session.role === 'client' && !CLIENT_API_ALLOW.some(p => url === p || url.startsWith(p + '/'))) {
+    return res.status(403).json({ error: 'Not available on a client account' });
+  }
+  next();
+}
+app.use('/api/', clientSurfaceGuard);
+
 // --- Stripe Integration ---
 const STRIPE_SECRET = process.env.STRIPE_SECRET_KEY || '';
 const STRIPE_WEBHOOK_SECRET = process.env.STRIPE_WEBHOOK_SECRET || '';
