@@ -5845,7 +5845,13 @@ const ORG_CHART = (() => {
     }
   }
 
-  const totalAgents = chart.departments.reduce((sum, d) => sum + d.employees.length, 0);
+  // Headline agent count = the .claude/agents registry (the canonical 55 on licensed tiers); the org
+  // tree also carries a couple of platform service-roles (Hermes Director, Data Scientist) that aren't
+  // file-agents, so don't count raw entries. Community surfaces its placed roster (15).
+  const _agentDir = path.join(CLAUDE_DIR, 'agents');
+  const _registry = fs.existsSync(_agentDir) ? fs.readdirSync(_agentDir).filter(f => f.endsWith('.md')).length : 0;
+  const _entries = chart.departments.reduce((sum, d) => sum + d.employees.length, 0);
+  const totalAgents = (ACTIVE_TIER === 'community') ? _entries : (_registry || _entries);
   console.log(`[HQ] Org chart loaded: ${chart.departments.length} departments, ${totalAgents} agents (${ACTIVE_TIER} tier)`);
 
   return chart;
