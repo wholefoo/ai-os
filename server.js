@@ -1,4 +1,4 @@
-﻿require('dotenv').config();
+require('dotenv').config();
 
 const express = require('express');
 const { WebSocketServer } = require('ws');
@@ -306,9 +306,13 @@ function fulfillCheckoutSession(stripeSession, source) {
   // distinct from a license buyer who runs their OWN instance. Provision a login-capable client role
   // + a one-time set-password token. IDEMPOTENT — fulfillment double-fires (success redirect + the
   // webhook backstop), so only mint the token once and NEVER overwrite a password the client set.
-  if (stripeSession.metadata?.account === 'client' && !user.passwordHash) {
+  if (stripeSession.metadata?.account === 'client') {
     user.role = user.role || 'client';
-    if (!user.setupToken) user.setupToken = { token: generateToken(), expiresAt: new Date(Date.now() + 7 * 86400000).toISOString() };
+    // Each managed purchase grants +1 site allowance; idempotent via the session id (double-fire safe).
+    user.managedPurchases = Array.isArray(user.managedPurchases) ? user.managedPurchases : [];
+    if (!user.managedPurchases.includes(stripeSession.id)) user.managedPurchases.push(stripeSession.id);
+    // First-time client (no password yet): mint a one-time set-password token.
+    if (!user.passwordHash && !user.setupToken) user.setupToken = { token: generateToken(), expiresAt: new Date(Date.now() + 7 * 86400000).toISOString() };
   }
   saveState('users', users);
   crm?.syncUser(user, { sessionId: stripeSession.id }); // CRM: mirror license/plan + log purchase (idempotent)
@@ -1052,10 +1056,29 @@ const WS_ROOT = path.join(MAGENT_DIR, 'artifacts', 'web-studio');
 const WS_SITES_ROOT = path.join(BASE, 'sites'); // nginx serves <WS_SITES_ROOT>/<domain>/current
 const wsWorkspaceDir = (id) => path.join(WS_ROOT, id);
 
-// Tier site limit (the AI OS instance's OWN domain is the control plane — never a
-// web-studio site, so it is never counted here). Read from the commercial resolver.
-const wsSiteLimit = () => (commercial.limits && commercial.limits.sites != null) ? commercial.limits.sites : 1;
-const wsActiveCount = () => webStudioSites.filter(s => s.status !== 'failed' && s.status !== 'deleted').length;
+// --- Per-client ownership (multi-tenant isolation) ---
+// A managed CLIENT sees ONLY sites they own (site.ownerEmail === their email); ADMIN sees all.
+// Isolation lives in READ-SIDE filtering: every read of a site by a client MUST pass through
+// wsOwns (centralized in wsFindSite + the list route + preview). Legacy/admin-created sites have
+// ownerEmail=null and are visible to ADMIN ONLY.
+function wsIsClient(session) { return !!session && session.role === 'client'; }
+function wsOwns(session, site) {
+  if (!session || !site) return false;
+  if (session.role === 'admin') return true;
+  return wsIsClient(session) && !!site.ownerEmail
+    && String(site.ownerEmail).toLowerCase() === String(session.ownerEmail || session.email).toLowerCase();
+}
+function wsVisibleSites(session) {
+  return (session && session.role === 'admin') ? webStudioSites : webStudioSites.filter(s => wsOwns(session, s));
+}
+
+// Site limit. CLIENT: their managed-purchase count (1 site per purchase). ADMIN: the instance limit
+// from the commercial resolver (the control-plane domain is never a web-studio site, never counted).
+const wsSiteLimit = (session) => {
+  if (wsIsClient(session)) { const u = findUserByEmail(session.email); return (u && Array.isArray(u.managedPurchases)) ? Math.max(1, u.managedPurchases.length) : 1; }
+  return (commercial.limits && commercial.limits.sites != null) ? commercial.limits.sites : 1;
+};
+const wsActiveCount = (session) => wsVisibleSites(session).filter(s => s.status !== 'failed' && s.status !== 'build_failed').length;
 
 // Site-type dropdown allowlist + brief flavoring (the type steers the generation plan).
 const WS_SITE_TYPES = ['Landing Page', 'Business', 'Portfolio', 'Blog', 'E-commerce', 'SaaS Product', 'Restaurant / Local', 'Event', 'Personal', 'Documentation'];
@@ -1070,7 +1093,7 @@ async function wsSetupHosting(site, domainInput) {
   const primary = (process.env.AIOS_PRIMARY_DOMAIN || '').trim().toLowerCase();
   if (primary && domain === primary) { const e = new Error('that domain hosts the AI OS control plane and cannot be used for a site'); e.code = 'DOMAIN_RESERVED'; throw e; }
   const claimed = webStudioSites.find(s => s.id !== site.id && s.domain === domain && (s.published || s.hostingSetup));
-  if (claimed) { const e = new Error(`domain already in use by site "${claimed.name}"`); e.code = 'DOMAIN_CLAIMED'; throw e; }
+  if (claimed) { const e = new Error('that domain is already in use by another site'); e.code = 'DOMAIN_CLAIMED'; throw e; }
   await webStudioHosting.createVhost(domain, { tls: false });
   const distDir = path.join(wsWorkspaceDir(site.id), 'dist');
   let served = false;
@@ -1095,7 +1118,9 @@ function wsResolveFile(id, rel) {
 
 function wsFindSite(req, res) {
   const site = webStudioSites.find(s => s.id === req.params.id);
-  if (!site) { res.status(404).json({ error: 'Site not found' }); return null; }
+  // Ownership guard: a client may only address THEIR OWN sites. 404 (not 403) so a client cannot
+  // even probe the existence of another tenant's site id.
+  if (!site || !wsOwns(req.session, site)) { res.status(404).json({ error: 'Site not found' }); return null; }
   return site;
 }
 
@@ -1212,21 +1237,21 @@ app.get('/.well-known/provenance-keys.json', (req, res) => {
 });
 
 // Admin: the stored provenance record (incl. model list) for a generated site.
-app.get('/api/web-studio/sites/:id/provenance', requireAdmin, (req, res) => {
+app.get('/api/web-studio/sites/:id/provenance', requireClientOrAdmin, (req, res) => {
   const site = wsFindSite(req, res); if (!site) return;
   if (!site.provenance) return res.status(404).json({ error: 'no provenance record (imported site, or built before provenance was enabled)' });
   res.json(site.provenance);
 });
 
 // --- List sites (+ tier limit for the UI badge) ---
-app.get('/api/web-studio/sites', requireAdmin, (req, res) => {
-  res.json({ sites: webStudioSites, limit: wsSiteLimit(), used: wsActiveCount() });
+app.get('/api/web-studio/sites', requireClientOrAdmin, (req, res) => {
+  res.json({ sites: wsVisibleSites(req.session), limit: wsSiteLimit(req.session), used: wsActiveCount(req.session) });
 });
 
 // --- Clone design from a URL: preview the extracted palette/fonts/structure ---
 // Untrusted URL — lib/web-studio/design-extract.js is SSRF-guarded (http(s) only, private
 // IPs blocked, redirects re-validated, body capped). Returns tokens for a UI preview.
-app.post('/api/web-studio/design-extract', requireAdmin, heavyLimiter, async (req, res) => {
+app.post('/api/web-studio/design-extract', requireClientOrAdmin, heavyLimiter, async (req, res) => {
   const url = String((req.body || {}).url || '').trim().slice(0, 2000);
   if (!url) return res.status(400).json({ error: 'a URL is required' });
   try {
@@ -1237,10 +1262,10 @@ app.post('/api/web-studio/design-extract', requireAdmin, heavyLimiter, async (re
   }
 });
 
-// --- Trending content: pull "what's hot" to seed a brief (admin-only) ---
+// --- Trending content: pull "what's hot" to seed a brief (client-or-admin) ---
 // Keyless sources run by default; X/social is opt-in (request sources=...,social) and routes
 // through the realtime agent, so the default path spends no model tokens.
-app.get('/api/web-studio/trends', requireAdmin, async (req, res) => {
+app.get('/api/web-studio/trends', requireClientOrAdmin, async (req, res) => {
   const topic = String(req.query.topic || '').slice(0, 120);
   const geo = String(req.query.geo || 'US').slice(0, 8);
   const sources = req.query.sources ? String(req.query.sources).split(',').map(s => s.trim()).filter(Boolean).slice(0, 6) : undefined;
@@ -1259,11 +1284,11 @@ app.get('/api/web-studio/trends', requireAdmin, async (req, res) => {
 });
 
 // --- Create from a brief (tier-limit gated; pipeline runs async) ---
-app.post('/api/web-studio/sites', requireAdmin, async (req, res) => {
+app.post('/api/web-studio/sites', requireClientOrAdmin, heavyLimiter, async (req, res) => {
   const { name, brief, siteType, domain, cloneUrl, brandKitId } = req.body || {};
   if (!brief || String(brief).trim().length < 10) return res.status(400).json({ error: 'A brief of at least 10 characters is required' });
-  const limit = wsSiteLimit();
-  if (wsActiveCount() >= limit) return res.status(403).json({ error: `Site limit reached for your plan (${limit}). Upgrade for more sites.`, limit });
+  const limit = wsSiteLimit(req.session);
+  if (wsActiveCount(req.session) >= limit) return res.status(403).json({ error: `Site limit reached (${limit}).`, limit });
 
   // Optional domain up front — validate now so a bad one fails fast; hosting is wired after the build.
   let cfgDomain = null;
@@ -1273,7 +1298,7 @@ app.post('/api/web-studio/sites', requireAdmin, async (req, res) => {
   }
 
   const id = uuidv4();
-  const site = { id, name: String(name || 'Untitled site').slice(0, 80), brief: String(brief).slice(0, 4000), siteType: wsCleanType(siteType), kind: 'generated', status: 'building', domain: cfgDomain, hostingSetup: false, published: false, createdAt: new Date().toISOString(), lastBuiltAt: null, pages: [] };
+  const site = { id, name: String(name || 'Untitled site').slice(0, 80), brief: String(brief).slice(0, 4000), siteType: wsCleanType(siteType), kind: 'generated', status: 'building', domain: cfgDomain, hostingSetup: false, published: false, ownerEmail: wsIsClient(req.session) ? req.session.email : null, createdAt: new Date().toISOString(), lastBuiltAt: null, pages: [] };
   webStudioSites.push(site);
   saveState('web_studio_sites', webStudioSites);
   logActivity('web-studio', `Site build started: ${site.name}`, { id });
@@ -1312,9 +1337,9 @@ app.post('/api/web-studio/sites', requireAdmin, async (req, res) => {
 // Untrusted content: lib/web-studio/import.js sanitizes every path, caps size/count,
 // allows ONLY static asset types, and NEVER runs the import's build scripts. The result
 // is a kind:'imported' site that staticBuild() mirrors to dist/ (no Astro).
-function wsStartImport(name) {
+function wsStartImport(name, ownerEmail) {
   const id = uuidv4();
-  const site = { id, name: String(name || 'Imported site').slice(0, 80), kind: 'imported', status: 'building', domain: null, hostingSetup: false, published: false, createdAt: new Date().toISOString(), lastBuiltAt: null, pages: [] };
+  const site = { id, name: String(name || 'Imported site').slice(0, 80), kind: 'imported', status: 'building', domain: null, hostingSetup: false, published: false, ownerEmail: ownerEmail || null, createdAt: new Date().toISOString(), lastBuiltAt: null, pages: [] };
   webStudioSites.push(site);
   saveState('web_studio_sites', webStudioSites);
   return site;
@@ -1332,28 +1357,28 @@ async function wsFinishImport(site, importPromise) {
   broadcast({ event: 'web_studio_site', data: site });
 }
 
-app.post('/api/web-studio/import/archive', requireAdmin, heavyLimiter,
+app.post('/api/web-studio/import/archive', requireClientOrAdmin, heavyLimiter,
   express.raw({ type: ['application/zip', 'application/x-zip-compressed', 'application/octet-stream'], limit: '30mb' }),
   (req, res) => {
-    if (wsActiveCount() >= wsSiteLimit()) return res.status(403).json({ error: `Site limit reached for your plan (${wsSiteLimit()}).` });
+    if (wsActiveCount(req.session) >= wsSiteLimit(req.session)) return res.status(403).json({ error: `Site limit reached (${wsSiteLimit(req.session)}).` });
     if (!req.body || !req.body.length) return res.status(400).json({ error: 'empty upload (send the .zip as the raw request body)' });
-    const site = wsStartImport(req.query.name || 'Imported site');
+    const site = wsStartImport(req.query.name || 'Imported site', wsIsClient(req.session) ? req.session.email : null);
     res.json({ ok: true, site });
     wsFinishImport(site, webStudioImport.importToWorkspace({ workspaceDir: wsWorkspaceDir(site.id), zipBuffer: req.body }));
   });
 
-app.post('/api/web-studio/import/github', requireAdmin, heavyLimiter, (req, res) => {
-  if (wsActiveCount() >= wsSiteLimit()) return res.status(403).json({ error: `Site limit reached for your plan (${wsSiteLimit()}).` });
+app.post('/api/web-studio/import/github', requireClientOrAdmin, heavyLimiter, (req, res) => {
+  if (wsActiveCount(req.session) >= wsSiteLimit(req.session)) return res.status(403).json({ error: `Site limit reached (${wsSiteLimit(req.session)}).` });
   const { url, token, name } = req.body || {};
   if (!url) return res.status(400).json({ error: 'repo url required' });
-  const site = wsStartImport(name || 'Imported repo');
+  const site = wsStartImport(name || 'Imported repo', wsIsClient(req.session) ? req.session.email : null);
   site.importRepo = String(url).slice(0, 200); // store the repo URL, never the token
   res.json({ ok: true, site });
   wsFinishImport(site, webStudioImport.importToWorkspace({ workspaceDir: wsWorkspaceDir(site.id), githubUrl: url, githubToken: token }));
 });
 
 // --- Export: download the built site as a ZIP, or push it to GitHub (one clean commit) ---
-// We export dist/ (the deployable static build). Admin-only + heavy-limited like import;
+// We export dist/ (the deployable static build). Client-or-admin + heavy-limited like import;
 // the GitHub token travels in headers only (see lib/web-studio/export.js) and is never stored.
 async function wsEnsureDist(site) {
   const distDir = path.join(wsWorkspaceDir(site.id), 'dist');
@@ -1483,7 +1508,7 @@ async function gateAction({ type, summary, target = null, params = {}, secrets =
   return { pending: true, approval, decision: d };
 }
 
-app.get('/api/web-studio/sites/:id/export.zip', requireAdmin, async (req, res) => {
+app.get('/api/web-studio/sites/:id/export.zip', requireClientOrAdmin, async (req, res) => {
   const site = wsFindSite(req, res); if (!site) return;
   const distDir = await wsEnsureDist(site);
   if (!distDir) return res.status(400).json({ error: 'No built site to export yet — build or publish the site first.' });
@@ -1496,7 +1521,7 @@ app.get('/api/web-studio/sites/:id/export.zip', requireAdmin, async (req, res) =
   res.send(buf);
 });
 
-app.post('/api/web-studio/sites/:id/export/github', requireAdmin, heavyLimiter, async (req, res) => {
+app.post('/api/web-studio/sites/:id/export/github', requireClientOrAdmin, heavyLimiter, async (req, res) => {
   const site = wsFindSite(req, res); if (!site) return;
   const { mode, repoName, repoUrl, token, private: isPrivate, message } = req.body || {};
   if (mode !== 'new' && mode !== 'existing') return res.status(400).json({ error: "mode must be 'new' or 'existing'" });
@@ -1521,7 +1546,7 @@ app.post('/api/web-studio/sites/:id/export/github', requireAdmin, heavyLimiter, 
 
 // --- Optimize with AI OS: score the built site for AI search + have an agent improve it ---
 // Taps the platform: the zero-token AEO readability scorer + AI-crawler check, then an AI OS
-// content agent (auto-routed by task via EFFORT_ROUTING) for concrete fixes. Admin + heavy-limited.
+// content agent (auto-routed by task via EFFORT_ROUTING) for concrete fixes. Client-or-admin + heavy-limited.
 async function runSiteOptimization(site) {
   const distDir = await wsEnsureDist(site);
   if (!distDir) return { error: 'No built site to optimize — build or publish the site first.' };
@@ -1547,7 +1572,7 @@ Give 5-8 SPECIFIC, actionable improvements (headings, meta description, an FAQ s
   return { aeo: { score: aeo.score, grade: aeo.grade, recommendations: aeo.recommendations }, crawlers, suggestions, model };
 }
 
-app.post('/api/web-studio/sites/:id/optimize', requireAdmin, heavyLimiter, async (req, res) => {
+app.post('/api/web-studio/sites/:id/optimize', requireClientOrAdmin, heavyLimiter, async (req, res) => {
   const site = wsFindSite(req, res); if (!site) return;
   const r = await runSiteOptimization(site);
   if (r.error) return res.status(400).json({ error: r.error });
@@ -1555,15 +1580,15 @@ app.post('/api/web-studio/sites/:id/optimize', requireAdmin, heavyLimiter, async
 });
 
 // --- Get one ---
-app.get('/api/web-studio/sites/:id', requireAdmin, (req, res) => {
+app.get('/api/web-studio/sites/:id', requireClientOrAdmin, (req, res) => {
   const site = wsFindSite(req, res); if (!site) return;
   res.json(site);
 });
 
 // --- Delete (+ best-effort hosting teardown) ---
-app.delete('/api/web-studio/sites/:id', requireAdmin, async (req, res) => {
-  const site = webStudioSites.find(s => s.id === req.params.id);
-  if (!site) return res.status(404).json({ error: 'Site not found' });
+app.delete('/api/web-studio/sites/:id', requireClientOrAdmin, async (req, res) => {
+  const site = wsFindSite(req, res);
+  if (!site) return;
   try {
     const gate = await gateAction({
       type: 'web-studio.delete-site',
@@ -1580,7 +1605,7 @@ app.delete('/api/web-studio/sites/:id', requireAdmin, async (req, res) => {
 });
 
 // --- Editor: list source files (src/ + public/) ---
-app.get('/api/web-studio/sites/:id/files', requireAdmin, (req, res) => {
+app.get('/api/web-studio/sites/:id/files', requireClientOrAdmin, (req, res) => {
   const site = wsFindSite(req, res); if (!site) return;
   const base = wsWorkspaceDir(site.id);
   const out = [];
@@ -1597,7 +1622,7 @@ app.get('/api/web-studio/sites/:id/files', requireAdmin, (req, res) => {
 });
 
 // --- Editor: read a file ---
-app.get('/api/web-studio/sites/:id/file', requireAdmin, (req, res) => {
+app.get('/api/web-studio/sites/:id/file', requireClientOrAdmin, (req, res) => {
   if (!wsFindSite(req, res)) return;
   const target = wsResolveFile(req.params.id, req.query.path);
   if (!target || !fs.existsSync(target) || fs.statSync(target).isDirectory()) return res.status(404).json({ error: 'File not found or not allowed' });
@@ -1605,7 +1630,7 @@ app.get('/api/web-studio/sites/:id/file', requireAdmin, (req, res) => {
 });
 
 // --- Editor: write a file (Monaco save) — path-guarded ---
-app.put('/api/web-studio/sites/:id/file', requireAdmin, (req, res) => {
+app.put('/api/web-studio/sites/:id/file', requireClientOrAdmin, (req, res) => {
   if (!wsFindSite(req, res)) return;
   const target = wsResolveFile(req.params.id, (req.body || {}).path);
   if (!target) return res.status(400).json({ error: 'Path not allowed' });
@@ -1617,7 +1642,7 @@ app.put('/api/web-studio/sites/:id/file', requireAdmin, (req, res) => {
 // --- AI natural-language edit: regenerate the site incorporating the change.
 //     (Coarse MVP — overwrites the workspace; surgical per-file edits are Phase 1.
 //     The Monaco editor is the precise-edit path between regenerations.) ---
-app.post('/api/web-studio/sites/:id/ai-edit', requireAdmin, async (req, res) => {
+app.post('/api/web-studio/sites/:id/ai-edit', requireClientOrAdmin, heavyLimiter, async (req, res) => {
   const site = wsFindSite(req, res); if (!site) return;
   if (site.kind === 'imported') return res.status(400).json({ error: 'AI edit is for generated sites — edit imported sites in the Code tab.' });
   const instruction = String((req.body || {}).instruction || '').slice(0, 2000);
@@ -1639,7 +1664,7 @@ app.post('/api/web-studio/sites/:id/ai-edit', requireAdmin, async (req, res) => 
 });
 
 // --- No-code Content editor: read the structured plan, and save edited copy ---
-app.get('/api/web-studio/sites/:id/content', requireAdmin, (req, res) => {
+app.get('/api/web-studio/sites/:id/content', requireClientOrAdmin, (req, res) => {
   const site = wsFindSite(req, res); if (!site) return;
   res.json({ plan: site.plan || null });
 });
@@ -1657,7 +1682,7 @@ function wsProvMeta(site) {
   };
 }
 
-app.put('/api/web-studio/sites/:id/content', requireAdmin, async (req, res) => {
+app.put('/api/web-studio/sites/:id/content', requireClientOrAdmin, async (req, res) => {
   const site = wsFindSite(req, res); if (!site) return;
   const plan = (req.body || {}).plan;
   if (!plan || !Array.isArray(plan.pages) || plan.pages.length === 0) return res.status(400).json({ error: 'a plan with at least one page is required' });
@@ -1691,7 +1716,7 @@ app.put('/api/web-studio/sites/:id/content', requireAdmin, async (req, res) => {
 });
 
 // --- Rebuild from current workspace source (after Monaco edits) ---
-app.post('/api/web-studio/sites/:id/build', requireAdmin, async (req, res) => {
+app.post('/api/web-studio/sites/:id/build', requireClientOrAdmin, async (req, res) => {
   const site = wsFindSite(req, res); if (!site) return;
   site.status = 'building'; broadcast({ event: 'web_studio_site', data: site });
   const result = site.kind === 'imported' ? webStudioBuild.staticBuild(wsWorkspaceDir(site.id)) : await webStudioBuild.runBuild(wsWorkspaceDir(site.id));
@@ -1715,7 +1740,7 @@ app.post('/api/web-studio/sites/:id/build', requireAdmin, async (req, res) => {
 });
 
 // --- Configure a domain: write its HTTP nginx vhost now (TLS still comes at Publish) ---
-app.post('/api/web-studio/sites/:id/domain', requireAdmin, async (req, res) => {
+app.post('/api/web-studio/sites/:id/domain', requireClientOrAdmin, async (req, res) => {
   const site = wsFindSite(req, res); if (!site) return;
   let domain;
   try { domain = webStudioHosting.normalizeDomain((req.body || {}).domain); }
@@ -1730,7 +1755,7 @@ app.post('/api/web-studio/sites/:id/domain', requireAdmin, async (req, res) => {
 });
 
 // --- DNS pre-check for a custom domain (fast; the UI calls this before publishing) ---
-app.get('/api/web-studio/sites/:id/dns-check', requireAdmin, async (req, res) => {
+app.get('/api/web-studio/sites/:id/dns-check', requireClientOrAdmin, async (req, res) => {
   const site = wsFindSite(req, res); if (!site) return;
   let domain;
   try { domain = webStudioHosting.normalizeDomain(req.query.domain); }
@@ -1740,7 +1765,7 @@ app.get('/api/web-studio/sites/:id/dns-check', requireAdmin, async (req, res) =>
 });
 
 // --- Publish a site to a custom domain with TLS (async; progress streamed over WS) ---
-app.post('/api/web-studio/sites/:id/publish', requireAdmin, async (req, res) => {
+app.post('/api/web-studio/sites/:id/publish', requireClientOrAdmin, async (req, res) => {
   const site = wsFindSite(req, res); if (!site) return;
   let domain;
   try { domain = webStudioHosting.normalizeDomain((req.body || {}).domain); }
@@ -1750,7 +1775,7 @@ app.post('/api/web-studio/sites/:id/publish', requireAdmin, async (req, res) => 
   const primary = (process.env.AIOS_PRIMARY_DOMAIN || '').trim().toLowerCase();
   if (primary && domain === primary) return res.status(400).json({ error: 'that domain hosts the AI OS control plane and cannot be used for a site' });
   const claimed = webStudioSites.find(s => s.id !== site.id && s.domain === domain && (s.published || s.hostingSetup));
-  if (claimed) return res.status(409).json({ error: `domain already in use by site "${claimed.name}"` });
+  if (claimed) return res.status(409).json({ error: 'that domain is already in use by another site' });
 
   // Mandatory DNS pre-check — never start certbot against a domain that isn't pointed here.
   let dns;
@@ -1774,7 +1799,7 @@ app.post('/api/web-studio/sites/:id/publish', requireAdmin, async (req, res) => 
 });
 
 // --- Unpublish: pull the vhost (keep the cert + release for a fast re-publish) ---
-app.post('/api/web-studio/sites/:id/unpublish', requireAdmin, async (req, res) => {
+app.post('/api/web-studio/sites/:id/unpublish', requireClientOrAdmin, async (req, res) => {
   const site = wsFindSite(req, res); if (!site) return;
   if (!site.domain) return res.status(400).json({ error: 'site is not published' });
   try { await webStudioHosting.removeSite(site.domain, { dropCert: false }); }
@@ -1787,9 +1812,9 @@ app.post('/api/web-studio/sites/:id/unpublish', requireAdmin, async (req, res) =
 });
 
 // --- Serve the built preview (static dist) for the in-dashboard iframe ---
-app.get('/api/web-studio/sites/:id/preview/*', requireAdmin, (req, res) => {
+app.get('/api/web-studio/sites/:id/preview/*', requireClientOrAdmin, (req, res) => {
   const site = webStudioSites.find(s => s.id === req.params.id);
-  if (!site) return res.status(404).send('Not found');
+  if (!site || !wsOwns(req.session, site)) return res.status(404).send('Not found');
   // Untrusted site content (esp. imported): neuter scripts even on a TOP-LEVEL open of this
   // URL — the iframe sandbox only covers the embed. CSP sandbox w/o allow-scripts + nosniff.
   res.setHeader('Content-Security-Policy', "sandbox allow-same-origin; default-src 'self' data: blob:; script-src 'none'; style-src 'self' 'unsafe-inline'; object-src 'none'; base-uri 'none'");
@@ -5120,6 +5145,19 @@ function requireAdmin(req, res, next) {
   const session = isValidSession(token);
   if (!session) return res.status(401).json({ error: 'Not authenticated' });
   if (session.role !== 'admin') return res.status(403).json({ error: 'Admin access required' });
+  req.session = session;
+  next();
+}
+
+// Web Studio is client-facing: a managed CLIENT (role:'client') OR the ADMIN may use it. Attaches
+// req.session so the ownership predicate (wsOwns) scopes every site to its owner. Everything
+// NON-web-studio stays requireAdmin — a client must never reach the admin surface.
+function requireClientOrAdmin(req, res, next) {
+  const token = req.cookies?.['ai-os-session'] || req.headers.authorization?.replace('Bearer ', '');
+  const session = isValidSession(token);
+  if (!session) return res.status(401).json({ error: 'Not authenticated' });
+  if (session.role !== 'admin' && session.role !== 'client') return res.status(403).json({ error: 'Access denied' });
+  req.session = session;
   next();
 }
 
