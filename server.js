@@ -225,7 +225,19 @@ const STRIPE_PLANS = {
 
 // In-memory user/session store (replace with DB in production)
 const users = loadState('users', []);
-const sessions = new Map(); // token -> { email, plan, stripeCustomerId, expiresAt }
+// Durable session store: an in-memory Map (hot path) persisted to .magent/state/sessions.json so
+// client + admin logins survive a server restart (the old in-memory-only Map dropped every login).
+// Tokens are random bearer values; the file lives under the gitignored state dir (server-only).
+// Expired entries are pruned on load. The wrapper keeps get/set/delete/size call sites unchanged.
+const _sessionMap = new Map(Object.entries(loadState('sessions', {})).filter(([, s]) => s && (!s.expiresAt || new Date(s.expiresAt) > new Date())));
+const _persistSessions = () => { try { saveState('sessions', Object.fromEntries(_sessionMap)); } catch (e) { console.error('[AUTH] session persist failed:', e.message); } };
+const sessions = {
+  get: (k) => _sessionMap.get(k),
+  set: (k, v) => { _sessionMap.set(k, v); _persistSessions(); return sessions; },
+  delete: (k) => { const r = _sessionMap.delete(k); _persistSessions(); return r; },
+  clear: () => { _sessionMap.clear(); _persistSessions(); },
+  get size() { return _sessionMap.size; },
+}; // token -> { email, plan, role, ownerEmail, stripeCustomerId?, expiresAt }
 
 // Seed admin account if not present
 (function seedAdmin() {
