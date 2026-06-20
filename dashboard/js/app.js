@@ -461,6 +461,20 @@ function applyTierGating() {
     header.prepend(badge);
   }
 
+  // Business-tier instances: surface a one-click "Upgrade to Enterprise" CTA beside the tier badge.
+  // Hidden on Enterprise (nothing to upgrade) and Community; managed clients never reach this (they
+  // get the scoped client dashboard, not loadDashboard/applyTierGating).
+  if (tier === 'business' && header && !document.getElementById('upgradeEnterpriseBtn')) {
+    const up = document.createElement('a');
+    up.id = 'upgradeEnterpriseBtn';
+    up.href = '/api/stripe/checkout?plan=enterprise-upgrade';
+    up.textContent = '⬆ Upgrade to Enterprise';
+    up.title = 'Upgrade this instance from Business to Enterprise (pay the difference)';
+    up.style.cssText = 'display:inline-block;margin-left:8px;padding:3px 12px;border-radius:12px;font-size:11px;font-weight:600;background:#8b5cf6;color:#fff;text-decoration:none;';
+    const badgeEl = document.getElementById('tierBadge');
+    if (badgeEl) badgeEl.insertAdjacentElement('afterend', up); else header.prepend(up);
+  }
+
   // Map nav views to feature flags and required tier
   const gatedNavItems = {
     'browser':      { feature: 'browserAgent',    tier: 'business' },
