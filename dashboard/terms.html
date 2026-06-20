@@ -13,6 +13,25 @@
   <link rel="stylesheet" href="/css/legal.css">
   <script type="application/ld+json">{"@context":"https://schema.org","@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Home","item":"https://aiosorchestrationlab.com/"},{"@type":"ListItem","position":2,"name":"Terms of Service"}]}</script>
 </head>
+<!--
+  ============================================================================
+  DRAFT — pending review by legal counsel; not final/binding.
+  This document has been revised to add a Managed Website Service offering and
+  to correct product facts. The following items REQUIRE counsel before publish:
+    1. Legal entity name + jurisdiction of formation, and governing-law /
+       venue / dispute-resolution specifics (current text says only
+       "laws of the United States" + "binding arbitration" — placeholder).
+    2. A real Data Processing Agreement / GDPR Art. 28 processor addendum for
+       the Managed Website Service (operator acts as PROCESSOR of the client's
+       end-user / CRM data). The carve-outs below are descriptive only.
+    3. Client-content / acceptable-use + DMCA / takedown + notice-and-takedown
+       procedure for operator-hosted client sites.
+    4. Setup-fee refund policy (currently drafted as non-refundable once build
+       work has begun) and monthly proration mechanics — confirm enforceability.
+  Do NOT treat any entity name, jurisdiction, warranty, or refund term in this
+  file as final until counsel has reviewed.
+  ============================================================================
+-->
 <body>
   <nav class="landing-nav">
     <div class="nav-container">
@@ -44,17 +63,35 @@
       <p>To access paid features of the Service, you must create an account by providing a valid email address and completing payment through our payment processor (Stripe). You are responsible for maintaining the confidentiality of your account credentials and for all activity under your account.</p>
       <p>You must be at least 18 years old to use the Service. By creating an account, you represent that you meet this requirement.</p>
 
-      <h2>2. Subscription Plans &amp; Billing</h2>
-      <p>The Service offers paid subscription plans billed on a monthly recurring basis. Prices are displayed on our pricing page and are subject to change with 30 days' notice to active subscribers.</p>
+      <h2>2. Billing</h2>
+      <!-- DRAFT — pending review by legal counsel; not final/binding -->
+      <p class="legal-effective" style="color:#b45309"><strong>DRAFT — pending review by legal counsel; not final/binding.</strong></p>
+      <p>The Service is offered under two distinct commercial models. The billing terms that apply to you depend on which you purchase. Prices are displayed on our pricing page and are processed securely through Stripe; we do not store your credit card information on our servers.</p>
+
+      <h3>2(a). One-Time License Purchases (Self-Hosted)</h3>
+      <p>Self-hosted licenses are sold as <strong>one-time payments</strong>, not recurring subscriptions:</p>
       <ul>
-        <li>Subscriptions automatically renew at the end of each billing period unless cancelled.</li>
-        <li>You may cancel your subscription at any time. Cancellation takes effect at the end of the current billing period — no partial refunds are issued for unused time.</li>
-        <li>Payment is processed securely through Stripe. We do not store your credit card information on our servers.</li>
-        <li>If payment fails, we will attempt to charge the card on file up to 3 times. After the final failed attempt, your subscription will be suspended.</li>
+        <li><strong>Community</strong> &mdash; free.</li>
+        <li><strong>Business License</strong> &mdash; $1,997 USD, one-time, perpetual.</li>
+        <li><strong>Enterprise License</strong> &mdash; $4,997 USD, one-time, perpetual.</li>
+        <li><strong>Business &rarr; Enterprise upgrade</strong> &mdash; $3,000 USD, one-time.</li>
+        <li><strong>Enterprise Priority Support Renewal</strong> &mdash; optional, $997 USD per year. This renewal affects only the level of support; it does not affect your perpetual license or platform access.</li>
+      </ul>
+      <p>One-time license purchases do not automatically renew. Detailed terms are set out in the applicable license agreement: <a href="/docs/license-community">Community</a>, <a href="/docs/license-business">Business</a>, and <a href="/docs/license-enterprise">Enterprise</a>.</p>
+
+      <h3>2(b). Managed Website Service Subscription</h3>
+      <p>The optional <a href="#managed-website-service">Managed Website Service</a> (Section 16) is billed as a <strong>recurring monthly subscription</strong>: a one-time setup fee of <strong>$997 USD</strong> plus <strong>$250 USD per month</strong> for hosting and maintenance.</p>
+      <ul>
+        <li>The monthly subscription automatically renews each month until cancelled.</li>
+        <li>Payment is processed through Stripe. If a monthly payment fails, we will retry the charge on the card on file (dunning) before suspending the service, as described in Section 16.</li>
+        <li>Cancellation, non-payment, refunds, and what happens to your live site and data are governed by Section 16.</li>
       </ul>
 
       <h2>3. Refund Policy</h2>
-      <p>We offer a full refund if requested within 14 days of your initial subscription purchase. After 14 days, or for any subsequent renewal, refunds are not available. To request a refund, contact us at the email address listed below.</p>
+      <!-- DRAFT — pending review by legal counsel; not final/binding -->
+      <p class="legal-effective" style="color:#b45309"><strong>DRAFT — pending review by legal counsel; not final/binding.</strong></p>
+      <p><strong>One-time license purchases.</strong> We offer a full refund if requested within 14 days of your initial license purchase. After 14 days, refunds are not available. The Enterprise Priority Support Renewal ($997/year) is non-refundable once processed. Refund terms are detailed in each license agreement.</p>
+      <p><strong>Managed Website Service.</strong> The $997 setup fee covers design and build work performed by the operator; once that build work has begun it is treated as non-refundable. Recurring $250/month hosting payments are billed monthly in advance. If you cancel mid-cycle, the current month is not prorated and access continues through the end of the paid period; future months are not charged. <em>(The enforceability and final wording of the setup-fee and proration terms require counsel review.)</em></p>
 
       <h2>4. Acceptable Use</h2>
       <p>You agree to use the Service only for lawful purposes. You may not:</p>
@@ -74,7 +111,23 @@
         <li>All costs incurred through those API providers as a result of using the Service.</li>
         <li>Compliance with each provider's terms of service and usage policies.</li>
       </ul>
-      <p>We do not monitor, intercept, or store the content of your API calls. Your data processed through the Service belongs to you.</p>
+      <p>For <strong>self-hosted deployments</strong>, we do not monitor, intercept, or store the content of your API calls, and your data processed through the Service belongs to you. <strong>This statement does not apply to the Managed Website Service.</strong> Where we host your site for you under Section 16, the operator necessarily stores and processes your site content and your end-users' / CRM data on the operator's infrastructure as your service provider; that arrangement is described in Section 16 and in our <a href="/privacy">Privacy Policy</a>.</p>
+
+      <h3>5.1 AI Providers</h3>
+      <p>The Service can route requests across the following third-party AI model providers. You are responsible for compliance with each provider's terms:</p>
+      <ul>
+        <li>Anthropic (Claude &mdash; default model)</li>
+        <li>OpenAI (GPT)</li>
+        <li>Google (Gemini)</li>
+        <li>DeepSeek</li>
+        <li>xAI (Grok)</li>
+        <li>Perplexity</li>
+      </ul>
+      <p>The platform uses <strong>6 AI models across 4 routing tiers</strong>.</p>
+
+      <h3>5.2 Content Provenance</h3>
+      <!-- DRAFT — pending review by legal counsel; not final/binding -->
+      <p>Sites and artifacts generated by the Service may include cryptographic provenance metadata signed with an <strong>Ed25519</strong> key and expressed using <strong>C2PA-aligned vocabulary</strong>. For honesty and to avoid misrepresentation: this provenance is <strong>C2PA-vocabulary-aligned but is NOT certified C2PA</strong> and is not issued under the C2PA conformance program. It is provided to aid transparency about AI-assisted generation and must not be represented as certified or accredited C2PA content credentials.</p>
 
       <h2>6. Intellectual Property</h2>
       <p>The Service, including its design, code, documentation, and branding, is owned by AI OS Orchestration Lab and protected by applicable intellectual property laws.</p>
@@ -106,7 +159,42 @@
       <h2>14. Changes to These Terms</h2>
       <p>We may update these Terms from time to time. Material changes will be communicated via email to active subscribers at least 30 days before taking effect. Continued use of the Service after changes take effect constitutes acceptance of the revised Terms.</p>
 
-      <h2>15. Contact</h2>
+      <h2 id="managed-website-service">15. Managed Website Service</h2>
+      <!-- DRAFT — pending review by legal counsel; not final/binding -->
+      <p class="legal-effective" style="color:#b45309"><strong>DRAFT — pending review by legal counsel; not final/binding. This entire section requires counsel review, including a Data Processing Agreement / GDPR Art. 28 processor addendum, client-content / DMCA / takedown terms, and the setup-fee refund and proration mechanics.</strong></p>
+      <p>The Managed Website Service ("Managed Service") is an optional, done-for-you offering in which we ("the operator") design, build, and host a website on your behalf on the operator's virtual private server (VPS) infrastructure. It is separate from, and in addition to, the self-hosted licenses described in Section 2(a).</p>
+
+      <h3>15.1 What the Managed Service Includes</h3>
+      <ul>
+        <li>We build your website and host it, together with its associated data, on the operator's VPS.</li>
+        <li>You receive a <strong>scoped client account</strong> on the operator's instance, limited to your own site(s) and workspace. Scoped client accounts do not have administrative access to the platform or to other clients' data.</li>
+        <li>We provide ongoing hosting and maintenance, including custom domain configuration and TLS certificates, for as long as your subscription is active and in good standing.</li>
+      </ul>
+
+      <h3>15.2 Fees &amp; Recurring Billing</h3>
+      <ul>
+        <li><strong>Setup fee:</strong> $997 USD, one-time, charged at the start of the engagement.</li>
+        <li><strong>Hosting &amp; maintenance:</strong> $250 USD per month, billed monthly in advance via Stripe, automatically renewing until cancelled.</li>
+        <li>The Managed Service is a monthly subscription. This is distinct from the one-time license purchases in Section 2(a); the recurring-subscription terms in these Terms apply to the Managed Service, not to license purchases.</li>
+      </ul>
+
+      <h3>15.3 Failed Payments &amp; Dunning</h3>
+      <p>If a monthly payment fails, Stripe will automatically retry the charge on the card on file over a short dunning period. We will attempt to notify you by email. If payment is not successfully collected after the retry period, your Managed Service may be suspended and ultimately cancelled as described in Section 16.4.</p>
+
+      <h3>15.4 Cancellation, Non-Payment &amp; What Happens to Your Site and Data</h3>
+      <ul>
+        <li><strong>Voluntary cancellation.</strong> You may cancel the monthly subscription at any time. Your hosted site remains live through the end of the period you have already paid for; it is then taken offline.</li>
+        <li><strong>Non-payment.</strong> If your subscription lapses for non-payment after the dunning period, your hosted site may be suspended (taken offline) and your scoped client access revoked.</li>
+        <li><strong>Data retention &amp; deletion.</strong> Following cancellation or termination for non-payment, we will retain your hosted site files and data for a grace period of <strong>30 days</strong>, during which you may request an export. After the grace period, the hosted site and its associated data may be permanently deleted from the operator's VPS. <em>(Final retention period and export mechanics require counsel review.)</em></li>
+      </ul>
+
+      <h3>15.5 Refund Treatment</h3>
+      <p>The $997 setup fee covers design and build work and, once that work has begun, is treated as non-refundable. Monthly hosting fees are billed in advance and are not prorated on mid-cycle cancellation; access continues through the end of the paid month. See Section 3. <em>(Enforceability requires counsel review.)</em></p>
+
+      <h3>15.6 Data Handling for Managed Clients</h3>
+      <p>For Managed Service clients, the operator stores and processes your site content and your own end-users' / CRM data on the operator's VPS in order to provide the service. The "we do not access/store your data" statements elsewhere in these Terms (Section 5) and in the self-hosted license agreements <strong>do not apply</strong> to the Managed Service. Our roles as data controller and data processor, the sub-processors involved (Stripe, the VPS host, and the AI providers listed in Section 5.1), and retention/deletion are described in the <a href="/privacy">Privacy Policy</a>. A formal Data Processing Agreement / processor addendum will govern this relationship and is pending counsel review.</p>
+
+      <h2>16. Contact</h2>
       <p>For questions about these Terms, contact us at:</p>
       <p class="legal-contact">support@aiosorchestrationlab.com</p>
 

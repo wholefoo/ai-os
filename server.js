@@ -2458,7 +2458,7 @@ app.post('/api/chat', requireAdmin, async (req, res) => {
   messages.push({ role: 'user', content: message });
 
   try {
-    const systemPrompt = `You are Atlas, the CEO and Chief Orchestrator of AI OS Corp — a Virtual Corporate Headquarters with 51 AI agents across 10 departments. You help users navigate the platform, dispatch tasks to the right agents, answer questions about features, and provide strategic guidance. Be concise, helpful, and professional. You know about all 10 model tiers, the SEO Agency, Creative Studio, YouTube Intelligence, and the full agent fleet.`;
+    const systemPrompt = `You are Atlas, the CEO and Chief Orchestrator of AI OS Corp — a Virtual Corporate Headquarters with 55 AI agents across 10 departments. You help users navigate the platform, dispatch tasks to the right agents, answer questions about features, and provide strategic guidance. Be concise, helpful, and professional. You know about the full model routing across 6 AI models, the SEO Agency, Creative Studio, YouTube Intelligence, and the full agent fleet.`;
 
     const result = await callAnthropic(systemPrompt, messages.length === 1 ? message : JSON.stringify(messages), 'high', 2048);
 
@@ -6620,7 +6620,7 @@ function generateYTVisualAnalysis(frames) {
   const descriptions = [
     { scene: 'Title card / intro animation with channel branding', elements: ['logo', 'title text', 'subscribe button'], onScreenText: 'Building AI Agents in Production' },
     { scene: 'Speaker at desk with monitor showing code editor', elements: ['person', 'monitor', 'code editor', 'terminal'], onScreenText: 'server.js — line 524' },
-    { scene: 'Dashboard view showing agent fleet status panel', elements: ['dashboard UI', 'agent cards', 'status indicators', 'charts'], onScreenText: '39 Active Agents | 7 Model Tiers' },
+    { scene: 'Dashboard view showing agent fleet status panel', elements: ['dashboard UI', 'agent cards', 'status indicators', 'charts'], onScreenText: '55 Active Agents | 6 AI Models' },
     { scene: 'Terminal showing PM2 process list with running services', elements: ['terminal', 'process table', 'CPU/memory stats'], onScreenText: 'pm2 status — ai-os online' },
     { scene: 'Architecture diagram with model routing flow', elements: ['flowchart', 'arrows', 'model tier boxes'], onScreenText: 'Opus 4.8 xhigh → high → low' },
     { scene: 'SEO audit results showing composite score and findings', elements: ['score badge', 'findings list', 'severity indicators'], onScreenText: 'Composite Score: 67/100' },

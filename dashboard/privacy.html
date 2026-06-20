@@ -13,6 +13,21 @@
   <link rel="stylesheet" href="/css/legal.css">
   <script type="application/ld+json">{"@context":"https://schema.org","@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Home","item":"https://aiosorchestrationlab.com/"},{"@type":"ListItem","position":2,"name":"Privacy Policy"}]}</script>
 </head>
+<!--
+  ============================================================================
+  DRAFT — pending review by legal counsel; not final/binding.
+  This policy has been revised to describe the Managed Website Service, under
+  which the operator acts as a data PROCESSOR of the client's end-user / CRM
+  data. The following items REQUIRE counsel before publish:
+    1. Legal entity name + jurisdiction, and governing-law specifics.
+    2. A real Data Processing Agreement / GDPR Art. 28 processor addendum
+       (controller-vs-processor roles, sub-processor list, SCCs for any
+       cross-border transfer). The descriptions below are non-binding.
+    3. Client-content handling / DMCA / takedown for operator-hosted sites.
+    4. Retention/deletion periods for hosted client sites + data on
+       cancellation (drafted as a 30-day grace period — confirm).
+  ============================================================================
+-->
 <body>
   <nav class="landing-nav">
     <div class="nav-container">
@@ -56,10 +71,11 @@
         <li><strong>Feature usage</strong> — which agents you run, skill executions, and general usage patterns. This is used to improve the Service and is not shared with third parties.</li>
       </ul>
 
-      <h3>1.3 Information We Do NOT Collect</h3>
+      <h3>1.3 Information We Do NOT Collect (Self-Hosted Deployments)</h3>
+      <p>The following statements apply to <strong>self-hosted deployments</strong> only. They do <strong>not</strong> apply to the Managed Website Service, where the operator necessarily stores and processes hosted client data &mdash; see Section 11.</p>
       <ul>
-        <li>We do <strong>not</strong> read, store, or log the content of your API calls to third-party providers (Anthropic, xAI, DeepSeek, etc.).</li>
-        <li>We do <strong>not</strong> access the contents of your knowledge vault, agent outputs, or generated artifacts.</li>
+        <li>For self-hosted deployments, we do <strong>not</strong> read, store, or log the content of your API calls to third-party providers (Anthropic, OpenAI, Google, DeepSeek, xAI, Perplexity, etc.).</li>
+        <li>We do <strong>not</strong> access the contents of your knowledge vault, agent outputs, or generated artifacts on your self-hosted instance.</li>
         <li>We do <strong>not</strong> store your third-party API keys. They are held in your server's environment variables and are never transmitted to us.</li>
         <li>We do <strong>not</strong> use cookies for advertising or third-party tracking.</li>
       </ul>
@@ -85,6 +101,7 @@
         <li><strong>Stripe</strong> — Your email and payment details are shared with Stripe to process subscriptions. Stripe's privacy policy governs their handling of this data.</li>
         <li><strong>Legal requirements</strong> — We may disclose information if required by law, court order, or governmental regulation.</li>
         <li><strong>Business transfer</strong> — In the event of a merger, acquisition, or sale of assets, your information may be transferred. You will be notified via email before your data is subject to a different privacy policy.</li>
+        <li><strong>Managed Website Service sub-processors</strong> — If you are a Managed Service client, we additionally rely on the VPS host and the AI providers as sub-processors. See Section 11.</li>
       </ul>
 
       <h2>5. Data Storage &amp; Security</h2>
@@ -113,7 +130,8 @@
         <li><strong>Account data</strong> — retained while your account is active and for 30 days after deletion request.</li>
         <li><strong>Access logs</strong> — retained for 90 days.</li>
         <li><strong>Payment records</strong> — retained by Stripe according to their policies and applicable tax/financial regulations.</li>
-        <li><strong>Vault and agent data</strong> — stored on your server instance. Deleted when you remove it or 30 days after account termination.</li>
+        <li><strong>Vault and agent data (self-hosted)</strong> — stored on your own server instance. Deleted when you remove it or 30 days after account termination.</li>
+        <li><strong>Managed Service hosted site &amp; data</strong> — stored on the operator's VPS; retained for a 30-day grace period after cancellation/termination, then may be permanently deleted. See Section 11.5.</li>
       </ul>
 
       <h2>8. International Users</h2>
@@ -126,10 +144,46 @@
       <h2>10. Third-Party Links</h2>
       <p>The Service may contain links to third-party websites or services. We are not responsible for the privacy practices of these third parties. We encourage you to review the privacy policies of any third-party services you access.</p>
 
-      <h2>11. Changes to This Policy</h2>
+      <h2 id="managed-service-data">11. Managed Website Service &mdash; Data</h2>
+      <!-- DRAFT — pending review by legal counsel; not final/binding -->
+      <p class="legal-effective" style="color:#b45309"><strong>DRAFT — pending review by legal counsel; not final/binding. A formal Data Processing Agreement / GDPR Art. 28 processor addendum is required to govern this relationship.</strong></p>
+      <p>This section applies only to clients of the optional <strong>Managed Website Service</strong> (operator-hosted, done-for-you), described in Section 15 of the <a href="/terms#managed-website-service">Terms of Service</a>. Under this service, we build and host your website on the operator's virtual private server (VPS), so we necessarily store and process more data than for self-hosted deployments.</p>
+
+      <h3>11.1 Data We Store &amp; Process on the VPS</h3>
+      <ul>
+        <li><strong>Your site content</strong> &mdash; the pages, media, and configuration of the website we host for you.</li>
+        <li><strong>Your end-users' data</strong> &mdash; any personal data your website collects from your own visitors/customers (e.g., contact form submissions), and any CRM data managed within your workspace.</li>
+        <li><strong>Audit data</strong> &mdash; SEO/AEO audit results and related analysis generated for your site.</li>
+      </ul>
+
+      <h3>11.2 Your Scoped Client Account Data</h3>
+      <p>For your scoped client account on the operator's instance, we store:</p>
+      <ul>
+        <li><strong>Email address</strong> &mdash; account identifier and login.</li>
+        <li><strong>A single-use setup token</strong> &mdash; a one-time, time-limited token (expires after 7 days) used only to set your password; it is consumed on use and not retained thereafter.</li>
+        <li><strong>Stripe customer ID and subscription ID</strong> &mdash; to manage your $250/month subscription.</li>
+        <li><strong>Managed purchase records</strong> (<code>managedPurchases</code>) &mdash; which managed site(s) you have purchased.</li>
+        <li><strong>Owned sites</strong> &mdash; the site(s) provisioned to your scoped workspace.</li>
+      </ul>
+
+      <h3>11.3 Controller vs. Processor</h3>
+      <p>For your <strong>scoped account data</strong> (email, billing identifiers, purchase records), the operator acts as a <strong>data controller</strong>. For your <strong>end-users' / CRM data</strong> that we host and process on your behalf, the operator acts as a <strong>data processor</strong>, and you are the controller. Processing as your processor will be governed by a Data Processing Agreement (pending counsel review).</p>
+
+      <h3>11.4 Sub-Processors</h3>
+      <p>To deliver the Managed Website Service we rely on the following sub-processors:</p>
+      <ul>
+        <li><strong>Stripe</strong> &mdash; payment processing for the subscription.</li>
+        <li><strong>The VPS host</strong> &mdash; the infrastructure provider on which your site and data are hosted.</li>
+        <li><strong>The AI providers</strong> &mdash; Anthropic (Claude), OpenAI (GPT), Google (Gemini), DeepSeek, xAI (Grok), and Perplexity, used to generate and optimize content.</li>
+      </ul>
+
+      <h3>11.5 Retention &amp; Deletion</h3>
+      <p>While your Managed Service subscription is active, we retain your hosted site and associated data to provide the service. Following cancellation or termination for non-payment, the hosted site is taken offline and the site and its data are retained for a <strong>30-day grace period</strong> during which you may request an export, after which they may be permanently deleted from the VPS. Billing records held by Stripe are retained per Stripe's policies and applicable financial regulations. <em>(Final retention period requires counsel review.)</em></p>
+
+      <h2>12. Changes to This Policy</h2>
       <p>We may update this Privacy Policy from time to time. Material changes will be communicated via email to active subscribers at least 30 days before taking effect. The "Effective Date" at the top of this page indicates when the policy was last revised.</p>
 
-      <h2>12. Contact</h2>
+      <h2>13. Contact</h2>
       <p>For privacy-related questions, data requests, or concerns, contact us at:</p>
       <p class="legal-contact">support@aiosorchestrationlab.com</p>
 
