@@ -203,6 +203,9 @@ app.use('/api/', clientSurfaceGuard);
 const STRIPE_SECRET = process.env.STRIPE_SECRET_KEY || '';
 const STRIPE_WEBHOOK_SECRET = process.env.STRIPE_WEBHOOK_SECRET || '';
 const stripe = STRIPE_SECRET ? require('stripe')(STRIPE_SECRET) : null;
+if (STRIPE_SECRET.startsWith('sk_live_') && !STRIPE_WEBHOOK_SECRET) {
+  console.warn('[STRIPE] WARNING: live key set but STRIPE_WEBHOOK_SECRET is empty — the webhook fulfillment backstop is DISABLED (the success redirect is the only fulfillment path). Configure the webhook endpoint + signing secret in the Stripe Dashboard.');
+}
 
 const STRIPE_PLANS = {
   business: {
@@ -259,7 +262,7 @@ const sessions = {
 
 function generateToken() { return uuidv4() + '-' + uuidv4(); }
 
-function findUserByEmail(email) { return users.find(u => u.email === email); }
+function findUserByEmail(email) { const e = String(email || '').toLowerCase(); return users.find(u => u && u.email && u.email.toLowerCase() === e); }
 
 function isValidSession(token) {
   const session = sessions.get(token);
@@ -400,12 +403,21 @@ app.get('/buy', (req, res) => { res.sendFile(path.join(BASE, 'dashboard', 'buy.h
 // never returns to the success URL).
 function fulfillCheckoutSession(stripeSession, source) {
   if (stripeSession.payment_status !== 'paid') {
+    // Not paid yet (async payment, or 'completed' fired before the charge settled). Logged, not
+    // alerted — the webhook caller returns non-2xx so Stripe re-delivers once it settles.
     console.warn(`[STRIPE] Fulfillment refused (${source}): session ${stripeSession.id} payment_status=${stripeSession.payment_status}`);
+    logActivity('billing', `Fulfillment deferred (${source}): session ${stripeSession.id} not yet paid (${stripeSession.payment_status})`, { sessionId: stripeSession.id });
     return null;
   }
-  const email = stripeSession.customer_details?.email || stripeSession.customer_email;
+  // Normalize email — Stripe may return mixed case; findUserByEmail is case-insensitive, so storing
+  // lowercase keeps one canonical record per buyer across repeat purchases (no forked accounts).
+  const email = (stripeSession.customer_details?.email || stripeSession.customer_email || '').trim().toLowerCase();
   if (!email) {
-    console.error(`[STRIPE] Fulfillment failed (${source}): session ${stripeSession.id} has no customer email`);
+    // PAID but no email → the customer was charged and we cannot create their account. Alert loudly so
+    // the operator can look the session up in Stripe and provision manually.
+    console.error(`[STRIPE] Fulfillment FAILED (${source}): paid session ${stripeSession.id} has no customer email`);
+    logActivity('billing', `PAID but UNPROVISIONED (${source}): session ${stripeSession.id} has no customer email — customer charged, no account created`, { sessionId: stripeSession.id, alert: true });
+    sendNotification('Paid but not provisioned', `Stripe session ${stripeSession.id} is paid but carries no email — the customer was charged and could not be provisioned. Look it up in Stripe and create the account manually.`, 'critical');
     return null;
   }
   const plan = stripeSession.metadata?.plan || 'pro';
@@ -449,7 +461,11 @@ function fulfillCheckoutSession(stripeSession, source) {
     // First-time client (no password yet): mint a one-time set-password token.
     if (!user.passwordHash && !user.setupToken) user.setupToken = { token: generateToken(), expiresAt: new Date(Date.now() + 7 * 86400000).toISOString() };
   }
-  saveState('users', users);
+  if (!saveState('users', users)) {
+    // Disk write failed → the paid client exists only in memory and vanishes on restart. Alert loudly.
+    logActivity('billing', `FULFILLMENT PERSIST FAILED (${source}): ${email} session ${stripeSession.id} — paid but users.json not written`, { sessionId: stripeSession.id, alert: true });
+    sendNotification('Fulfillment not persisted', `Paid session ${stripeSession.id} for ${email} fulfilled in memory but the users.json write FAILED — recover before the next restart.`, 'critical');
+  }
   crm?.syncUser(user, { sessionId: stripeSession.id }); // CRM: mirror license/plan + log purchase (idempotent)
   logActivity('billing', `Checkout fulfilled (${source}): ${email} → ${plan}`, { sessionId: stripeSession.id });
   return user;
@@ -502,9 +518,21 @@ app.post('/api/stripe/webhook', express.raw({ type: 'application/json' }), (req,
 
   switch (event.type) {
     case 'checkout.session.completed': {
-      // Backstop fulfillment: guarantees the purchase lands even if the
-      // customer never reaches the success redirect. Idempotent with it.
-      fulfillCheckoutSession(event.data.object, 'webhook');
+      // Backstop fulfillment: guarantees the purchase lands even if the customer never reaches the
+      // success redirect. Idempotent with it.
+      const sess = event.data.object;
+      try {
+        const u = fulfillCheckoutSession(sess, 'webhook');
+        // Paid but fulfillment failed (e.g. no email) → 500 so Stripe RETRIES the delivery (already
+        // alerted inside). A genuinely-unpaid session (async pre-payment; not used by the card-only
+        // managed offer) falls through to the 200 below so Stripe does not retry-loop a pending charge.
+        if (!u && sess.payment_status === 'paid') return res.status(500).send('fulfillment failed');
+      } catch (e) {
+        console.error('[STRIPE] Webhook fulfillment threw:', e.message);
+        logActivity('billing', `Webhook fulfillment ERROR: session ${sess.id} — ${e.message}`, { sessionId: sess.id, alert: true });
+        sendNotification('Webhook fulfillment error', `Session ${sess.id}: ${e.message}`, 'critical');
+        return res.status(500).send('fulfillment error');
+      }
       break;
     }
     case 'customer.subscription.deleted':
@@ -521,12 +549,17 @@ app.post('/api/stripe/webhook', express.raw({ type: 'application/json' }), (req,
         logActivity('billing', `Managed subscription cancelled for ${client.email} (${client.managedPurchases.length} site(s) remain)`);
         break;
       }
-      // Otherwise a license subscription (e.g. enterprise-renewal) — downgrade by customer.
+      // Otherwise a license subscription (e.g. enterprise-renewal) — downgrade by customer. SKIP
+      // managed clients here: they are handled by the managed branch above (matched by subscriptionId).
+      // Downgrading a client by customer would lock out a multi-site client if one purchase had stored
+      // a null subscriptionId and fell through — so only flag it for review, never auto-revoke.
       const user = users.find(u => u.stripeCustomerId === sub.customer);
-      if (user) {
+      if (user && user.role !== 'client') {
         user.plan = 'free';
         saveState('users', users);
         logActivity('billing', `Subscription cancelled for ${user.email}`);
+      } else if (user && user.role === 'client') {
+        logActivity('billing', `Subscription ${sub.id} cancelled for client ${user.email} but not matched to a managed purchase — review (no auto-downgrade)`, { sessionId: sub.id, alert: true });
       }
       break;
     }
@@ -536,6 +569,16 @@ app.post('/api/stripe/webhook', express.raw({ type: 'application/json' }), (req,
         const user = users.find(u => u.stripeCustomerId === sub.customer);
         if (user) logActivity('billing', `Subscription updated for ${user.email}`);
       }
+      break;
+    }
+    case 'invoice.payment_failed': {
+      // A renewal charge failed — surface it so the operator can act before involuntary churn /
+      // indefinite unpaid hosting. (Access is only revoked on subscription.deleted/paused.)
+      const inv = event.data.object;
+      const user = users.find(u => u.stripeCustomerId === inv.customer);
+      const who = user ? user.email : `customer ${inv.customer}`;
+      logActivity('billing', `Renewal payment FAILED for ${who} (attempt ${inv.attempt_count || '?'})`, { customer: inv.customer, alert: true });
+      sendNotification('Renewal payment failed', `Invoice payment failed for ${who} (attempt ${inv.attempt_count || '?'}). Follow up before involuntary churn.`, 'normal');
       break;
     }
   }
@@ -1093,10 +1136,16 @@ const heartbeat = setInterval(() => {
 // Save/load runtime state to JSON files so data survives restarts
 
 function saveState(key, data) {
+  const fp = path.join(STATE_DIR, `${key}.json`);
+  const tmp = `${fp}.tmp`;
   try {
-    fs.writeFileSync(path.join(STATE_DIR, `${key}.json`), JSON.stringify(data, null, 2));
+    fs.writeFileSync(tmp, JSON.stringify(data, null, 2));
+    fs.renameSync(tmp, fp); // atomic replace — a crash mid-write can't truncate/corrupt the live file
+    return true;
   } catch (e) {
     console.error(`[STATE] Failed to save ${key}:`, e.message);
+    try { fs.unlinkSync(tmp); } catch {} // best-effort: don't leave a partial .tmp behind
+    return false;
   }
 }
 
