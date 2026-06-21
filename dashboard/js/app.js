@@ -92,6 +92,7 @@ function switchView(view) {
     'web-studio': loadWebStudio,
     'brand-kits': loadBrandKits,
     crm: loadCrm,
+    security: loadSecurity,
     mission: loadMission,
     inbox: loadInbox,
     timeline: loadTimeline,

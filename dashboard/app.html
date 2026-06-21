@@ -49,6 +49,9 @@
         <a href="#" class="nav-item" data-view="crm">
           <span class="nav-icon">&#128100;</span> CRM
         </a>
+        <a href="#" class="nav-item" data-view="security">
+          <span class="nav-icon">&#128737;</span> Security
+        </a>
         <a href="#" class="nav-item" data-view="mission">
           <span class="nav-icon">&#9733;</span> Mission
         </a>
@@ -1555,6 +1558,27 @@
           </div>
         </div>
 
+        <!-- Security View (operator-only; report-only mythos self-scans) -->
+        <div class="view" id="view-security">
+          <div class="radar-header">
+            <div class="radar-header-left">
+              <h2 class="radar-title">Security</h2>
+              <span class="radar-subtitle">Report-only AI security self-assessment of this AI OS instance (mythos-defense). Findings only — patches are never applied to the live platform.</span>
+            </div>
+            <div class="radar-actions">
+              <button class="btn" id="secRefresh">Refresh</button>
+              <button class="btn btn-primary" id="secQuickBtn">Quick scan</button>
+              <button class="btn" id="secDeepBtn">Deep scan</button>
+            </div>
+          </div>
+          <div id="secStatus" style="margin:8px 0;"></div>
+          <div id="secMsg" class="crm-muted" style="min-height:16px;margin-bottom:8px;"></div>
+          <div class="crm-grid">
+            <section class="panel"><h3 class="panel-title">Scans</h3><div id="securityList"><div class="empty-state">Loading…</div></div></section>
+            <section class="panel"><div id="securityDetail"><div class="empty-state">Select a scan to view findings.</div></div></section>
+          </div>
+        </div>
+
         <!-- SEO Agency View -->
         <div class="view" id="view-seo-agency">
           <div class="radar-header">
@@ -2305,10 +2329,11 @@
     </div>
   </div>
 
-  <script src="js/app.js?v=46"></script>
+  <script src="js/app.js?v=47"></script>
   <script src="https://cdn.jsdelivr.net/npm/monaco-editor@0.52.2/min/vs/loader.js"></script>
   <script src="js/web-studio.js?v=12"></script>
   <script src="js/crm.js?v=3"></script>
+  <script src="js/security.js?v=1"></script>
   <script src="js/brand-kits.js?v=1"></script>
 </body>
 </html>

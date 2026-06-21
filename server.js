@@ -5354,6 +5354,8 @@ const settings = loadState('settings', {
     mythos_bin: process.env.AIOS_MYTHOS_BIN || 'mythos',
     mythos_adapter: process.env.AIOS_MYTHOS_ADAPTER || 'semgrep',         // 'semgrep' (real) | 'mock'
     mythos_max_tokens: process.env.AIOS_MYTHOS_MAX_TOKENS || '200000',    // per-assessment token budget
+    scan_enabled: process.env.AIOS_SECURITY_SCAN_ENABLED || 'false',      // 'true' enables the periodic self-scan cron
+    scan_interval: process.env.AIOS_SECURITY_SCAN_INTERVAL || '0 4 * * 0', // cron expr (default weekly, Sun 4am)
   },
   seo: {
     dataforseo_login: process.env.DATAFORSEO_LOGIN || '',
@@ -5544,6 +5546,8 @@ app.get('/api/settings', requireAdmin, (req, res) => {
       mythos_bin: settings.security.mythos_bin,
       mythos_adapter: settings.security.mythos_adapter,
       mythos_max_tokens: settings.security.mythos_max_tokens,
+      scan_enabled: settings.security.scan_enabled,
+      scan_interval: settings.security.scan_interval,
     },
     seo: {
       dataforseo_login: settings.seo.dataforseo_login || '',
@@ -6771,6 +6775,8 @@ try {
     outDir: path.join(STATE_DIR, 'security'),
     allowRoots: [BASE], // Phase 1: the AI OS tree (self-defense, report-only). Phase 3 adds the web-studio sites dir.
   });
+  // Sweep transient run dirs orphaned by a crash (assess/audit/threatModel clean their own on exit).
+  try { const _sec = path.join(STATE_DIR, 'security'); if (fs.existsSync(_sec)) for (const d of fs.readdirSync(_sec)) { if (/^(snap|audit|tm|assess)-/.test(d)) fs.rmSync(path.join(_sec, d), { recursive: true, force: true }); } } catch {}
   if (mythos.isEnabled()) {
     mythos.doctor().then((d) => {
       appendLog(d.available
@@ -6787,6 +6793,129 @@ app.get('/api/security/status', requireAdmin, async (req, res) => {
   }
   const d = await mythos.doctor();
   res.json({ enabled: true, ...d });
+});
+
+// --- Security: report-only self-scan engine + admin API (Phase 2) ---
+const securityScans = loadState('security_scans', []);
+
+// A concise STRIDE brief describing AI OS, fed to the mythos Architect agent.
+function aiOsSecurityBrief() {
+  return [
+    'AI OS Orchestration Lab — a self-hostable Node.js/Express multi-agent "Virtual Corporate HQ" SaaS.',
+    'Attack surface: an Express API with cookie + bearer-token sessions and role gating (admin vs scoped client); a public marketing site + a free SEO-audit endpoint; Stripe Checkout + webhooks (managed-website subscriptions); an AI Web Studio that BUILDS and HOSTS static sites on this VPS (nginx vhosts, custom domains, certbot TLS, ZIP/GitHub import); a CRM on node:sqlite; scoped client accounts with single-use set-password tokens; multi-model AI routing using operator-supplied API keys; and an Auto-Mode approval gate for irreversible/outbound actions.',
+    'Sensitive assets: user records + bcrypt password hashes, Stripe secret + webhook signing secret, operator AI API keys, client site content hosted on the VPS, and a constrained root bridge that drives nginx + certbot.',
+    'Assess for STRIDE threats with emphasis on: client-vs-admin authorization isolation, SSRF in outbound fetches, command injection in the hosting/subprocess bridges, secret exposure, prototype pollution, insecure configuration, and supply-chain risk.',
+  ].join('\n\n');
+}
+
+// Snapshot a FILTERED copy of the AI OS source for a deep scan (excludes node_modules/.git/.magent
+// and other non-source). mythos.assess() patches IN-PLACE, so it only ever runs against this copy —
+// never the live BASE tree. Lives under STATE_DIR/security (inside BASE, so allowRoots accepts it).
+function snapshotSourceCopy() {
+  const dest = path.join(STATE_DIR, 'security', `snap-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`);
+  const EXCLUDE = new Set(['node_modules', '.git', '.magent', '.security', 'docs-export', 'auto-research', '.claude', 'reports', 'workflows']);
+  const copyDir = (src, dst) => {
+    fs.mkdirSync(dst, { recursive: true });
+    for (const ent of fs.readdirSync(src, { withFileTypes: true })) {
+      if (EXCLUDE.has(ent.name)) continue;
+      const s = path.join(src, ent.name), d = path.join(dst, ent.name);
+      if (ent.isDirectory()) copyDir(s, d);
+      else if (ent.isFile()) { try { fs.copyFileSync(s, d); } catch {} }
+    }
+  };
+  copyDir(BASE, dest);
+  return dest;
+}
+
+// Start a report-only security self-scan of the AI OS tree. Returns the scan record immediately; the
+// work runs in the background (persists + broadcasts on completion). mode: 'quick' (threatModel + dep
+// audit — no copy, no patching) | 'deep' (assess a disposable filtered copy — code scan + patch
+// RECOMMENDATIONS; never touches the live tree).
+function runSecurityScan({ mode = 'quick', actor = 'system' } = {}) {
+  const scan = {
+    id: `sec-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`,
+    mode: mode === 'deep' ? 'deep' : 'quick', target: 'AI OS', status: 'running',
+    actor, startedAt: new Date().toISOString(),
+  };
+  securityScans.unshift(scan);
+  if (securityScans.length > 50) securityScans.length = 50;
+  saveState('security_scans', securityScans);
+  broadcast({ event: 'security_scan', data: { id: scan.id, status: 'running', mode: scan.mode } });
+
+  (async () => {
+    try {
+      if (!mythos.isEnabled()) throw new Error('mythos is not enabled (Settings → Security)');
+      if (scan.mode === 'deep') {
+        const copy = snapshotSourceCopy();
+        try {
+          const r = await mythos.assess({ workspace: copy, brief: aiOsSecurityBrief() });
+          if (!r.ok) throw new Error(r.error || 'assessment failed');
+          Object.assign(scan, {
+            status: 'complete', resultStatus: r.status, counts: r.counts, findings: r.findings,
+            unresolved: r.unresolved, threatModel: r.threatModel, supplyChain: r.supplyChain,
+            deployment: r.deployment, patchRecommendations: (r.report && r.report.patches ? r.report.patches.length : 0),
+          });
+        } finally { try { fs.rmSync(copy, { recursive: true, force: true }); } catch {} }
+      } else {
+        const [tm, au] = await Promise.all([
+          mythos.threatModel({ brief: aiOsSecurityBrief() }),
+          mythos.audit({ workspace: BASE, deps: 'npm' }),
+        ]);
+        scan.threatModel = tm.ok ? tm.model : null;
+        scan.audit = au.ok ? { exitCode: au.exitCode, out: String(au.out || '').slice(-3000) } : { error: au.error || 'unavailable' };
+        scan.findings = [];
+        scan.counts = { total: 0, critical: 0, high: 0, medium: 0, low: 0, info: 0, unresolved: 0 };
+        scan.status = (tm.ok || au.ok) ? 'complete' : 'error';
+        if (scan.status === 'error') scan.error = tm.error || (au && au.error) || 'scan produced no output';
+      }
+      scan.completedAt = new Date().toISOString();
+      scan.durationSeconds = (new Date(scan.completedAt) - new Date(scan.startedAt)) / 1000;
+      saveState('security_scans', securityScans);
+      const crit = (scan.counts && scan.counts.critical) || 0;
+      const high = (scan.counts && scan.counts.high) || 0;
+      logActivity('security', `Self-scan (${scan.mode}) ${scan.status}: ${crit} critical, ${high} high`, { scanId: scan.id });
+      if (crit > 0 || high > 0) {
+        sendNotification('Security findings', `AI OS self-scan found ${crit} critical + ${high} high-severity issue(s). Review the Security dashboard.`, crit > 0 ? 'critical' : 'normal');
+      }
+      broadcast({ event: 'security_scan', data: { id: scan.id, status: scan.status, counts: scan.counts } });
+    } catch (e) {
+      scan.status = 'error'; scan.error = e.message; scan.completedAt = new Date().toISOString();
+      saveState('security_scans', securityScans);
+      logActivity('security', `Self-scan (${scan.mode}) failed: ${e.message}`, { scanId: scan.id });
+      broadcast({ event: 'security_scan', data: { id: scan.id, status: 'error' } });
+    }
+  })();
+
+  return scan;
+}
+
+// POST /api/security/scan { mode } — start a report-only self-scan (admin). Async; poll the list.
+app.post('/api/security/scan', requireAdmin, (req, res) => {
+  if (!mythos.isEnabled()) return res.status(503).json({ error: 'mythos is not enabled — configure it in Settings and install it on the server' });
+  if (securityScans.find(s => s.status === 'running')) {
+    const running = securityScans.find(s => s.status === 'running');
+    return res.status(409).json({ error: 'a scan is already running', scanId: running.id });
+  }
+  const mode = (req.body && req.body.mode === 'deep') ? 'deep' : 'quick';
+  const actor = (req.session && (req.session.email || req.session.name)) || 'operator';
+  const scan = runSecurityScan({ mode, actor });
+  res.json({ ok: true, scanId: scan.id, mode: scan.mode, status: 'running' });
+});
+
+// GET /api/security/scans — list (summaries) of self-scans (admin).
+app.get('/api/security/scans', requireAdmin, (req, res) => {
+  res.json(securityScans.map(s => ({
+    id: s.id, mode: s.mode, status: s.status, actor: s.actor,
+    startedAt: s.startedAt, completedAt: s.completedAt, durationSeconds: s.durationSeconds,
+    counts: s.counts || null, error: s.error || null,
+  })));
+});
+
+// GET /api/security/scan/:id — full scan record incl. findings + threat model (admin).
+app.get('/api/security/scan/:id', requireAdmin, (req, res) => {
+  const s = securityScans.find(x => x.id === req.params.id);
+  if (!s) return res.status(404).json({ error: 'scan not found' });
+  res.json(s);
 });
 
 // --- CRM: managed-client operator actions (Phase 4) ---
@@ -7660,6 +7789,27 @@ cron.schedule('0 9 * * *', () => {
     }
   });
 });
+
+// --- Security Self-Scan Cron (report-only) ---
+// Standalone top-level cron (mirrors the renewal job) so it consumes NO user schedule/routine slot.
+// Guarded at boot (only registers when enabled) AND at fire time (a settings toggle takes effect
+// without a restart). Runs a 'quick' report-only scan — never assess() against the live tree.
+(() => {
+  const expr = (settings.security?.scan_interval || '').trim();
+  if (!expr || !cron.validate(expr)) {
+    appendLog(`[security] self-scan cron not registered (invalid/empty interval: ${expr || 'unset'})`);
+    return;
+  }
+  // Always register when the interval is valid; gate purely at FIRE TIME so toggling
+  // settings.security.scan_enabled (either direction) takes effect WITHOUT a restart.
+  cron.schedule(expr, () => {
+    if (settings.security?.scan_enabled !== 'true' || !mythos.isEnabled()) return;
+    if (securityScans.find(s => s.status === 'running')) return; // don't pile up
+    appendLog('[security] scheduled self-scan starting (quick)');
+    runSecurityScan({ mode: 'quick', actor: 'scheduler' });
+  });
+  appendLog(`[security] self-scan cron registered (${expr}); runs when scan_enabled=true`);
+})();
 
 // --- Graceful Shutdown ---
 function gracefulShutdown(signal) {
