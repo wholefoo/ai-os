@@ -1248,6 +1248,7 @@ const aeoCrawlers = require('./lib/aeo/crawlers');
 const shareOfModel = require('./lib/aeo/share-of-model');
 const approvalPolicy = require('./lib/safety/approval');
 const provenanceLib = require('./lib/provenance');
+const mythos = require('./lib/security/mythos');
 
 // Server-wide Ed25519 provenance signing key (lazy-generated under .magent/provenance, or supplied
 // via AIOS_PROVENANCE_PRIVATE_KEY). The issuer origin = the control-plane public URL so a sidecar's
@@ -5346,6 +5347,14 @@ const settings = loadState('settings', {
     managed_currency: process.env.AIOS_MANAGED_CURRENCY || 'usd',
     managed_plan: process.env.AIOS_MANAGED_PLAN || 'business',            // entitlement granted (business | enterprise)
   },
+  security: {
+    // mythos-defense security CLI bridge — OFF until the operator installs it on the box
+    // (Python 3.11+, `pip install mythos-defense`, semgrep) and flips this to 'true'.
+    mythos_enabled: process.env.AIOS_MYTHOS_ENABLED || 'false',           // 'true' | 'false'
+    mythos_bin: process.env.AIOS_MYTHOS_BIN || 'mythos',
+    mythos_adapter: process.env.AIOS_MYTHOS_ADAPTER || 'semgrep',         // 'semgrep' (real) | 'mock'
+    mythos_max_tokens: process.env.AIOS_MYTHOS_MAX_TOKENS || '200000',    // per-assessment token budget
+  },
   seo: {
     dataforseo_login: process.env.DATAFORSEO_LOGIN || '',
     dataforseo_password: process.env.DATAFORSEO_PASSWORD || '',
@@ -5529,6 +5538,12 @@ app.get('/api/settings', requireAdmin, (req, res) => {
       managed_monthly_cents: settings.commerce.managed_monthly_cents,
       managed_currency: settings.commerce.managed_currency,
       managed_plan: settings.commerce.managed_plan,
+    },
+    security: {
+      mythos_enabled: settings.security.mythos_enabled,
+      mythos_bin: settings.security.mythos_bin,
+      mythos_adapter: settings.security.mythos_adapter,
+      mythos_max_tokens: settings.security.mythos_max_tokens,
     },
     seo: {
       dataforseo_login: settings.seo.dataforseo_login || '',
@@ -6744,6 +6759,35 @@ try {
   crm = null;
   console.error('[crm] init failed:', e.message);
 }
+
+// --- Security: mythos-defense bridge (AI-driven security assessment CLI; OFF until installed) ---
+try {
+  mythos.configure({
+    enabled: settings.security?.mythos_enabled === 'true',
+    bin: settings.security?.mythos_bin || 'mythos',
+    adapter: settings.security?.mythos_adapter || 'semgrep',
+    maxTokens: parseInt(settings.security?.mythos_max_tokens, 10) || 200000,
+    anthropicKey: settings.ai?.anthropic_api_key || process.env.ANTHROPIC_API_KEY || '',
+    outDir: path.join(STATE_DIR, 'security'),
+    allowRoots: [BASE], // Phase 1: the AI OS tree (self-defense, report-only). Phase 3 adds the web-studio sites dir.
+  });
+  if (mythos.isEnabled()) {
+    mythos.doctor().then((d) => {
+      appendLog(d.available
+        ? `[security] mythos available (semgrep=${d.semgrep}, anthropicKey=${d.anthropicKey}, adapter=${d.adapter})`
+        : `[security] mythos enabled but unavailable: ${d.reason}`);
+    }).catch(() => {});
+  }
+} catch (e) { console.error('[security] mythos init failed:', e.message); }
+
+// GET /api/security/status — admin: is the mythos bridge available + configured?
+app.get('/api/security/status', requireAdmin, async (req, res) => {
+  if (!mythos.isEnabled()) {
+    return res.json({ enabled: false, available: false, hint: 'Enable in Settings, then install mythos on the server: Python 3.11+, `pip install mythos-defense`, and semgrep for real scans.' });
+  }
+  const d = await mythos.doctor();
+  res.json({ enabled: true, ...d });
+});
 
 // --- CRM: managed-client operator actions (Phase 4) ---
 // These mutate the USER record / Stripe, so they live in server scope (not lib/crm). Admin-only

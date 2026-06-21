@@ -26,6 +26,7 @@
 
     { "file": "lib/orchestrator.js", "exports": ["classifyAndAct", "fanOutAndSynthesize", "adversarialVerify", "generateAndFilter", "tournament", "loopUntilDone"] },
     { "file": "lib/multiModel.js", "exports": ["scoreConsensus", "extractScore"] },
+    { "file": "lib/security/mythos.js", "exports": ["assess", "audit", "resolveSafeWorkspace", "threatModel"] },
 
     { "file": "lib/crm/repo.js", "exports": ["normEmail"] },
     { "file": "lib/crm/sync.js", "exports": ["syncFromAudits", "syncFromLeads", "syncFromSites", "syncFromUsers", "backfillAll"] },
