@@ -52,6 +52,7 @@ function loadWebStudio() {
     on('wsExportMode', 'change', wsExportModeChange);
     on('wsOptimizeBtn', 'click', wsOptimize);
     on('wsVerifyProvBtn', 'click', wsVerifyProvenance);
+    on('wsSecurityScanBtn', 'click', wsRunSecurityScan);
   }
   if (!wsState.currentId) {
     const em = document.getElementById('wsEditorMode'); if (em) em.style.display = 'none';
@@ -243,6 +244,7 @@ async function wsOpen(id) {
   wsHint('');
   wsRenderPublishState(site);
   wsRenderProvenance(site);
+  wsRenderSecurity(site);
   wsRefreshPreview();
   await wsReloadFiles(true);
   await wsLoadContent();
@@ -275,6 +277,41 @@ function wsRenderProvenance(site) {
     + `<div style="margin-top:4px;color:var(--text-secondary,#9aa);">Ed25519-signed sidecar at <code>/.well-known/aios-provenance.json</code> (C2PA-vocabulary-aligned; verifiable by AI OS via key-to-domain, not a C2PA Content Credentials check).</div>`
     + `</div>`;
   if (btn) btn.style.display = p.credential ? '' : 'none';
+}
+
+// Security panel: the report-only semgrep scan of the built output (reads site.security). The publish
+// gate scans automatically; "Scan now" runs an on-demand re-scan. Findings only — nothing is patched.
+function wsRenderSecurity(site) {
+  const body = document.getElementById('wsSecurityBody');
+  if (!body) return;
+  const s = site && site.security;
+  if (!s) { body.textContent = 'Not scanned yet — the publish gate scans the built output automatically, or scan now.'; return; }
+  if (!s.available) { body.innerHTML = `<span style="color:var(--warning,#eab308);">Scanner unavailable${s.reason ? ' — ' + escapeHtml(s.reason) : ''}.</span> Publishing is not blocked.`; return; }
+  const c = s.counts || {};
+  const clean = !(c.error || c.warning || c.info);
+  const head = clean
+    ? '<span class="ws-badge ready">clean</span>'
+    : `<span class="ws-badge ${c.error ? 'failed' : 'gated'}">${c.error || 0} error · ${c.warning || 0} warn · ${c.info || 0} info</span>`;
+  const list = (s.findings || []).slice(0, 12).map((f) => {
+    const col = f.severity === 'ERROR' ? '#ef4444' : (f.severity === 'WARNING' ? 'var(--warning,#eab308)' : '#6b7280');
+    return `<div style="margin:4px 0;font-size:12px;"><span style="color:${col};font-weight:600;">${escapeHtml(f.severity || '')}</span> ${escapeHtml(f.title || '')}${f.file ? ` <code style="font-size:11px;">${escapeHtml(f.file)}${f.line ? ':' + f.line : ''}</code>` : ''}</div>`;
+  }).join('');
+  body.innerHTML = `<div>${head} <span class="ws-hint">scanned ${escapeHtml(s.scannedAt || '')}</span></div>`
+    + (list || '<div class="ws-hint" style="margin-top:4px;">No findings.</div>')
+    + ((s.findings || []).length > 12 ? `<div class="ws-hint">…and ${s.findings.length - 12} more</div>` : '');
+}
+
+async function wsRunSecurityScan() {
+  const site = wsState.currentSite;
+  const hint = document.getElementById('wsSecurityHint');
+  if (!site) return;
+  if (hint) hint.textContent = 'Scanning…';
+  const r = await fetchJSON(`/api/web-studio/sites/${site.id}/security-scan`, { method: 'POST' });
+  if (!r || r.error) { if (hint) hint.textContent = (r && r.error) || 'Scan failed.'; return; }
+  if (hint) hint.textContent = '';
+  site.security = r.security;
+  wsRenderSecurity(site);
+  wsRenderPublishState(site);
 }
 
 async function wsVerifyProvenance() {
@@ -396,6 +433,7 @@ function wsRenderPublishState(site) {
   if (isPub) wsPublishHint(`Live (HTTPS) at ${site.url}`);
   else if (isHosted) wsPublishHint(`HTTP hosting live at http://${site.domain}. Publish to add HTTPS.`);
   else if (site.status === 'publish_failed') wsPublishHint('Publish failed: ' + (site.publishError || 'see server logs.'));
+  else if (site.security && site.security.available && site.security.counts && site.security.counts.error > 0) wsPublishHint(`⚠ ${site.security.counts.error} error-severity security finding(s) — resolve before publishing if the gate is set to block.`);
 }
 
 async function wsSetupHosting() {
@@ -543,7 +581,7 @@ function onWebStudioEvent(msg) {
     }
     if (d.status === 'failed' || d.status === 'build_failed') wsHint('Build failed.');
     // web_studio_site carries the full site object (has d.id) — reflect publish-state changes live.
-    if (d.id === wsState.currentId) { wsState.currentSite = d; wsRenderPublishState(d); wsRenderProvenance(d); }
+    if (d.id === wsState.currentId) { wsState.currentSite = d; wsRenderPublishState(d); wsRenderProvenance(d); wsRenderSecurity(d); }
   } else if (!inEditor) {
     wsFetchAndRenderSites();
   }

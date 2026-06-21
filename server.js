@@ -1310,7 +1310,7 @@ async function wsSetupHosting(site, domainInput) {
   await webStudioHosting.createVhost(domain, { tls: false });
   const distDir = path.join(wsWorkspaceDir(site.id), 'dist');
   let served = false;
-  if (fs.existsSync(path.join(distDir, 'index.html'))) { webStudioPublish.deployRelease(distDir, WS_SITES_ROOT, domain); served = true; }
+  if (fs.existsSync(path.join(distDir, 'index.html'))) { await deployWithGate(site, distDir, domain); served = true; }
   site.domain = domain; site.hostingSetup = true; site.httpUrl = `http://${domain}`;
   saveState('web_studio_sites', webStudioSites);
   broadcast({ event: 'web_studio_site', data: site });
@@ -1454,6 +1454,18 @@ app.get('/api/web-studio/sites/:id/provenance', requireClientOrAdmin, (req, res)
   const site = wsFindSite(req, res); if (!site) return;
   if (!site.provenance) return res.status(404).json({ error: 'no provenance record (imported site, or built before provenance was enabled)' });
   res.json(site.provenance);
+});
+
+// On-demand report-only security scan of a site's built output (owner/admin via wsFindSite; rate-limited).
+app.post('/api/web-studio/sites/:id/security-scan', requireClientOrAdmin, heavyLimiter, async (req, res) => {
+  const site = wsFindSite(req, res); if (!site) return;
+  try { const sec = await scanSiteSecurity(site); res.json({ ok: true, security: sec }); }
+  catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.get('/api/web-studio/sites/:id/security', requireClientOrAdmin, (req, res) => {
+  const site = wsFindSite(req, res); if (!site) return;
+  res.json(site.security || { available: false, reason: 'not scanned yet', findings: [], counts: { total: 0, error: 0, warning: 0, info: 0 } });
 });
 
 // --- List sites (+ tier limit for the UI badge) ---
@@ -1614,6 +1626,48 @@ async function wsEnsureDist(site) {
 
 // The publish flow (build -> deploy -> HTTP vhost -> cert -> HTTPS vhost) runs in the background and
 // streams progress; extracted so both the route (auto) and the approve endpoint can start it.
+// Report-only security scan of a site's BUILT output (dist) via semgrep (read-only — no copy, no
+// patching). Attaches site.security + persists + broadcasts. ok = no error-severity findings (the
+// publish-gate block threshold). FAIL-OPEN: if the scanner is unavailable, ok=true (don't block).
+async function scanSiteSecurity(site) {
+  const distDir = path.join(wsWorkspaceDir(site.id), 'dist');
+  if (!fs.existsSync(distDir)) {
+    site.security = { scannedAt: new Date().toISOString(), available: false, reason: 'no build output yet', counts: { total: 0, error: 0, warning: 0, info: 0 }, findings: [], ok: true };
+    return site.security;
+  }
+  let sec;
+  try { sec = await mythos.semgrepScan(distDir); }
+  catch (e) { sec = { available: false, reason: e.message }; }
+  const counts = sec.counts || { total: 0, error: 0, warning: 0, info: 0 };
+  site.security = {
+    scannedAt: new Date().toISOString(),
+    available: sec.available !== false,
+    reason: sec.reason || null,
+    counts,
+    findings: (sec.findings || []).slice(0, 100),
+    ok: sec.available === false ? true : ((counts.error || 0) === 0),
+  };
+  saveState('web_studio_sites', webStudioSites);
+  broadcast({ event: 'web_studio_site', data: site });
+  if (site.security.available && (counts.error || 0) > 0) {
+    sendNotification('Web Studio security findings', `Site "${site.name}" has ${counts.error} error-severity finding(s) from the security scan.`, 'normal');
+  }
+  return site.security;
+}
+
+// Single authoritative chokepoint for EVERY deploy to the live tree (publish AND the editor redeploy
+// paths). When the publish gate is 'block', re-scans the about-to-deploy dist and refuses on
+// error-severity findings; fail-open on a scanner outage, logged so the silent no-op is auditable.
+// Report-only — semgrep never mutates the dist.
+async function deployWithGate(site, distDir, domain) {
+  if (settings.security?.gate_publish === 'block') {
+    const sec = await scanSiteSecurity(site);
+    if (sec.available && !sec.ok) throw new Error(`security gate: ${sec.counts.error} error-severity finding(s) must be resolved before publishing`);
+    if (!sec.available) appendLog(`[security] gate set to 'block' but scanner unavailable — deploying ${domain} unscanned (fail-open)`);
+  }
+  webStudioPublish.deployRelease(distDir, WS_SITES_ROOT, domain);
+}
+
 function startPublishBackground(site, domain) {
   (async () => {
     const emit = (phase, extra = {}) => broadcast({ event: 'web_studio_publish', data: { siteId: site.id, phase, ...extra } });
@@ -1627,7 +1681,7 @@ function startPublishBackground(site, domain) {
         if (!b.ok) throw new Error('build failed before publish');
       }
       emit('deploy');
-      webStudioPublish.deployRelease(distDir, WS_SITES_ROOT, domain);
+      await deployWithGate(site, distDir, domain); // authoritative security gate + atomic release swap
       emit('vhost');
       await webStudioHosting.createVhost(domain, { tls: false });
       emit('cert');
@@ -1870,7 +1924,7 @@ app.post('/api/web-studio/sites/:id/ai-edit', requireClientOrAdmin, heavyLimiter
     if (result.ok) { site.plan = result.plan; site.meta = result.meta || {}; if (result.provenance) site.provenance = result.provenance; }
     if (!result.ok) site.error = result.error;
     // Keep the live HTTP site in sync after an AI regen, if hosting is already wired.
-    if (result.ok && site.hostingSetup && site.domain) { try { webStudioPublish.deployRelease(path.join(wsWorkspaceDir(site.id), 'dist'), WS_SITES_ROOT, site.domain); } catch (e) { appendLog(`web-studio: redeploy failed for ${site.domain}: ${e.message}`); } }
+    if (result.ok && site.hostingSetup && site.domain) { try { await deployWithGate(site, path.join(wsWorkspaceDir(site.id), 'dist'), site.domain); } catch (e) { appendLog(`web-studio: redeploy failed for ${site.domain}: ${e.message}`); } }
   } catch (e) { site.status = 'failed'; site.error = e.message; }
   saveState('web_studio_sites', webStudioSites);
   broadcast({ event: 'web_studio_site', data: site });
@@ -1916,7 +1970,7 @@ app.put('/api/web-studio/sites/:id/content', requireClientOrAdmin, async (req, r
       try { const pr = webStudioPipeline.writeProvenanceSidecar(ws, path.join(ws, 'dist'), plan, provMeta, signProvenance); if (pr) site.provenance = { ...provMeta, contentHash: pr.contentHash, credential: pr.credential }; }
       catch (e) { appendLog(`web-studio: provenance re-sign skipped: ${e.message}`); }
     } else { site.error = result.error; }
-    if (result.ok && site.hostingSetup && site.domain) { try { webStudioPublish.deployRelease(path.join(ws, 'dist'), WS_SITES_ROOT, site.domain); } catch (e) { appendLog(`web-studio: redeploy failed for ${site.domain}: ${e.message}`); } }
+    if (result.ok && site.hostingSetup && site.domain) { try { await deployWithGate(site, path.join(ws, 'dist'), site.domain); } catch (e) { appendLog(`web-studio: redeploy failed for ${site.domain}: ${e.message}`); } }
     saveState('web_studio_sites', webStudioSites);
     broadcast({ event: 'web_studio_site', data: site });
     res.json({ ok: result.ok, status: site.status, log: result.log });
@@ -1946,7 +2000,7 @@ app.post('/api/web-studio/sites/:id/build', requireClientOrAdmin, async (req, re
     } catch (e) { appendLog(`web-studio: provenance re-sign skipped: ${e.message}`); }
   }
   // Keep the live HTTP site in sync after an edit-rebuild, if hosting is already wired.
-  if (result.ok && site.hostingSetup && site.domain) { try { webStudioPublish.deployRelease(path.join(wsWorkspaceDir(site.id), 'dist'), WS_SITES_ROOT, site.domain); } catch (e) { appendLog(`web-studio: redeploy failed for ${site.domain}: ${e.message}`); } }
+  if (result.ok && site.hostingSetup && site.domain) { try { await deployWithGate(site, path.join(wsWorkspaceDir(site.id), 'dist'), site.domain); } catch (e) { appendLog(`web-studio: redeploy failed for ${site.domain}: ${e.message}`); } }
   saveState('web_studio_sites', webStudioSites);
   broadcast({ event: 'web_studio_site', data: site });
   res.json({ ok: result.ok, status: site.status, log: result.log });
@@ -1995,6 +2049,18 @@ app.post('/api/web-studio/sites/:id/publish', requireClientOrAdmin, async (req, 
   try { dns = await webStudioDns.checkDomainDns(domain); }
   catch (e) { return res.status(500).json({ error: `DNS check failed: ${e.message}` }); }
   if (!dns.ok) return res.status(400).json({ error: dns.reason, dns });
+
+  // Security pre-check (report-only semgrep scan of the built output). 'block' refuses publish on
+  // error-severity findings; 'warn'/'off' proceed (findings still surfaced on the site). Fail-open.
+  const gateMode = settings.security?.gate_publish || 'off';
+  if (gateMode !== 'off') {
+    try {
+      const sec = await scanSiteSecurity(site);
+      if (gateMode === 'block' && sec.available && !sec.ok) {
+        return res.status(400).json({ error: `Publish blocked — ${sec.counts.error} error-severity security finding(s). Resolve them, or set the publish gate to 'warn'.`, security: sec });
+      }
+    } catch (e) { appendLog(`[security] publish pre-scan error for ${site.id}: ${e.message}`); }
+  }
 
   try {
     const gate = await gateAction({
@@ -5356,6 +5422,9 @@ const settings = loadState('settings', {
     mythos_max_tokens: process.env.AIOS_MYTHOS_MAX_TOKENS || '200000',    // per-assessment token budget
     scan_enabled: process.env.AIOS_SECURITY_SCAN_ENABLED || 'false',      // 'true' enables the periodic self-scan cron
     scan_interval: process.env.AIOS_SECURITY_SCAN_INTERVAL || '0 4 * * 0', // cron expr (default weekly, Sun 4am)
+    gate_publish: process.env.AIOS_SECURITY_GATE_PUBLISH || 'off',        // 'off' | 'warn' | 'block' — Web Studio publish security gate
+    semgrep_bin: process.env.AIOS_SEMGREP_BIN || 'semgrep',
+    semgrep_config: process.env.AIOS_SEMGREP_CONFIG || 'auto',            // semgrep ruleset for the publish gate
   },
   seo: {
     dataforseo_login: process.env.DATAFORSEO_LOGIN || '',
@@ -5548,6 +5617,9 @@ app.get('/api/settings', requireAdmin, (req, res) => {
       mythos_max_tokens: settings.security.mythos_max_tokens,
       scan_enabled: settings.security.scan_enabled,
       scan_interval: settings.security.scan_interval,
+      gate_publish: settings.security.gate_publish,
+      semgrep_bin: settings.security.semgrep_bin,
+      semgrep_config: settings.security.semgrep_config,
     },
     seo: {
       dataforseo_login: settings.seo.dataforseo_login || '',
@@ -6773,7 +6845,9 @@ try {
     maxTokens: parseInt(settings.security?.mythos_max_tokens, 10) || 200000,
     anthropicKey: settings.ai?.anthropic_api_key || process.env.ANTHROPIC_API_KEY || '',
     outDir: path.join(STATE_DIR, 'security'),
-    allowRoots: [BASE], // Phase 1: the AI OS tree (self-defense, report-only). Phase 3 adds the web-studio sites dir.
+    allowRoots: [BASE], // the AI OS tree (covers site workspaces under BASE/.magent/artifacts/web-studio).
+    semgrepBin: settings.security?.semgrep_bin || 'semgrep',
+    semgrepConfig: settings.security?.semgrep_config || 'auto',
   });
   // Sweep transient run dirs orphaned by a crash (assess/audit/threatModel clean their own on exit).
   try { const _sec = path.join(STATE_DIR, 'security'); if (fs.existsSync(_sec)) for (const d of fs.readdirSync(_sec)) { if (/^(snap|audit|tm|assess)-/.test(d)) fs.rmSync(path.join(_sec, d), { recursive: true, force: true }); } } catch {}
