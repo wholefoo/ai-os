@@ -188,6 +188,8 @@ function crmManagedActions(c, data) {
         <button class="btn" onclick="crmChangePlan('${c.id}')">Change</button></div>
       <div class="ws-row" style="gap:8px;align-items:center;"><span class="crm-muted" style="min-width:74px;">Billing</span>
         <button class="btn" onclick="crmBillingLink('${c.id}')">Generate billing / renewal link</button></div>
+      <div class="ws-row" style="gap:8px;align-items:center;"><span class="crm-muted" style="min-width:74px;">Security</span>
+        <button class="btn" onclick="crmSecurityAssessment('${c.id}')">Run security assessment</button></div>
       <div id="cmResult" style="word-break:break-all;font-size:13px;margin-top:2px;"></div>
     </div>`;
 }
@@ -217,6 +219,16 @@ async function crmBillingLink(id) {
   if (!r || r.error) return crmResultErr((r && r.error) || 'Failed to generate link');
   const label = (r.kind === 'portal' ? 'Stripe billing portal link:' : 'Renewal link:') + (r.note ? ' (' + r.note + ')' : '');
   crmShowResult(crmResultLink(label, r.url));
+}
+
+async function crmSecurityAssessment(id) {
+  crmShowResult('<span class="crm-muted">Scanning the client’s sites… this can take a moment.</span>');
+  const r = await fetchJSON(`/api/crm/contacts/${id}/security-assessment`, { method: 'POST', body: {} });
+  if (!r || r.error) return crmResultErr((r && r.error) || 'Assessment failed');
+  const a = r.assessment || {}; const t = a.totals || {};
+  const verdict = a.siteCount ? (a.ok ? '<span style="color:#22c55e;">PASS</span>' : '<span style="color:#ef4444;">ACTION NEEDED</span>') : '—';
+  const rows = (a.sites || []).map((s) => `<div class="crm-muted" style="margin:2px 0;">${escapeHtml(s.name || s.id)}${s.domain ? ' · ' + escapeHtml(s.domain) : ''} — ${s.available ? `${s.counts.error} error · ${s.counts.warning} warn` : 'unscanned'}</div>`).join('');
+  crmShowResult(`<div>Security assessment ${verdict} — ${a.siteCount || 0} site(s): <strong>${t.error || 0}</strong> error · ${t.warning || 0} warn · ${t.info || 0} info. Logged to the timeline; the client sees it under Site Security.</div>${rows}`);
 }
 
 async function crmAddContact() {

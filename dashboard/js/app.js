@@ -42,8 +42,9 @@ async function applyRoleGating() {
   try { me = await fetchJSON('/api/auth/me'); } catch (e) { /* not logged in / error */ }
   const role = (me && me.role) || 'user';
   window.aiosRole = role;
-  if (role !== 'client') return role;
-  const CLIENT_VIEWS = new Set(['web-studio', 'seo-agency']); // web studio + their own SEO/AEO audits
+  // 'client-security' is a client deliverable; operators have richer equivalents, so hide it for them.
+  if (role !== 'client') { const n = document.querySelector('.nav-item[data-view="client-security"]'); if (n) n.style.display = 'none'; return role; }
+  const CLIENT_VIEWS = new Set(['web-studio', 'seo-agency', 'client-security']); // web studio + their own SEO/AEO audits + site security
   document.querySelectorAll('.nav-item').forEach((item) => {
     if (item.dataset.view && !CLIENT_VIEWS.has(item.dataset.view)) item.style.display = 'none';
   });
@@ -122,6 +123,7 @@ function switchView(view) {
     youtube: loadYouTube,
     hq: loadHQ,
     'seo-agency': loadSeoAgency,
+    'client-security': loadClientSecurity,
     plugins: loadPlugins,
     reports: loadReports,
     meetings: loadMeetings,
@@ -8252,6 +8254,44 @@ function renderSeoAgency() {
         </div>
       </div>
     `;
+  }).join('');
+}
+
+// --- Client "Site Security" deliverable: report-only per-site scan results (Phase 4). Reads the
+// already-client-reachable /api/web-studio/sites (site.security embedded). No new server route. ---
+async function loadClientSecurity() {
+  const data = await fetchJSON('/api/web-studio/sites');
+  const sites = (data && Array.isArray(data.sites)) ? data.sites : [];
+  renderClientSecurity(sites);
+}
+
+function renderClientSecurity(sites) {
+  const el = document.getElementById('clientSecurityList');
+  if (!el) return;
+  if (!sites.length) { el.innerHTML = '<div class="empty-state">No sites yet. Create or import a site in Web Studio.</div>'; return; }
+  el.innerHTML = sites.map((s) => {
+    const sec = s.security;
+    let status = '<span class="seo-audit-status">not scanned</span>', detail = '';
+    if (sec && !sec.available) { status = '<span class="seo-audit-status status-running">scanner unavailable</span>'; }
+    else if (sec) {
+      const c = sec.counts || {};
+      const clean = !(c.error || c.warning || c.info);
+      status = clean
+        ? '<span class="seo-score seo-score-good">clean</span>'
+        : `<span class="seo-score seo-score-${c.error ? 'critical' : 'warning'}">${c.error || 0} err · ${c.warning || 0} warn</span>`;
+      detail = (sec.findings || []).slice(0, 8).map((f) => {
+        const col = f.severity === 'ERROR' ? '#ef4444' : (f.severity === 'WARNING' ? '#eab308' : '#6b7280');
+        return `<div style="margin:3px 0;font-size:12px;"><span style="color:${col};font-weight:600;">${escapeHtml(f.severity || '')}</span> ${escapeHtml(f.title || '')}${f.file ? ` <code style="font-size:11px;">${escapeHtml(f.file)}${f.line ? ':' + f.line : ''}</code>` : ''}</div>`;
+      }).join('');
+      if (sec.scannedAt) detail += `<div class="crm-muted" style="margin-top:4px;font-size:11px;">scanned ${escapeHtml(sec.scannedAt)}</div>`;
+    }
+    return `<div class="seo-audit-card">
+      <div class="seo-audit-header">
+        <span class="seo-audit-domain">${escapeHtml(s.name || s.id)}${s.domain ? ' · ' + escapeHtml(s.domain) : ''}</span>
+        ${status}
+      </div>
+      ${detail ? `<div style="margin-top:8px;">${detail}</div>` : ''}
+    </div>`;
   }).join('');
 }
 

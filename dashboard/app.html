@@ -149,6 +149,9 @@
         <a href="#" class="nav-item" data-view="seo-agency">
           <span class="nav-icon">&#128269;</span> SEO Agency
         </a>
+        <a href="#" class="nav-item" data-view="client-security">
+          <span class="nav-icon">&#128737;</span> Site Security
+        </a>
         <a href="#" class="nav-item" data-view="plugins">
           <span class="nav-icon">&#129513;</span> Plugins
         </a>
@@ -1590,6 +1593,19 @@
         </div>
 
         <!-- SEO Agency View -->
+        <div class="view" id="view-client-security">
+          <div class="radar-header">
+            <div class="radar-header-left">
+              <h2 class="radar-title">Site Security</h2>
+              <span class="radar-subtitle">Report-only security scans of your managed sites — findings only, nothing is ever changed.</span>
+            </div>
+            <button class="btn" onclick="loadClientSecurity()">Refresh</button>
+          </div>
+          <section class="panel">
+            <div id="clientSecurityList"><div class="empty-state">Loading…</div></div>
+          </section>
+        </div>
+
         <div class="view" id="view-seo-agency">
           <div class="radar-header">
             <div class="radar-header-left">
@@ -2339,10 +2355,10 @@
     </div>
   </div>
 
-  <script src="js/app.js?v=47"></script>
+  <script src="js/app.js?v=48"></script>
   <script src="https://cdn.jsdelivr.net/npm/monaco-editor@0.52.2/min/vs/loader.js"></script>
   <script src="js/web-studio.js?v=13"></script>
-  <script src="js/crm.js?v=3"></script>
+  <script src="js/crm.js?v=4"></script>
   <script src="js/security.js?v=1"></script>
   <script src="js/brand-kits.js?v=1"></script>
 </body>

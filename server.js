@@ -7074,6 +7074,49 @@ app.post('/api/crm/contacts/:id/billing-link', requireAdmin, async (req, res) =>
     note: customerId ? 'Stripe billing portal unavailable — renewal link instead' : 'No Stripe customer on file — renewal link' });
 });
 
+// Run a report-only security assessment across a managed client's sites + record it as a CRM
+// deliverable (a 'security_assessment' activity, structured result in meta). Reuses the Phase 3
+// scanSiteSecurity (semgrep, read-only). Sites resolved by ownerEmail (the CRM join key).
+async function runClientSecurityAssessment(contact, req) {
+  const email = String(contact.email || '').toLowerCase();
+  const MAX_SITES = 25; // bound the synchronous scan time (one semgrep run per site) within one request
+  const owned = webStudioSites.filter((s) => s.ownerEmail && String(s.ownerEmail).toLowerCase() === email);
+  const sites = owned.slice(0, MAX_SITES);
+  const capped = owned.length > MAX_SITES;
+  let error = 0, warning = 0, info = 0, scanned = 0, unavailable = 0;
+  const perSite = [];
+  for (const site of sites) {
+    const sec = await scanSiteSecurity(site); // report-only; persists site.security + broadcasts
+    const c = sec.counts || {};
+    if (sec.available) { scanned++; error += (c.error || 0); warning += (c.warning || 0); info += (c.info || 0); }
+    else unavailable++;
+    perSite.push({ id: site.id, name: site.name, domain: site.domain || null, available: !!sec.available, ok: sec.ok !== false, counts: { error: c.error || 0, warning: c.warning || 0, info: c.info || 0 } });
+  }
+  const scannedAt = new Date().toISOString();
+  const ok = error === 0;
+  const summary = !owned.length
+    ? 'Security assessment: no managed sites to scan.'
+    : `Security assessment: ${sites.length}${capped ? ` of ${owned.length}` : ''} site(s) — ${error} error · ${warning} warn · ${info} info${unavailable ? ` · ${unavailable} unscanned` : ''} — ${ok ? 'PASS' : 'ACTION NEEDED'}`;
+  const assessment = { scannedAt, siteCount: owned.length, scanned, unavailable, capped, totals: { error, warning, info }, ok, sites: perSite };
+  try {
+    crm && crm.repo && crm.repo.activities && crm.repo.activities.add({
+      contactId: contact.id, type: 'security_assessment', body: summary, meta: assessment,
+      author: (req && req.session && (req.session.email || req.session.name)) || 'operator',
+      // No dedupeKey — each assessment is a distinct point-in-time deliverable; keep the full history.
+    });
+  } catch {}
+  try { broadcast({ event: 'crm_update', data: { id: contact.id } }); } catch {}
+  return assessment;
+}
+
+// Operator action: assess a managed client's sites (report-only) + log the CRM deliverable.
+app.post('/api/crm/contacts/:id/security-assessment', requireAdmin, heavyLimiter, async (req, res) => {
+  const contact = (crm && crm.repo && crm.repo.contacts) ? crm.repo.contacts.get(req.params.id) : null;
+  if (!contact) return res.status(404).json({ error: 'contact not found' });
+  try { const assessment = await runClientSecurityAssessment(contact, req); res.json({ ok: true, assessment }); }
+  catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 app.post('/api/seo/free-audit', heavyLimiter, async (req, res) => {
   const { domain, email, name } = req.body;
   if (!domain) return res.status(400).json({ error: 'Domain is required' });
