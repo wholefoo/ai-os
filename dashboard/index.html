@@ -311,6 +311,186 @@
     </div>
   </section>
 
+  <!-- Showcase Carousel — auto-cycling 3D feature highlights -->
+  <style>
+    .showcase-carousel{position:relative;max-width:1120px;margin:8px auto 64px;padding:0 24px}
+    .carousel-viewport{position:relative;height:400px;border-radius:22px;overflow:hidden;border:1px solid rgba(255,255,255,.08);background:#070b18;box-shadow:0 24px 70px rgba(0,0,0,.45)}
+    .carousel-slide{position:absolute;inset:0;opacity:0;transition:opacity 1s ease;display:flex;align-items:center;justify-content:center;pointer-events:none}
+    .carousel-slide.active{opacity:1;pointer-events:auto}
+    .carousel-slide svg{position:absolute;inset:0;width:100%;height:100%}
+    .carousel-caption{position:relative;z-index:2;text-align:center;max-width:740px;padding:0 28px}
+    .carousel-caption h2{font-size:clamp(26px,4.4vw,46px);font-weight:800;line-height:1.12;margin:0 0 12px;color:#fff;text-shadow:0 2px 28px rgba(0,0,0,.6)}
+    .carousel-caption p{font-size:clamp(14px,2.1vw,18px);line-height:1.6;color:rgba(226,232,240,.94);margin:0;text-shadow:0 1px 16px rgba(0,0,0,.6)}
+    .carousel-dots{display:flex;gap:11px;justify-content:center;margin-top:20px}
+    .carousel-dot{width:9px;height:9px;border-radius:50%;border:none;background:rgba(255,255,255,.22);cursor:pointer;padding:0;transition:background .3s,width .3s,border-radius .3s}
+    .carousel-dot.active{background:#3b82f6;width:28px;border-radius:5px}
+    @media(max-width:640px){.carousel-viewport{height:340px}}
+    @keyframes cf-pulse{0%,100%{opacity:.45}50%{opacity:.9}}
+    @keyframes cf-float{0%,100%{transform:translateY(0)}50%{transform:translateY(-12px)}}
+    .cf-pulse{animation:cf-pulse 3.4s ease-in-out infinite}
+    .cf-float{animation:cf-float 6s ease-in-out infinite}
+    @media(prefers-reduced-motion:reduce){.carousel-slide{transition:none}.cf-pulse,.cf-float{animation:none}}
+  </style>
+  <section class="showcase-carousel" aria-label="Feature highlights">
+    <div class="carousel-viewport" id="showcaseCarousel">
+
+      <div class="carousel-slide active">
+        <svg viewBox="0 0 1120 400" preserveAspectRatio="xMidYMid slice" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+          <defs>
+            <radialGradient id="a1bg" cx="50%" cy="38%" r="80%"><stop offset="0%" stop-color="#172554"/><stop offset="100%" stop-color="#060912"/></radialGradient>
+            <radialGradient id="a1core" cx="36%" cy="30%" r="75%"><stop offset="0%" stop-color="#bae6fd"/><stop offset="42%" stop-color="#3b82f6"/><stop offset="100%" stop-color="#1e3a8a"/></radialGradient>
+            <radialGradient id="a1n" cx="36%" cy="30%" r="75%"><stop offset="0%" stop-color="#ddd6fe"/><stop offset="100%" stop-color="#7c3aed"/></radialGradient>
+            <filter id="a1g" x="-60%" y="-60%" width="220%" height="220%"><feGaussianBlur stdDeviation="18"/></filter>
+          </defs>
+          <rect width="1120" height="400" fill="url(#a1bg)"/>
+          <g stroke="#60a5fa" stroke-opacity=".28" stroke-width="1.5">
+            <line x1="560" y1="200" x2="300" y2="92"/><line x1="560" y1="200" x2="852" y2="118"/>
+            <line x1="560" y1="200" x2="222" y2="300"/><line x1="560" y1="200" x2="892" y2="286"/>
+            <line x1="560" y1="200" x2="412" y2="340"/><line x1="560" y1="200" x2="724" y2="348"/>
+          </g>
+          <circle cx="560" cy="200" r="82" fill="url(#a1core)" filter="url(#a1g)" class="cf-pulse"/>
+          <circle cx="300" cy="92" r="20" fill="url(#a1n)"/><circle cx="852" cy="118" r="16" fill="url(#a1n)"/>
+          <circle cx="222" cy="300" r="14" fill="url(#a1n)"/><circle cx="892" cy="286" r="23" fill="url(#a1n)"/>
+          <circle cx="412" cy="340" r="12" fill="url(#a1n)"/><circle cx="724" cy="348" r="18" fill="url(#a1n)"/>
+          <circle cx="560" cy="200" r="54" fill="url(#a1core)"/>
+        </svg>
+        <div class="carousel-caption">
+          <h2>55 AI Agents. One Command Center.</h2>
+          <p>A Virtual Corporate HQ of specialized agents across 10 departments — orchestrated, not improvised.</p>
+        </div>
+      </div>
+
+      <div class="carousel-slide">
+        <svg viewBox="0 0 1120 400" preserveAspectRatio="xMidYMid slice" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+          <defs>
+            <radialGradient id="a2bg" cx="50%" cy="42%" r="85%"><stop offset="0%" stop-color="#0e1b44"/><stop offset="100%" stop-color="#05080f"/></radialGradient>
+            <radialGradient id="a2glow" cx="50%" cy="50%" r="50%"><stop offset="0%" stop-color="#3b82f6" stop-opacity=".55"/><stop offset="100%" stop-color="#3b82f6" stop-opacity="0"/></radialGradient>
+            <linearGradient id="a2a" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#e0f2fe"/><stop offset="100%" stop-color="#3b82f6"/></linearGradient>
+            <filter id="a2g" x="-40%" y="-40%" width="180%" height="180%"><feGaussianBlur stdDeviation="5" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+          </defs>
+          <rect width="1120" height="400" fill="url(#a2bg)"/>
+          <ellipse cx="560" cy="200" rx="430" ry="185" fill="url(#a2glow)"/>
+          <g transform="translate(560,202) scale(1.3,0.62)" class="cf-float" filter="url(#a2g)">
+            <g transform="translate(0,150)"><rect x="-105" y="-105" width="210" height="210" rx="26" transform="rotate(45)" fill="#1d4ed8" stroke="#60a5fa" stroke-width="3"/></g>
+            <g transform="translate(0,50)"><rect x="-105" y="-105" width="210" height="210" rx="26" transform="rotate(45)" fill="#2563eb" stroke="#93c5fd" stroke-width="3"/></g>
+            <g transform="translate(0,-50)"><rect x="-105" y="-105" width="210" height="210" rx="26" transform="rotate(45)" fill="#3b82f6" stroke="#bae6fd" stroke-width="3"/></g>
+            <g transform="translate(0,-150)"><rect x="-105" y="-105" width="210" height="210" rx="26" transform="rotate(45)" fill="url(#a2a)" stroke="#e0f2fe" stroke-width="3"/></g>
+          </g>
+        </svg>
+        <div class="carousel-caption">
+          <h2>6 Models. 4 Tiers. Auto-Routed.</h2>
+          <p>Every task flows to the right model for cost and quality — Opus 4.8, GPT, Gemini, DeepSeek, Grok &amp; Perplexity.</p>
+        </div>
+      </div>
+
+      <div class="carousel-slide">
+        <svg viewBox="0 0 1120 400" preserveAspectRatio="xMidYMid slice" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+          <defs>
+            <linearGradient id="a3bg" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#0c1228"/><stop offset="100%" stop-color="#060912"/></linearGradient>
+            <linearGradient id="a3win" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#243349"/><stop offset="100%" stop-color="#0f172a"/></linearGradient>
+            <linearGradient id="a3acc" x1="0" y1="0" x2="1" y2="0"><stop offset="0%" stop-color="#3b82f6"/><stop offset="100%" stop-color="#8b5cf6"/></linearGradient>
+            <radialGradient id="a3glow" cx="50%" cy="50%" r="50%"><stop offset="0%" stop-color="#6366f1" stop-opacity=".5"/><stop offset="100%" stop-color="#6366f1" stop-opacity="0"/></radialGradient>
+          </defs>
+          <rect width="1120" height="400" fill="url(#a3bg)"/>
+          <ellipse cx="560" cy="200" rx="450" ry="195" fill="url(#a3glow)"/>
+          <g transform="translate(560,205)" class="cf-float">
+            <g transform="skewY(-8)">
+              <rect x="-180" y="-102" width="430" height="250" rx="16" fill="#11192e" opacity=".55"/>
+              <rect x="-260" y="-130" width="430" height="250" rx="16" fill="url(#a3win)" stroke="#334155" stroke-width="1.5"/>
+              <path d="M-260,-114 a16,16 0 0 1 16,-16 h398 a16,16 0 0 1 16,16 v18 h-430 Z" fill="#1e293b"/>
+              <circle cx="-238" cy="-113" r="5" fill="#ef4444"/><circle cx="-220" cy="-113" r="5" fill="#f59e0b"/><circle cx="-202" cy="-113" r="5" fill="#22c55e"/>
+              <rect x="-240" y="-78" width="190" height="16" rx="8" fill="url(#a3acc)"/>
+              <rect x="-240" y="-48" width="390" height="10" rx="5" fill="#334155"/>
+              <rect x="-240" y="-30" width="350" height="10" rx="5" fill="#334155"/>
+              <rect x="-240" y="4" width="120" height="62" rx="10" fill="#1e3a8a"/>
+              <rect x="-108" y="4" width="120" height="62" rx="10" fill="#312e81"/>
+              <rect x="24" y="4" width="120" height="62" rx="10" fill="#0e7490"/>
+              <rect x="-240" y="84" width="250" height="12" rx="6" fill="#334155"/>
+            </g>
+          </g>
+        </svg>
+        <div class="carousel-caption">
+          <h2>Design, Build &amp; Host Sites with AI.</h2>
+          <p>AI Web Studio ships production sites to your domain with automatic TLS — security-scanned before they go live.</p>
+        </div>
+      </div>
+
+      <div class="carousel-slide">
+        <svg viewBox="0 0 1120 400" preserveAspectRatio="xMidYMid slice" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+          <defs>
+            <radialGradient id="a4bg" cx="50%" cy="44%" r="85%"><stop offset="0%" stop-color="#06304a"/><stop offset="100%" stop-color="#05080f"/></radialGradient>
+            <radialGradient id="a4glow" cx="50%" cy="50%" r="50%"><stop offset="0%" stop-color="#22d3ee" stop-opacity=".5"/><stop offset="100%" stop-color="#22d3ee" stop-opacity="0"/></radialGradient>
+            <linearGradient id="a4f" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#67e8f9"/><stop offset="100%" stop-color="#2563eb"/></linearGradient>
+            <linearGradient id="a4t" x1="0" y1="0" x2="1" y2="0"><stop offset="0%" stop-color="#cffafe"/><stop offset="100%" stop-color="#67e8f9"/></linearGradient>
+            <filter id="a4g" x="-60%" y="-60%" width="220%" height="220%"><feGaussianBlur stdDeviation="8"/></filter>
+          </defs>
+          <rect width="1120" height="400" fill="url(#a4bg)"/>
+          <ellipse cx="560" cy="205" rx="440" ry="180" fill="url(#a4glow)"/>
+          <g transform="translate(388,330)" class="cf-float">
+            <g><rect x="0" y="-96" width="62" height="96" fill="url(#a4f)"/><polygon points="0,-96 62,-96 86,-112 24,-112" fill="url(#a4t)"/><polygon points="62,-96 86,-112 86,-16 62,0" fill="#1e3a8a"/></g>
+            <g transform="translate(96,0)"><rect x="0" y="-150" width="62" height="150" fill="url(#a4f)"/><polygon points="0,-150 62,-150 86,-166 24,-166" fill="url(#a4t)"/><polygon points="62,-150 86,-166 86,-16 62,0" fill="#1e3a8a"/></g>
+            <g transform="translate(192,0)"><rect x="0" y="-210" width="62" height="210" fill="url(#a4f)"/><polygon points="0,-210 62,-210 86,-226 24,-226" fill="url(#a4t)"/><polygon points="62,-210 86,-226 86,-16 62,0" fill="#1e3a8a"/></g>
+            <g transform="translate(288,0)"><rect x="0" y="-280" width="62" height="280" fill="url(#a4f)"/><polygon points="0,-280 62,-280 86,-296 24,-296" fill="url(#a4t)"/><polygon points="62,-280 86,-296 86,-16 62,0" fill="#1e3a8a"/></g>
+            <path d="M30,-170 L160,-230 L270,-280 L388,-330" fill="none" stroke="#a5f3fc" stroke-width="5" stroke-linecap="round" filter="url(#a4g)"/>
+            <path d="M30,-170 L160,-230 L270,-280 L388,-330" fill="none" stroke="#ecfeff" stroke-width="3" stroke-linecap="round"/>
+            <polygon points="388,-330 356,-330 384,-298" fill="#ecfeff"/>
+          </g>
+        </svg>
+        <div class="carousel-caption">
+          <h2>SEO + AEO Agency, Built In.</h2>
+          <p>Comprehensive audits plus an answer-engine readiness score for ChatGPT, Perplexity &amp; Google AI Overviews.</p>
+        </div>
+      </div>
+
+      <div class="carousel-slide">
+        <svg viewBox="0 0 1120 400" preserveAspectRatio="xMidYMid slice" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+          <defs>
+            <radialGradient id="a5bg" cx="50%" cy="42%" r="85%"><stop offset="0%" stop-color="#0a2622"/><stop offset="100%" stop-color="#04100b"/></radialGradient>
+            <radialGradient id="a5glow" cx="50%" cy="50%" r="50%"><stop offset="0%" stop-color="#10b981" stop-opacity=".6"/><stop offset="100%" stop-color="#10b981" stop-opacity="0"/></radialGradient>
+            <linearGradient id="a5sh" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#a7f3d0"/><stop offset="50%" stop-color="#10b981"/><stop offset="100%" stop-color="#059669"/></linearGradient>
+            <linearGradient id="a5edge" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#047857"/><stop offset="100%" stop-color="#022c22"/></linearGradient>
+            <filter id="a5g" x="-80%" y="-80%" width="260%" height="260%"><feGaussianBlur stdDeviation="26"/></filter>
+          </defs>
+          <rect width="1120" height="400" fill="url(#a5bg)"/>
+          <ellipse cx="560" cy="196" rx="330" ry="188" fill="url(#a5glow)"/>
+          <g transform="translate(560,196)" class="cf-float">
+            <path d="M0,-112 L96,-80 L96,28 Q96,96 0,130 Q-96,96 -96,28 L-96,-80 Z" fill="#34d399" filter="url(#a5g)" opacity=".55"/>
+            <path d="M0,-112 L96,-80 L96,28 Q96,96 0,130 Q-96,96 -96,28 L-96,-80 Z" fill="url(#a5edge)" transform="translate(8,10)"/>
+            <path d="M0,-112 L96,-80 L96,28 Q96,96 0,130 Q-96,96 -96,28 L-96,-80 Z" fill="url(#a5sh)" stroke="#d1fae5" stroke-opacity=".7" stroke-width="3"/>
+            <path d="M-40,6 L-10,38 L48,-36" fill="none" stroke="#ffffff" stroke-width="16" stroke-linecap="round" stroke-linejoin="round"/>
+          </g>
+        </svg>
+        <div class="carousel-caption">
+          <h2>AI Security, Built In.</h2>
+          <p>Opt-in, report-only scanning of your platform and the sites it builds — it surfaces findings, never auto-patches.</p>
+        </div>
+      </div>
+
+    </div>
+    <div class="carousel-dots" id="showcaseDots">
+      <button class="carousel-dot active" aria-label="Slide 1"></button>
+      <button class="carousel-dot" aria-label="Slide 2"></button>
+      <button class="carousel-dot" aria-label="Slide 3"></button>
+      <button class="carousel-dot" aria-label="Slide 4"></button>
+      <button class="carousel-dot" aria-label="Slide 5"></button>
+    </div>
+  </section>
+  <script>
+    (function(){
+      var vp=document.getElementById('showcaseCarousel'); if(!vp) return;
+      var slides=vp.querySelectorAll('.carousel-slide');
+      var dots=document.querySelectorAll('#showcaseDots .carousel-dot');
+      var i=0,timer=null,DELAY=5000;
+      function go(n){slides[i].classList.remove('active');if(dots[i])dots[i].classList.remove('active');i=(n+slides.length)%slides.length;slides[i].classList.add('active');if(dots[i])dots[i].classList.add('active');}
+      function next(){go(i+1);}
+      function start(){stop();timer=setInterval(next,DELAY);}
+      function stop(){if(timer){clearInterval(timer);timer=null;}}
+      dots.forEach(function(d,n){d.addEventListener('click',function(){go(n);start();});});
+      vp.addEventListener('mouseenter',stop);vp.addEventListener('mouseleave',start);
+      start();
+    })();
+  </script>
+
   <!-- AEO: Answer-first definition block (crawlable by AI search engines) -->
   <section style="max-width:800px; margin:0 auto; padding:0 24px 40px; text-align:center;">
     <p style="font-size:16px; line-height:1.8; color:var(--text-secondary);">
