@@ -156,7 +156,10 @@ const heavyLimiter = rateLimit({
 
 // Auth middleware — if API_TOKEN is set, all /api/ routes require it
 function authMiddleware(req, res, next) {
-  if (!API_TOKEN) return next(); // no token configured = open (dev mode)
+  // No API_TOKEN configured: fully open in DEV only. In production, fail CLOSED — fall through to the
+  // public-path + session checks below so routes that lack their own per-route auth are NOT wide open
+  // to anonymous callers (the dashboard still works: it authenticates via the session cookie).
+  if (!API_TOKEN && process.env.NODE_ENV !== 'production') return next();
   // Allow public endpoints without API token
   const url = req.originalUrl.split('?')[0]; // strip query string
   const publicPaths = ['/api/health', '/api/auth/login', '/api/auth/logout', '/api/auth/me', '/api/auth/set-password',
@@ -2287,7 +2290,8 @@ async function loadAgentPrompt(agentName) {
 }
 
 async function executeAgent(agentName, task, options = {}) {
-  const { maxTokens = 4096, context = '', untrusted } = options;
+  const { context = '', untrusted } = options;
+  const maxTokens = Math.min(Math.max(parseInt(options.maxTokens, 10) || 4096, 1), AGENT_MAX_TOKENS_CEILING);
   const routing = getAgentEffort(agentName);
   const startTime = Date.now();
 
@@ -2321,6 +2325,7 @@ async function executeAgent(agentName, task, options = {}) {
 
   let result, inputTokens = 0, outputTokens = 0, model = routing.model;
 
+  await acquireAgentSlot(); // bound concurrent paid provider calls process-wide
   try {
     if (routing.tier === 'creative') {
       // Gemini Omni — route to Google
@@ -2361,10 +2366,35 @@ async function executeAgent(agentName, task, options = {}) {
     console.error(`[AGENT] ${agentName} execution failed:`, e.message);
     logActivity('agent', `${agentName} failed: ${e.message}`, { agentName, model });
     return { ok: false, error: e.message, model };
+  } finally {
+    releaseAgentSlot();
   }
 }
 
 // --- Model-Specific API Callers ---
+
+// Provider-call bounds: a per-call wall-clock timeout (undici's default body timeout is ~5min and
+// silent), a process-wide concurrency cap (bounds paid-call fan-out + socket/event-loop pressure),
+// and an output-token ceiling (defense against a fat-fingered/abusive maxTokens). All env-tunable.
+const AGENT_FETCH_TIMEOUT_MS = parseInt(process.env.AGENT_FETCH_TIMEOUT_MS, 10) || 120000;
+const AGENT_MAX_CONCURRENCY = parseInt(process.env.AGENT_MAX_CONCURRENCY, 10) || 8;
+const AGENT_MAX_TOKENS_CEILING = parseInt(process.env.AGENT_MAX_TOKENS_CEILING, 10) || 200000;
+let _agentInFlight = 0; const _agentQueue = [];
+function acquireAgentSlot() {
+  if (_agentInFlight < AGENT_MAX_CONCURRENCY) { _agentInFlight++; return Promise.resolve(); }
+  return new Promise((resolve) => _agentQueue.push(resolve));
+}
+function releaseAgentSlot() {
+  _agentInFlight = Math.max(0, _agentInFlight - 1);
+  const next = _agentQueue.shift();
+  if (next) { _agentInFlight++; next(); }
+}
+async function fetchWithTimeout(url, opts = {}, ms = AGENT_FETCH_TIMEOUT_MS) {
+  const ctrl = new AbortController();
+  const t = setTimeout(() => ctrl.abort(), ms);
+  try { return await fetch(url, { ...opts, signal: ctrl.signal }); }
+  finally { clearTimeout(t); }
+}
 
 async function callAnthropic(systemPrompt, task, effort, maxTokens) {
   const apiKey = settings.ai.anthropic_api_key;
@@ -2379,7 +2409,7 @@ async function callAnthropic(systemPrompt, task, effort, maxTokens) {
   };
   if (effort) body.output_config = { effort };
 
-  const res = await fetch('https://api.anthropic.com/v1/messages', {
+  const res = await fetchWithTimeout('https://api.anthropic.com/v1/messages', {
     method: 'POST',
     headers: { 'x-api-key': apiKey, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
     body: JSON.stringify(body),
@@ -2404,7 +2434,7 @@ async function callAnthropic(systemPrompt, task, effort, maxTokens) {
 async function callChatCompletions({ provider, keyName, url, model, apiKey, systemPrompt, task, maxTokens }) {
   if (!apiKey) throw new Error(`${keyName} API key not configured — add it in Settings`);
 
-  const res = await fetch(url, {
+  const res = await fetchWithTimeout(url, {
     method: 'POST',
     headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -2448,7 +2478,7 @@ async function callGemini(systemPrompt, task, maxTokens) {
   const apiKey = settings.ai.gemini_api_key;
   if (!apiKey) throw new Error('Gemini API key not configured — add it in Settings');
 
-  const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`, {
+  const res = await fetchWithTimeout(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -6303,10 +6333,12 @@ async function applyProposal(proposal) {
 
     // Step 3: Git commit the changes
     try {
-      const { execSync } = require('child_process');
+      const { execSync, execFileSync } = require('child_process');
       const gitStatus = execSync('git status --porcelain', { cwd: BASE, encoding: 'utf-8' }).trim();
       if (gitStatus) {
-        execSync(`git add -A && git commit -m "Self-improvement: ${proposal.title.replace(/"/g, '\\"').substring(0, 60)}"`, { cwd: BASE, encoding: 'utf-8' });
+        // execFileSync (arg array, no shell) so a crafted proposal.title can't inject via backticks/$().
+        execFileSync('git', ['add', '-A'], { cwd: BASE });
+        execFileSync('git', ['commit', '-m', `Self-improvement: ${String(proposal.title).substring(0, 60)}`], { cwd: BASE });
         results.steps.push({ action: 'git-commit', success: true });
       }
     } catch (gitErr) {
@@ -6995,6 +7027,7 @@ app.post('/api/security/scan', requireAdmin, (req, res) => {
   const mode = (req.body && req.body.mode === 'deep') ? 'deep' : 'quick';
   const actor = (req.session && (req.session.email || req.session.name)) || 'operator';
   const scan = runSecurityScan({ mode, actor });
+  appendLog(`[security] manual ${mode} scan started by ${actor}`);
   res.json({ ok: true, scanId: scan.id, mode: scan.mode, status: 'running' });
 });
 
