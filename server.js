@@ -2288,6 +2288,15 @@ async function executeAgent(agentName, task, options = {}) {
   const routing = getAgentEffort(agentName);
   const startTime = Date.now();
 
+  // Hard cost ceiling (opt-in via settings.security.hard_budget or AIOS_HARD_BUDGET=true). Off by
+  // default = no behavior change (the advisory >=75% alert path is unchanged). When on, this is a
+  // kill-switch: once a period's spend reaches its configured budget, refuse further model calls.
+  if ((settings.security && settings.security.hard_budget === 'true') || process.env.AIOS_HARD_BUDGET === 'true') {
+    const cs = getCostSummary();
+    const over = ['daily', 'weekly', 'monthly'].find((p) => cs[p] && cs[p].budget && cs[p].cost >= cs[p].budget);
+    if (over) return { ok: false, error: `cost budget exceeded — ${over} spend $${cs[over].cost} ≥ budget $${cs[over].budget}`, model: routing.model, budgetExceeded: true };
+  }
+
   // Load the built-in agent prompt from its .md file
   const systemPrompt = await loadAgentPrompt(agentName);
   if (!systemPrompt) {
@@ -3440,7 +3449,7 @@ app.get('/api/mission', (req, res) => {
   res.json({ exists: true, ...parseFrontmatter(fs.readFileSync(mpath, 'utf-8')) });
 });
 
-app.put('/api/mission', (req, res) => {
+app.put('/api/mission', requireAdmin, (req, res) => {
   const mpath = path.join(MAGENT_DIR, 'mission.md');
   fs.writeFileSync(mpath, req.body.content, 'utf-8');
   logActivity('mission', 'Mission updated');
@@ -3459,7 +3468,7 @@ app.get('/api/team', (req, res) => {
   }
 });
 
-app.put('/api/team', (req, res) => {
+app.put('/api/team', requireAdmin, (req, res) => {
   const tpath = path.join(MAGENT_DIR, 'team.yaml');
   fs.writeFileSync(tpath, yaml.dump(req.body.team), 'utf-8');
   logActivity('team', 'Team roster updated');
@@ -3853,7 +3862,7 @@ app.get('/api/vault/:folder/:file', (req, res) => {
   res.json({ name: file, folder, content, ...parsed });
 });
 
-app.post('/api/vault/:folder', (req, res) => {
+app.post('/api/vault/:folder', requireAdmin, (req, res) => {
   const { folder } = req.params;
   if (!['raw', 'wiki', 'outputs'].includes(folder)) {
     return res.status(400).json({ error: 'Invalid vault folder' });
@@ -3861,11 +3870,15 @@ app.post('/api/vault/:folder', (req, res) => {
   const { filename, content } = req.body;
   if (!filename || !content) return res.status(400).json({ error: 'filename and content required' });
   const dir = path.join(VAULT_DIR, folder);
+  // Prevent path traversal: collapse to a bare basename and confirm it stays inside the vault folder.
+  const safeName = path.basename(String(filename));
+  const target = path.join(dir, safeName);
+  if (safeName.startsWith('.') || path.dirname(target) !== dir) return res.status(400).json({ error: 'invalid filename' });
   if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-  fs.writeFileSync(path.join(dir, filename), content, 'utf-8');
-  logActivity('vault', `File saved to vault/${folder}/${filename}`);
-  appendLog(`VAULT_WRITE: ${folder}/${filename}`);
-  res.json({ ok: true, path: `vault/${folder}/${filename}` });
+  fs.writeFileSync(target, content, 'utf-8');
+  logActivity('vault', `File saved to vault/${folder}/${safeName}`);
+  appendLog(`VAULT_WRITE: ${folder}/${safeName}`);
+  res.json({ ok: true, path: `vault/${folder}/${safeName}` });
 });
 
 // --- Cost Tracking API ---
@@ -5425,6 +5438,7 @@ const settings = loadState('settings', {
     gate_publish: process.env.AIOS_SECURITY_GATE_PUBLISH || 'off',        // 'off' | 'warn' | 'block' — Web Studio publish security gate
     semgrep_bin: process.env.AIOS_SEMGREP_BIN || 'semgrep',
     semgrep_config: process.env.AIOS_SEMGREP_CONFIG || 'auto',            // semgrep ruleset for the publish gate
+    hard_budget: process.env.AIOS_HARD_BUDGET || 'false',                 // 'true' = enforce the cost budget as a hard kill-switch in executeAgent
   },
   seo: {
     dataforseo_login: process.env.DATAFORSEO_LOGIN || '',
@@ -5620,6 +5634,7 @@ app.get('/api/settings', requireAdmin, (req, res) => {
       gate_publish: settings.security.gate_publish,
       semgrep_bin: settings.security.semgrep_bin,
       semgrep_config: settings.security.semgrep_config,
+      hard_budget: settings.security.hard_budget,
     },
     seo: {
       dataforseo_login: settings.seo.dataforseo_login || '',

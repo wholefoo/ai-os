@@ -1522,9 +1522,11 @@ function capitalize(str) {
 }
 
 function escapeHtml(str) {
-  const div = document.createElement('div');
-  div.textContent = str || '';
-  return div.innerHTML;
+  // Escapes for BOTH text and attribute contexts (quotes included) — values are interpolated into
+  // value="..."/href="..." across the dashboard, so quote-escaping is load-bearing, not cosmetic.
+  return String(str == null ? '' : str)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 }
 
 function timeAgo(timestamp) {
@@ -5126,8 +5128,8 @@ function renderHermesApprovals(approvals) {
         <span class="hermes-risk-badge ${a.risk}">${a.risk.toUpperCase()}</span>
         <span class="hermes-approval-time">${timeAgo(a.requestedAt)}</span>
       </div>
-      <div class="hermes-approval-action">${a.action}</div>
-      <div class="hermes-approval-context">${a.context}</div>
+      <div class="hermes-approval-action">${escapeHtml(a.action)}</div>
+      <div class="hermes-approval-context">${escapeHtml(a.context)}</div>
       <div class="hermes-approval-buttons">
         <button class="btn btn-success btn-sm" onclick="respondApproval('${a.id}', 'approve')">Approve</button>
         <button class="btn btn-danger btn-sm" onclick="respondApproval('${a.id}', 'reject')">Reject</button>
@@ -5148,16 +5150,16 @@ function renderHermesTasks(tasks) {
   el.innerHTML = tasks.map(t => `
     <div class="hermes-task-card">
       <div class="hermes-task-header">
-        <span class="hermes-task-name">${t.task}</span>
+        <span class="hermes-task-name">${escapeHtml(t.task)}</span>
         <span class="badge ${t.status === 'complete' ? 'badge-success' : t.status === 'running' ? 'badge-info' : ''}">${t.status}</span>
       </div>
       <div class="hermes-task-meta">
-        <span class="hermes-mode-badge">${t.mode}</span>
-        <span>via ${t.notifyVia || 'websocket'}</span>
+        <span class="hermes-mode-badge">${escapeHtml(t.mode)}</span>
+        <span>via ${escapeHtml(t.notifyVia || 'websocket')}</span>
         <span>${timeAgo(t.delegatedAt)}</span>
       </div>
       ${t.progress !== undefined ? `<div class="hermes-progress"><div class="hermes-progress-bar" style="width:${t.progress}%"></div></div>` : ''}
-      <div class="hermes-task-log">${(t.log || []).map(l => `<div class="hermes-log-line">${l}</div>`).join('')}</div>
+      <div class="hermes-task-log">${(t.log || []).map(l => `<div class="hermes-log-line">${escapeHtml(String(l))}</div>`).join('')}</div>
       ${t.mode === 'walkaway' && t.status === 'running' ? `
         <div class="hermes-walkaway-reply">
           <input type="text" class="form-input" id="reply-${t.id}" placeholder="Send a mobile reply...">
@@ -5181,12 +5183,12 @@ function renderHermesCron(jobs) {
   if (!jobs.length) { el.innerHTML = '<div class="empty-state">No cron jobs configured</div>'; return; }
   el.innerHTML = `<table class="table"><thead><tr><th>Task</th><th>Schedule</th><th>Last Run</th><th>Next Run</th><th>Runs</th><th>Notify</th><th></th></tr></thead><tbody>
     ${jobs.map(j => `<tr>
-      <td><strong>${j.task}</strong></td>
-      <td><code>${j.schedule}</code></td>
+      <td><strong>${escapeHtml(j.task)}</strong></td>
+      <td><code>${escapeHtml(j.schedule)}</code></td>
       <td>${j.lastRun ? timeAgo(j.lastRun) : '—'}</td>
       <td>${j.nextRun ? new Date(j.nextRun).toLocaleTimeString() : '—'}</td>
       <td>${j.runs || 0}</td>
-      <td>${j.notifyVia || 'ws'}</td>
+      <td>${escapeHtml(j.notifyVia || 'ws')}</td>
       <td><button class="btn btn-danger btn-sm" onclick="deleteHermesCron('${j.id}')">&#10005;</button></td>
     </tr>`).join('')}
   </tbody></table>`;

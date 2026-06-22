@@ -123,7 +123,7 @@ async function crmOpenContact(id) {
     ${crmManagedActions(c, data)}
 
     <h3 class="panel-title" style="margin-top:14px;">Sites (${data.sites.length})</h3>
-    ${data.sites.length ? data.sites.map((s) => `<div class="crm-detail-row"><span>${escapeHtml(s.name || s.domain || s.id)}</span><span class="crm-muted">${escapeHtml(s.domain || '')} ${s.url ? `· <a href="${escapeHtml(s.url)}" target="_blank" rel="noopener">open</a>` : ''}</span></div>`).join('') : '<div class="crm-muted">No linked sites.</div>'}
+    ${data.sites.length ? data.sites.map((s) => `<div class="crm-detail-row"><span>${escapeHtml(s.name || s.domain || s.id)}</span><span class="crm-muted">${escapeHtml(s.domain || '')} ${s.url ? `· <a href="${escapeHtml(crmSafeUrl(s.url))}" target="_blank" rel="noopener">open</a>` : ''}</span></div>`).join('') : '<div class="crm-muted">No linked sites.</div>'}
     ${crmState.unassigned.length ? `<div class="ws-row" style="gap:8px;margin-top:8px;">
       <select class="settings-input" id="cfLinkSite" style="flex:1;"><option value="">Link an unassigned site…</option>${linkOpts}</select>
       <button class="btn" onclick="crmLinkSite('${c.id}')">Link</button>
@@ -194,6 +194,8 @@ function crmManagedActions(c, data) {
     </div>`;
 }
 
+// Only allow http(s) links to be clickable — never javascript:/data: schemes from stored contact data.
+function crmSafeUrl(u) { return /^https?:\/\//i.test(String(u || '')) ? String(u) : '#'; }
 function crmShowResult(html) { const el = document.getElementById('cmResult'); if (el) el.innerHTML = html; }
 function crmResultErr(msg) { crmShowResult(`<span style="color:#fca5a5;">${escapeHtml(msg)}</span>`); }
 function crmResultLink(label, url) {
