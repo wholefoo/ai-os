@@ -5389,20 +5389,8 @@ async function saveSettings(section) {
     }
   }
 
-  // Show debug info on page
-  const debugEl = document.getElementById(`settings-${section}-debug`);
-  const debugLines = fields.map(f => {
-    const v = body[f];
-    if (typeof v === 'boolean') return `${f}=${v}`;
-    if (!v) return `${f}=EMPTY`;
-    if (v.includes('****')) return `${f}=MASKED`;
-    return `${f}=${v.substring(0, 6)}...(${v.length})`;
-  });
-  if (debugEl) debugEl.textContent = debugLines.join(' | ');
-
   if (!hasNewValue) {
     showSettingsToast('No new values entered — type a key then click Save', true);
-    if (debugEl) debugEl.textContent += ' → BLOCKED: all empty or masked';
     return;
   }
 
@@ -5411,9 +5399,6 @@ async function saveSettings(section) {
     const token = localStorage.getItem('ai-os-token');
     const headers = { 'Content-Type': 'application/json' };
     if (token) headers['Authorization'] = `Bearer ${token}`;
-
-    if (debugEl) debugEl.textContent += ` | token:${token ? 'YES' : 'NONE'}`;
-    console.log('[Settings] PUT', section, body);
 
     const res = await fetch(`/api/settings/${section}`, {
       method: 'PUT',
@@ -5425,8 +5410,6 @@ async function saveSettings(section) {
     const text = await res.text();
     let result;
     try { result = JSON.parse(text); } catch { result = { error: text }; }
-    console.log(`[Settings] HTTP ${res.status}:`, result);
-    if (debugEl) debugEl.textContent += ` → ${res.status}: ${JSON.stringify(result).substring(0, 120)}`;
 
     if (res.status === 401) {
       showSettingsToast('Session expired — log out and log back in', true);
@@ -5446,7 +5429,6 @@ async function saveSettings(section) {
     }
   } catch (e) {
     console.error('[Settings] Save error:', e);
-    if (debugEl) debugEl.textContent += ` → ERROR: ${e.message}`;
     showSettingsToast(`Network error: ${e.message}`, true);
   }
 }

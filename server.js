@@ -5767,6 +5767,16 @@ async function testJsonService(res, fetcher, getResult) {
   }
 }
 
+// Read a provider's JSON error body so a "Test connection" failure shows the real reason (e.g.
+// "Insufficient balance or no resource package") instead of a bare, misleading status code.
+async function httpErrorDetail(r) {
+  try {
+    const d = await r.json();
+    const m = d && (d.error?.message || d.message || (typeof d.error === 'string' ? d.error : null));
+    return m ? `HTTP ${r.status}: ${m}` : `HTTP ${r.status}`;
+  } catch { return `HTTP ${r.status}`; }
+}
+
 // POST test a connection (Hermes MCP, Telegram, Slack)
 app.post('/api/settings/test/:service', requireAdmin, async (req, res) => {
   const { service } = req.params;
@@ -5818,7 +5828,7 @@ app.post('/api/settings/test/:service', requireAdmin, async (req, res) => {
         body: JSON.stringify({ model: 'claude-opus-4-8', max_tokens: 10, messages: [{ role: 'user', content: 'ping' }] }),
       });
       const ok = r.ok;
-      res.json({ ok, message: ok ? 'Anthropic API key is valid' : `HTTP ${r.status} — check your key` });
+      res.json({ ok, message: ok ? 'Anthropic API key is valid' : await httpErrorDetail(r) });
     } catch (e) {
       res.json({ ok: false, message: `Connection failed: ${e.message}` });
     }
@@ -5828,7 +5838,7 @@ app.post('/api/settings/test/:service', requireAdmin, async (req, res) => {
       const r = await fetch('https://api.deepseek.com/models', {
         headers: { 'Authorization': `Bearer ${settings.ai.deepseek_api_key}` },
       });
-      res.json({ ok: r.ok, message: r.ok ? 'DeepSeek API key is valid' : `HTTP ${r.status} — check your key` });
+      res.json({ ok: r.ok, message: r.ok ? 'DeepSeek API key is valid' : await httpErrorDetail(r) });
     } catch (e) {
       res.json({ ok: false, message: `Connection failed: ${e.message}` });
     }
@@ -5844,7 +5854,7 @@ app.post('/api/settings/test/:service', requireAdmin, async (req, res) => {
         const models = data.data ? data.data.map(m => m.id).slice(0, 3).join(', ') : 'connected';
         res.json({ ok: true, message: `xAI API valid — models: ${models}` });
       } else {
-        res.json({ ok: false, message: `HTTP ${r.status} — check your xAI key` });
+        res.json({ ok: false, message: await httpErrorDetail(r) });
       }
     } catch (e) {
       res.json({ ok: false, message: `Connection failed: ${e.message}` });
@@ -5876,7 +5886,7 @@ app.post('/api/settings/test/:service', requireAdmin, async (req, res) => {
         body: JSON.stringify({ model: 'sonar', messages: [{ role: 'user', content: 'ping' }], max_tokens: 5 }),
       });
       const ok = r.ok;
-      res.json({ ok, message: ok ? 'Perplexity Sonar API connected' : `HTTP ${r.status} — check your key` });
+      res.json({ ok, message: ok ? 'Perplexity Sonar API connected' : await httpErrorDetail(r) });
     } catch (e) {
       res.json({ ok: false, message: `Connection failed: ${e.message}` });
     }
@@ -5889,7 +5899,7 @@ app.post('/api/settings/test/:service', requireAdmin, async (req, res) => {
         body: JSON.stringify({ model: 'glm-5.2', messages: [{ role: 'user', content: 'ping' }], max_tokens: 5 }),
       });
       const ok = r.ok;
-      res.json({ ok, message: ok ? 'Z.ai (GLM) API key is valid' : `HTTP ${r.status} — check your key` });
+      res.json({ ok, message: ok ? 'Z.ai (GLM) API key is valid' : await httpErrorDetail(r) });
     } catch (e) {
       res.json({ ok: false, message: `Connection failed: ${e.message}` });
     }
@@ -5904,7 +5914,7 @@ app.post('/api/settings/test/:service', requireAdmin, async (req, res) => {
         const data = await r.json();
         res.json({ ok: true, message: `Manus connected — ${data.username || 'account verified'}` });
       } else {
-        res.json({ ok: false, message: `HTTP ${r.status} — check your key` });
+        res.json({ ok: false, message: await httpErrorDetail(r) });
       }
     } catch (e) {
       res.json({ ok: false, message: `Connection failed: ${e.message}` });
@@ -5953,7 +5963,7 @@ app.post('/api/settings/test/:service', requireAdmin, async (req, res) => {
         const remaining = data.remaining || 'unknown';
         res.json({ ok: true, message: `D-ID connected — ${remaining} credits remaining` });
       } else {
-        res.json({ ok: false, message: `HTTP ${r.status} — check your D-ID API key` });
+        res.json({ ok: false, message: await httpErrorDetail(r) });
       }
     } catch (e) {
       res.json({ ok: false, message: `Connection failed: ${e.message}` });
