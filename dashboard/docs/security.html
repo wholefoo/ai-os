@@ -27,6 +27,18 @@
   }
   </script>
   <script type="application/ld+json">{"@context":"https://schema.org","@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Home","item":"https://aiosorchestrationlab.com/"},{"@type":"ListItem","position":2,"name":"Documentation","item":"https://aiosorchestrationlab.com/docs/"},{"@type":"ListItem","position":3,"name":"Security"}]}</script>
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "FAQPage",
+    "mainEntity": [
+      { "@type": "Question", "name": "Does the Mythos-Defense Security Suite ever change my live system automatically?", "acceptedAnswer": { "@type": "Answer", "text": "No. The suite is report-only. The deep AI scan that can propose code fixes runs against a disposable copy of the source, never the live tree, and static analysis is read-only. You decide what, if anything, to apply." } },
+      { "@type": "Question", "name": "Is the security suite on by default?", "acceptedAnswer": { "@type": "Answer", "text": "No. It is off by default and requires Python 3.11+, the open-source mythos-defense CLI, and semgrep installed and enabled." } },
+      { "@type": "Question", "name": "Is it a security guarantee?", "acceptedAnswer": { "@type": "Answer", "text": "No. It is an AI-assisted security capability, not a guarantee. Static analysis catches many real issues but cannot prove the absence of vulnerabilities. Treat it as one strong layer of defense, not the only one." } },
+      { "@type": "Question", "name": "Do I need an API key to use the security suite?", "acceptedAnswer": { "@type": "Answer", "text": "The semgrep-based publish gate and per-site scans need no AI key. The deep AI assessment and threat-model use your own Anthropic key, in keeping with AI OS's BYOK model." } }
+    ]
+  }
+  </script>
 </head>
 <body>
   <nav class="landing-nav">
@@ -57,7 +69,7 @@
           </div>
 
           <h1>Security</h1>
-          <p class="docs-lead">AI OS ships with an <strong>opt-in, AI-assisted security suite</strong> built on the open-source <a href="https://github.com/wholefoo/mythos-defense">mythos-defense</a> engine and <a href="https://semgrep.dev">semgrep</a>. It assesses the platform itself, gates what your AI Web Studio publishes, and turns security into a deliverable for managed clients. Everything here is <strong>report-only</strong>: it surfaces findings and patch <em>recommendations</em> &mdash; it never auto-patches your live system.</p>
+          <p class="docs-lead">AI OS ships with an <strong>opt-in, AI-assisted security suite</strong> built on the open-source <a href="https://github.com/wholefoo/mythos-defense" target="_blank" rel="noopener">mythos-defense</a> engine and <a href="https://semgrep.dev" target="_blank" rel="noopener">semgrep</a>. It assesses the platform itself, gates what your AI Web Studio publishes, and turns security into a deliverable for managed clients. Everything here is <strong>report-only</strong>: it surfaces findings and patch <em>recommendations</em> &mdash; it never auto-patches your live system.</p>
 
           <p><strong>Honest framing:</strong> this is an AI-assisted security capability, not a security guarantee, and it is <strong>OFF by default</strong>. It requires Python&nbsp;3.11+, the mythos-defense CLI, and semgrep installed and enabled (see <a href="#enabling">Enabling the suite</a>). Static analysis catches many real issues but cannot prove the absence of vulnerabilities &mdash; treat it as one layer of defense, not the only one.</p>
 
@@ -121,6 +133,16 @@
           </ol>
           <p>The deep AI scan and threat-model use your Anthropic API key; the semgrep-based publish gate and per-site scans need no AI key. semgrep loads its rulesets from its registry, so the server needs outbound access to it &mdash; if rules can't load, scans report <em>unavailable</em> (and the gate fails open) rather than a false &ldquo;clean.&rdquo;</p>
 
+          <h2 id="faq">Frequently asked questions</h2>
+          <h3>Does the suite ever change my live system automatically?</h3>
+          <p>No. The suite is report-only. The deep AI scan that can propose code fixes runs against a disposable copy of the source &mdash; never the live tree &mdash; and static analysis is read-only. You decide what, if anything, to apply.</p>
+          <h3>Is it on by default?</h3>
+          <p>No. It is off by default and requires Python&nbsp;3.11+, the open-source mythos-defense CLI, and semgrep installed and enabled.</p>
+          <h3>Is it a security guarantee?</h3>
+          <p>No. It is an AI-assisted security capability, not a guarantee. Static analysis catches many real issues but cannot prove the absence of vulnerabilities &mdash; treat it as one strong layer of defense, not the only one.</p>
+          <h3>Do I need an API key?</h3>
+          <p>The semgrep-based publish gate and per-site scans need no AI key. The deep AI assessment and threat-model use your own Anthropic key, in keeping with AI OS's BYOK model.</p>
+
           <div class="docs-page-nav">
             <a href="/docs/deployment">&larr; Deployment</a>
             <a href="/docs/api">API Reference &rarr;</a>
@@ -135,6 +157,7 @@
           <a href="#how-it-works">How it works</a>
           <a href="#safety">Safety model</a>
           <a href="#enabling">Enabling the suite</a>
+          <a href="#faq">FAQ</a>
         </aside>
       </div>
     </div>

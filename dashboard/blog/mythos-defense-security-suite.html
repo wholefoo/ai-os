@@ -108,7 +108,7 @@
     <p>From an operator <strong>Security dashboard</strong>, you can audit the AI OS instance itself &mdash; on demand or on a schedule. There are two modes:</p>
     <ul>
       <li><strong>Quick scan</strong> &mdash; a STRIDE threat-model plus a dependency audit. Fast and read-only.</li>
-      <li><strong>Deep scan</strong> &mdash; the full loop: a STRIDE threat-model, <a href="https://semgrep.dev">semgrep</a> static analysis to red-team the code, and an AI <em>blue-team</em> that proposes fixes, which are then verified. The deep scan runs against a <strong>disposable copy</strong> of the source, so the live system is never touched.</li>
+      <li><strong>Deep scan</strong> &mdash; the full loop: a STRIDE threat-model, <a href="https://semgrep.dev" target="_blank" rel="noopener">semgrep</a> static analysis to red-team the code, and an AI <em>blue-team</em> that proposes fixes, which are then verified. The deep scan runs against a <strong>disposable copy</strong> of the source, so the live system is never touched.</li>
     </ul>
     <p><strong>The benefit:</strong> you find the classes of bug attackers look for &mdash; injection, broken access control, secret exposure, dependency CVEs &mdash; before they find you, with severity, location, and CWE references for each finding, and a notification when something is CRITICAL or HIGH.</p>
 
@@ -139,7 +139,7 @@
     </ul>
 
     <h2>Built on open source &mdash; and on your own model budget</h2>
-    <p>Under the hood, the suite drives two open tools through a constrained bridge: <strong>semgrep</strong> for fast, deterministic static analysis (the publish gate and per-site scans use it directly &mdash; no AI cost, seconds not minutes), and the open-source <strong><a href="https://github.com/wholefoo/mythos-defense">mythos-defense</a></strong> engine for the deeper AI red-team / blue-team loop. The deep AI assessment uses <em>your</em> Anthropic key, in keeping with AI OS's BYOK model &mdash; there are no per-scan SaaS fees.</p>
+    <p>Under the hood, the suite drives two open tools through a constrained bridge: <strong>semgrep</strong> for fast, deterministic static analysis (the publish gate and per-site scans use it directly &mdash; no AI cost, seconds not minutes), and the open-source <strong><a href="https://github.com/wholefoo/mythos-defense" target="_blank" rel="noopener">mythos-defense</a></strong> engine for the deeper AI red-team / blue-team loop. The deep AI assessment uses <em>your</em> Anthropic key, in keeping with AI OS's BYOK model &mdash; there are no per-scan SaaS fees.</p>
 
     <p>We build this the way we recommend you use it: we run the suite against AI OS itself. Eating our own dog food means the findings it's designed to catch are the findings we fix &mdash; before they'd ever reach you.</p>
 
