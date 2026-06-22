@@ -56,3 +56,6 @@ docs-export/
 auto-research/history/
 auto-research/asset/*
 !auto-research/asset/.gitkeep
+
+# Carousel source art (optimized .webp is committed instead)
+dashboard/assets/carousel/*.png
