@@ -1107,6 +1107,14 @@ docPages.forEach(page => {
 // Static files (served by Nginx in production, Express in dev)
 app.use(express.static(path.join(BASE, 'dashboard'), {
   maxAge: process.env.NODE_ENV === 'production' ? '7d' : 0,
+  setHeaders: (res, filePath) => {
+    // HTML / JS / CSS change on every deploy — force revalidation (cheap ETag 304s) so a returning
+    // browser never runs stale code. A 7-day max-age here silently breaks newly-shipped features:
+    // e.g. a new Settings field renders (its HTML is served by a revalidating route) but its save
+    // logic lives in app.js, which the browser keeps from cache → the field "doesn't save". Other
+    // assets (images, fonts, webp) keep the long cache above.
+    if (/\.(html|js|css)$/i.test(filePath)) res.setHeader('Cache-Control', 'no-cache');
+  },
 }));
 
 // Health check endpoint
