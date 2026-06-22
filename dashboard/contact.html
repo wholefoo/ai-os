@@ -18,20 +18,52 @@
     "@context": "https://schema.org",
     "@type": "ContactPage",
     "name": "Contact AI OS",
-    "description": "Get in touch with the AI OS Orchestration Lab team for sales, support, licensing, and partnership inquiries.",
+    "description": "Reach the AI OS Orchestration Lab team through the AI Helpdesk — instant, documentation-grounded answers for sales, support, licensing, and partnership questions.",
     "url": "https://aiosorchestrationlab.com/contact",
     "mainEntity": {
       "@type": "Organization",
       "name": "AI OS Orchestration Lab",
       "url": "https://aiosorchestrationlab.com",
-      "email": "support@aiosorchestrationlab.com",
       "contactPoint": {
         "@type": "ContactPoint",
         "contactType": "customer support",
-        "email": "support@aiosorchestrationlab.com",
+        "url": "https://aiosorchestrationlab.com/contact",
         "availableLanguage": "English"
       }
     }
+  }
+  </script>
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "FAQPage",
+    "mainEntity": [
+      {
+        "@type": "Question",
+        "name": "How quickly will I get a response?",
+        "acceptedAnswer": { "@type": "Answer", "text": "The AI Helpdesk on this page answers most questions instantly from our documentation. If your issue needs a person, it is logged for our team and we follow up by email. Enterprise license holders receive priority response." }
+      },
+      {
+        "@type": "Question",
+        "name": "I'm having trouble deploying. Where do I start?",
+        "acceptedAnswer": { "@type": "Answer", "text": "Start with the Deployment Guide at /docs/deployment. If you are still stuck, describe the error in the AI Helpdesk above — it can walk you through the fix or log it for the team." }
+      },
+      {
+        "@type": "Question",
+        "name": "Can I upgrade from Community to Business or Enterprise?",
+        "acceptedAnswer": { "@type": "Answer", "text": "Yes. Visit the pricing page and purchase a license. Your existing data and configuration are preserved — commercial features activate immediately when you add your license key." }
+      },
+      {
+        "@type": "Question",
+        "name": "Can I brand my own AI OS instance?",
+        "acceptedAnswer": { "@type": "Answer", "text": "Yes. Business ($1,997) and Enterprise ($4,997) licenses include self-instance theming, so you can put your own company name, logo, and colors on your private, self-hosted dashboard. Ask the AI Helpdesk above if you need help configuring your instance." }
+      },
+      {
+        "@type": "Question",
+        "name": "How do I report a security vulnerability?",
+        "acceptedAnswer": { "@type": "Answer", "text": "Use the form on this page and set the subject to Security. Please do not open a public GitHub issue for vulnerabilities. Every report is logged and taken seriously." }
+      }
+    ]
   }
   </script>
   <script type="application/ld+json">{"@context":"https://schema.org","@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Home","item":"https://aiosorchestrationlab.com/"},{"@type":"ListItem","position":2,"name":"Contact"}]}</script>
@@ -208,6 +240,50 @@
       .contact-hero h1 { font-size: 32px; }
       .contact-primary-email { font-size: 22px; }
     }
+
+    /* AI Helpdesk widget */
+    .support-widget {
+      background: rgba(59,130,246,0.05);
+      border: 1px solid rgba(59,130,246,0.18);
+      border-radius: 16px;
+      padding: 32px;
+      margin-bottom: 48px;
+    }
+    .support-widget h2 { margin: 0 0 6px; font-size: 22px; font-weight: 700; color: var(--text-primary); }
+    .support-intro { font-size: 14px; color: var(--text-secondary); line-height: 1.6; margin: 0 0 12px; }
+    .support-can { text-align: left; margin: 0 0 22px; padding-left: 20px; color: var(--text-secondary); font-size: 14px; line-height: 1.85; }
+    .support-form { display: grid; gap: 16px; }
+    .support-row { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+    .support-field { display: flex; flex-direction: column; gap: 6px; text-align: left; }
+    .support-field label { font-size: 13px; font-weight: 600; color: var(--text-secondary); }
+    .support-field input, .support-field textarea {
+      width: 100%; padding: 12px 14px; font: inherit; font-size: 14px;
+      color: var(--text-primary); background: var(--bg-secondary, #0f172a);
+      border: 1px solid var(--border); border-radius: 10px; resize: vertical; box-sizing: border-box;
+    }
+    .support-field textarea { min-height: 120px; }
+    .support-field input:focus, .support-field textarea:focus { outline: none; border-color: #3b82f6; }
+    .support-submit {
+      justify-self: start; padding: 12px 24px; font-size: 15px; font-weight: 600; cursor: pointer;
+      color: #fff; background: linear-gradient(135deg,#3b82f6,#8b5cf6); border: none; border-radius: 10px;
+      transition: opacity .2s;
+    }
+    .support-submit:hover { opacity: .9; }
+    .support-submit:disabled { opacity: .55; cursor: not-allowed; }
+    .support-note { font-size: 12.5px; color: var(--text-muted); line-height: 1.6; margin: 4px 0 0; }
+    .support-error { color: #f87171; font-size: 13px; margin: 8px 0 0; }
+    .support-thread { display: flex; flex-direction: column; gap: 14px; margin-bottom: 18px; }
+    .support-msg { max-width: 88%; padding: 12px 16px; border-radius: 14px; font-size: 14px; line-height: 1.6; white-space: pre-wrap; text-align: left; }
+    .support-msg.user { align-self: flex-end; background: linear-gradient(135deg,#3b82f6,#8b5cf6); color: #fff; border-bottom-right-radius: 4px; }
+    .support-msg.bot { align-self: flex-start; background: var(--bg-secondary,#0f172a); border: 1px solid var(--border); color: var(--text-primary); border-bottom-left-radius: 4px; }
+    .support-msg .who { display: block; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .5px; opacity: .7; margin-bottom: 4px; }
+    .support-typing { align-self: flex-start; color: var(--text-muted); font-size: 13px; padding: 8px 4px; }
+    .support-reply { display: flex; gap: 10px; }
+    .support-reply input { flex: 1; padding: 12px 14px; font: inherit; font-size: 14px; color: var(--text-primary); background: var(--bg-secondary,#0f172a); border: 1px solid var(--border); border-radius: 10px; }
+    .support-reply input:focus { outline: none; border-color: #3b82f6; }
+    .support-reply button { padding: 12px 20px; font-weight: 600; color: #fff; background: linear-gradient(135deg,#3b82f6,#8b5cf6); border: none; border-radius: 10px; cursor: pointer; }
+    .support-reply button:disabled { opacity: .55; cursor: not-allowed; }
+    @media (max-width: 560px) { .support-row { grid-template-columns: 1fr; } }
   </style>
 </head>
 <body>
@@ -232,16 +308,49 @@
 
   <section class="contact-hero">
     <h1>Contact <span class="gradient-text">AI OS</span></h1>
-    <p>Have a question about the platform, licensing, or partnerships? We'd love to hear from you.</p>
+    <p>Have a question about the platform, licensing, or partnerships? Ask our AI Helpdesk below &mdash; it answers instantly from our documentation and loops in our team whenever you need a human.</p>
   </section>
 
   <div class="contact-section">
-    <div class="contact-primary">
-      <div class="contact-primary-label">General Inquiries &amp; Support</div>
-      <div class="contact-primary-email">
-        <a href="mailto:support@aiosorchestrationlab.com">support@aiosorchestrationlab.com</a>
+    <div class="support-widget">
+      <h2>Ask the AI Helpdesk</h2>
+      <p class="support-intro">The <strong>AI OS Helpdesk</strong> is an AI support concierge that resolves your question instantly from the AI OS Orchestration Lab documentation. Describe your problem below; if it can&rsquo;t fully resolve it, your request is logged and our team follows up by email &mdash; Enterprise license holders receive priority response.</p>
+      <ul class="support-can">
+        <li>Deployment, installation, and configuration (PM2, Nginx, TLS)</li>
+        <li>Connecting AI provider API keys and routing across the 6 models</li>
+        <li>Using the 55 agents, the AI Web Studio, and the SEO + AEO tools</li>
+        <li>Licensing, upgrades, and the opt-in AI security suite</li>
+        <li>Reporting a security issue (set the subject to &ldquo;Security&rdquo;)</li>
+      </ul>
+
+      <form class="support-form" id="supportForm" autocomplete="on" novalidate>
+        <div class="support-row">
+          <div class="support-field">
+            <label for="sf-email">Your email</label>
+            <input type="email" id="sf-email" name="email" required placeholder="you@company.com" maxlength="200">
+          </div>
+          <div class="support-field">
+            <label for="sf-subject">Subject</label>
+            <input type="text" id="sf-subject" name="subject" placeholder="e.g. Deployment, Licensing, Security" maxlength="200">
+          </div>
+        </div>
+        <div class="support-field">
+          <label for="sf-message">The problem to be resolved</label>
+          <textarea id="sf-message" name="message" required placeholder="Describe what you&rsquo;re trying to do and what&rsquo;s happening&hellip;" maxlength="4000"></textarea>
+        </div>
+        <button type="submit" class="support-submit" id="sf-submit">Ask the AI Helpdesk &rarr;</button>
+        <p class="support-error" id="sf-error" hidden></p>
+        <p class="support-note">For security vulnerabilities, set the subject to &ldquo;Security.&rdquo; Never share passwords, API keys, or payment details here.</p>
+      </form>
+
+      <div id="supportChat" hidden>
+        <div class="support-thread" id="sf-thread"></div>
+        <form class="support-reply" id="sf-replyForm">
+          <input type="text" id="sf-replyInput" placeholder="Reply to the Helpdesk&hellip;" maxlength="4000" autocomplete="off">
+          <button type="submit" id="sf-replyBtn">Send</button>
+        </form>
+        <p class="support-note" id="sf-status"></p>
       </div>
-      <p>This is the fastest way to reach us. We aim to respond to all inquiries within 24 hours on business days.</p>
     </div>
 
     <h2>What We Can Help With</h2>
@@ -297,12 +406,12 @@
 
       <div class="contact-faq-item">
         <h3>How quickly will I get a response?</h3>
-        <p>We respond to all emails within 24 hours on business days (Monday-Friday). Enterprise customers with active support have priority response times via their dedicated Slack channel.</p>
+        <p>The AI Helpdesk on this page answers most questions instantly from our documentation. If your issue needs a person, it's logged for our team and we follow up by email. Enterprise license holders receive priority response via their dedicated Slack channel.</p>
       </div>
 
       <div class="contact-faq-item">
         <h3>I'm having trouble deploying. Where do I start?</h3>
-        <p>Check the <a href="/docs/deployment">Deployment Guide</a> first. If you're still stuck, email support@aiosorchestrationlab.com with your error output and we'll help you debug.</p>
+        <p>Start with the <a href="/docs/deployment">Deployment Guide</a>. If you're still stuck, describe the error in the AI Helpdesk above &mdash; it can walk you through the fix or log it for the team.</p>
       </div>
 
       <div class="contact-faq-item">
@@ -312,12 +421,12 @@
 
       <div class="contact-faq-item">
         <h3>Can I brand my own AI OS instance?</h3>
-        <p>Yes. Business ($1,997) and Enterprise ($4,997) licenses include self-instance theming, so you can put your own company name, logo, and colors on your private, self-hosted dashboard. Email <a href="mailto:support@aiosorchestrationlab.com">support@aiosorchestrationlab.com</a> if you need help deploying or configuring your instance.</p>
+        <p>Yes. Business ($1,997) and Enterprise ($4,997) licenses include self-instance theming, so you can put your own company name, logo, and colors on your private, self-hosted dashboard. Ask the AI Helpdesk above if you need help configuring your instance.</p>
       </div>
 
       <div class="contact-faq-item">
         <h3>How do I report a security vulnerability?</h3>
-        <p>Please email <a href="mailto:support@aiosorchestrationlab.com">support@aiosorchestrationlab.com</a> with details. Do not open a public GitHub issue for security vulnerabilities. We take all reports seriously and will respond within 24 hours.</p>
+        <p>Use the form above and set the subject to &ldquo;Security.&rdquo; Please do not open a public GitHub issue for vulnerabilities. Every report is logged and taken seriously.</p>
       </div>
     </div>
 
@@ -359,5 +468,96 @@
       <p>&copy; 2026 AI OS Orchestration Lab. All rights reserved.</p>
     </div>
   </footer>
+
+  <script>
+  (function(){
+    var form = document.getElementById('supportForm');
+    if (!form) return;
+    var chat = document.getElementById('supportChat');
+    var thread = document.getElementById('sf-thread');
+    var replyForm = document.getElementById('sf-replyForm');
+    var replyInput = document.getElementById('sf-replyInput');
+    var replyBtn = document.getElementById('sf-replyBtn');
+    var statusEl = document.getElementById('sf-status');
+    var errEl = document.getElementById('sf-error');
+    var EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
+    var ticketId = null, email = '', busy = false;
+
+    function bubble(role, text){
+      var d = document.createElement('div');
+      d.className = 'support-msg ' + (role === 'user' ? 'user' : 'bot');
+      var who = document.createElement('span');
+      who.className = 'who';
+      who.textContent = role === 'user' ? 'You' : 'AI Helpdesk';
+      d.appendChild(who);
+      d.appendChild(document.createTextNode(text)); // text node = no HTML injection from model/user
+      thread.appendChild(d);
+      d.scrollIntoView({ block: 'nearest' });
+    }
+    function typing(on){
+      var ex = document.getElementById('sf-typing');
+      if (on && !ex){
+        var t = document.createElement('div');
+        t.className = 'support-typing'; t.id = 'sf-typing';
+        t.textContent = 'AI Helpdesk is typing…';
+        thread.appendChild(t); t.scrollIntoView({ block: 'nearest' });
+      } else if (!on && ex){ ex.remove(); }
+    }
+    function setBusy(on){
+      busy = on;
+      if (replyBtn) replyBtn.disabled = on;
+      if (replyInput) replyInput.disabled = on;
+    }
+    async function send(message, subject){
+      if (busy) return;
+      setBusy(true); typing(true);
+      try {
+        var r = await fetch('/api/support/contact', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email: email, subject: subject || '', message: message, ticketId: ticketId })
+        });
+        var data = await r.json().catch(function(){ return {}; });
+        typing(false);
+        if (data && data.ticketId) ticketId = data.ticketId;
+        if (!r.ok || (data && data.error)) {
+          bubble('bot', (data && data.error) || 'Something went wrong. Please try again in a moment.');
+        } else {
+          bubble('bot', data.reply || '');
+        }
+      } catch (e) {
+        typing(false);
+        bubble('bot', 'The helpdesk is unreachable right now. Please try again in a moment.');
+      }
+      setBusy(false);
+      if (replyInput) replyInput.focus();
+    }
+
+    form.addEventListener('submit', function(e){
+      e.preventDefault();
+      errEl.hidden = true;
+      var em = document.getElementById('sf-email').value.trim();
+      var sub = document.getElementById('sf-subject').value.trim();
+      var msg = document.getElementById('sf-message').value.trim();
+      if (!EMAIL_RE.test(em)) { errEl.textContent = 'Please enter a valid email address.'; errEl.hidden = false; return; }
+      if (!msg) { errEl.textContent = 'Please describe the problem to be resolved.'; errEl.hidden = false; return; }
+      email = em;
+      form.hidden = true;
+      chat.hidden = false;
+      if (statusEl) statusEl.textContent = 'Replying to ' + email + '. Need a human? Your request is logged for our team.';
+      bubble('user', (sub ? '[' + sub + '] ' : '') + msg);
+      send(msg, sub);
+    });
+
+    replyForm.addEventListener('submit', function(e){
+      e.preventDefault();
+      var msg = replyInput.value.trim();
+      if (!msg || busy) return;
+      replyInput.value = '';
+      bubble('user', msg);
+      send(msg, '');
+    });
+  })();
+  </script>
 </body>
 </html>
