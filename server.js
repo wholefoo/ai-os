@@ -5448,6 +5448,8 @@ const settings = loadState('settings', {
     dataforseo_password: process.env.DATAFORSEO_PASSWORD || '',
     default_location: 'United States',
     default_language: 'en',
+    free_audit_daily_max: parseInt(process.env.FREE_AUDIT_DAILY_MAX, 10) || 50,     // global hard cap/day — bounds public free-audit cost regardless of email/IP rotation
+    free_audit_ip_daily_max: parseInt(process.env.FREE_AUDIT_IP_DAILY_MAX, 10) || 3, // per-IP/day — defeats email-rotation abuse
   },
   general: {
     demo_mode: DEMO_MODE,
@@ -5644,6 +5646,8 @@ app.get('/api/settings', requireAdmin, (req, res) => {
       dataforseo_password: { value: maskKey(settings.seo.dataforseo_password), configured: !!settings.seo.dataforseo_password },
       default_location: settings.seo.default_location || 'United States',
       default_language: settings.seo.default_language || 'en',
+      free_audit_daily_max: settings.seo.free_audit_daily_max,
+      free_audit_ip_daily_max: settings.seo.free_audit_ip_daily_max,
     },
     general: {
       demo_mode: settings.general.demo_mode,
@@ -7140,15 +7144,31 @@ app.post('/api/seo/free-audit', heavyLimiter, async (req, res) => {
   if (!domain) return res.status(400).json({ error: 'Domain is required' });
   if (!email) return res.status(400).json({ error: 'Email is required to receive your audit results' });
 
-  // Rate limit: 1 free audit per email per month
+  // Soft deterrent: 1 free audit per email per month (spoofable — the hard caps below bound cost).
   const monthAgo = new Date(Date.now() - 30 * 86400000).toISOString();
   const recentAudit = freeAuditLog.find(a => a.email === email && a.createdAt > monthAgo);
   if (recentAudit) {
     return res.status(429).json({ error: 'You have already used your free audit this month. Upgrade to Pro for 5 audits/month.', upgradeUrl: '/#pricing' });
   }
 
-  // Log the lead
-  const leadEntry = { email, name: name || '', domain, createdAt: new Date().toISOString(), source: 'free-audit' };
+  // HARD cost caps on the public path — each audit runs 6 agents + DataForSEO calls (~$0.10-0.30),
+  // so bound total volume BEFORE launching anything expensive, independent of email rotation: a
+  // global daily ceiling + a per-IP daily ceiling (req.ip is real — trust proxy is set).
+  const dayAgo = new Date(Date.now() - 86400000).toISOString();
+  const ip = req.ip || (req.connection && req.connection.remoteAddress) || 'unknown';
+  const todays = freeAuditLog.filter(a => a.createdAt > dayAgo);
+  const globalMax = parseInt(settings.seo?.free_audit_daily_max, 10) || 50;
+  const ipMax = parseInt(settings.seo?.free_audit_ip_daily_max, 10) || 3;
+  if (todays.length >= globalMax) {
+    logActivity('leads', `Free-audit DAILY CAP hit (${todays.length}/${globalMax}) — request from ${ip} for ${domain} refused`, { ip, domain, cap: 'global' });
+    return res.status(429).json({ error: 'The free audit has reached its daily limit. Please try again tomorrow, or upgrade for instant access.', upgradeUrl: '/#pricing' });
+  }
+  if (todays.filter(a => a.ip === ip).length >= ipMax) {
+    return res.status(429).json({ error: 'You have reached the free-audit limit for today. Upgrade to Pro for unlimited audits.', upgradeUrl: '/#pricing' });
+  }
+
+  // Log the lead (ip retained only for the per-IP daily cap above)
+  const leadEntry = { email, name: name || '', domain, ip, createdAt: new Date().toISOString(), source: 'free-audit' };
   freeAuditLog.push(leadEntry);
   saveState('free_audit_log', freeAuditLog);
   logActivity('leads', `Free audit lead captured: ${email} — ${domain}`, { email, domain });
