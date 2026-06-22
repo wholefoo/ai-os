@@ -101,7 +101,7 @@
         "name": "What is AI OS?",
         "acceptedAnswer": {
           "@type": "Answer",
-          "text": "AI OS is a Virtual Corporate Headquarters — an open-source, self-hosted platform with 55 AI agents organized across 10 departments, powered by 6 AI models across 4 routing tiers including Claude Opus 4.8, OpenAI GPT, Gemini, DeepSeek, Grok, and Perplexity. It includes an SEO + AEO Agency, AI Web Studio, YouTube Intelligence, and a Legal department. You bring your own API keys and deploy on your own infrastructure."
+          "text": "AI OS is a Virtual Corporate Headquarters — an open-source, self-hosted AI operating system with 55 specialized AI agents across 10 departments that routes every task across 6 AI models in 4 effort tiers (Claude Opus 4.8 by default, plus OpenAI, Gemini, DeepSeek, Grok, and Perplexity). It bundles an SEO + AEO agency, an AI Web Studio that builds and hosts sites, a CRM, content provenance, and an opt-in AI security suite. You bring your own API keys and run it on your own infrastructure."
         }
       },
       {
@@ -109,7 +109,31 @@
         "name": "How much does AI OS cost?",
         "acceptedAnswer": {
           "@type": "Answer",
-          "text": "AI OS is open-source and self-hosted. The Community edition is free with 15 agents and 5 departments. Business license is $1,997 one-time for all 55 agents, all production tools, and self-instance theming to brand your own private instance. Enterprise license is $4,997 one-time with everything in Business plus SSO/SAML and advanced security, 1 year priority support, custom agents, and priority response times. Optional annual renewal at $997/yr extends priority support. For a done-for-you option, a Managed Website is $997 one-time setup plus $250/month — we build and host your site on our VPS."
+          "text": "Community is free and open-source (self-hosted). Business is a $1,997 one-time license; Enterprise is $4,997 one-time, with an optional $997/yr renewal for continued priority support. Prefer hands-off? The done-for-you Managed Website service is $997 setup + $250/month. Because of the BYOK model, you pay your own AI providers directly — there is no markup on token usage."
+        }
+      },
+      {
+        "@type": "Question",
+        "name": "What's the difference between Community, Business, and Enterprise?",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "Community (free, open-source) gives you 15 agents across 5 departments — ideal for personal use and small teams. Business ($1,997 one-time) unlocks all 55 agents, all production tools, and self-instance theming to white-label your own private instance. Enterprise ($4,997 one-time) adds everything in Business plus SSO/SAML, advanced security, a visual custom-agent builder, and 1 year of priority support (optional $997/yr renewal)."
+        }
+      },
+      {
+        "@type": "Question",
+        "name": "Is there a done-for-you option?",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "Yes. If you would rather not self-host, our Managed Website service ($997 setup + $250/month) builds your site in AI Web Studio and hosts it on our VPS with a custom domain and TLS. You get a scoped client dashboard with your sites, your SEO/AEO audits, and your Site Security report — no infrastructure to run."
+        }
+      },
+      {
+        "@type": "Question",
+        "name": "Do I need to know how to code?",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "No. Day-to-day use is through the dashboard — you describe goals in plain language and the agents execute. Self-hosting takes a one-time install (clone, run the install script, add your keys), and the Managed Website service removes even that. Custom agents are simple Markdown files — no programming required."
         }
       },
       {
@@ -117,15 +141,71 @@
         "name": "Do I need my own API keys?",
         "acceptedAnswer": {
           "@type": "Answer",
-          "text": "Yes. AI OS uses a BYOK (Bring Your Own Keys) model. You enter your own API keys for Anthropic, Google Gemini, DeepSeek, xAI/Grok, Firecrawl, Tavily, and Apify in the Settings page. This gives you full control over spend and rate limits with no markup on token usage."
+          "text": "Yes. AI OS uses a BYOK (Bring Your Own Keys) model — you enter your own keys for Anthropic, OpenAI, Gemini, DeepSeek, xAI/Grok, and others in Settings. This gives you full control over spend and rate limits with no markup, and the dashboard tracks every token across all models in real time."
         }
       },
       {
         "@type": "Question",
-        "name": "What AI models does AI OS support?",
+        "name": "What AI models does it support?",
         "acceptedAnswer": {
           "@type": "Answer",
-          "text": "AI OS routes across 6 AI models organized into 4 routing tiers. The models are Claude Opus 4.8 (the default, with effort-based routing), OpenAI GPT for reasoning and code, Gemini for creative generation, DeepSeek for economy batch processing, Grok (xAI) for real-time web search, and Perplexity for grounded search with citations. The 4 routing tiers match each task to the right model for cost and quality."
+          "text": "6 AI models across 4 routing tiers: Claude Opus 4.8 (the default, with effort-based routing), OpenAI GPT, Gemini, DeepSeek, Grok (xAI), and Perplexity. The orchestrator routes each task to the right model for cost and quality — deep reasoning to the strongest tier, bulk work to the economy tier, and live search to the real-time tier."
+        }
+      },
+      {
+        "@type": "Question",
+        "name": "Can I add custom agents?",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "Yes. Agents are Markdown files with YAML frontmatter — drop one in .claude/agents/ and the system picks it up immediately. Enterprise includes a visual agent builder for creating and editing agents from the dashboard."
+        }
+      },
+      {
+        "@type": "Question",
+        "name": "Can AI OS build and host my website?",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "Yes — that is the AI Web Studio. Describe your site (or import an existing one) and the studio's agents design, build, and deploy it on the VPS with a custom domain and automatic TLS. Every site can be security-scanned before it goes live, and generated sites are built to pass AI OS's own AEO readiness checks."
+        }
+      },
+      {
+        "@type": "Question",
+        "name": "What is the SEO + AEO Agency?",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "It runs comprehensive SEO audits with parallel sub-agents (keyword, technical, competitor, content, backlink) plus an AEO readiness score that measures how well AI answer engines like ChatGPT, Perplexity, and Google AI Overviews can parse and cite your content. It improves your readiness and gives a prioritized action plan — but, honestly, no tool can guarantee citations or rankings."
+        }
+      },
+      {
+        "@type": "Question",
+        "name": "Is AI OS secure?",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "AI OS hardens the app (Helmet, CORS, rate limiting, input validation, bcrypt password hashing, and human-in-the-loop approval gating for risky actions) and adds an opt-in, report-only AI security suite: it can self-assess the platform (STRIDE + semgrep + an AI blue-team), scan every AI-built site before it is published, and deliver security reports to managed clients. It surfaces findings and never auto-patches your live system — an AI-assisted capability, not a guarantee."
+        }
+      },
+      {
+        "@type": "Question",
+        "name": "Is my data private?",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "Yes. AI OS is single-customer and self-hosted, so your data stays on your own infrastructure. Your API keys, audit results, settings, and user data never leave your server, and API calls go directly from your instance to your configured providers using your own keys."
+        }
+      },
+      {
+        "@type": "Question",
+        "name": "Can I white-label AI OS?",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "Yes. Business and Enterprise include self-instance theming — brand your private instance with your own name, logo, and colors. Enterprise adds custom agents and SSO/SAML for a fully branded, team-ready deployment."
+        }
+      },
+      {
+        "@type": "Question",
+        "name": "What support is included?",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "Community is community-supported (GitHub Issues, best-effort). Business includes standard support. Enterprise includes 1 year of priority support with faster response times, renewable at $997/yr. Managed Website clients get ongoing maintenance as part of the $250/month."
         }
       }
     ]
@@ -717,28 +797,60 @@
       </div>
       <div class="faq-list">
         <div class="faq-item">
+          <button class="faq-question">What is AI OS?<span class="faq-toggle">+</span></button>
+          <div class="faq-answer">AI OS is a Virtual Corporate Headquarters — an open-source, self-hosted AI operating system with 55 specialized AI agents across 10 departments that routes every task across 6 AI models in 4 effort tiers (Claude Opus 4.8 by default, plus OpenAI, Gemini, DeepSeek, Grok, and Perplexity). It bundles an SEO + AEO agency, an AI Web Studio that builds and hosts sites, a CRM, content provenance, and an opt-in AI security suite. You bring your own API keys and run it on your own infrastructure.</div>
+        </div>
+        <div class="faq-item">
+          <button class="faq-question">How much does AI OS cost?<span class="faq-toggle">+</span></button>
+          <div class="faq-answer">Community is free and open-source (self-hosted). Business is a $1,997 one-time license; Enterprise is $4,997 one-time, with an optional $997/yr renewal for continued priority support. Prefer hands-off? The done-for-you Managed Website service is $997 setup + $250/month. Because of the BYOK model, you pay your own AI providers directly — there is no markup on token usage.</div>
+        </div>
+        <div class="faq-item">
+          <button class="faq-question">What's the difference between Community, Business, and Enterprise?<span class="faq-toggle">+</span></button>
+          <div class="faq-answer">Community (free, open-source) gives you 15 agents across 5 departments — ideal for personal use and small teams. Business ($1,997 one-time) unlocks all 55 agents, all production tools, and self-instance theming to white-label your own private instance. Enterprise ($4,997 one-time) adds everything in Business plus SSO/SAML, advanced security, a visual custom-agent builder, and 1 year of priority support (optional $997/yr renewal).</div>
+        </div>
+        <div class="faq-item">
+          <button class="faq-question">Is there a done-for-you option?<span class="faq-toggle">+</span></button>
+          <div class="faq-answer">Yes. If you would rather not self-host, our Managed Website service ($997 setup + $250/month) builds your site in AI Web Studio and hosts it on our VPS with a custom domain and TLS. You get a scoped client dashboard with your sites, your SEO/AEO audits, and your Site Security report — no infrastructure to run.</div>
+        </div>
+        <div class="faq-item">
+          <button class="faq-question">Do I need to know how to code?<span class="faq-toggle">+</span></button>
+          <div class="faq-answer">No. Day-to-day use is through the dashboard — you describe goals in plain language and the agents execute. Self-hosting takes a one-time install (clone, run the install script, add your keys), and the Managed Website service removes even that. Custom agents are simple Markdown files — no programming required.</div>
+        </div>
+        <div class="faq-item">
           <button class="faq-question">Do I need my own API keys?<span class="faq-toggle">+</span></button>
-          <div class="faq-answer">Yes. AI OS orchestrates calls to Claude, DeepSeek, Grok, and other APIs using your own keys. This gives you full control over spend and rate limits. The dashboard tracks every token across all models in real time.</div>
+          <div class="faq-answer">Yes. AI OS uses a BYOK (Bring Your Own Keys) model — you enter your own keys for Anthropic, OpenAI, Gemini, DeepSeek, xAI/Grok, and others in Settings. This gives you full control over spend and rate limits with no markup, and the dashboard tracks every token across all models in real time.</div>
         </div>
         <div class="faq-item">
           <button class="faq-question">What AI models does it support?<span class="faq-toggle">+</span></button>
-          <div class="faq-answer">6 AI models across 4 routing tiers: Claude Opus 4.8 (the default, with effort-based routing), OpenAI GPT, Gemini, DeepSeek, Grok (xAI), and Perplexity. The orchestrator routes each task to the right model for cost and quality. 55 agents across 10 departments — including a Legal department with General Counsel, Compliance Officer, Licensing Attorney, and Contract Specialist.</div>
+          <div class="faq-answer">6 AI models across 4 routing tiers: Claude Opus 4.8 (the default, with effort-based routing), OpenAI GPT, Gemini, DeepSeek, Grok (xAI), and Perplexity. The orchestrator routes each task to the right model for cost and quality — deep reasoning to the strongest tier, bulk work to the economy tier, and live search to the real-time tier.</div>
         </div>
         <div class="faq-item">
           <button class="faq-question">Can I add custom agents?<span class="faq-toggle">+</span></button>
-          <div class="faq-answer">Absolutely. Agents are Markdown files with YAML frontmatter. Drop a new file in .claude/agents/ and the system picks it up immediately. Enterprise plans include a visual agent builder.</div>
+          <div class="faq-answer">Yes. Agents are Markdown files with YAML frontmatter — drop one in .claude/agents/ and the system picks it up immediately. Enterprise includes a visual agent builder for creating and editing agents from the dashboard.</div>
+        </div>
+        <div class="faq-item">
+          <button class="faq-question">Can AI OS build and host my website?<span class="faq-toggle">+</span></button>
+          <div class="faq-answer">Yes — that is the AI Web Studio. Describe your site (or import an existing one) and the studio's agents design, build, and deploy it on the VPS with a custom domain and automatic TLS. Every site can be security-scanned before it goes live, and generated sites are built to pass AI OS's own AEO readiness checks.</div>
+        </div>
+        <div class="faq-item">
+          <button class="faq-question">What is the SEO + AEO Agency?<span class="faq-toggle">+</span></button>
+          <div class="faq-answer">It runs comprehensive SEO audits with parallel sub-agents (keyword, technical, competitor, content, backlink) plus an AEO readiness score that measures how well AI answer engines like ChatGPT, Perplexity, and Google AI Overviews can parse and cite your content. It improves your readiness and gives a prioritized action plan — but, honestly, no tool can guarantee citations or rankings.</div>
+        </div>
+        <div class="faq-item">
+          <button class="faq-question">Is AI OS secure?<span class="faq-toggle">+</span></button>
+          <div class="faq-answer">AI OS hardens the app (Helmet, CORS, rate limiting, input validation, bcrypt password hashing, and human-in-the-loop approval gating for risky actions) and adds an opt-in, report-only AI security suite: it can self-assess the platform (STRIDE + semgrep + an AI blue-team), scan every AI-built site before it is published, and deliver security reports to managed clients. It surfaces findings and never auto-patches your live system — an AI-assisted capability, not a guarantee.</div>
         </div>
         <div class="faq-item">
           <button class="faq-question">Is my data private?<span class="faq-toggle">+</span></button>
-          <div class="faq-answer">AI OS is single-customer and self-hosted, so your data never leaves your own infrastructure. Your API keys, audit results, settings, and user data stay on your own server. API calls go directly from the platform to your configured providers using your own keys.</div>
+          <div class="faq-answer">Yes. AI OS is single-customer and self-hosted, so your data stays on your own infrastructure. Your API keys, audit results, settings, and user data never leave your server, and API calls go directly from your instance to your configured providers using your own keys.</div>
         </div>
         <div class="faq-item">
-          <button class="faq-question">How does self-hosting work?<span class="faq-toggle">+</span></button>
-          <div class="faq-answer">AI OS is open-source and self-hosted — you run it on your own server. Clone the repo, run the install script, add your API keys, and your Virtual Corporate HQ is live in minutes. The free hosted demo lets you try before you deploy. Business and Enterprise licenses unlock all 55 agents, all production tools, and self-instance theming to brand your own private instance. Prefer a hands-off option? Our done-for-you Managed Website ($997 setup + $250/mo) means we build and host your site on our VPS — no self-hosting required.</div>
+          <button class="faq-question">Can I white-label AI OS?<span class="faq-toggle">+</span></button>
+          <div class="faq-answer">Yes. Business and Enterprise include self-instance theming — brand your private instance with your own name, logo, and colors. Enterprise adds custom agents and SSO/SAML for a fully branded, team-ready deployment.</div>
         </div>
         <div class="faq-item">
-          <button class="faq-question">What's the difference between Community and Business?<span class="faq-toggle">+</span></button>
-          <div class="faq-answer">Community is free and open-source — 15 agents across 5 departments, great for personal use and small teams. Business ($1,997 one-time license) unlocks all 55 agents, all production tools, and self-instance theming so you can brand your own private instance. Enterprise ($4,997) includes everything in Business plus SSO/SAML and advanced security, 1 year priority support, custom agents, and priority response times. Optional $997/yr renewal extends the priority support plan.</div>
+          <button class="faq-question">What support is included?<span class="faq-toggle">+</span></button>
+          <div class="faq-answer">Community is community-supported (GitHub Issues, best-effort). Business includes standard support. Enterprise includes 1 year of priority support with faster response times, renewable at $997/yr. Managed Website clients get ongoing maintenance as part of the $250/month.</div>
         </div>
       </div>
     </div>
