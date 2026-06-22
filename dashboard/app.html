@@ -1972,6 +1972,15 @@
                   </div>
                 </div>
                 <div class="settings-field">
+                  <label class="settings-label">Z.ai (GLM) API Key <span class="settings-tier">GLM-5.2 — OpenAI-compatible, joins multi-model consensus</span></label>
+                  <div class="settings-input-row">
+                    <input type="text" class="settings-input settings-secret" id="set-zai_api_key" placeholder="..." autocomplete="new-password" data-lpignore="true" data-1p-ignore spellcheck="false">
+                    <button type="button" class="btn btn-sm settings-eye" onclick="toggleKeyVisibility(this)" title="Show/hide">&#128065;</button>
+                    <span class="settings-status" id="status-zai_api_key"></span>
+                    <button class="btn btn-sm" onclick="testConnection('zai')">Test</button>
+                  </div>
+                </div>
+                <div class="settings-field">
                   <label class="settings-label">Tavily API Key <span class="settings-tier">AI-optimized search + research</span></label>
                   <div class="settings-input-row">
                     <input type="text" class="settings-input settings-secret" id="set-tavily_api_key" placeholder="tvly-..." autocomplete="new-password" data-lpignore="true" data-1p-ignore spellcheck="false">

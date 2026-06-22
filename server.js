@@ -2526,6 +2526,17 @@ async function callPerplexity(systemPrompt, task, maxTokens) {
   return { content, inputTokens, outputTokens, citations: data.citations || [] };
 }
 
+// Z.ai — Zhipu AI's GLM models over their OpenAI-compatible endpoint (BYOK). Default flagship is
+// GLM-5.2 (1M context). Available provider: wired into the multi-model consensus / Share-of-Model
+// AEO check; not in the default agent routing (Opus 4.8 stays the default).
+async function callZai(systemPrompt, task, maxTokens) {
+  const { content, inputTokens, outputTokens } = await callChatCompletions({
+    provider: 'GLM (Z.ai)', keyName: 'Z.ai', url: 'https://api.z.ai/api/paas/v4/chat/completions', model: 'glm-5.2',
+    apiKey: settings.ai.zai_api_key, systemPrompt, task, maxTokens,
+  });
+  return { content, inputTokens, outputTokens };
+}
+
 // --- Generic Agent Dispatch Endpoint ---
 // POST /api/agent/execute — run any agent with a task (used by dashboard dispatch, chat, etc.)
 app.post('/api/agent/execute', requireAdmin, async (req, res) => {
@@ -2597,6 +2608,7 @@ const COST_RATES = {
   // External models
   'deepseek-v4':       { input: 0.14,  output: 0.28  },
   'grok-3':            { input: 3.00,  output: 15.00 },
+  'glm-5.2':           { input: 1.40,  output: 4.40  },   // Z.ai GLM-5.2 (OpenAI-compatible)
   // Gemini Omni — multimodal creative generation (video, image, audio)
   'gemini-omni':       { input: 1.25,  output: 5.00  },   // Omni Flash pricing (text+image input, video output)
   // OpenAI
@@ -5422,6 +5434,7 @@ const settings = loadState('settings', {
   ai: {
     anthropic_api_key: process.env.ANTHROPIC_API_KEY || '',
     deepseek_api_key: process.env.DEEPSEEK_API_KEY || '',
+    zai_api_key: process.env.ZAI_API_KEY || '',
     xai_api_key: process.env.XAI_API_KEY || '',
     firecrawl_api_key: process.env.FIRECRAWL_API_KEY || '',
     gemini_api_key: process.env.GEMINI_API_KEY || '',
@@ -5623,6 +5636,7 @@ app.get('/api/settings', requireAdmin, (req, res) => {
     ai: {
       anthropic_api_key: { value: maskKey(settings.ai.anthropic_api_key), configured: !!settings.ai.anthropic_api_key },
       deepseek_api_key: { value: maskKey(settings.ai.deepseek_api_key), configured: !!settings.ai.deepseek_api_key },
+      zai_api_key: { value: maskKey(settings.ai.zai_api_key), configured: !!settings.ai.zai_api_key },
       xai_api_key: { value: maskKey(settings.ai.xai_api_key), configured: !!settings.ai.xai_api_key },
       firecrawl_api_key: { value: maskKey(settings.ai.firecrawl_api_key), configured: !!settings.ai.firecrawl_api_key },
       gemini_api_key: { value: maskKey(settings.ai.gemini_api_key), configured: !!settings.ai.gemini_api_key },
@@ -5855,6 +5869,19 @@ app.post('/api/settings/test/:service', requireAdmin, async (req, res) => {
       });
       const ok = r.ok;
       res.json({ ok, message: ok ? 'Perplexity Sonar API connected' : `HTTP ${r.status} — check your key` });
+    } catch (e) {
+      res.json({ ok: false, message: `Connection failed: ${e.message}` });
+    }
+  } else if (service === 'zai') {
+    if (!settings.ai.zai_api_key) return res.json({ ok: false, message: 'No Z.ai API key configured — save your key first' });
+    try {
+      const r = await fetch('https://api.z.ai/api/paas/v4/chat/completions', {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${settings.ai.zai_api_key}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ model: 'glm-5.2', messages: [{ role: 'user', content: 'ping' }], max_tokens: 5 }),
+      });
+      const ok = r.ok;
+      res.json({ ok, message: ok ? 'Z.ai (GLM) API key is valid' : `HTTP ${r.status} — check your key` });
     } catch (e) {
       res.json({ ok: false, message: `Connection failed: ${e.message}` });
     }
@@ -7426,6 +7453,7 @@ function buildAeoCallers() {
   if (a.gemini_api_key) callers.push({ name: 'gemini', call: async (p, s) => (await callGemini(s, p, 1200)).content });
   if (a.openai_api_key) callers.push({ name: 'openai', call: async (p, s) => (await callOpenAI(s, p, 1200)).content });
   if (a.xai_api_key) callers.push({ name: 'grok', call: async (p, s) => (await callGrok(s, p, 1200)).content });
+  if (a.zai_api_key) callers.push({ name: 'glm', call: async (p, s) => (await callZai(s, p, 1200)).content });
   return callers;
 }
 
