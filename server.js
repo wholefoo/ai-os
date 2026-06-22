@@ -192,8 +192,11 @@ function clientSurfaceGuard(req, res, next) {
   const url = req.originalUrl.split('?')[0];
   const token = req.cookies?.['ai-os-session'] || req.headers.authorization?.replace('Bearer ', '');
   const session = isValidSession(token);
-  if (session && session.role === 'client' && !CLIENT_API_ALLOW.some(p => url === p || url.startsWith(p + '/'))) {
-    return res.status(403).json({ error: 'Not available on a client account' });
+  // Default-deny: only 'admin' (the operator) passes freely. 'client' (managed customers) and any
+  // other authenticated role — e.g. a Stripe-minted 'user' from a self-host LICENSE purchase, who
+  // must never operate this instance — are fenced to the client allowlist. Anonymous/token-auth pass.
+  if (session && session.role !== 'admin' && !CLIENT_API_ALLOW.some(p => url === p || url.startsWith(p + '/'))) {
+    return res.status(403).json({ error: 'Not available on this account' });
   }
   next();
 }
@@ -502,18 +505,18 @@ app.get('/api/stripe/success', async (req, res) => {
       return res.redirect(`/set-password?token=${encodeURIComponent(user.setupToken.token)}`);
     }
 
-    // Otherwise create a session and go to the dashboard.
-    const token = generateToken();
-    sessions.set(token, { email: user.email, plan: user.plan, role: user.role || 'user', ownerEmail: user.email, stripeCustomerId: user.stripeCustomerId, expiresAt: new Date(Date.now() + 30 * 86400000).toISOString() });
+    // A returning managed client (already onboarded with a password) → log into their client workspace.
+    if (user.role === 'client') {
+      const token = generateToken();
+      sessions.set(token, { email: user.email, plan: user.plan, role: 'client', ownerEmail: user.email, stripeCustomerId: user.stripeCustomerId, expiresAt: new Date(Date.now() + 30 * 86400000).toISOString() });
+      res.cookie('ai-os-session', token, { httpOnly: true, secure: process.env.NODE_ENV === 'production', sameSite: 'lax', maxAge: 30 * 86400000 });
+      return res.redirect('/app');
+    }
 
-    // Set cookie and redirect to dashboard
-    res.cookie('ai-os-session', token, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'lax',
-      maxAge: 30 * 86400000, // 30 days
-    });
-    res.redirect('/app');
+    // Business/Enterprise are SELF-HOST licenses: never mint an operator session on THIS instance —
+    // the buyer deploys their own. Land on the marketing site with a purchase flag (license delivery
+    // is handled out-of-band by the operator), NOT the operator console.
+    return res.redirect(`/?purchased=${encodeURIComponent(user.plan)}`);
   } catch (e) {
     console.error('[STRIPE] Success callback error:', e.message);
     res.redirect('/?stripe=error');
