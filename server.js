@@ -2905,6 +2905,8 @@ if (DEMO_MODE && updateProposals.length === 0) updateProposals.push(
   }
 );
 
+// Operator identity for privileged-action audit entries — never throws (→ 'operator' if no session).
+function reqActor(req) { return (req && req.session && (req.session.email || req.session.name)) || 'operator'; }
 function logActivity(type, message, details = {}) {
   const entry = { id: uuidv4(), type, message, details, timestamp: new Date().toISOString() };
   activityLog.unshift(entry);
@@ -5138,7 +5140,7 @@ app.put('/api/inbox/:id', (req, res) => {
   item.resolvedAt = new Date().toISOString();
   saveState('inbox', inbox);
   broadcast({ event: 'inbox_update', data: item });
-  logActivity('approval', `Gate ${status}: ${item.title}`, { id: item.id, agent: item.agent });
+  logActivity('approval', `Gate ${status}: ${item.title}`, { id: item.id, agent: item.agent, actor: reqActor(req) });
   res.json(item);
 });
 
@@ -5237,7 +5239,7 @@ app.get('/api/hermes/status', (req, res) => {
 });
 
 // Delegate a task to Hermes
-app.post('/api/hermes/delegate', (req, res) => {
+app.post('/api/hermes/delegate', requireAdmin, (req, res) => {
   const errors = validateBody(req.body, {
     task: { type: 'string', required: true, maxLength: 2000 },
     mode: { type: 'string' }, // 'background' | 'walkaway' | 'cron'
@@ -5266,7 +5268,7 @@ app.post('/api/hermes/delegate', (req, res) => {
   }
 
   hermesState.stats.tasksCompleted++;
-  logActivity('hermes', `Task delegated to Hermes: ${task.substring(0, 80)}`, { id, mode });
+  logActivity('hermes', `Task delegated to Hermes: ${task.substring(0, 80)}`, { id, mode, actor: reqActor(req) });
   broadcast({ event: 'hermes_task', data: delegated });
 
   // Simulate progress for demo
@@ -5315,7 +5317,7 @@ app.get('/api/hermes/approvals', (req, res) => {
 });
 
 // Respond to an approval request
-app.post('/api/hermes/approvals/:id', (req, res) => {
+app.post('/api/hermes/approvals/:id', requireAdmin, (req, res) => {
   const { id } = req.params;
   const { decision } = req.body; // 'approve' | 'reject'
   const idx = hermesState.approvalQueue.findIndex(a => a.id === id);
@@ -5327,7 +5329,7 @@ app.post('/api/hermes/approvals/:id', (req, res) => {
   hermesState.approvalQueue.splice(idx, 1);
   hermesState.stats.approvalsPending = hermesState.approvalQueue.length;
 
-  logActivity('hermes', `Approval ${decision}: ${approval.action.substring(0, 60)}`, { id });
+  logActivity('hermes', `Approval ${decision}: ${approval.action.substring(0, 60)}`, { id, actor: reqActor(req) });
   broadcast({ event: 'hermes_approval_resolved', data: approval });
   res.json({ ok: true, approval });
 });
@@ -5343,7 +5345,7 @@ app.get('/api/hermes/walkaway', (req, res) => {
 });
 
 // Send a mobile reply to a walkaway task
-app.post('/api/hermes/walkaway/:id/reply', (req, res) => {
+app.post('/api/hermes/walkaway/:id/reply', requireAdmin, (req, res) => {
   const { id } = req.params;
   const { message } = req.body;
   const task = hermesState.activeTasks.find(t => t.id === id);
@@ -5351,7 +5353,7 @@ app.post('/api/hermes/walkaway/:id/reply', (req, res) => {
 
   task.log.push(`Mobile reply: ${message}`);
   broadcast({ event: 'hermes_walkaway_reply', data: { taskId: id, message } });
-  logActivity('hermes', `Walkaway reply: ${message.substring(0, 60)}`, { taskId: id });
+  logActivity('hermes', `Walkaway reply: ${message.substring(0, 60)}`, { taskId: id, actor: reqActor(req) });
   res.json({ ok: true });
 });
 
@@ -5371,7 +5373,7 @@ app.get('/api/hermes/cron', (req, res) => {
 });
 
 // Create a new Hermes cron job
-app.post('/api/hermes/cron', (req, res) => {
+app.post('/api/hermes/cron', requireAdmin, (req, res) => {
   const errors = validateBody(req.body, {
     task: { type: 'string', required: true, maxLength: 500 },
     schedule: { type: 'string', required: true, maxLength: 50 },
@@ -5391,17 +5393,17 @@ app.post('/api/hermes/cron', (req, res) => {
     notifyVia: req.body.notifyVia || 'websocket',
   };
   hermesState.cronJobs.push(job);
-  logActivity('hermes', `Cron job created: ${job.task}`, { id, schedule: job.schedule });
+  logActivity('hermes', `Cron job created: ${job.task}`, { id, schedule: job.schedule, actor: reqActor(req) });
   broadcast({ event: 'hermes_cron_created', data: job });
   res.json(job);
 });
 
 // Delete a Hermes cron job
-app.delete('/api/hermes/cron/:id', (req, res) => {
+app.delete('/api/hermes/cron/:id', requireAdmin, (req, res) => {
   const idx = hermesState.cronJobs.findIndex(j => j.id === req.params.id);
   if (idx === -1) return res.status(404).json({ error: 'Cron job not found' });
   const removed = hermesState.cronJobs.splice(idx, 1)[0];
-  logActivity('hermes', `Cron job deleted: ${removed.task}`, { id: removed.id });
+  logActivity('hermes', `Cron job deleted: ${removed.task}`, { id: removed.id, actor: reqActor(req) });
   res.json({ ok: true });
 });
 
@@ -5716,7 +5718,7 @@ app.put('/api/settings/:section', requireAdmin, (req, res) => {
 
   if (updated.length > 0) {
     saveState('settings', settings);
-    logActivity('settings', `Settings updated: ${section} → ${updated.join(', ')}`, { section });
+    logActivity('settings', `Settings updated: ${section} → ${updated.join(', ')}`, { section, actor: reqActor(req) });
   }
 
   res.json({ ok: true, updated, skipped });
@@ -6058,7 +6060,7 @@ app.post('/api/hq/dispatch/:employeeId', requireAdmin, (req, res) => {
   const routing = getAgentEffort(employee.agent);
 
   logActivity('hq', `Task dispatched to ${employee.name} (${employee.title}): ${task.substring(0, 80)}`, {
-    taskId, employee: employee.id, department: department.id, model: routing.model,
+    taskId, employee: employee.id, department: department.id, model: routing.model, actor: reqActor(req),
   });
 
   broadcast({ event: 'hq_task_dispatched', data: {
@@ -6120,7 +6122,7 @@ app.post('/api/approvals/:id/approve', requireAdmin, heavyLimiter, async (req, r
     a.approvedBy = (req.session && (req.session.email || req.session.name)) || 'operator';
     a.approvedAt = new Date().toISOString();
     saveState('pending_approvals', pendingApprovals);
-    logActivity('approval', `Approved + executed: ${a.summary}`, { type: a.type, approvalId: a.id });
+    logActivity('approval', `Approved + executed: ${a.summary}`, { type: a.type, approvalId: a.id, actor: reqActor(req) });
     broadcast({ event: 'approval_update', data: a });
     res.json({ ok: true, approval: a, result });
   } catch (e) {
@@ -6141,7 +6143,7 @@ app.post('/api/approvals/:id/reject', requireAdmin, (req, res) => {
   a.rejectedAt = new Date().toISOString();
   a.rejectReason = (req.body && req.body.reason) || '';
   saveState('pending_approvals', pendingApprovals);
-  logActivity('approval', `Rejected: ${a.summary}`, { type: a.type, approvalId: a.id });
+  logActivity('approval', `Rejected: ${a.summary}`, { type: a.type, approvalId: a.id, actor: reqActor(req) });
   broadcast({ event: 'approval_update', data: a });
   res.json({ ok: true, approval: a });
 });
