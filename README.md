@@ -92,6 +92,12 @@ Each virtual employee maps to an AI agent with a specific model tier, can receiv
 - **Risk-Scored Actions** — Each action is risk-scored, with secrets stripped from the audit trail
 - **Agent-Buyable Offers** — High-impact purchases (e.g. the Managed Website add-on) route through the gate rather than running unattended
 
+### Security Suite (Opt-In)
+- **AI Security Self-Assessment** — STRIDE threat-model + [semgrep](https://semgrep.dev) static analysis + an AI blue-team review loop, run on demand or on a schedule from an operator **Security dashboard** (driven by the [mythos-defense](https://github.com/wholefoo/mythos-defense) engine). **Report-only** — it surfaces findings and patch *recommendations*, and never auto-patches the live system
+- **Web Studio Publish Gate** — every generated or imported site is security-scanned (read-only) before it goes live; configurable `off` / `warn` / `block`
+- **Managed-Client Security Service** — per-client security assessments recorded as a CRM deliverable and shown in the client's own "Site Security" workspace view
+- *AI-assisted, report-only — not a security guarantee. OFF by default; requires Python 3.11+, the mythos-defense CLI, and semgrep installed and enabled.*
+
 ### YouTube Video Intelligence
 - **Visual Frame Analysis** — Extracts frames at configurable intervals and sends to Claude Vision API
 - **Transcript Extraction** — Pulls spoken-word transcripts with timestamps
@@ -181,6 +187,7 @@ All tiers are self-hosted — you run on your own infrastructure with your own d
 | Agent definitions | Markdown with YAML frontmatter |
 | Memory | File-based (.magent/) with JSON state persistence |
 | Security | Helmet, CORS, express-rate-limit, compression |
+| Security scanning (opt-in) | semgrep (SAST) + mythos-defense CLI bridge — STRIDE threat-model + AI blue-team loop; report-only; requires Python 3.11+ |
 | Deployment | PM2, Nginx, Let's Encrypt |
 
 ## For Users

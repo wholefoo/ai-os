@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Security — AI OS Docs</title>
+  <meta name="description" content="AI OS's opt-in, report-only AI security suite — platform self-assessment (STRIDE + semgrep + AI blue-team), the Web Studio publish security gate, and the managed-client security service. Built on the mythos-defense engine.">
+  <link rel="canonical" href="https://aiosorchestrationlab.com/docs/security">
+  <meta property="og:title" content="Security — AI OS Docs">
+  <meta property="og:description" content="Opt-in, report-only AI security: platform self-assessment, a publish-time site security gate, and a managed-client security service. Built on mythos-defense + semgrep.">
+  <meta name="twitter:card" content="summary">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/css/landing.css">
+  <link rel="stylesheet" href="/css/docs.css">
+  <script async src="https://www.googletagmanager.com/gtag/js?id=G-SMHYRX8D4P"></script>
+  <script>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}gtag('js',new Date());gtag('config','G-SMHYRX8D4P');</script>
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "TechArticle",
+    "headline": "Security — AI OS Docs",
+    "description": "AI OS's opt-in, report-only AI security suite — platform self-assessment (STRIDE + semgrep + AI blue-team), the Web Studio publish security gate, and the managed-client security service. Built on the mythos-defense engine.",
+    "url": "https://aiosorchestrationlab.com/docs/security",
+    "author": { "@type": "Organization", "name": "AI OS Orchestration Lab" },
+    "publisher": { "@type": "Organization", "name": "AI OS Orchestration Lab", "url": "https://aiosorchestrationlab.com" }
+  }
+  </script>
+  <script type="application/ld+json">{"@context":"https://schema.org","@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Home","item":"https://aiosorchestrationlab.com/"},{"@type":"ListItem","position":2,"name":"Documentation","item":"https://aiosorchestrationlab.com/docs/"},{"@type":"ListItem","position":3,"name":"Security"}]}</script>
+</head>
+<body>
+  <nav class="landing-nav">
+    <div class="nav-container">
+      <a href="/" class="nav-brand">
+        <span class="nav-logo">&#9678;</span>
+        <span class="nav-name">AI OS</span>
+      </a>
+      <div class="nav-links">
+        <a href="/">Home</a>
+        <a href="/docs" class="active">Docs</a>
+        <a href="/blog">Blog</a>
+        <a href="/about">About</a>
+        <a href="/contact">Contact</a>
+      </div>
+      <div class="nav-cta">
+        <a href="/login" class="btn-nav-login">Log In</a>
+      </div>
+    </div>
+  </nav>
+
+  <main class="docs-page">
+    <div class="docs-container">
+      <div class="docs-layout">
+        <div class="docs-content">
+          <div class="docs-breadcrumb">
+            <a href="/docs">Docs</a> <span>/</span> Security
+          </div>
+
+          <h1>Security</h1>
+          <p class="docs-lead">AI OS ships with an <strong>opt-in, AI-assisted security suite</strong> built on the open-source <a href="https://github.com/wholefoo/mythos-defense">mythos-defense</a> engine and <a href="https://semgrep.dev">semgrep</a>. It assesses the platform itself, gates what your AI Web Studio publishes, and turns security into a deliverable for managed clients. Everything here is <strong>report-only</strong>: it surfaces findings and patch <em>recommendations</em> &mdash; it never auto-patches your live system.</p>
+
+          <p><strong>Honest framing:</strong> this is an AI-assisted security capability, not a security guarantee, and it is <strong>OFF by default</strong>. It requires Python&nbsp;3.11+, the mythos-defense CLI, and semgrep installed and enabled (see <a href="#enabling">Enabling the suite</a>). Static analysis catches many real issues but cannot prove the absence of vulnerabilities &mdash; treat it as one layer of defense, not the only one.</p>
+
+          <h2 id="self-assessment">Platform Self-Assessment</h2>
+          <p>From the operator <strong>Security dashboard</strong>, run a security assessment of the AI&nbsp;OS instance itself, on demand or on a schedule. Two modes:</p>
+          <ul>
+            <li><strong>Quick scan</strong> &mdash; a STRIDE threat-model plus a dependency audit. Read-only, fast, no source-code patching.</li>
+            <li><strong>Deep scan</strong> &mdash; the full loop: STRIDE threat-model &rarr; semgrep static analysis &rarr; an AI blue-team review that proposes fixes &rarr; verification. The deep scan runs against a <strong>disposable filtered copy</strong> of the source, so the live tree is never touched; it returns findings and patch <em>recommendations</em> only.</li>
+          </ul>
+          <p>CRITICAL/HIGH findings raise an operator notification. Results are kept in a scan history you can review, with per-finding severity, location, and CWE references.</p>
+
+          <h2 id="publish-gate">Web Studio Publish Gate</h2>
+          <p>Every site your <a href="/docs/architecture">AI Web Studio</a> publishes &mdash; generated or imported &mdash; is security-scanned (semgrep, read-only) <strong>before it goes live</strong>. The gate has three modes:</p>
+          <table class="docs-table">
+            <thead><tr><th>Mode</th><th>Behavior</th></tr></thead>
+            <tbody>
+              <tr><td><code>off</code></td><td>No scan on publish (default).</td></tr>
+              <tr><td><code>warn</code></td><td>Scan and surface findings on the site record, but allow the publish.</td></tr>
+              <tr><td><code>block</code></td><td>Refuse to deploy a site with error-severity findings until they are resolved.</td></tr>
+            </tbody>
+          </table>
+          <p>Every path that deploys a site &mdash; the publish button, content edits, rebuilds, and AI regenerations &mdash; routes through a single gated chokepoint, so nothing reaches a live domain unchecked. The gate <strong>fails open</strong>: if the scanner is unavailable, publishing proceeds rather than being blocked by tooling, and the unavailability is surfaced rather than reported as &ldquo;clean.&rdquo;</p>
+
+          <h2 id="managed-client">Managed-Client Security Service</h2>
+          <p>For <a href="/#pricing">Managed Website</a> clients, security becomes a deliverable. From the CRM, run a security assessment across a client's sites; the result is recorded as a <strong>CRM activity</strong> on the client's record and surfaced in the client's own <strong>&ldquo;Site Security&rdquo;</strong> workspace view &mdash; an owner-scoped, read-only report of each managed site's latest scan and findings.</p>
+
+          <h2 id="how-it-works">How it works</h2>
+          <p>AI OS drives the security engine through a constrained subprocess bridge:</p>
+          <ul>
+            <li><strong>semgrep</strong> performs the fast, deterministic static analysis (the publish gate and per-site scans use it directly &mdash; no AI cost, seconds not minutes).</li>
+            <li><strong>mythos-defense</strong> performs the deeper AI loop for the platform deep-scan: an architect builds the STRIDE threat-model, semgrep red-teams the code, and an AI blue-team proposes fixes, which are then verified.</li>
+            <li>The bridge runs each tool with explicit binary paths, output caps, and timeouts, and passes your Anthropic key from settings &mdash; the deep AI scan uses your own model budget.</li>
+          </ul>
+
+          <h2 id="safety">Safety model</h2>
+          <p>The suite is designed to be safe to run against a production platform:</p>
+          <ul>
+            <li><strong>Report-only.</strong> Findings and patch <em>recommendations</em> are surfaced; nothing is applied to the live system automatically.</li>
+            <li><strong>Deep scans run on a disposable copy.</strong> The AI loop that can propose in-place patches is pointed at a filtered, throwaway snapshot of the source &mdash; never the live tree, which is left untouched.</li>
+            <li><strong>Static analysis is read-only.</strong> semgrep never modifies the files it scans.</li>
+            <li><strong>Operator-gated.</strong> The Security dashboard and scan APIs are admin-only; the managed-client report a client sees is strictly scoped to their own sites.</li>
+          </ul>
+
+          <h2 id="enabling">Enabling the suite</h2>
+          <p>The suite is off until you install its prerequisites and turn it on. On the server:</p>
+          <ol>
+            <li>Install <strong>Python&nbsp;3.11+</strong>, then the <strong>mythos-defense</strong> CLI and <strong>semgrep</strong> (a shared virtualenv readable by the service user works well).</li>
+            <li>Set the binary paths and enable in your environment:
+              <ul>
+                <li><code>AIOS_MYTHOS_ENABLED=true</code></li>
+                <li><code>AIOS_MYTHOS_BIN</code> / <code>AIOS_SEMGREP_BIN</code> &mdash; absolute paths to the installed binaries</li>
+              </ul>
+            </li>
+            <li>Opt into the individual layers as desired:
+              <ul>
+                <li><code>AIOS_SECURITY_GATE_PUBLISH=warn</code> (or <code>block</code>) &mdash; the Web Studio publish gate</li>
+                <li><code>AIOS_SECURITY_SCAN_ENABLED=true</code> &mdash; the scheduled platform self-scan</li>
+              </ul>
+            </li>
+            <li>Restart. The Security dashboard will show <code>mythos ready</code> when everything is wired.</li>
+          </ol>
+          <p>The deep AI scan and threat-model use your Anthropic API key; the semgrep-based publish gate and per-site scans need no AI key. semgrep loads its rulesets from its registry, so the server needs outbound access to it &mdash; if rules can't load, scans report <em>unavailable</em> (and the gate fails open) rather than a false &ldquo;clean.&rdquo;</p>
+
+          <div class="docs-page-nav">
+            <a href="/docs/deployment">&larr; Deployment</a>
+            <a href="/docs/api">API Reference &rarr;</a>
+          </div>
+        </div>
+
+        <aside class="docs-toc">
+          <div class="docs-toc-title">On this page</div>
+          <a href="#self-assessment">Platform Self-Assessment</a>
+          <a href="#publish-gate">Web Studio Publish Gate</a>
+          <a href="#managed-client">Managed-Client Security</a>
+          <a href="#how-it-works">How it works</a>
+          <a href="#safety">Safety model</a>
+          <a href="#enabling">Enabling the suite</a>
+        </aside>
+      </div>
+    </div>
+  </main>
+
+  <footer class="site-footer">
+    <div class="footer-container">
+      <div class="footer-brand">
+        <span class="nav-logo">&#9678;</span>
+        <span class="nav-name">AI OS</span>
+        <p class="footer-tagline">The Agentic Operating System</p>
+      </div>
+      <div class="footer-links">
+        <div class="footer-col">
+          <h4>Product</h4>
+          <a href="/#features">Features</a>
+          <a href="/#pricing">Pricing</a>
+          <a href="/docs">Documentation</a>
+        </div>
+        <div class="footer-col">
+          <h4>Resources</h4>
+          <a href="/blog">Blog</a>
+          <a href="/about">About</a>
+          <a href="/contact">Contact</a>
+        </div>
+        <div class="footer-col">
+          <h4>Legal</h4>
+          <a href="/terms">Terms of Service</a>
+          <a href="/privacy">Privacy Policy</a>
+        </div>
+      </div>
+    </div>
+    <div class="footer-bottom">
+      <p>&copy; 2026 AI OS Orchestration Lab. All rights reserved.</p>
+    </div>
+  </footer>
+</body>
+</html>
