@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>The Mythos-Defense Security Suite: AI-Powered Self-Defense for Your AI Platform — AI OS Blog</title>
+  <meta name="description" content="The Mythos-Defense Security Suite gives AI OS three layers of AI-driven, report-only security: platform self-assessment (STRIDE + semgrep + AI blue-team), a publish-time gate that scans every AI-built site before it goes live, and security as a managed-client deliverable.">
+  <link rel="canonical" href="https://aiosorchestrationlab.com/blog/mythos-defense-security-suite">
+  <meta property="og:title" content="The Mythos-Defense Security Suite: AI-Powered Self-Defense">
+  <meta property="og:description" content="Three layers of AI-driven, report-only security: platform self-assessment, a publish-time site security gate, and security as a managed-client deliverable.">
+  <meta property="og:type" content="article">
+  <meta property="og:url" content="https://aiosorchestrationlab.com/blog/mythos-defense-security-suite">
+  <meta property="og:image" content="https://aiosorchestrationlab.com/assets/og-share.png">
+  <meta name="twitter:card" content="summary_large_image">
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "Article",
+    "headline": "The Mythos-Defense Security Suite: AI-Powered Self-Defense for Your AI Platform",
+    "description": "The Mythos-Defense Security Suite gives AI OS three layers of AI-driven, report-only security: platform self-assessment (STRIDE + semgrep + an AI blue-team), a publish-time gate that scans every AI-built site before it goes live, and security as a managed-client deliverable.",
+    "url": "https://aiosorchestrationlab.com/blog/mythos-defense-security-suite",
+    "datePublished": "2026-06-21",
+    "author": { "@type": "Organization", "name": "AI OS Orchestration Lab" },
+    "publisher": { "@type": "Organization", "name": "AI OS Orchestration Lab", "url": "https://aiosorchestrationlab.com" }
+  }
+  </script>
+  <script type="application/ld+json">{"@context":"https://schema.org","@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Home","item":"https://aiosorchestrationlab.com/"},{"@type":"ListItem","position":2,"name":"Blog","item":"https://aiosorchestrationlab.com/blog/"},{"@type":"ListItem","position":3,"name":"The Mythos-Defense Security Suite"}]}</script>
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "FAQPage",
+    "mainEntity": [
+      { "@type": "Question", "name": "What is the Mythos-Defense Security Suite?", "acceptedAnswer": { "@type": "Answer", "text": "It is an opt-in, report-only security layer in AI OS. It runs an AI-driven self-assessment of the platform (STRIDE threat-model + semgrep static analysis + an AI blue-team review), gates every AI-built site with a security scan before it goes live, and turns security into a deliverable for managed clients. It surfaces findings and patch recommendations and never auto-patches the live system." } },
+      { "@type": "Question", "name": "Does the security suite ever change my live system automatically?", "acceptedAnswer": { "@type": "Answer", "text": "No. The suite is report-only. The deep AI scan that can propose code fixes runs against a disposable copy of the source, never the live tree, and static analysis is read-only. You decide what, if anything, to apply." } },
+      { "@type": "Question", "name": "Is it on by default?", "acceptedAnswer": { "@type": "Answer", "text": "No. It is off by default and requires Python 3.11+, the open-source mythos-defense CLI, and semgrep installed and enabled. The semgrep-based publish gate and per-site scans need no AI key; the deep AI assessment uses your own Anthropic key." } },
+      { "@type": "Question", "name": "Is this a security guarantee?", "acceptedAnswer": { "@type": "Answer", "text": "No. It is an AI-assisted security capability, not a guarantee. Static analysis catches many real issues but cannot prove the absence of vulnerabilities. Treat it as one strong layer of defense, not the only one." } }
+    ]
+  }
+  </script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/css/landing.css">
+  <script async src="https://www.googletagmanager.com/gtag/js?id=G-SMHYRX8D4P"></script>
+  <script>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}gtag('js',new Date());gtag('config','G-SMHYRX8D4P');</script>
+  <style>
+    .post { max-width: 720px; margin: 0 auto; padding: 100px 24px 60px; }
+    .post-meta { font-size: 13px; color: var(--text-muted); margin-bottom: 32px; display: flex; gap: 16px; }
+    .post h1 { font-size: 38px; font-weight: 800; line-height: 1.2; margin-bottom: 12px; }
+    .post-lead { font-size: 18px; color: var(--text-secondary); line-height: 1.7; margin-bottom: 32px; }
+    .post h2 { font-size: 26px; font-weight: 700; margin: 40px 0 16px; }
+    .post h3 { font-size: 20px; font-weight: 600; margin: 28px 0 12px; }
+    .post p { font-size: 16px; line-height: 1.8; color: var(--text-secondary); margin-bottom: 16px; }
+    .post ul, .post ol { font-size: 16px; line-height: 1.8; color: var(--text-secondary); padding-left: 24px; margin-bottom: 16px; }
+    .post li { margin-bottom: 8px; }
+    .post strong { color: var(--text-primary); }
+    .post blockquote { border-left: 3px solid var(--primary); padding: 12px 20px; margin: 24px 0; background: rgba(59,130,246,0.05); border-radius: 0 8px 8px 0; font-style: italic; color: var(--text-secondary); }
+    .post table { width: 100%; border-collapse: collapse; margin: 24px 0; font-size: 14px; }
+    .post th, .post td { padding: 10px 14px; border: 1px solid var(--border); text-align: left; }
+    .post th { background: var(--bg-secondary); font-weight: 600; color: var(--text-primary); }
+    .post-cta { text-align: center; padding: 40px; background: var(--bg-secondary); border: 1px solid var(--border); border-radius: 12px; margin: 40px 0; }
+    .post-cta h3 { margin-bottom: 12px; }
+    .post-cta p { margin-bottom: 16px; }
+    .post-nav { display: flex; justify-content: space-between; margin-top: 40px; padding-top: 20px; border-top: 1px solid var(--border); font-size: 14px; }
+    .post-nav a { color: var(--primary); text-decoration: none; }
+  </style>
+</head>
+<body>
+  <nav class="landing-nav">
+    <div class="nav-container">
+      <a href="/" class="nav-brand">
+        <span class="nav-logo">&#9678;</span>
+        <span class="nav-name">AI OS</span>
+      </a>
+      <div class="nav-links">
+        <a href="/">Home</a>
+        <a href="/docs">Docs</a>
+        <a href="/blog" class="active">Blog</a>
+        <a href="/about">About</a>
+        <a href="/contact">Contact</a>
+      </div>
+      <div class="nav-cta">
+        <a href="/login" class="btn-nav-login">Log In</a>
+      </div>
+    </div>
+  </nav>
+
+  <article class="post">
+    <h1>The Mythos-Defense Security Suite: AI-Powered Self-Defense for Your AI Platform</h1>
+    <div class="post-meta">
+      <span>June 2026</span>
+      <span>10 min read</span>
+      <span>Security</span>
+    </div>
+
+    <p class="post-lead">The Mythos-Defense Security Suite is an opt-in, <strong>report-only</strong> security layer built into AI OS. It does three things: it runs an AI-driven security assessment of the platform itself, it scans every site your AI Web Studio publishes <em>before</em> that site goes live, and it turns security into a deliverable you can hand to managed clients. It surfaces findings and patch recommendations &mdash; and never auto-patches your live system.</p>
+
+    <h2>Why agentic platforms need their own security layer</h2>
+
+    <p>An AI operating system has a bigger attack surface than a normal app. It executes tools on behalf of AI agents, it ingests untrusted content (scraped pages, imported sites, model output), and &mdash; with <a href="/docs/architecture">AI Web Studio</a> &mdash; it <em>generates and hosts</em> websites. Each of those is a place where something risky can slip through: a prompt-injected instruction, a vulnerable dependency, an XSS sink in an AI-written page.</p>
+
+    <p>Traditional security tooling assumes a human wrote the code and a human reviews every deploy. On an agentic platform, neither is always true. The Mythos-Defense Security Suite closes that gap by making AI-assisted security a native, continuous part of the platform &mdash; not a quarterly afterthought.</p>
+
+    <blockquote>The goal isn't to promise perfect security. It's to put a fast, AI-driven reviewer in the loop everywhere agents touch code, content, and deploys.</blockquote>
+
+    <h2>Three layers of defense</h2>
+
+    <h3>1. AI security self-assessment</h3>
+    <p>From an operator <strong>Security dashboard</strong>, you can audit the AI OS instance itself &mdash; on demand or on a schedule. There are two modes:</p>
+    <ul>
+      <li><strong>Quick scan</strong> &mdash; a STRIDE threat-model plus a dependency audit. Fast and read-only.</li>
+      <li><strong>Deep scan</strong> &mdash; the full loop: a STRIDE threat-model, <a href="https://semgrep.dev">semgrep</a> static analysis to red-team the code, and an AI <em>blue-team</em> that proposes fixes, which are then verified. The deep scan runs against a <strong>disposable copy</strong> of the source, so the live system is never touched.</li>
+    </ul>
+    <p><strong>The benefit:</strong> you find the classes of bug attackers look for &mdash; injection, broken access control, secret exposure, dependency CVEs &mdash; before they find you, with severity, location, and CWE references for each finding, and a notification when something is CRITICAL or HIGH.</p>
+
+    <h3>2. Publish security gate for AI-built sites</h3>
+    <p>Every site AI Web Studio deploys &mdash; whether generated from a brief or imported from a ZIP/GitHub repo &mdash; passes through a security scan before it goes live. You choose how strict to be:</p>
+    <table>
+      <thead><tr><th>Mode</th><th>What happens on publish</th></tr></thead>
+      <tbody>
+        <tr><td><strong>off</strong></td><td>No scan (default).</td></tr>
+        <tr><td><strong>warn</strong></td><td>Scan and surface findings on the site &mdash; but allow the publish.</td></tr>
+        <tr><td><strong>block</strong></td><td>Refuse to deploy a site with error-severity findings until they're fixed.</td></tr>
+      </tbody>
+    </table>
+    <p>Crucially, <em>every</em> path that pushes a site live &mdash; the publish button, content edits, rebuilds, AI regenerations &mdash; routes through one gated chokepoint, so nothing reaches a domain unchecked. And the gate <strong>fails open</strong>: if the scanner is unavailable, publishing still works (and the unavailability is surfaced rather than reported as a false &ldquo;all clear&rdquo;).</p>
+    <p><strong>The benefit:</strong> your AI never silently ships a site with an XSS sink, a leaked key, or a dangerous inline script to a live, customer-facing domain.</p>
+
+    <h3>3. Security as a managed-client deliverable</h3>
+    <p>For <a href="/#pricing">Managed Website</a> clients, security becomes something you can show, not just claim. From the CRM, run a security assessment across a client's sites; the result is logged as an activity on their record <em>and</em> surfaced in the client's own read-only <strong>&ldquo;Site Security&rdquo;</strong> workspace view.</p>
+    <p><strong>The benefit:</strong> a recurring, visible trust signal for the clients you host &mdash; the kind of thing that justifies a managed plan and keeps clients renewing.</p>
+
+    <h2>Report-only by design</h2>
+    <p>The suite is built to be safe to run against a production platform. That's not a footnote &mdash; it's the core design constraint:</p>
+    <ul>
+      <li><strong>Report-only.</strong> It surfaces findings and patch <em>recommendations</em>. Nothing is applied to the live system automatically.</li>
+      <li><strong>Deep scans use a throwaway copy.</strong> The AI loop that can propose in-place patches is pointed at a disposable snapshot of the source &mdash; never the live tree.</li>
+      <li><strong>Static analysis is read-only.</strong> semgrep never modifies the files it scans.</li>
+      <li><strong>Operator-gated.</strong> The Security dashboard and scan APIs are admin-only; the report a managed client sees is strictly scoped to their own sites.</li>
+    </ul>
+
+    <h2>Built on open source &mdash; and on your own model budget</h2>
+    <p>Under the hood, the suite drives two open tools through a constrained bridge: <strong>semgrep</strong> for fast, deterministic static analysis (the publish gate and per-site scans use it directly &mdash; no AI cost, seconds not minutes), and the open-source <strong><a href="https://github.com/wholefoo/mythos-defense">mythos-defense</a></strong> engine for the deeper AI red-team / blue-team loop. The deep AI assessment uses <em>your</em> Anthropic key, in keeping with AI OS's BYOK model &mdash; there are no per-scan SaaS fees.</p>
+
+    <p>We build this the way we recommend you use it: we run the suite against AI OS itself. Eating our own dog food means the findings it's designed to catch are the findings we fix &mdash; before they'd ever reach you.</p>
+
+    <h2>Honest about what it is</h2>
+    <p>In the same spirit as our <a href="/blog/what-is-answer-engine-optimization">AEO</a> work, we won't oversell this. The suite is an <strong>AI-assisted security capability, not a guarantee</strong>. Static analysis and AI review catch a great deal, but they cannot prove the absence of vulnerabilities. It's <strong>off by default</strong> and requires Python&nbsp;3.11+, the mythos-defense CLI, and semgrep installed and enabled. Treat it as one strong, continuous layer of defense &mdash; alongside good practices, dependency hygiene, and human judgment &mdash; not a replacement for them.</p>
+
+    <h2>Who it's for</h2>
+    <ul>
+      <li><strong>Operators</strong> self-hosting AI OS who want continuous, AI-driven assurance on their own instance.</li>
+      <li><strong>Agencies and freelancers</strong> publishing AI-built sites who can't manually security-review every deploy.</li>
+      <li><strong>Managed-website providers</strong> who want security to be a visible, recurring deliverable for the clients they host.</li>
+    </ul>
+
+    <h2>Getting started</h2>
+    <p>The suite ships with AI OS and turns on once you install its prerequisites and enable it. Full setup &mdash; the prerequisites, the environment flags for the publish gate and scheduled scans, and the safety model &mdash; is in the <a href="/docs/security">Security documentation</a>.</p>
+
+    <div class="post-cta">
+      <h3>Build on a platform that secures itself</h3>
+      <p>55 agents, 6 AI models across 4 routing tiers, AI Web Studio, and an opt-in AI security suite. Free to start.</p>
+      <a href="/#pricing" class="btn-primary-cta btn-lg">Start Free &mdash; 1 SEO Audit Included &rarr;</a>
+    </div>
+
+    <div class="post-nav">
+      <a href="/blog">&larr; All posts</a>
+      <a href="/docs/security">Security Docs &rarr;</a>
+    </div>
+  </article>
+
+  <footer class="site-footer">
+    <div class="footer-container">
+      <div class="footer-brand">
+        <span class="nav-logo">&#9678;</span>
+        <span class="nav-name">AI OS</span>
+        <p class="footer-tagline">The Agentic Operating System</p>
+      </div>
+      <div class="footer-links">
+        <div class="footer-col">
+          <h4>Product</h4>
+          <a href="/#features">Features</a>
+          <a href="/#pricing">Pricing</a>
+          <a href="/docs">Documentation</a>
+        </div>
+        <div class="footer-col">
+          <h4>Resources</h4>
+          <a href="/blog">Blog</a>
+          <a href="/about">About</a>
+          <a href="/contact">Contact</a>
+        </div>
+        <div class="footer-col">
+          <h4>Legal</h4>
+          <a href="/terms">Terms of Service</a>
+          <a href="/privacy">Privacy Policy</a>
+        </div>
+      </div>
+    </div>
+    <div class="footer-bottom">
+      <p>&copy; 2026 AI OS Orchestration Lab. All rights reserved.</p>
+    </div>
+  </footer>
+</body>
+</html>
