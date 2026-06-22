@@ -79,6 +79,7 @@ Each virtual employee maps to an AI agent with a specific model tier, can receiv
 
 ### CRM + Client Management
 - **CRM** — node:sqlite-backed contact/account store with live ingest seams, notes, edits, and linking
+- **AI Helpdesk (Contact Page)** — the public contact page is a documentation-grounded support agent: visitors submit email + subject + problem and get an instant answer from the docs in a multi-turn thread; anything it can't resolve is logged to the CRM for human follow-up. Visitor input is prompt-injection-fenced, and the support email is not exposed (Enterprise priority channel only)
 - **Client-Account Management** — Operators manage client accounts from the dashboard
 - **Scoped Client Workspace** — Each client gets a scoped workspace dashboard
 
@@ -178,7 +179,7 @@ All tiers are self-hosted — you run on your own infrastructure with your own d
 |-------|-----------|
 | Runtime | Node.js 24 + Express |
 | Dashboard | Vanilla HTML/CSS/JS with WebSocket live updates |
-| AI Models | 6 providers: Claude Opus 4.8 (default, effort routing), OpenAI GPT, Gemini Omni Flash, DeepSeek V4, Grok-3 (xAI), Perplexity — across 4 routing tiers |
+| AI Models | 6 providers: Claude Opus 4.8 (default, effort routing), OpenAI GPT, Gemini Omni Flash, DeepSeek V4, Grok-3 (xAI), Perplexity — across 4 routing tiers; plus opt-in Z.ai GLM (GLM-5.2) in the multi-model consensus |
 | Web Scraping | Firecrawl, Apify (25K+ actors), Tavily (AI search) |
 | Video Analysis | yt-dlp + ffmpeg + Claude Vision API |
 | SEO Data | DataForSEO API |
@@ -259,6 +260,7 @@ bash deploy/push-update.sh root@your-vps-ip
 | `ANTHROPIC_API_KEY` | For AI | Claude Opus 4.8 API key (all effort tiers) |
 | `GEMINI_API_KEY` | For AI | Google Gemini API key (Omni creative tier) |
 | `DEEPSEEK_API_KEY` | For AI | DeepSeek V4 economy tier |
+| `ZAI_API_KEY` | For AI | Z.ai GLM (default GLM-5.2) — opt-in provider in the multi-model consensus |
 | `XAI_API_KEY` | For AI | Grok-3 realtime tier |
 | `FIRECRAWL_API_KEY` | For AI | Firecrawl web scraping |
 | `TAVILY_API_KEY` | For AI | Tavily AI-optimized search |
@@ -323,6 +325,11 @@ OpenAI GPT and Perplexity are additionally available across these tiers — GPT 
 alternate work/routing model and Perplexity for cited live-web answers. Hermes MCP is the
 persistence layer (background / walkaway execution) that any tier routes into — it's
 infrastructure, not a separate model or agent count.
+
+**Z.ai (GLM)** is wired as an opt-in, bring-your-own-key provider (OpenAI-compatible; default
+model GLM-5.2). Add a `ZAI_API_KEY` in Settings and it joins the **multi-model consensus /
+Share-of-Model** AEO checks — it is not part of the default agent routing, so Claude Opus 4.8
+remains the default for all agent work.
 
 ### SEO Agency Sub-Agents
 
