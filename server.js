@@ -264,13 +264,22 @@ const sessions = {
   get size() { return _sessionMap.size; },
 }; // token -> { email, plan, role, ownerEmail, stripeCustomerId?, expiresAt }
 
-// Seed admin account if not present
+// Seed admin account if not present. Production FAILS CLOSED: it never falls back to a baked-in,
+// offline-crackable default credential — ADMIN_EMAIL + ADMIN_PASSWORD_HASH must be set explicitly,
+// or no admin is seeded (an already-seeded admin in persisted state is untouched). Dev keeps a
+// localhost convenience default.
 (function seedAdmin() {
-  const adminEmail = process.env.ADMIN_EMAIL || 'admin@localhost';
+  const isProd = process.env.NODE_ENV === 'production';
+  const adminEmail = process.env.ADMIN_EMAIL || (isProd ? null : 'admin@localhost');
+  const adminHash = process.env.ADMIN_PASSWORD_HASH || (isProd ? null : '$2b$12$fhfoAN1tNo4ibPfElk60UOuNHEAJckkE9Oko8etkDpJvggDYBrrZa');
+  if (!adminEmail || !adminHash) {
+    console.warn('[AUTH] No admin seeded — set ADMIN_EMAIL and ADMIN_PASSWORD_HASH (required in production).');
+    return;
+  }
   if (!users.find(u => u.email === adminEmail)) {
     users.push({
       email: adminEmail,
-      passwordHash: process.env.ADMIN_PASSWORD_HASH || '$2b$12$fhfoAN1tNo4ibPfElk60UOuNHEAJckkE9Oko8etkDpJvggDYBrrZa',
+      passwordHash: adminHash,
       plan: 'enterprise',
       role: 'admin',
       createdAt: new Date().toISOString(),
@@ -5519,10 +5528,21 @@ const settings = loadState('settings', {
   },
 });
 
+// Resolve a request's auth principal: a persisted session (cookie or Bearer token), OR the static
+// API_TOKEN acting as an admin SERVICE principal — so the documented `Authorization: Bearer
+// <API_TOKEN>` actually works on the protected routes (requireAdmin / requireClientOrAdmin /
+// requirePlan), not just the global authMiddleware prefilter. API_TOKEN must be set + non-empty.
+function resolveSession(req) {
+  const token = req.cookies?.['ai-os-session'] || req.headers.authorization?.replace('Bearer ', '');
+  if (API_TOKEN && token && token === API_TOKEN) {
+    return { email: 'service@api-token', plan: 'enterprise', role: 'admin', service: true };
+  }
+  return isValidSession(token);
+}
+
 // Middleware: require admin role
 function requireAdmin(req, res, next) {
-  const token = req.cookies?.['ai-os-session'] || req.headers.authorization?.replace('Bearer ', '');
-  const session = isValidSession(token);
+  const session = resolveSession(req);
   if (!session) return res.status(401).json({ error: 'Not authenticated' });
   if (session.role !== 'admin') return res.status(403).json({ error: 'Admin access required' });
   req.session = session;
@@ -5533,8 +5553,7 @@ function requireAdmin(req, res, next) {
 // req.session so the ownership predicate (wsOwns) scopes every site to its owner. Everything
 // NON-web-studio stays requireAdmin — a client must never reach the admin surface.
 function requireClientOrAdmin(req, res, next) {
-  const token = req.cookies?.['ai-os-session'] || req.headers.authorization?.replace('Bearer ', '');
-  const session = isValidSession(token);
+  const session = resolveSession(req);
   if (!session) return res.status(401).json({ error: 'Not authenticated' });
   if (session.role !== 'admin' && session.role !== 'client') return res.status(403).json({ error: 'Access denied' });
   req.session = session;
@@ -5546,8 +5565,7 @@ const PLAN_LEVELS = { free: 0, pro: 1, business: 2, enterprise: 3 };
 
 function requirePlan(minPlan) {
   return (req, res, next) => {
-    const token = req.cookies?.['ai-os-session'] || req.headers.authorization?.replace('Bearer ', '');
-    const session = isValidSession(token);
+    const session = resolveSession(req);
     if (!session) return res.status(401).json({ error: 'Not authenticated' });
     const userLevel = PLAN_LEVELS[session.plan] || 0;
     const requiredLevel = PLAN_LEVELS[minPlan] || 0;

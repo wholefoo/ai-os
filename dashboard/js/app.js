@@ -5970,13 +5970,13 @@ function showReportPreview(data) {
     html += `<h4 style="margin-top:16px;">${escapeHtml(section.name)}</h4>`;
     if (Array.isArray(section.data)) {
       html += '<table style="width:100%;border-collapse:collapse;font-size:13px;"><thead><tr>' +
-        Object.keys(section.data[0] || {}).map(k => `<th style="padding:6px 10px;border:1px solid var(--border);background:var(--bg-secondary);">${k}</th>`).join('') +
+        Object.keys(section.data[0] || {}).map(k => `<th style="padding:6px 10px;border:1px solid var(--border);background:var(--bg-secondary);">${escapeHtml(k)}</th>`).join('') +
         '</tr></thead><tbody>' +
-        section.data.map(row => '<tr>' + Object.values(row).map(v => `<td style="padding:6px 10px;border:1px solid var(--border);">${v}</td>`).join('') + '</tr>').join('') +
+        section.data.map(row => '<tr>' + Object.values(row).map(v => `<td style="padding:6px 10px;border:1px solid var(--border);">${escapeHtml(v)}</td>`).join('') + '</tr>').join('') +
         '</tbody></table>';
     } else {
       html += '<div style="background:var(--bg-secondary);padding:12px;border-radius:8px;font-size:13px;">';
-      Object.entries(section.data).forEach(([k, v]) => { html += `<div><strong>${k}:</strong> ${v}</div>`; });
+      Object.entries(section.data).forEach(([k, v]) => { html += `<div><strong>${escapeHtml(k)}:</strong> ${escapeHtml(v)}</div>`; });
       html += '</div>';
     }
   }

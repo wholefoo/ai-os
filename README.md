@@ -254,7 +254,7 @@ bash deploy/push-update.sh root@your-vps-ip
 | `PORT` | No | Server port (default: 3000) |
 | `NODE_ENV` | No | `development` or `production` |
 | `DEMO_MODE` | No | `true` for simulated data (default: true) |
-| `API_TOKEN` | Prod | Bearer token for API auth |
+| `API_TOKEN` | Prod | Bearer token for API auth — grants **admin** (service principal) on protected routes; keep it secret and rotate on exposure |
 | `ADMIN_EMAIL` | Yes | Admin login email |
 | `ADMIN_PASSWORD_HASH` | Yes | bcrypt hash of admin password |
 | `ANTHROPIC_API_KEY` | For AI | Claude Opus 4.8 API key (all effort tiers) |
