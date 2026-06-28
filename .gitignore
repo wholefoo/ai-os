@@ -1,6 +1,11 @@
 # Dependencies
 node_modules/
 
+# Commercial/enterprise modules live in a SEPARATE PRIVATE repo (ai-os-commercial), cloned into
+# ./commercial/ on licensed/operator deployments. NEVER commit them to this public repo — the open
+# core falls back to lib/commercial-stub.js (Community tier) when this directory is absent.
+/commercial/
+
 # Environment
 .env
 .env.local

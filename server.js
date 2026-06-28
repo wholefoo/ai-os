@@ -34,7 +34,15 @@ if (!fs.existsSync(STATE_DIR)) fs.mkdirSync(STATE_DIR, { recursive: true });
 
 // --- Commercial Module Loader ---
 // Detects ai-os-commercial module and determines active tier (community/business/enterprise)
-const commercial = require('./commercial/loader');
+// Commercial/enterprise modules live in a SEPARATE PRIVATE repo (ai-os-commercial), mounted at
+// ./commercial/ on licensed/operator deployments. The open-source Community core ships without them,
+// so fall back to the community stub — the app boots + runs Community-tier either way.
+let commercial;
+try {
+  commercial = require('./commercial/loader');
+} catch {
+  commercial = require('./lib/commercial-stub');
+}
 const ACTIVE_TIER = commercial.tier;
 const COMMERCIAL_FEATURES = commercial.features;
 console.log(`[LICENSE] Active tier: ${ACTIVE_TIER.toUpperCase()} | Features: ${Object.entries(COMMERCIAL_FEATURES).filter(([,v]) => v).map(([k]) => k).join(', ') || 'community defaults'}`);

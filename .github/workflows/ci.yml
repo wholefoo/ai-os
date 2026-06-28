@@ -35,16 +35,16 @@ jobs:
       - name: Duplication check (fallow)
         run: npx fallow dupes
 
-      - name: Verify commercial loader
+      - name: Verify commercial fallback (Community core)
         run: |
           node -e "
-            const c = require('./commercial/loader');
+            let c; try { c = require('./commercial/loader'); } catch { c = require('./lib/commercial-stub'); }
             console.log('Tier:', c.tier);
             console.log('Features:', Object.keys(c.features).length);
             console.log('RegisterRoutes:', typeof c.registerRoutes);
             if (c.tier !== 'community') { process.exit(1); }
             if (typeof c.registerRoutes !== 'function') { process.exit(1); }
-            console.log('Commercial loader OK');
+            console.log('Commercial fallback OK');
           "
 
       - name: Boot server (smoke test)
