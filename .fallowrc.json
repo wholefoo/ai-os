@@ -3,9 +3,6 @@
   "entry": [
     "server.js",
     "agent-worker/agent.js",
-    "commercial/loader.js",
-    "commercial/modules/*/index.js",
-    "commercial/enterprise/*.js",
     "tools/generate-maps.js",
     "ecosystem.config.js",
     "dashboard/js/*.js"
@@ -18,12 +15,11 @@
   ],
   "ignoreUnresolvedImports": [
     "/css/**",
-    "/js/**"
+    "/js/**",
+    "./commercial/loader",
+    "./commercial/**"
   ],
   "ignoreExports": [
-    { "file": "commercial/lib/license-validator.js", "exports": ["TIER_MAP"] },
-    { "file": "commercial/lib/tier-resolver.js", "exports": ["TIER_HIERARCHY"] },
-
     { "file": "lib/orchestrator.js", "exports": ["classifyAndAct", "fanOutAndSynthesize", "adversarialVerify", "generateAndFilter", "tournament", "loopUntilDone"] },
     { "file": "lib/multiModel.js", "exports": ["scoreConsensus", "extractScore"] },
     { "file": "lib/security/mythos.js", "exports": ["assess", "audit", "resolveSafeWorkspace", "threatModel"] },
