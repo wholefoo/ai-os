@@ -251,8 +251,8 @@ curl -s https://yourdomain.com/api/health | jq .
 ### Push Updates
 
 ```bash
-# Pull BOTH repos (public core + private commercial), then restart
-ssh root@your-vps-ip 'cd /opt/ai-os && git pull origin master && git -C commercial pull origin master && sudo -u aios pm2 restart ai-os --update-env'
+# Pull BOTH repos (public core + private commercial) as the owning user, then restart
+ssh root@your-vps-ip 'sudo -u aios git -C /opt/ai-os pull origin master && sudo -u aios git -C /opt/ai-os/commercial pull origin master && sudo -u aios pm2 restart ai-os --update-env'
 ```
 
 ## Environment Variables
