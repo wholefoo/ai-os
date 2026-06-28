@@ -209,15 +209,20 @@ Enterprise includes optional $997/yr renewal to extend priority support.
 
 ## Admin Documentation (Private)
 
-> **Everything below is for platform administration only. This repo is private.**
+> **Everything below is for platform administration.** This is the open-source Community core. The commercial/enterprise modules live in a **separate private repo** (`ai-os-commercial`) that mounts at `./commercial/`; without them the app runs at the Community tier (`lib/commercial-stub.js`).
 
 ### Local Development
 
 ```bash
-# Clone (requires GitHub access)
+# Public open-source core (Community tier)
 git clone https://github.com/wholefoo/ai-os.git
 cd ai-os && npm install
 cp .env.example .env   # Edit with your API keys
+
+# OPTIONAL — licensed/operator builds only: mount the private commercial modules at ./commercial/
+# (requires access to the private repo). Without it the app runs at the Community tier.
+git clone https://github.com/wholefoo/ai-os-commercial.git commercial
+
 npm start              # http://localhost:3000
 ```
 
@@ -235,7 +240,9 @@ ADMIN_PASSWORD_HASH=$2b$12$...   # Generate: node -e "require('bcryptjs').hash('
 ```bash
 # On your VPS (Ubuntu 22.04/24.04)
 sudo bash deploy/install-vps.sh yourdomain.com
-sudo nano /opt/ai-os/.env          # Add API keys
+# Licensed deployments: mount the private commercial modules (needs a deploy key / token on the VPS)
+sudo -u aios git -C /opt/ai-os clone https://github.com/wholefoo/ai-os-commercial.git commercial
+sudo nano /opt/ai-os/.env          # Add API keys (+ AIOS_LICENSE_KEY / AIOS_SIGNING_SECRET)
 sudo certbot --nginx -d yourdomain.com
 sudo -u aios pm2 restart ai-os --update-env
 curl -s https://yourdomain.com/api/health | jq .
@@ -244,7 +251,8 @@ curl -s https://yourdomain.com/api/health | jq .
 ### Push Updates
 
 ```bash
-bash deploy/push-update.sh root@your-vps-ip
+# Pull BOTH repos (public core + private commercial), then restart
+ssh root@your-vps-ip 'cd /opt/ai-os && git pull origin master && git -C commercial pull origin master && sudo -u aios pm2 restart ai-os --update-env'
 ```
 
 ## Environment Variables
