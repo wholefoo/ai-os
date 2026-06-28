@@ -3,6 +3,8 @@
 #  AI OS Virtual Corporate HQ — Complete VPS Setup Script
 #  Tested on: Ubuntu 22.04 / 24.04 LTS (Hostinger KVM 2+)
 #  Usage: sudo bash install-vps.sh yourdomain.com [--with-n8n] [--with-codex] [--harden-ssh]
+#  Optional env: COMMERCIAL_REPO_URL=<authenticated-url>  → also mount the private commercial
+#                modules at /opt/ai-os/commercial (Business/Enterprise). Omit for Community tier.
 # ============================================================
 
 set -euo pipefail
@@ -316,6 +318,21 @@ else
   rm -rf "${TMPDIR}"
   chown -R ${APP_USER}:${APP_USER} "${APP_DIR}"
   log "Repository cloned from ${REPO_URL}"
+fi
+
+# Commercial/enterprise modules live in a SEPARATE PRIVATE repo (ai-os-commercial). Set
+# COMMERCIAL_REPO_URL to an authenticated URL (SSH with a deploy key already configured, or HTTPS
+# with a token) to mount them at ${APP_DIR}/commercial. Without it, the app runs Community tier.
+if [ -n "${COMMERCIAL_REPO_URL:-}" ]; then
+  if [ -d "${APP_DIR}/commercial/.git" ]; then
+    sudo -u ${APP_USER} git -C "${APP_DIR}/commercial" pull origin master && log "Commercial modules updated"
+  elif sudo -u ${APP_USER} git clone "${COMMERCIAL_REPO_URL}" "${APP_DIR}/commercial"; then
+    log "Commercial modules mounted at ${APP_DIR}/commercial"   # URL not echoed (may carry a token)
+  else
+    warn "Commercial clone failed — running Community tier (check COMMERCIAL_REPO_URL / deploy-key access)"
+  fi
+else
+  log "COMMERCIAL_REPO_URL not set — running open-source Community tier"
 fi
 
 # Install dependencies
