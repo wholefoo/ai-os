@@ -76,6 +76,9 @@
           <span class="nav-icon">&#128176;</span> Observability
           <span class="nav-badge" id="costBadge"></span>
         </a>
+        <a href="#" class="nav-item" data-view="integrations">
+          <span class="nav-icon">&#128268;</span> Integrations
+        </a>
         <a href="#" class="nav-item" data-view="pipelines">
           <span class="nav-icon">&#9881;</span> Pipelines
         </a>
@@ -487,6 +490,34 @@
             <h3 class="panel-title">Recent Transactions</h3>
             <div class="costs-ledger" id="costsLedger"><!-- JS --></div>
           </section>
+        </div>
+
+        <!-- Integrations View -->
+        <div class="view" id="view-integrations">
+          <div class="costs-header">
+            <div class="vault-header-left">
+              <h2 class="radar-title">Integrations</h2>
+              <span class="radar-subtitle">Connect your stack &mdash; MCP servers and n8n / webhooks. Your tools and data stay on your own instance.</span>
+            </div>
+          </div>
+
+          <section class="panel" style="margin-bottom:20px;">
+            <h3 class="panel-title">Add an integration</h3>
+            <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
+              <select id="intgType" style="padding:8px;background:var(--bg-secondary);color:var(--text-primary);border:1px solid var(--border);border-radius:6px;">
+                <option value="mcp">MCP server</option>
+                <option value="n8n">n8n workflow</option>
+                <option value="webhook">Webhook</option>
+              </select>
+              <input id="intgName" type="text" placeholder="Name (e.g. Slack, GitHub, Hermes)" maxlength="80" style="flex:1;min-width:160px;padding:8px;background:var(--bg-secondary);color:var(--text-primary);border:1px solid var(--border);border-radius:6px;" />
+              <input id="intgUrl" type="text" placeholder="https://…  or  http://127.0.0.1:8420" maxlength="500" style="flex:2;min-width:220px;padding:8px;background:var(--bg-secondary);color:var(--text-primary);border:1px solid var(--border);border-radius:6px;" />
+              <input id="intgToken" type="password" placeholder="Bearer token (optional)" maxlength="500" style="flex:1;min-width:160px;padding:8px;background:var(--bg-secondary);color:var(--text-primary);border:1px solid var(--border);border-radius:6px;" />
+              <button class="btn btn-primary" id="intgAddBtn">Add</button>
+            </div>
+            <div style="font-size:11px;color:var(--text-muted);margin-top:10px;">MCP servers are verified with a real <code>initialize</code> + <code>tools/list</code> handshake to discover their tools. URLs are admin-only operator config (localhost is allowed).</div>
+          </section>
+
+          <div id="integrationsList"><!-- JS --></div>
         </div>
 
         <!-- Pipelines View -->

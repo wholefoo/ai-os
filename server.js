@@ -4028,6 +4028,89 @@ app.get('/api/observability/summary', requireAdmin, (req, res) => {
   res.json(getCostSummary());
 });
 
+// --- Integrations Registry (MCP servers + n8n/webhooks) — P1 "connect any tool" surface ---
+// Admin-only. Registered URLs are operator-trusted config (often localhost, e.g. Hermes), so the
+// connection test in lib/integrations deliberately bypasses safeFetch (see the note in that file).
+const integrationsLib = require('./lib/integrations');
+let integrations = loadState('integrations', []);
+const INTEGRATION_TYPES = ['mcp', 'n8n', 'webhook'];
+function persistIntegrations() {
+  if (integrations.length > 200) integrations = integrations.slice(-200);
+  saveState('integrations', integrations);
+}
+function maskIntegration(i) {
+  const { token, ...rest } = i;
+  return { ...rest, hasToken: Boolean(token), tokenMask: token ? integrationsLib.maskSecret(token) : '' };
+}
+
+app.get('/api/integrations', requireAdmin, (req, res) => {
+  res.json({ integrations: integrations.map(maskIntegration), types: INTEGRATION_TYPES });
+});
+
+app.post('/api/integrations', requireAdmin, (req, res) => {
+  const errors = validateBody(req.body, {
+    type: { type: 'string', required: true, maxLength: 16 },
+    name: { type: 'string', required: true, maxLength: 80 },
+    url: { type: 'string', required: true, maxLength: 500 },
+    token: { type: 'string', maxLength: 500 },
+  });
+  if (errors) return res.status(400).json({ error: errors.join(', ') });
+  const { type, name, url } = req.body;
+  if (!INTEGRATION_TYPES.includes(type)) return res.status(400).json({ error: `type must be one of: ${INTEGRATION_TYPES.join(', ')}` });
+  let u; try { u = new URL(url); } catch { return res.status(400).json({ error: 'invalid URL' }); }
+  if (u.protocol !== 'http:' && u.protocol !== 'https:') return res.status(400).json({ error: 'only http(s) URLs are allowed' });
+  const entry = {
+    id: uuidv4(), type, name: String(name).trim(), url: String(url).trim(),
+    token: req.body.token ? String(req.body.token) : '',
+    enabled: true, status: 'untested', lastTest: null, lastError: '', tools: [],
+    createdAt: new Date().toISOString(),
+  };
+  integrations.push(entry);
+  persistIntegrations();
+  logActivity('integration', `Integration added: ${entry.name} (${entry.type})`);
+  res.json({ ok: true, integration: maskIntegration(entry) });
+});
+
+app.put('/api/integrations/:id', requireAdmin, (req, res) => {
+  const i = integrations.find(x => x.id === req.params.id);
+  if (!i) return res.status(404).json({ error: 'integration not found' });
+  if (typeof req.body.enabled === 'boolean') i.enabled = req.body.enabled;
+  if (typeof req.body.name === 'string' && req.body.name.trim()) i.name = req.body.name.trim().slice(0, 80);
+  if (typeof req.body.url === 'string' && req.body.url.trim()) {
+    try { const u = new URL(req.body.url); if (u.protocol === 'http:' || u.protocol === 'https:') i.url = req.body.url.trim().slice(0, 500); } catch { /* keep existing */ }
+  }
+  if (typeof req.body.token === 'string') i.token = req.body.token.slice(0, 500); // '' clears it
+  persistIntegrations();
+  res.json({ ok: true, integration: maskIntegration(i) });
+});
+
+app.delete('/api/integrations/:id', requireAdmin, (req, res) => {
+  const before = integrations.length;
+  integrations = integrations.filter(x => x.id !== req.params.id);
+  if (integrations.length === before) return res.status(404).json({ error: 'integration not found' });
+  persistIntegrations();
+  res.json({ ok: true });
+});
+
+// Test a registered integration: MCP -> initialize + tools/list (discovers tools); n8n/webhook -> probe.
+app.post('/api/integrations/:id/test', requireAdmin, async (req, res) => {
+  const i = integrations.find(x => x.id === req.params.id);
+  if (!i) return res.status(404).json({ error: 'integration not found' });
+  let result;
+  if (i.type === 'mcp') {
+    result = await integrationsLib.mcpListTools(i.url, { token: i.token });
+    if (result.ok) i.tools = result.tools || [];
+  } else {
+    result = await integrationsLib.probeWebhook(i.url, { token: i.token });
+  }
+  i.status = result.ok ? 'connected' : 'error';
+  i.lastTest = new Date().toISOString();
+  i.lastError = result.ok ? '' : (result.error || 'connection failed');
+  persistIntegrations();
+  logActivity('integration', `Integration tested: ${i.name} -> ${i.status}${i.type === 'mcp' && result.ok ? ` (${i.tools.length} tools)` : ''}`);
+  res.json({ ok: result.ok, status: i.status, serverInfo: result.serverInfo, tools: i.tools, error: i.lastError || undefined });
+});
+
 app.get('/api/costs/budget', (req, res) => {
   res.json(costBudget);
 });

@@ -101,6 +101,7 @@ function switchView(view) {
     radar: loadRadar,
     vault: loadVault,
     costs: loadCosts,
+    integrations: loadIntegrations,
     pipelines: loadPipelines,
     identity: loadIdentity,
     verify: loadVerification,
@@ -2058,6 +2059,78 @@ function formatFileSize(bytes) {
   if (bytes < 1024) return bytes + ' B';
   if (bytes < 1048576) return (bytes / 1024).toFixed(1) + ' KB';
   return (bytes / 1048576).toFixed(1) + ' MB';
+}
+
+// --- Integrations (MCP servers + n8n/webhooks) ---
+async function loadIntegrations() {
+  const data = await fetchJSON('/api/integrations');
+  state.integrations = (data && data.integrations) || [];
+  renderIntegrations(state.integrations);
+  const addBtn = document.getElementById('intgAddBtn');
+  if (addBtn) addBtn.onclick = addIntegration;
+  const list = document.getElementById('integrationsList');
+  if (list) list.onclick = onIntegrationListClick;
+}
+
+function renderIntegrations(list) {
+  const c = document.getElementById('integrationsList');
+  if (!c) return;
+  if (!list.length) {
+    c.innerHTML = '<div class="empty-state">No integrations yet. Add an MCP server or n8n webhook above to connect your stack.</div>';
+    return;
+  }
+  const typeLabel = { mcp: 'MCP', n8n: 'n8n', webhook: 'Webhook' };
+  const statusColor = { connected: '#10b981', error: '#ef4444', untested: 'var(--text-muted)' };
+  const badge = (t) => `<span style="font-size:10px;padding:2px 6px;border:1px solid var(--border);border-radius:4px;color:var(--text-secondary);">${t}</span>`;
+  c.innerHTML = list.map(i => `
+    <div class="panel" style="margin-bottom:12px;display:flex;flex-direction:column;gap:8px;${i.enabled ? '' : 'opacity:.55;'}">
+      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+        <span style="font-weight:600;">${escapeHtml(i.name)}</span>
+        ${badge(typeLabel[i.type] || i.type)}
+        <span style="font-size:11px;color:${statusColor[i.status] || 'var(--text-muted)'};">&#9679; ${escapeHtml(i.status)}${i.type === 'mcp' && i.tools && i.tools.length ? ` &middot; ${i.tools.length} tools` : ''}</span>
+        <span style="flex:1;"></span>
+        <button class="btn" data-act="test" data-id="${i.id}">Test</button>
+        <button class="btn" data-act="toggle" data-id="${i.id}">${i.enabled ? 'Disable' : 'Enable'}</button>
+        <button class="btn" data-act="delete" data-id="${i.id}">Remove</button>
+      </div>
+      <div style="font-size:11px;color:var(--text-muted);word-break:break-all;">${escapeHtml(i.url)}${i.hasToken ? ` &middot; &#128273; ${escapeHtml(i.tokenMask)}` : ''}</div>
+      ${i.lastError ? `<div style="font-size:11px;color:#ef4444;">${escapeHtml(i.lastError)}</div>` : ''}
+      ${i.type === 'mcp' && i.tools && i.tools.length ? `<div style="display:flex;flex-wrap:wrap;gap:6px;">${i.tools.map(t => `<span title="${escapeHtml(t.description || '')}" style="font-size:10px;padding:2px 6px;background:var(--bg-secondary);border-radius:4px;color:var(--text-secondary);">${escapeHtml(t.name)}</span>`).join('')}</div>` : ''}
+    </div>`).join('');
+}
+
+async function addIntegration() {
+  const type = document.getElementById('intgType').value;
+  const name = document.getElementById('intgName').value.trim();
+  const url = document.getElementById('intgUrl').value.trim();
+  const token = document.getElementById('intgToken').value;
+  if (!name || !url) { alert('Name and URL are required'); return; }
+  const r = await fetchJSON('/api/integrations', { method: 'POST', body: { type, name, url, token } });
+  if (r && r.ok) {
+    document.getElementById('intgName').value = '';
+    document.getElementById('intgUrl').value = '';
+    document.getElementById('intgToken').value = '';
+    loadIntegrations();
+  } else { alert((r && r.error) || 'Failed to add integration'); }
+}
+
+async function onIntegrationListClick(e) {
+  const btn = e.target.closest('button[data-act]');
+  if (!btn) return;
+  const id = btn.dataset.id, act = btn.dataset.act;
+  const intg = (state.integrations || []).find(x => x.id === id);
+  if (act === 'test') {
+    btn.textContent = 'Testing…'; btn.disabled = true;
+    await fetchJSON(`/api/integrations/${id}/test`, { method: 'POST' });
+    loadIntegrations();
+  } else if (act === 'toggle') {
+    await fetchJSON(`/api/integrations/${id}`, { method: 'PUT', body: { enabled: !(intg && intg.enabled) } });
+    loadIntegrations();
+  } else if (act === 'delete') {
+    if (!confirm('Remove this integration?')) return;
+    await fetchJSON(`/api/integrations/${id}`, { method: 'DELETE' });
+    loadIntegrations();
+  }
 }
 
 // --- Cost Tracker ---
