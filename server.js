@@ -2383,21 +2383,30 @@ async function executeAgent(agentName, task, options = {}) {
     // Track cost
     const rates = COST_RATES[model] || COST_RATES['opus-4.8-high'];
     const cost = (inputTokens / 1_000_000) * rates.input + (outputTokens / 1_000_000) * rates.output;
+    const elapsed = Date.now() - startTime;
     costLedger.push({
       id: uuidv4(), agent: agentName, model, skill: options.skill || 'dispatch',
       inputTokens, outputTokens, cost: Math.round(cost * 10000) / 10000,
+      elapsed, ok: true,
       timestamp: new Date().toISOString(),
     });
 
-    const elapsed = Date.now() - startTime;
     logActivity('agent', `${agentName} completed in ${elapsed}ms (${model})`, { agentName, model, inputTokens, outputTokens, cost: Math.round(cost * 10000) / 10000 });
     broadcast({ event: 'agent_complete', data: { agent: agentName, model, elapsed, cost: Math.round(cost * 10000) / 10000 } });
 
     return { ok: true, content: result.content, model, inputTokens, outputTokens, elapsed };
 
   } catch (e) {
+    const elapsed = Date.now() - startTime;
     console.error(`[AGENT] ${agentName} execution failed:`, e.message);
     logActivity('agent', `${agentName} failed: ${e.message}`, { agentName, model });
+    // Record the failed run so reliability/latency observability reflects errors, not only successes.
+    costLedger.push({
+      id: uuidv4(), agent: agentName, model, skill: options.skill || 'dispatch',
+      inputTokens: 0, outputTokens: 0, cost: 0,
+      elapsed, ok: false, error: String(e.message || e).slice(0, 200),
+      timestamp: new Date().toISOString(),
+    });
     return { ok: false, error: e.message, model };
   } finally {
     releaseAgentSlot();
@@ -2739,6 +2748,48 @@ function getCostSummary() {
     byTier[tier].count += 1;
   });
 
+  // Per-skill breakdown
+  const bySkill = {};
+  monthly.forEach(e => {
+    const skill = e.skill || 'unknown';
+    if (!bySkill[skill]) bySkill[skill] = { cost: 0, tokens: 0, count: 0 };
+    bySkill[skill].cost += e.cost;
+    bySkill[skill].tokens += e.inputTokens + e.outputTokens;
+    bySkill[skill].count += 1;
+  });
+
+  // Latency percentiles (only runs that recorded an elapsed time — entries predating this are skipped)
+  const lat = monthly.map(e => e.elapsed).filter(n => typeof n === 'number' && n >= 0).sort((a, b) => a - b);
+  const pctl = (arr, p) => (arr.length ? arr[Math.min(arr.length - 1, Math.floor((p / 100) * arr.length))] : 0);
+  const latency = {
+    samples: lat.length,
+    avgMs: lat.length ? Math.round(lat.reduce((s, n) => s + n, 0) / lat.length) : 0,
+    p50Ms: pctl(lat, 50),
+    p95Ms: pctl(lat, 95),
+    maxMs: lat.length ? lat[lat.length - 1] : 0,
+  };
+
+  // Reliability (only runs that recorded an outcome)
+  const outcomes = monthly.filter(e => typeof e.ok === 'boolean');
+  const okCount = outcomes.filter(e => e.ok).length;
+  const reliability = {
+    total: outcomes.length,
+    ok: okCount,
+    failed: outcomes.length - okCount,
+    successRate: outcomes.length ? Math.round((okCount / outcomes.length) * 1000) / 10 : null,
+  };
+
+  // Hard-budget kill-switch status (mirrors the gate in executeAgent)
+  const hardEnabled = (settings.security && settings.security.hard_budget === 'true') || process.env.AIOS_HARD_BUDGET === 'true';
+  const hardBudget = {
+    enabled: hardEnabled,
+    tripped: hardEnabled ? Boolean(
+      (costBudget.daily && sumCost(daily) >= costBudget.daily) ||
+      (costBudget.weekly && sumCost(weekly) >= costBudget.weekly) ||
+      (costBudget.monthly && sumCost(monthly) >= costBudget.monthly)
+    ) : false,
+  };
+
   return {
     daily: { cost: Math.round(sumCost(daily) * 100) / 100, tokens: sumTokens(daily), count: daily.length, budget: costBudget.daily },
     weekly: { cost: Math.round(sumCost(weekly) * 100) / 100, tokens: sumTokens(weekly), count: weekly.length, budget: costBudget.weekly },
@@ -2746,6 +2797,10 @@ function getCostSummary() {
     byModel,
     byAgent,
     byTier,
+    bySkill,
+    latency,
+    reliability,
+    hardBudget,
     entries: costLedger.slice().sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp)).slice(0, 50),
   };
 }
@@ -3964,6 +4019,12 @@ app.post('/api/vault/:folder', requireAdmin, (req, res) => {
 // --- Cost Tracking API ---
 
 app.get('/api/costs', (req, res) => {
+  res.json(getCostSummary());
+});
+
+// Observability summary (admin) — the enriched cost model exposed as a stable operator-facing
+// observability surface: spend + latency percentiles + run reliability + kill-switch status.
+app.get('/api/observability/summary', requireAdmin, (req, res) => {
   res.json(getCostSummary());
 });
 

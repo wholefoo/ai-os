@@ -2065,6 +2065,7 @@ async function loadCosts() {
   const summary = await fetchJSON('/api/costs');
   state.costSummary = summary;
   renderCostBudgetBar(summary);
+  renderObservability(summary);
   renderCostStats(summary);
   renderCostTierBreakdown(summary);
   renderCostAgentBreakdown(summary);
@@ -2101,6 +2102,43 @@ function renderCostBudgetBar(summary) {
       </div>
     `;
   }).join('');
+}
+
+function renderObservability(summary) {
+  const container = document.getElementById('costsObservability');
+  if (!container) return;
+  const lat = summary.latency || {};
+  const rel = summary.reliability || {};
+  const hb = summary.hardBudget || {};
+
+  const fmtMs = (ms) => (ms >= 1000 ? (ms / 1000).toFixed(1) + 's' : Math.round(ms) + 'ms');
+  const relColor = rel.total ? (rel.successRate < 90 ? '#ef4444' : rel.successRate < 99 ? '#f59e0b' : '#10b981') : 'var(--text-muted)';
+  const hbColor = hb.tripped ? '#ef4444' : hb.enabled ? '#10b981' : 'var(--text-muted)';
+  const hbText = hb.tripped ? 'Tripped' : hb.enabled ? 'Armed' : 'Off';
+  const hbSub = hb.tripped ? 'budget reached — calls refused' : hb.enabled ? 'hard ceiling enforced' : 'advisory alerts only';
+
+  container.innerHTML = `
+    <div class="cost-stat">
+      <div class="cost-stat-value">${lat.samples ? fmtMs(lat.avgMs) : '&mdash;'}</div>
+      <div class="cost-stat-label">Avg Latency</div>
+      <div class="cost-stat-sub">${lat.samples ? 'p95 ' + fmtMs(lat.p95Ms) + ' · max ' + fmtMs(lat.maxMs) : 'no timed runs yet'}</div>
+    </div>
+    <div class="cost-stat">
+      <div class="cost-stat-value" style="color:${relColor}">${rel.total ? rel.successRate + '%' : '&mdash;'}</div>
+      <div class="cost-stat-label">Success Rate</div>
+      <div class="cost-stat-sub">${rel.total ? rel.ok + '/' + rel.total + ' ok · ' + rel.failed + ' failed' : 'no runs recorded yet'}</div>
+    </div>
+    <div class="cost-stat">
+      <div class="cost-stat-value">${lat.samples || 0}</div>
+      <div class="cost-stat-label">Timed Runs (30d)</div>
+      <div class="cost-stat-sub">latency samples</div>
+    </div>
+    <div class="cost-stat">
+      <div class="cost-stat-value" style="color:${hbColor}">${hbText}</div>
+      <div class="cost-stat-label">Budget Kill-Switch</div>
+      <div class="cost-stat-sub">${hbSub}</div>
+    </div>
+  `;
 }
 
 function renderCostStats(summary) {

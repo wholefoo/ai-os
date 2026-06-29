@@ -73,7 +73,7 @@
           <span class="nav-icon">&#128451;</span> Memory Vault
         </a>
         <a href="#" class="nav-item" data-view="costs">
-          <span class="nav-icon">&#128176;</span> Cost Tracker
+          <span class="nav-icon">&#128176;</span> Observability
           <span class="nav-badge" id="costBadge"></span>
         </a>
         <a href="#" class="nav-item" data-view="pipelines">
@@ -455,13 +455,17 @@
         <div class="view" id="view-costs">
           <div class="costs-header">
             <div class="vault-header-left">
-              <h2 class="radar-title">Cost Tracker</h2>
-              <span class="radar-subtitle">Token usage, API spend, and budget monitoring across all engines</span>
+              <h2 class="radar-title">Observability</h2>
+              <span class="radar-subtitle">Spend, latency, and reliability across every agent run — on your own instance</span>
             </div>
           </div>
 
           <div class="costs-budget-bar" id="costsBudgetBar">
             <!-- Populated by JS -->
+          </div>
+
+          <div class="costs-stats" id="costsObservability" style="margin-bottom: 16px;">
+            <!-- Latency / reliability / kill-switch — populated by JS -->
           </div>
 
           <div class="costs-stats" id="costsStats">
