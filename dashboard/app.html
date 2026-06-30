@@ -534,6 +534,11 @@
             <h3 class="panel-title">Workflow Templates <span style="font-size:11px;font-weight:400;color:var(--text-muted);">&mdash; pre-built n8n workflows that wire your stack to AI OS</span></h3>
             <div id="n8nTemplatesList"><!-- JS --></div>
           </section>
+
+          <section class="panel" style="margin-top:24px;">
+            <h3 class="panel-title">Agent-to-Agent (A2A) <span style="font-size:11px;font-weight:400;color:var(--text-muted);">&mdash; this instance is discoverable + callable by other agents</span></h3>
+            <div style="font-size:12px;color:var(--text-secondary);line-height:1.6;">Other vendors&rsquo; agents can discover this instance&rsquo;s skills at <code>/.well-known/agent.json</code> and call them over JSON-RPC <code>message/send</code> at <code>/api/a2a</code> (Bearer auth). Exposed skills: <b>orchestrate, research, web-intel, content, support</b> &mdash; routed to a curated, allowlisted set of agents (internal agents and your MCP tools are not exposed).</div>
+          </section>
         </div>
 
         <!-- Pipelines View -->

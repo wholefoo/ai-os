@@ -4245,6 +4245,50 @@ app.get('/api/n8n/templates/:id', requireAdmin, (req, res) => {
   res.json(rendered);
 });
 
+// --- A2A (Agent-to-Agent) interop — let other vendors' agents discover + call this instance (P1) ---
+const a2a = require('./lib/a2a');
+
+// Public Agent Card (discovery). Served outside /api/ so it isn't auth-gated — it only advertises
+// capabilities; the actual message endpoint below is authenticated.
+app.get(['/.well-known/agent.json', '/.well-known/agent-card.json'], (req, res) => {
+  const baseUrl = process.env.AIOS_PUBLIC_URL || `${req.protocol}://${req.get('host')}`;
+  res.json(a2a.buildAgentCard({ baseUrl }));
+});
+
+// A2A JSON-RPC endpoint — authenticated (Bearer/API token) + rate-limited. Handles `message/send`,
+// routing to a curated, allowlisted agent and returning a completed Task. External callers cannot reach
+// internal agents, and MCP tools are NOT enabled for these runs.
+app.post('/api/a2a', requireAdmin, heavyLimiter, async (req, res) => {
+  const { jsonrpc, id = null, method, params } = req.body || {};
+  const rpcError = (code, message) => res.json({ jsonrpc: '2.0', id, error: { code, message } });
+  if (jsonrpc !== '2.0' || !method) return rpcError(-32600, 'Invalid JSON-RPC request');
+  if (method !== 'message/send') return rpcError(-32601, `Method not supported: ${method}`);
+
+  const message = params && params.message;
+  const text = a2a.extractText(message);
+  if (!text) return rpcError(-32602, 'params.message must include a text part');
+
+  const skill = a2a.resolveSkill(params && params.metadata && params.metadata.skillId);
+  const taskId = uuidv4();
+  const contextId = (params && params.metadata && params.metadata.contextId) || uuidv4();
+  logActivity('a2a', `A2A message/send -> skill "${skill.id}" (agent ${skill.agent})`, { skill: skill.id });
+
+  const result = await executeAgent(skill.agent, text, { skill: `a2a:${skill.id}`, maxTokens: 4096 });
+  const ok = !!(result && result.ok);
+  const now = new Date().toISOString();
+  const task = {
+    id: taskId, contextId, kind: 'task',
+    status: {
+      state: ok ? 'completed' : 'failed',
+      timestamp: now,
+      ...(ok ? {} : { message: { role: 'agent', kind: 'message', messageId: uuidv4(), parts: [{ kind: 'text', text: String((result && result.error) || 'agent failed') }] } }),
+    },
+    artifacts: ok ? [{ artifactId: uuidv4(), name: 'response', parts: [{ kind: 'text', text: result.content || '' }] }] : [],
+    history: message && message.messageId ? [message] : [],
+  };
+  res.json({ jsonrpc: '2.0', id, result: task });
+});
+
 app.get('/api/costs/budget', (req, res) => {
   res.json(costBudget);
 });
