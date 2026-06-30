@@ -706,6 +706,29 @@ app.get('/set-password', (req, res) => {
   res.sendFile(path.join(BASE, 'dashboard', 'set-password.html'));
 });
 
+// --- Dashboard asset fingerprinting ---
+// Rewrite the dashboard's local css/js `?v=` query strings to a content hash at serve time, so every
+// deploy auto-busts browser + Cloudflare caches WITHOUT a manual version bump or a CF purge (Cloudflare
+// caches by URL, and a content change yields a new URL). Cached by file mtime — recomputed only when an
+// asset actually changes (i.e. on deploy, which restarts the process).
+const _assetHashCache = new Map();
+function assetHash(relPath) {
+  const crypto = require('crypto');
+  try {
+    const fp = path.join(BASE, 'dashboard', relPath);
+    const st = fs.statSync(fp);
+    const hit = _assetHashCache.get(relPath);
+    if (hit && hit.mtimeMs === st.mtimeMs) return hit.hash;
+    const hash = crypto.createHash('sha1').update(fs.readFileSync(fp)).digest('hex').slice(0, 10);
+    _assetHashCache.set(relPath, { mtimeMs: st.mtimeMs, hash });
+    return hash;
+  } catch { return 'na'; }
+}
+function fingerprintAssets(html) {
+  // Match href/src="(css|js)/<file>?v=..." for LOCAL assets only (CDN/absolute URLs are untouched).
+  return html.replace(/(href|src)="((?:css|js)\/[^"?]+)\?v=[^"]*"/g, (_m, attr, assetPath) => `${attr}="${assetPath}?v=${assetHash(assetPath)}"`);
+}
+
 // --- Dashboard Paywall ---
 // Serve landing page at root (public)
 // Serve dashboard at /app (requires active subscription)
@@ -715,7 +738,13 @@ app.get('/app', (req, res) => {
   if (!session || !session.plan || session.plan === 'free') {
     return res.redirect('/login');
   }
-  res.sendFile(path.join(BASE, 'dashboard', 'app.html'));
+  // Serve with content-hashed asset versions (auto cache-bust) and revalidate the HTML itself.
+  try {
+    const html = fs.readFileSync(path.join(BASE, 'dashboard', 'app.html'), 'utf8');
+    res.set('Cache-Control', 'no-cache').type('html').send(fingerprintAssets(html));
+  } catch {
+    res.sendFile(path.join(BASE, 'dashboard', 'app.html'));
+  }
 });
 
 // Sitemap.xml — auto-generated for SEO
