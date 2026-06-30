@@ -4215,6 +4215,28 @@ function buildMcpToolset() {
   return { tools, map };
 }
 
+// --- n8n Workflow Template Library (P1 connector breadth) ---
+// A catalog of importable n8n workflows that wire external tools to this instance. Admin-only; the
+// rendered JSON has this instance's URL substituted and leaves the API token as a placeholder.
+const n8nTemplates = require('./lib/n8n-templates');
+
+app.get('/api/n8n/templates', requireAdmin, (req, res) => {
+  const templates = n8nTemplates.listTemplates();
+  res.json({ templates, categories: [...new Set(templates.map(t => t.category))] });
+});
+
+app.get('/api/n8n/templates/:id', requireAdmin, (req, res) => {
+  const baseUrl = process.env.AIOS_PUBLIC_URL || `${req.protocol}://${req.get('host')}`;
+  const rendered = n8nTemplates.renderTemplate(req.params.id, { baseUrl });
+  if (!rendered) return res.status(404).json({ error: 'template not found' });
+  if (req.query.download === '1') {
+    res.setHeader('Content-Type', 'application/json');
+    res.setHeader('Content-Disposition', `attachment; filename="${req.params.id}.n8n.json"`);
+    return res.send(JSON.stringify(rendered.workflow, null, 2));
+  }
+  res.json(rendered);
+});
+
 app.get('/api/costs/budget', (req, res) => {
   res.json(costBudget);
 });

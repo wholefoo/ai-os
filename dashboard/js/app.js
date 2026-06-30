@@ -2070,6 +2070,54 @@ async function loadIntegrations() {
   if (addBtn) addBtn.onclick = addIntegration;
   const list = document.getElementById('integrationsList');
   if (list) list.onclick = onIntegrationListClick;
+  loadN8nTemplates();
+}
+
+async function loadN8nTemplates() {
+  const data = await fetchJSON('/api/n8n/templates');
+  state.n8nTemplates = (data && data.templates) || [];
+  renderN8nTemplates(state.n8nTemplates);
+  const list = document.getElementById('n8nTemplatesList');
+  if (list) list.onclick = onN8nTemplateClick;
+}
+
+function renderN8nTemplates(list) {
+  const c = document.getElementById('n8nTemplatesList');
+  if (!c) return;
+  if (!list.length) { c.innerHTML = '<div class="empty-state">No workflow templates available.</div>'; return; }
+  const dirBadge = (d) => `<span style="font-size:10px;padding:2px 6px;border:1px solid var(--border);border-radius:4px;color:var(--text-secondary);">${d === 'inbound' ? 'tool → AI OS' : 'AI OS → tool'}</span>`;
+  c.innerHTML = list.map(t => `
+    <div class="panel" style="margin-bottom:12px;display:flex;flex-direction:column;gap:6px;">
+      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+        <span style="font-weight:600;">${escapeHtml(t.name)}</span>
+        <span style="font-size:10px;padding:2px 6px;background:var(--bg-secondary);border-radius:4px;color:var(--text-secondary);">${escapeHtml(t.category)}</span>
+        ${dirBadge(t.direction)}
+        <span style="flex:1;"></span>
+        <button class="btn" data-act="copy" data-id="${t.id}">Copy JSON</button>
+        <button class="btn" data-act="download" data-id="${t.id}">Download</button>
+      </div>
+      <div style="font-size:12px;color:var(--text-secondary);">${escapeHtml(t.description)}</div>
+      ${t.requires && t.requires.length ? `<div style="font-size:11px;color:var(--text-muted);">Setup: ${t.requires.map(r => escapeHtml(r)).join(' &middot; ')}</div>` : ''}
+      ${t.webhookPath ? `<div style="font-size:11px;color:var(--text-muted);">AI OS calls: <code>{your-n8n}/webhook/${escapeHtml(t.webhookPath)}</code></div>` : ''}
+    </div>`).join('');
+}
+
+async function onN8nTemplateClick(e) {
+  const btn = e.target.closest('button[data-act]');
+  if (!btn) return;
+  const id = btn.dataset.id, act = btn.dataset.act;
+  const r = await fetchJSON(`/api/n8n/templates/${id}`);
+  if (!r || !r.workflow) { alert((r && r.error) || 'Failed to load template'); return; }
+  const text = JSON.stringify(r.workflow, null, 2);
+  if (act === 'download') {
+    const blob = new Blob([text], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a'); a.href = url; a.download = `${id}.n8n.json`; a.click();
+    URL.revokeObjectURL(url);
+  } else if (act === 'copy') {
+    try { await navigator.clipboard.writeText(text); btn.textContent = 'Copied!'; setTimeout(() => { btn.textContent = 'Copy JSON'; }, 1500); }
+    catch { prompt('Copy the workflow JSON, then Import it in n8n:', text); }
+  }
 }
 
 function renderIntegrations(list) {
