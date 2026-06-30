@@ -2071,6 +2071,7 @@ async function loadIntegrations() {
   const list = document.getElementById('integrationsList');
   if (list) list.onclick = onIntegrationListClick;
   loadN8nTemplates();
+  bindToolRun();
 }
 
 async function loadN8nTemplates() {
@@ -2136,7 +2137,9 @@ function renderIntegrations(list) {
         <span style="font-weight:600;">${escapeHtml(i.name)}</span>
         ${badge(typeLabel[i.type] || i.type)}
         <span style="font-size:11px;color:${statusColor[i.status] || 'var(--text-muted)'};">&#9679; ${escapeHtml(i.status)}${i.type === 'mcp' && i.tools && i.tools.length ? ` &middot; ${i.tools.length} tools` : ''}</span>
+        ${i.type === 'mcp' && i.trusted ? '<span style="font-size:10px;color:#10b981;">trusted &middot; runs without approval</span>' : ''}
         <span style="flex:1;"></span>
+        ${i.type === 'mcp' ? `<button class="btn" data-act="trust" data-id="${i.id}" title="${i.trusted ? 'Tool calls run immediately' : 'Tool calls require approval per Auto-Mode'}">${i.trusted ? 'Untrust' : 'Trust'}</button>` : ''}
         <button class="btn" data-act="test" data-id="${i.id}">Test</button>
         <button class="btn" data-act="toggle" data-id="${i.id}">${i.enabled ? 'Disable' : 'Enable'}</button>
         <button class="btn" data-act="delete" data-id="${i.id}">Remove</button>
@@ -2174,11 +2177,34 @@ async function onIntegrationListClick(e) {
   } else if (act === 'toggle') {
     await fetchJSON(`/api/integrations/${id}`, { method: 'PUT', body: { enabled: !(intg && intg.enabled) } });
     loadIntegrations();
+  } else if (act === 'trust') {
+    await fetchJSON(`/api/integrations/${id}`, { method: 'PUT', body: { trusted: !(intg && intg.trusted) } });
+    loadIntegrations();
   } else if (act === 'delete') {
     if (!confirm('Remove this integration?')) return;
     await fetchJSON(`/api/integrations/${id}`, { method: 'DELETE' });
     loadIntegrations();
   }
+}
+
+function bindToolRun() {
+  const btn = document.getElementById('toolRunBtn');
+  if (btn) btn.onclick = runAgentWithTools;
+}
+
+async function runAgentWithTools() {
+  const agent = (document.getElementById('toolRunAgent').value || '').trim() || 'researcher';
+  const task = (document.getElementById('toolRunTask').value || '').trim();
+  const out = document.getElementById('toolRunResult');
+  if (!out) return;
+  if (!task) { out.innerHTML = '<div style="color:#ef4444;font-size:12px;">Enter a task for the agent.</div>'; return; }
+  out.innerHTML = '<div style="color:var(--text-muted);font-size:12px;">Running…</div>';
+  const r = await fetchJSON('/api/agent/execute', { method: 'POST', body: { agent, task, useMcpTools: true } });
+  if (!r || r.error) { out.innerHTML = `<div style="color:#ef4444;font-size:12px;">${escapeHtml((r && r.error) || 'Agent run failed')}</div>`; return; }
+  out.innerHTML = `<div class="panel" style="white-space:pre-wrap;font-size:13px;">${escapeHtml(r.content || '(no output)')}</div>`;
+  const pend = await fetchJSON('/api/approvals?status=pending');
+  const n = Array.isArray(pend) ? pend.filter(a => a.type === 'mcp.tool-call').length : 0;
+  if (n) out.innerHTML += `<div style="font-size:12px;color:var(--text-muted);margin-top:8px;">&#9203; ${n} tool call(s) awaiting approval — open <b>Settings &rarr; Automation</b> to approve.</div>`;
 }
 
 // --- Cost Tracker ---

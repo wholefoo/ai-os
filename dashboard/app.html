@@ -520,6 +520,17 @@
           <div id="integrationsList"><!-- JS --></div>
 
           <section class="panel" style="margin-top:24px;">
+            <h3 class="panel-title">Run an agent with your tools <span style="font-size:11px;font-weight:400;color:var(--text-muted);">&mdash; dispatches with your connected MCP tools available</span></h3>
+            <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-start;">
+              <input id="toolRunAgent" type="text" value="researcher" placeholder="agent" style="width:150px;padding:8px;background:var(--bg-secondary);color:var(--text-primary);border:1px solid var(--border);border-radius:6px;" />
+              <textarea id="toolRunTask" rows="2" placeholder="Task for the agent (it may call your connected tools)&hellip;" style="flex:1;min-width:240px;padding:8px;background:var(--bg-secondary);color:var(--text-primary);border:1px solid var(--border);border-radius:6px;font-family:inherit;"></textarea>
+              <button class="btn btn-primary" id="toolRunBtn">Run</button>
+            </div>
+            <div style="font-size:11px;color:var(--text-muted);margin-top:8px;">Tool calls follow your Auto-Mode setting &mdash; under <b>supervised</b> they queue in Approvals; <b>trusted</b> integrations run immediately.</div>
+            <div id="toolRunResult" style="margin-top:12px;"></div>
+          </section>
+
+          <section class="panel" style="margin-top:24px;">
             <h3 class="panel-title">Workflow Templates <span style="font-size:11px;font-weight:400;color:var(--text-muted);">&mdash; pre-built n8n workflows that wire your stack to AI OS</span></h3>
             <div id="n8nTemplatesList"><!-- JS --></div>
           </section>

@@ -2392,6 +2392,13 @@ async function executeAgent(agentName, task, options = {}) {
         result = await callAnthropicWithTools(fullSystem, fullTask, routing.effort, maxTokens, toolset.tools, async (toolName, input) => {
           const entry = toolset.map[toolName];
           if (!entry) return `Error: unknown tool ${toolName}`;
+          // A 'trusted' integration is pre-approved by the operator — run it directly (still audit-logged),
+          // bypassing the per-call gate. Untrusted integrations route through the Auto-Mode approval gate.
+          if (entry.integration.trusted) {
+            logActivity('integration', `MCP tool invoked by ${agentName} (trusted): ${entry.integration.name} -> ${entry.toolName}`, { integration: entry.integration.id, tool: entry.toolName });
+            const tr = await integrationsLib.mcpCallTool(entry.integration.url, entry.toolName, input, { token: entry.integration.token });
+            return tr.ok ? tr.content : `Error: ${tr.error || 'tool call failed'}`;
+          }
           // Route every MCP tool call through the Auto-Mode approval gate. Under the default
           // 'supervised' mode these outward/side-effectful calls are NOT run in-loop — they queue for
           // human approval; 'auto' mode runs them immediately. Both paths share one executor.
@@ -4145,7 +4152,7 @@ app.post('/api/integrations', requireAdmin, (req, res) => {
   const entry = {
     id: uuidv4(), type, name: String(name).trim(), url: String(url).trim(),
     token: req.body.token ? String(req.body.token) : '',
-    enabled: true, status: 'untested', lastTest: null, lastError: '', tools: [],
+    enabled: true, status: 'untested', lastTest: null, lastError: '', tools: [], trusted: false,
     createdAt: new Date().toISOString(),
   };
   integrations.push(entry);
@@ -4163,6 +4170,7 @@ app.put('/api/integrations/:id', requireAdmin, (req, res) => {
     try { const u = new URL(req.body.url); if (u.protocol === 'http:' || u.protocol === 'https:') i.url = req.body.url.trim().slice(0, 500); } catch { /* keep existing */ }
   }
   if (typeof req.body.token === 'string') i.token = req.body.token.slice(0, 500); // '' clears it
+  if (typeof req.body.trusted === 'boolean') i.trusted = req.body.trusted;
   persistIntegrations();
   res.json({ ok: true, integration: maskIntegration(i) });
 });
