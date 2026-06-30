@@ -1779,6 +1779,17 @@ const ACTION_EXECUTORS = {
     crm?.unlinkSite(site.id); // CRM: prune any contact link to the deleted site
     return { deleted: true, id: siteId };
   },
+  // An agent invoking a connected MCP tool. Looks the integration up by id (the token stays in the
+  // registry, never in the persisted approval); reused verbatim by the immediate and approve-later paths.
+  'mcp.tool-call': async ({ integrationId, toolName, args }) => {
+    const integration = integrations.find(i => i.id === integrationId);
+    if (!integration) throw new Error('integration not found');
+    if (integration.type !== 'mcp') throw new Error('not an MCP integration');
+    logActivity('integration', `MCP tool executed: ${integration.name} -> ${toolName}`, { integration: integration.id, tool: toolName });
+    const r = await integrationsLib.mcpCallTool(integration.url, toolName, args || {}, { token: integration.token });
+    if (!r.ok) throw new Error(r.error || 'tool call failed');
+    return { content: r.content };
+  },
 };
 
 // gateAction({type, summary, target, params, secrets[], req}) -> {executed, result} | {pending, approval}
@@ -2381,9 +2392,19 @@ async function executeAgent(agentName, task, options = {}) {
         result = await callAnthropicWithTools(fullSystem, fullTask, routing.effort, maxTokens, toolset.tools, async (toolName, input) => {
           const entry = toolset.map[toolName];
           if (!entry) return `Error: unknown tool ${toolName}`;
-          logActivity('integration', `MCP tool invoked by ${agentName}: ${entry.integration.name} -> ${entry.toolName}`, { integration: entry.integration.id, tool: entry.toolName });
-          const r = await integrationsLib.mcpCallTool(entry.integration.url, entry.toolName, input, { token: entry.integration.token });
-          return r.ok ? r.content : `Error: ${r.error || 'tool call failed'}`;
+          // Route every MCP tool call through the Auto-Mode approval gate. Under the default
+          // 'supervised' mode these outward/side-effectful calls are NOT run in-loop — they queue for
+          // human approval; 'auto' mode runs them immediately. Both paths share one executor.
+          const gate = await gateAction({
+            type: 'mcp.tool-call',
+            summary: `Agent "${agentName}" wants to call MCP tool "${entry.toolName}" on "${entry.integration.name}"`,
+            params: { integrationId: entry.integration.id, toolName: entry.toolName, args: input },
+            req: options.req,
+          });
+          if (gate.pending) {
+            return `Not executed — this tool call requires human approval and was queued (approval id ${gate.approval.id}). Tell the user "${entry.toolName}" is pending approval in their Approvals inbox.`;
+          }
+          return (gate.result && gate.result.content) || 'Tool executed (no content returned).';
         });
       } else {
         result = await callAnthropic(fullSystem, fullTask, routing.effort, maxTokens);
@@ -2654,6 +2675,7 @@ app.post('/api/agent/execute', requireAdmin, async (req, res) => {
     maxTokens: maxTokens || 4096,
     skill: req.body.skill || 'dispatch',
     useMcpTools: req.body.useMcpTools === true,
+    req,
   });
 
   res.json(result);
