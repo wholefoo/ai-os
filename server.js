@@ -2373,8 +2373,21 @@ async function executeAgent(agentName, task, options = {}) {
       result = await callDeepSeek(fullSystem, fullTask, maxTokens);
       model = 'deepseek-v4';
     } else {
-      // Default: Anthropic Opus 4.8
-      result = await callAnthropic(fullSystem, fullTask, routing.effort, maxTokens);
+      // Default: Anthropic Opus 4.8 — optionally with the operator's connected MCP tools (opt-in only,
+      // admin dispatch sets useMcpTools). NOTE: side-effectful tool calls are not yet behind the
+      // Auto-Mode approval gate — every call is audit-logged; gating is the next P1 safety step.
+      const toolset = options.useMcpTools ? buildMcpToolset() : null;
+      if (toolset && toolset.tools.length) {
+        result = await callAnthropicWithTools(fullSystem, fullTask, routing.effort, maxTokens, toolset.tools, async (toolName, input) => {
+          const entry = toolset.map[toolName];
+          if (!entry) return `Error: unknown tool ${toolName}`;
+          logActivity('integration', `MCP tool invoked by ${agentName}: ${entry.integration.name} -> ${entry.toolName}`, { integration: entry.integration.id, tool: entry.toolName });
+          const r = await integrationsLib.mcpCallTool(entry.integration.url, entry.toolName, input, { token: entry.integration.token });
+          return r.ok ? r.content : `Error: ${r.error || 'tool call failed'}`;
+        });
+      } else {
+        result = await callAnthropic(fullSystem, fullTask, routing.effort, maxTokens);
+      }
     }
 
     inputTokens = result.inputTokens || 0;
@@ -2438,6 +2451,9 @@ async function fetchWithTimeout(url, opts = {}, ms = AGENT_FETCH_TIMEOUT_MS) {
   finally { clearTimeout(t); }
 }
 
+// Override the API base (e.g. a local mock or proxy) via ANTHROPIC_BASE_URL; defaults to the real API.
+const ANTHROPIC_API_BASE = process.env.ANTHROPIC_BASE_URL || 'https://api.anthropic.com';
+
 async function callAnthropic(systemPrompt, task, effort, maxTokens) {
   const apiKey = settings.ai.anthropic_api_key;
   if (!apiKey) throw new Error('Anthropic API key not configured — add it in Settings');
@@ -2451,7 +2467,7 @@ async function callAnthropic(systemPrompt, task, effort, maxTokens) {
   };
   if (effort) body.output_config = { effort };
 
-  const res = await fetchWithTimeout('https://api.anthropic.com/v1/messages', {
+  const res = await fetchWithTimeout(`${ANTHROPIC_API_BASE}/v1/messages`, {
     method: 'POST',
     headers: { 'x-api-key': apiKey, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
     body: JSON.stringify(body),
@@ -2469,6 +2485,50 @@ async function callAnthropic(systemPrompt, task, effort, maxTokens) {
     inputTokens: data.usage?.input_tokens || 0,
     outputTokens: data.usage?.output_tokens || 0,
   };
+}
+
+// Anthropic tool-use loop (P1): exposes MCP tools to the model and runs tool_use -> tool_result rounds
+// until a final answer. Thinking is omitted here to avoid thinking-block-signature plumbing across
+// rounds. `executor(name, input)` runs a tool and returns its result text. Iterations are capped.
+async function callAnthropicWithTools(systemPrompt, task, effort, maxTokens, tools, executor, { maxIters = 6 } = {}) {
+  const apiKey = settings.ai.anthropic_api_key;
+  if (!apiKey) throw new Error('Anthropic API key not configured — add it in Settings');
+  const messages = [{ role: 'user', content: task }];
+  let inputTokens = 0, outputTokens = 0;
+  const toolInvocations = [];
+  for (let iter = 0; iter < maxIters; iter++) {
+    const body = { model: OPUS_MODEL, max_tokens: maxTokens, system: systemPrompt, messages, tools };
+    if (effort) body.output_config = { effort };
+    const res = await fetchWithTimeout(`${ANTHROPIC_API_BASE}/v1/messages`, {
+      method: 'POST',
+      headers: { 'x-api-key': apiKey, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error?.message || `Anthropic HTTP ${res.status}`);
+    }
+    const data = await res.json();
+    inputTokens += data.usage?.input_tokens || 0;
+    outputTokens += data.usage?.output_tokens || 0;
+    const content = data.content || [];
+    const toolUses = content.filter(b => b.type === 'tool_use');
+    if (data.stop_reason !== 'tool_use' || !toolUses.length) {
+      const text = content.filter(b => b.type === 'text').map(b => b.text).join('\n').trim();
+      return { content: text, inputTokens, outputTokens, toolInvocations };
+    }
+    messages.push({ role: 'assistant', content });
+    const toolResults = [];
+    for (const tu of toolUses) {
+      let out, isError = false;
+      try { out = await executor(tu.name, tu.input || {}); }
+      catch (e) { out = `Error: ${String((e && e.message) || e).slice(0, 300)}`; isError = true; }
+      toolInvocations.push({ name: tu.name, ok: !isError });
+      toolResults.push({ type: 'tool_result', tool_use_id: tu.id, content: String(out == null ? '' : out).slice(0, 8000), is_error: isError });
+    }
+    messages.push({ role: 'user', content: toolResults });
+  }
+  return { content: '(tool loop reached its iteration limit without a final answer)', inputTokens, outputTokens, toolInvocations };
 }
 
 // Shared caller for OpenAI-compatible chat-completions providers (Grok, DeepSeek, OpenAI, Perplexity).
@@ -2593,6 +2653,7 @@ app.post('/api/agent/execute', requireAdmin, async (req, res) => {
     context: context || '',
     maxTokens: maxTokens || 4096,
     skill: req.body.skill || 'dispatch',
+    useMcpTools: req.body.useMcpTools === true,
   });
 
   res.json(result);
@@ -4110,6 +4171,27 @@ app.post('/api/integrations/:id/test', requireAdmin, async (req, res) => {
   logActivity('integration', `Integration tested: ${i.name} -> ${i.status}${i.type === 'mcp' && result.ok ? ` (${i.tools.length} tools)` : ''}`);
   res.json({ ok: result.ok, status: i.status, serverInfo: result.serverInfo, tools: i.tools, error: i.lastError || undefined });
 });
+
+// Build Anthropic tool definitions + a name->source map from enabled MCP integrations that have
+// discovered tools. Names are namespaced + sanitized to satisfy Anthropic's tool-name constraints.
+function mcpSafeName(integrationId, toolName) {
+  const slug = String(toolName).replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 40);
+  const idp = String(integrationId).replace(/-/g, '').slice(0, 8);
+  return `mcp_${idp}_${slug}`.slice(0, 64);
+}
+function buildMcpToolset() {
+  const tools = [];
+  const map = {};
+  for (const i of integrations) {
+    if (i.type !== 'mcp' || !i.enabled || !Array.isArray(i.tools)) continue;
+    for (const t of i.tools) {
+      const safe = mcpSafeName(i.id, t.name);
+      tools.push({ name: safe, description: (t.description || t.name || '').slice(0, 300), input_schema: t.inputSchema || { type: 'object' } });
+      map[safe] = { integration: i, toolName: t.name };
+    }
+  }
+  return { tools, map };
+}
 
 app.get('/api/costs/budget', (req, res) => {
   res.json(costBudget);
