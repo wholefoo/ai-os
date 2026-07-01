@@ -1,0 +1,278 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Trust &amp; Security — AI OS | Self-Hosted, You Own Your Data</title>
+  <meta name="description" content="AI OS is self-hosted, so your data stays on your own infrastructure — with real built-in security controls and an honest, non-certified compliance posture.">
+  <link rel="canonical" href="https://aiosorchestrationlab.com/trust">
+  <meta property="og:title" content="Trust & Security — AI OS">
+  <meta property="og:description" content="Self-hosted by design: your data stays on infrastructure you control. Default-deny RBAC, a human-in-the-loop approval gate, SSRF/injection defenses, content provenance — and an honest compliance posture.">
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://aiosorchestrationlab.com/trust">
+  <meta property="og:image" content="https://aiosorchestrationlab.com/assets/og-share.png">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Trust & Security — AI OS">
+  <meta name="twitter:description" content="Self-hosted, you-own-your-data AI platform. Real technical controls, honestly described.">
+  <meta name="twitter:image" content="https://aiosorchestrationlab.com/assets/og-share.png">
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "WebPage",
+    "name": "Trust & Security — AI OS",
+    "description": "How AI OS handles security and data: self-hosted so your data stays on your own infrastructure, with default-deny access control, a human approval gate for outward actions, and an honest, non-certified compliance posture.",
+    "url": "https://aiosorchestrationlab.com/trust",
+    "publisher": { "@type": "Organization", "name": "AI OS Orchestration Lab" }
+  }
+  </script>
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "Organization",
+    "name": "AI OS Orchestration Lab",
+    "url": "https://aiosorchestrationlab.com",
+    "description": "Builder of AI OS — a self-hosted, open-core Virtual Corporate Headquarters platform.",
+    "foundingDate": "2026"
+  }
+  </script>
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "FAQPage",
+    "mainEntity": [
+      { "@type": "Question", "name": "Where does my data live?", "acceptedAnswer": { "@type": "Answer", "text": "AI OS is self-hosted: in the standard deployment it runs on your own VPS or server, and your data stays on infrastructure you control. The vendor does not receive your operational data — except in the optional Managed/hosted offering, where AI OS operates the instance on your behalf." } },
+      { "@type": "Question", "name": "Is AI OS SOC 2 certified?", "acceptedAnswer": { "@type": "Answer", "text": "No. AI OS is not SOC 2 certified or audited, and nothing here should be read as such. We have conducted an internal SOC 2 readiness self-assessment and are working toward a Type 1 examination scoped to the Managed/hosted offering — the deployment where AI OS operates the environment end to end." } },
+      { "@type": "Question", "name": "Do you see my prompts and data?", "acceptedAnswer": { "@type": "Answer", "text": "On a self-hosted deployment, the vendor does not. However, the AI model and tool providers you choose to enable (for example Anthropic or OpenAI) receive the prompts and content you send to them, under their own terms. You control which providers are configured." } },
+      { "@type": "Question", "name": "Is my data encrypted at rest?", "acceptedAnswer": { "@type": "Answer", "text": "In transit, yes — TLS 1.2/1.3 with HSTS via the shipped nginx configuration. At rest, the application stores its state as files on your host and does not encrypt them; at-rest encryption is the operator's responsibility (full-disk/volume encryption plus filesystem permissions). Our install script sets restrictive permissions on the secrets file." } },
+      { "@type": "Question", "name": "How do I report a security vulnerability?", "acceptedAnswer": { "@type": "Answer", "text": "Please report suspected vulnerabilities through our contact page. We support responsible disclosure and will acknowledge legitimate reports." } },
+      { "@type": "Question", "name": "What security controls are built into the platform?", "acceptedAnswer": { "@type": "Answer", "text": "Default-deny role-based access control, bcrypt password hashing, a server-enforced human approval gate for irreversible or outward-facing actions, SSRF-pinned outbound fetching, prompt-injection fencing, secret masking in API responses, Ed25519 content provenance, and an opt-in, report-only security scanner." } }
+    ]
+  }
+  </script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/css/landing.css">
+  <!-- Google Analytics -->
+  <script async src="https://www.googletagmanager.com/gtag/js?id=G-SMHYRX8D4P"></script>
+  <script>
+    window.dataLayer = window.dataLayer || [];
+    function gtag(){dataLayer.push(arguments);}
+    gtag('js', new Date());
+    gtag('config', 'G-SMHYRX8D4P');
+  </script>
+  <style>
+    .trust-hero { padding: 100px 0 40px; text-align: center; }
+    .trust-hero h1 { font-size: 48px; font-weight: 800; margin-bottom: 16px; }
+    .trust-hero .gradient-text { background: linear-gradient(135deg, #3b82f6, #8b5cf6, #ec4899); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+    .trust-hero p { font-size: 18px; color: var(--text-secondary); max-width: 680px; margin: 0 auto; line-height: 1.7; }
+    .trust-section { max-width: 900px; margin: 0 auto; padding: 0 24px 48px; }
+    .trust-section h2 { font-size: 28px; font-weight: 700; margin: 24px 0 16px; color: var(--text-primary); scroll-margin-top: 90px; }
+    .trust-section h3 { font-size: 19px; font-weight: 600; margin: 24px 0 8px; color: var(--text-primary); }
+    .trust-section p { font-size: 16px; line-height: 1.8; color: var(--text-secondary); margin-bottom: 16px; }
+    .trust-section ul { color: var(--text-secondary); line-height: 1.8; margin: 0 0 16px 20px; }
+    .trust-section li { margin-bottom: 8px; }
+    .trust-note { background: rgba(59,130,246,0.05); border: 1px solid rgba(59,130,246,0.15); border-radius: 14px; padding: 20px 24px; margin: 8px 0 24px; }
+    .trust-note.warn { background: rgba(245,158,11,0.06); border-color: rgba(245,158,11,0.22); }
+    .trust-table { width: 100%; border-collapse: collapse; margin: 8px 0 24px; font-size: 15px; }
+    .trust-table th, .trust-table td { text-align: left; padding: 10px 12px; border: 1px solid var(--border, rgba(148,163,184,0.2)); vertical-align: top; color: var(--text-secondary); }
+    .trust-table th { color: var(--text-primary); font-weight: 600; background: rgba(148,163,184,0.06); }
+    .trust-toc { max-width: 900px; margin: 0 auto 24px; padding: 0 24px; display: flex; flex-wrap: wrap; gap: 10px; }
+    .trust-toc a { font-size: 13px; color: var(--text-secondary); border: 1px solid var(--border, rgba(148,163,184,0.2)); border-radius: 999px; padding: 5px 12px; text-decoration: none; }
+    .trust-toc a:hover { color: var(--text-primary); border-color: #3b82f6; }
+    .faq-item { border-bottom: 1px solid var(--border, rgba(148,163,184,0.15)); padding: 18px 0; }
+    .faq-item h3 { margin: 0 0 8px; }
+    .faq-item p { margin: 0; }
+    .trust-updated { text-align:center; color: var(--text-secondary); font-size: 13px; padding: 0 24px 60px; }
+  </style>
+</head>
+<body>
+  <nav class="landing-nav">
+    <div class="nav-container">
+      <a href="/" class="nav-brand">
+        <span class="nav-logo">&#9678;</span>
+        <span class="nav-name">AI OS</span>
+      </a>
+      <div class="nav-links">
+        <a href="/">Home</a>
+        <a href="/docs">Docs</a>
+        <a href="/blog">Blog</a>
+        <a href="/about">About</a>
+        <a href="/contact">Contact</a>
+      </div>
+      <div class="nav-cta">
+        <a href="/login" class="btn-nav-login">Log In</a>
+      </div>
+    </div>
+  </nav>
+
+  <header class="trust-hero">
+    <h1>Trust &amp; <span class="gradient-text">Security</span></h1>
+    <p>AI OS is <strong>self-hosted software</strong>: in the standard deployment it runs on your own server, so your data stays on infrastructure you control &mdash; not ours. This page describes, honestly, the security controls built into the platform, who is responsible for what, and where we actually stand on compliance.</p>
+  </header>
+
+  <nav class="trust-toc" aria-label="On this page">
+    <a href="#data-ownership">Data ownership</a>
+    <a href="#security-controls">Security controls</a>
+    <a href="#shared-responsibility">Shared responsibility</a>
+    <a href="#subprocessors">Subprocessors</a>
+    <a href="#compliance">Compliance status</a>
+    <a href="#reporting">Report an issue</a>
+    <a href="#faq">FAQ</a>
+  </nav>
+
+  <main>
+    <section class="trust-section">
+      <h2 id="data-ownership">Your data stays on your infrastructure</h2>
+      <p>AI OS is distributed as open-core, self-hosted software. In the default deployment, <strong>you run it on your own VPS or server</strong> and you are the custodian of your own data &mdash; conversations, CRM records, generated sites, and API keys live in files on your host, not on a vendor cloud. The vendor does not receive your operational data.</p>
+      <p>There is one exception, stated plainly: the optional <strong>Managed / hosted offering</strong>, where AI OS operates the instance on your behalf. In that model we operate the environment, and it is the scope we would put through a formal security audit (see <a href="#compliance">Compliance status</a>).</p>
+      <p>The trade-off of self-hosting is honest too: because you run the environment, a meaningful share of security is <strong>your responsibility</strong> &mdash; see <a href="#shared-responsibility">Shared responsibility</a>.</p>
+    </section>
+
+    <section class="trust-section">
+      <h2 id="security-controls">Security controls built into the platform</h2>
+      <p>These are controls that exist and are enforced in code today. We describe them without embellishment.</p>
+
+      <h3>Access control &amp; authentication</h3>
+      <ul>
+        <li><strong>Default-deny RBAC.</strong> Admin and client roles are gated by middleware; a client-surface allowlist denies anything not explicitly permitted, and multi-tenant features scope every record to its owner.</li>
+        <li><strong>Password hashing.</strong> Passwords are hashed with bcrypt (cost factor 12). Sessions use random tokens with a fixed expiry and httpOnly, SameSite cookies (Secure in production).</li>
+        <li><strong>Fail-closed admin seeding.</strong> In production the first admin must be provisioned from environment secrets &mdash; there is no hardcoded default account.</li>
+      </ul>
+
+      <h3>Human-in-the-loop approval gate</h3>
+      <p>Irreversible or outward-facing actions (publishing a site, pushing to an external repo, an agent calling a connected tool) pass through a <strong>server-enforced approval gate</strong>. Under the default &ldquo;supervised&rdquo; mode these actions queue for a human to approve rather than running automatically, and secrets are stripped before an approval is stored. You choose the automation posture; it is not automatic by default.</p>
+
+      <h3>Application security</h3>
+      <ul>
+        <li><strong>SSRF-pinned outbound fetching</strong> that blocks requests to private/loopback addresses on untrusted input.</li>
+        <li><strong>Prompt-injection fencing</strong> &mdash; untrusted content is wrapped and treated as data, not instructions.</li>
+        <li><strong>Output escaping</strong> against XSS, argv-based command execution (no shell string interpolation), and request-body validation on sensitive endpoints.</li>
+        <li><strong>Secret hygiene</strong> &mdash; API keys are masked in API responses; GitHub tokens are never persisted; the install script restricts permissions on the secrets file.</li>
+      </ul>
+
+      <h3>Integrity &amp; verification</h3>
+      <ul>
+        <li><strong>Content provenance.</strong> Generated sites can be signed with Ed25519 and verified. This is aligned with C2PA vocabulary but is <strong>not certified C2PA</strong>.</li>
+        <li><strong>Stripe webhook HMAC verification</strong> and offline HMAC license validation.</li>
+        <li><strong>Opt-in, report-only security scanner.</strong> An AI-assisted self-scan (STRIDE-style review plus dependency audit) can flag issues. It is opt-in, report-only, and <strong>not a guarantee</strong> &mdash; it does not replace a professional security audit.</li>
+      </ul>
+
+      <h3>Transport &amp; hardened deployment</h3>
+      <p>The project ships hardened <strong>templates and runbooks</strong> you apply on your host: an nginx config with TLS 1.2/1.3, HSTS and security headers; an install script that creates an unprivileged service user, scoped sudoers, restrictive file permissions, automatic security updates, a firewall/fail2ban, and Let&rsquo;s Encrypt certificates; and a backup script. These are provided as defaults for you to run &mdash; they are your controls once deployed.</p>
+    </section>
+
+    <section class="trust-section">
+      <h2 id="shared-responsibility">Shared responsibility (self-hosted)</h2>
+      <p>Because you operate the environment, security is shared. Here is an honest split.</p>
+      <table class="trust-table">
+        <thead><tr><th>Area</th><th>AI OS (the software) provides</th><th>You (the operator) own</th></tr></thead>
+        <tbody>
+          <tr><td>Access &amp; authentication</td><td>App-layer RBAC, bcrypt, sessions, approval gate</td><td>MFA at the host/SSO layer, credential rotation, deprovisioning</td></tr>
+          <tr><td>Encryption</td><td>TLS/HSTS via the shipped proxy config</td><td>Encryption at rest (full-disk/volume) and backup encryption</td></tr>
+          <tr><td>Infrastructure</td><td>Hardened install + config templates</td><td>Physical security, OS patching, network controls, monitoring</td></tr>
+          <tr><td>Backups &amp; DR</td><td>A backup script (retention + one-line restore)</td><td>Offsite copies, encryption, and tested restores</td></tr>
+          <tr><td>Secrets</td><td>Masking in responses; restrictive file perms</td><td>Protecting and rotating the <code>.env</code> and keys</td></tr>
+        </tbody>
+      </table>
+      <div class="trust-note">If you need AI OS to own the full environment (including at-rest encryption, backups, and monitoring), that is what the <strong>Managed / hosted offering</strong> is for.</div>
+    </section>
+
+    <section class="trust-section">
+      <h2 id="subprocessors">Subprocessors</h2>
+      <p>AI OS itself does not send your data anywhere. But the AI model and tool providers <strong>you choose to enable</strong> receive the specific data you send to them, under their own terms. Only the providers you configure are used. The common ones:</p>
+      <table class="trust-table">
+        <thead><tr><th>Provider</th><th>Purpose</th><th>Data it receives</th></tr></thead>
+        <tbody>
+          <tr><td>Anthropic, OpenAI, Google, xAI, DeepSeek, Perplexity, Z.ai</td><td>LLM inference (agent responses)</td><td>The prompts and content you route to that model</td></tr>
+          <tr><td>Firecrawl, Apify, Tavily, DataForSEO</td><td>Web scraping / search / SEO data</td><td>The URLs and queries you submit</td></tr>
+          <tr><td>Stripe</td><td>Payments (if you sell through the platform)</td><td>Checkout and billing data</td></tr>
+          <tr><td>HeyGen, D-ID, LiveKit</td><td>Avatar / voice (if enabled)</td><td>Text and audio for the avatar session</td></tr>
+          <tr><td>Let&rsquo;s Encrypt</td><td>TLS certificates</td><td>The domain names you host</td></tr>
+          <tr><td>Your VPS / cloud provider</td><td>Hosting</td><td>Everything on the host you operate</td></tr>
+        </tbody>
+      </table>
+      <p>A formal, versioned subprocessor register and signed Data Processing Agreements are on our roadmap; today this list is provided for transparency and is not yet a contractual register.</p>
+    </section>
+
+    <section class="trust-section">
+      <h2 id="compliance">Compliance status &mdash; stated honestly</h2>
+      <div class="trust-note warn"><strong>AI OS is not SOC 2 certified, ISO 27001 certified, or independently audited.</strong> No third-party attestation report exists, and nothing on this page should be read or represented as one.</div>
+      <p>What is true today:</p>
+      <ul>
+        <li>We have conducted an <strong>internal SOC 2 readiness self-assessment</strong> &mdash; an honest control mapping against the AICPA Trust Services Criteria with a prioritized gap list. It is a self-assessment, not an audit.</li>
+        <li>The realistic path to a formal report runs through the <strong>Managed / hosted offering</strong>, the one scope where AI OS operates the environment end to end. That is where we would pursue a Type&nbsp;1 examination.</li>
+        <li>Our <a href="/terms">Terms</a> and <a href="/privacy">Privacy Policy</a> are being finalized with counsel; treat the current versions as drafts.</li>
+      </ul>
+      <p>We would rather tell you exactly where we stand than imply a certification we do not hold.</p>
+    </section>
+
+    <section class="trust-section">
+      <h2 id="reporting">Reporting a security issue</h2>
+      <p>If you believe you have found a security vulnerability, please tell us through our <a href="/contact">contact page</a>. We support responsible disclosure: give us a reasonable window to investigate and remediate before any public disclosure, and we will acknowledge legitimate reports.</p>
+    </section>
+
+    <section class="trust-section">
+      <h2 id="faq">Frequently asked questions</h2>
+      <div class="faq-item">
+        <h3>Where does my data live?</h3>
+        <p>AI OS is self-hosted: in the standard deployment it runs on your own VPS or server, and your data stays on infrastructure you control. The vendor does not receive your operational data &mdash; except in the optional Managed/hosted offering, where AI OS operates the instance on your behalf.</p>
+      </div>
+      <div class="faq-item">
+        <h3>Is AI OS SOC 2 certified?</h3>
+        <p>No. AI OS is not SOC 2 certified or audited, and nothing here should be read as such. We have conducted an internal SOC 2 readiness self-assessment and are working toward a Type 1 examination scoped to the Managed/hosted offering.</p>
+      </div>
+      <div class="faq-item">
+        <h3>Do you see my prompts and data?</h3>
+        <p>On a self-hosted deployment, the vendor does not. However, the AI model and tool providers you choose to enable (for example Anthropic or OpenAI) receive the prompts and content you send to them, under their own terms. You control which providers are configured.</p>
+      </div>
+      <div class="faq-item">
+        <h3>Is my data encrypted at rest?</h3>
+        <p>In transit, yes &mdash; TLS 1.2/1.3 with HSTS via the shipped nginx configuration. At rest, the application stores its state as files on your host and does not encrypt them; at-rest encryption is the operator&rsquo;s responsibility (full-disk/volume encryption plus filesystem permissions). Our install script sets restrictive permissions on the secrets file.</p>
+      </div>
+      <div class="faq-item">
+        <h3>How do I report a security vulnerability?</h3>
+        <p>Please report suspected vulnerabilities through our <a href="/contact">contact page</a>. We support responsible disclosure and will acknowledge legitimate reports.</p>
+      </div>
+      <div class="faq-item">
+        <h3>What security controls are built into the platform?</h3>
+        <p>Default-deny role-based access control, bcrypt password hashing, a server-enforced human approval gate for irreversible or outward-facing actions, SSRF-pinned outbound fetching, prompt-injection fencing, secret masking in API responses, Ed25519 content provenance, and an opt-in, report-only security scanner. See <a href="#security-controls">Security controls</a>.</p>
+      </div>
+    </section>
+
+    <p class="trust-updated">Last updated 2026-06-30. This page describes controls present in the software and is not a warranty or a certification.</p>
+  </main>
+
+  <footer class="site-footer">
+    <div class="footer-container">
+      <div class="footer-brand">
+        <span class="nav-logo">&#9678;</span>
+        <span class="nav-name">AI OS</span>
+        <p class="footer-tagline">The Agentic Operating System</p>
+      </div>
+      <div class="footer-links">
+        <div class="footer-col">
+          <h4>Product</h4>
+          <a href="/#features">Features</a>
+          <a href="/#pricing">Pricing</a>
+          <a href="/docs">Documentation</a>
+        </div>
+        <div class="footer-col">
+          <h4>Resources</h4>
+          <a href="/blog">Blog</a>
+          <a href="/about">About</a>
+          <a href="/contact">Contact</a>
+        </div>
+        <div class="footer-col">
+          <h4>Legal</h4>
+          <a href="/trust">Trust &amp; Security</a>
+          <a href="/terms">Terms of Service</a>
+          <a href="/privacy">Privacy Policy</a>
+        </div>
+      </div>
+    </div>
+    <div class="footer-bottom">
+      <p>&copy; 2026 AI OS Orchestration Lab. All rights reserved.</p>
+    </div>
+  </footer>
+</body>
+</html>

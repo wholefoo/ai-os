@@ -23,3 +23,4 @@ Pricing: Community is free, open-source, and self-hosted; Business is $1,997 one
 - [Home](https://aiosorchestrationlab.com/): Platform overview, capabilities, and the 55-agent roster.
 - [Pricing](https://aiosorchestrationlab.com/#pricing): Community, Business, Enterprise, and the Managed Website offer.
 - [About](https://aiosorchestrationlab.com/about): What AI OS is, how it works, and who it's for.
+- [Trust & Security](https://aiosorchestrationlab.com/trust): How AI OS handles data and security — self-hosted so your data stays on your own infrastructure, the built-in controls, the shared-responsibility split, subprocessors, and an honest compliance posture (not SOC 2 certified).

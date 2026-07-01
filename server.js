@@ -755,6 +755,7 @@ app.get('/sitemap.xml', (req, res) => {
     { url: '/', priority: '1.0', freq: 'weekly' },
     { url: '/about', priority: '0.8', freq: 'monthly' },
     { url: '/contact', priority: '0.7', freq: 'monthly' },
+    { url: '/trust', priority: '0.7', freq: 'monthly' },
     { url: '/free-audit', priority: '0.9', freq: 'monthly' },
     { url: '/blog', priority: '0.9', freq: 'weekly' },
     { url: '/blog/mythos-defense-security-suite', priority: '0.8', freq: 'monthly' },
@@ -1140,6 +1141,7 @@ app.get('/login', (req, res) => {
 });
 
 // Legal pages
+app.get('/trust', (req, res) => res.sendFile(path.join(BASE, 'dashboard', 'trust.html')));
 app.get('/terms', (req, res) => res.sendFile(path.join(BASE, 'dashboard', 'terms.html')));
 app.get('/privacy', (req, res) => res.sendFile(path.join(BASE, 'dashboard', 'privacy.html')));
 
