@@ -2774,11 +2774,14 @@ const COST_RATES = {
   'opus-4.8-xhigh':    { input: 5.00,  output: 25.00 },   // per 1M — flat Opus 4.8 rate; xhigh spends more TOKENS (deeper thinking), not a higher per-token rate
   'opus-4.8-high':     { input: 5.00,  output: 25.00 },   // standard — professional work
   'opus-4.8-low':      { input: 5.00,  output: 25.00 },   // standard — scout/quick tasks (fewer tokens, same flat rate)
-  // Sonnet 5 — the cost-efficient reasoning tier (settings.ai.reasoning_mode). PRICING IS PROVISIONAL:
-  // verify via the Models API (client.models.retrieve('claude-sonnet-5')); prior-gen Sonnet 4.6 was $3/$15.
-  'sonnet-5-xhigh':    { input: 3.00,  output: 15.00 },   // TODO verify Sonnet 5 pricing
-  'sonnet-5-high':     { input: 3.00,  output: 15.00 },   // TODO verify Sonnet 5 pricing
-  'sonnet-5-low':      { input: 3.00,  output: 15.00 },   // TODO verify Sonnet 5 pricing
+  // Sonnet 5 — the cost-efficient reasoning tier (settings.ai.reasoning_mode). Verified against
+  // docs.claude.com/pricing on 2026-07-01: INTRODUCTORY $2/$10 per 1M through 2026-08-31, then reverts to
+  // $3/$15 on 2026-09-01 — bump these to 3.00/15.00 on that date. (Sonnet 5's newer tokenizer emits ~30%
+  // more tokens for the same text; the ledger counts actual API-reported tokens, so the rate needs no
+  // adjustment for that — but effective cost-per-task runs a bit above the headline rate delta vs Opus.)
+  'sonnet-5-xhigh':    { input: 2.00,  output: 10.00 },
+  'sonnet-5-high':     { input: 2.00,  output: 10.00 },
+  'sonnet-5-low':      { input: 2.00,  output: 10.00 },
   // Legacy aliases (for backward compat with existing ledger entries)
   'claude-4.7-opus':   { input: 15.00, output: 75.00 },
   'claude-4.7-sonnet': { input: 3.00,  output: 15.00 },
