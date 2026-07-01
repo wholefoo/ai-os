@@ -3730,13 +3730,13 @@ app.put('/api/team', requireAdmin, (req, res) => {
 });
 
 // Activity log
-app.get('/api/activity', (req, res) => {
+app.get('/api/activity', requireAdmin, (req, res) => {
   const limit = parseInt(req.query.limit) || 50;
   res.json(activityLog.slice(0, limit));
 });
 
 // Decision log
-app.get('/api/decisions', (req, res) => {
+app.get('/api/decisions', requireAdmin, (req, res) => {
   const logPath = path.join(MAGENT_DIR, 'decisions.log');
   if (!fs.existsSync(logPath)) return res.json([]);
   const lines = fs.readFileSync(logPath, 'utf-8').split('\n').filter(Boolean);
@@ -5805,7 +5805,9 @@ app.delete('/api/hermes/cron/:id', requireAdmin, (req, res) => {
 
 // --- Settings (Admin-only API key & connection management) ---
 
-// Settings persisted to state file — keys are encrypted at rest in production
+// Settings persist to a plaintext JSON state file (.magent/state/settings.json). Keys are masked in
+// API responses (maskKey) but are NOT encrypted at rest — at-rest protection is the operator's
+// responsibility (host disk encryption + filesystem permissions; deploy/install-vps.sh chmods .env 600).
 const settings = loadState('settings', {
   ai: {
     anthropic_api_key: process.env.ANTHROPIC_API_KEY || '',
