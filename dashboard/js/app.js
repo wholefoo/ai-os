@@ -2214,6 +2214,7 @@ async function loadCosts() {
   renderCostBudgetBar(summary);
   renderObservability(summary);
   renderCostStats(summary);
+  renderCostModelBreakdown(summary);
   renderCostTierBreakdown(summary);
   renderCostAgentBreakdown(summary);
   renderCostLedger(summary.entries);
@@ -2293,9 +2294,9 @@ function renderCostStats(summary) {
   if (!container) return;
 
   const tiers = [
-    { key: 'strategic', label: 'Strategic (Opus xhigh)', cls: 'opus' },
-    { key: 'professional', label: 'Professional (Opus high)', cls: 'sonnet' },
-    { key: 'scout', label: 'Scout (Opus low)', cls: 'haiku' },
+    { key: 'strategic', label: 'Strategic (xhigh)', cls: 'opus' },
+    { key: 'professional', label: 'Professional (high)', cls: 'sonnet' },
+    { key: 'scout', label: 'Scout (low)', cls: 'haiku' },
     { key: 'economy', label: 'Economy (DeepSeek)', cls: 'deepseek' },
     { key: 'realtime', label: 'Realtime (Grok)', cls: 'grok' },
   ];
@@ -2333,6 +2334,32 @@ function renderCostTierBreakdown(summary) {
         <span class="cost-breakdown-label">${t.label}</span>
         <div class="cost-breakdown-bar-wrap">
           <div class="cost-breakdown-bar ${t.cls}" style="width: ${pct}%"></div>
+        </div>
+        <span class="cost-breakdown-value">$${data.cost.toFixed(2)}</span>
+        <span class="cost-breakdown-tokens">${formatTokenCount(data.tokens)}</span>
+      </div>
+    `;
+  }).join('');
+}
+
+function renderCostModelBreakdown(summary) {
+  const container = document.getElementById('costsModelBreakdown');
+  if (!container) return;
+  const totalCost = summary.monthly.cost || 1;
+  const pretty = (m) => String(m)
+    .replace('opus-4.8', 'Opus 4.8').replace('sonnet-5', 'Sonnet 5')
+    .replace('deepseek-v4', 'DeepSeek').replace('gemini-omni', 'Gemini')
+    .replace('grok-3', 'Grok').replace('glm-5.2', 'GLM')
+    .replace(/-(xhigh|high|low)\b/, ' · $1');
+  const models = Object.entries(summary.byModel || {}).sort((a, b) => b[1].cost - a[1].cost).slice(0, 10);
+  if (!models.length) { container.innerHTML = '<div class="empty-state">No model usage yet — run an agent to populate this.</div>'; return; }
+  container.innerHTML = models.map(([m, data]) => {
+    const pct = Math.round((data.cost / totalCost) * 100);
+    return `
+      <div class="cost-breakdown-row">
+        <span class="cost-breakdown-label">${escapeHtml(pretty(m))}</span>
+        <div class="cost-breakdown-bar-wrap">
+          <div class="cost-breakdown-bar agent" style="width: ${pct}%"></div>
         </div>
         <span class="cost-breakdown-value">$${data.cost.toFixed(2)}</span>
         <span class="cost-breakdown-tokens">${formatTokenCount(data.tokens)}</span>
