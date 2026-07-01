@@ -67,7 +67,7 @@
       <h3>1.2 Usage Data</h3>
       <p>We automatically collect:</p>
       <ul>
-        <li><strong>Server access logs</strong> — IP address, request timestamp, URL path, HTTP method, response status, and user agent. These are retained for 90 days for security and debugging purposes.</li>
+        <li><strong>Server access logs</strong> — IP address, request timestamp, URL path, HTTP method, response status, and user agent, kept for security and debugging purposes. On self-hosted instances these logs live on your own server and their retention is under your control; on the Managed Service the operator manages retention.</li>
         <li><strong>Feature usage</strong> — which agents you run, skill executions, and general usage patterns. This is used to improve the Service and is not shared with third parties.</li>
       </ul>
 
@@ -77,7 +77,7 @@
         <li>For self-hosted deployments, we do <strong>not</strong> read, store, or log the content of your API calls to third-party providers (Anthropic, OpenAI, Google, DeepSeek, xAI, Perplexity, etc.).</li>
         <li>We do <strong>not</strong> access the contents of your knowledge vault, agent outputs, or generated artifacts on your self-hosted instance.</li>
         <li>We do <strong>not</strong> store your third-party API keys. They are held in your server's environment variables and are never transmitted to us.</li>
-        <li>We do <strong>not</strong> use cookies for advertising or third-party tracking.</li>
+        <li>We do <strong>not</strong> use cookies for advertising or cross-site ad targeting. (Our public marketing website uses Google Analytics for aggregate usage measurement &mdash; see the Cookies section below.)</li>
       </ul>
 
       <h2>2. How We Use Your Information</h2>
@@ -90,10 +90,11 @@
       </ul>
 
       <h2>3. Cookies</h2>
-      <p>We use a single essential cookie:</p>
+      <p>The dashboard application uses a single essential cookie:</p>
       <ul>
-        <li><strong>ai-os-session</strong> — An HTTP-only session cookie that authenticates your login. It contains a random token (not your email or personal data), expires after 30 days, and is required for dashboard access. No third-party cookies are used.</li>
+        <li><strong>ai-os-session</strong> — An HTTP-only session cookie that authenticates your login. It contains a random token (not your email or personal data), expires after 30 days, and is required for dashboard access.</li>
       </ul>
+      <p>Our <strong>public marketing website</strong> (the pages outside the dashboard) additionally uses <strong>Google Analytics</strong>, which sets analytics cookies to measure aggregate, anonymized site usage. This is the only third-party cookie we use, and it does not run inside the dashboard application. <em>(Draft note: a cookie-consent mechanism for the analytics cookie is pending counsel review.)</em></p>
 
       <h2>4. Data Sharing</h2>
       <p>We do not sell, rent, or trade your personal information. We share data only in these limited circumstances:</p>
@@ -106,11 +107,11 @@
 
       <h2>5. Data Storage &amp; Security</h2>
       <ul>
-        <li>Account data is stored on our server infrastructure with encryption at rest.</li>
-        <li>All connections use TLS (HTTPS) encryption in transit.</li>
-        <li>API endpoints are protected by authentication, rate limiting, and input validation.</li>
-        <li>Access logs are retained for 90 days, then automatically purged.</li>
-        <li>Session tokens are cryptographically random and stored server-side.</li>
+        <li>For self-hosted deployments, your data lives on <strong>your own</strong> server instance, not ours. We hold only the minimal account records needed to manage licenses and billing (such as your email and subscription status), plus &mdash; for Managed Service clients &mdash; the hosted site and its data on the operator VPS.</li>
+        <li><strong>At rest:</strong> the application does <strong>not</strong> encrypt stored data. Protecting data at rest (full-disk/volume encryption and filesystem permissions) is the responsibility of the server operator &mdash; you, when self-hosting; us, for the Managed Service.</li>
+        <li><strong>In transit:</strong> all connections use TLS (HTTPS) encryption.</li>
+        <li>API endpoints are protected by authentication, rate limiting, and input validation. Session tokens are cryptographically random and stored server-side.</li>
+        <li>Application activity logs are stored on the server instance and their retention is managed by the server operator; the application does not run an automatic purge job.</li>
       </ul>
       <p>While we implement industry-standard security measures, no method of electronic storage is 100% secure. We cannot guarantee absolute security.</p>
 
@@ -119,8 +120,8 @@
       <ul>
         <li><strong>Access</strong> — Request a copy of the personal data we hold about you.</li>
         <li><strong>Correction</strong> — Request correction of inaccurate data.</li>
-        <li><strong>Deletion</strong> — Request deletion of your account and all associated data. Upon request, we will delete your data within 30 days, except where retention is required by law.</li>
-        <li><strong>Export</strong> — Export your data (vault contents, agent definitions, configurations) at any time while your subscription is active.</li>
+        <li><strong>Deletion</strong> — For self-hosted deployments, you control your data directly on your own instance and can delete it at any time. For the account and billing records we hold (such as your email and Stripe billing history), and for Managed Service data on our VPS, you may request deletion and we will act on it within a reasonable period, except where retention is required by law.</li>
+        <li><strong>Export</strong> — For self-hosted deployments, your data resides on your own server and is directly accessible to you as files; the platform additionally provides website export (ZIP download or GitHub push) via Web Studio. For account records we hold, you may request a copy.</li>
         <li><strong>Objection</strong> — Object to processing of your data for specific purposes.</li>
       </ul>
       <p>To exercise these rights, contact us at the email address below.</p>
@@ -128,10 +129,10 @@
       <h2>7. Data Retention</h2>
       <ul>
         <li><strong>Account data</strong> — retained while your account is active and for 30 days after deletion request.</li>
-        <li><strong>Access logs</strong> — retained for 90 days.</li>
+        <li><strong>Application activity logs</strong> — stored on the server instance; retention is managed by the server operator (no fixed automatic purge).</li>
         <li><strong>Payment records</strong> — retained by Stripe according to their policies and applicable tax/financial regulations.</li>
-        <li><strong>Vault and agent data (self-hosted)</strong> — stored on your own server instance. Deleted when you remove it or 30 days after account termination.</li>
-        <li><strong>Managed Service hosted site &amp; data</strong> — stored on the operator's VPS; retained for a 30-day grace period after cancellation/termination, then may be permanently deleted. See Section 11.5.</li>
+        <li><strong>Vault and agent data (self-hosted)</strong> — stored on your own server instance and controlled entirely by you; it is deleted when you remove it. Because this data lives on your own server, we have no access to it and cannot delete it on your behalf.</li>
+        <li><strong>Managed Service hosted site &amp; data</strong> — stored on the operator's VPS; retained for a 30-day grace period after cancellation/termination, then may be permanently deleted. See the <a href="/terms#managed-website-service">Terms of Service</a>, Section 15.4.</li>
       </ul>
 
       <h2>8. International Users</h2>
