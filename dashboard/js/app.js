@@ -1025,7 +1025,9 @@ async function loadAgents() {
   const container = document.getElementById('agentsGrid');
   container.innerHTML = state.agents.map(a => {
     const tools = a.meta?.tools || [];
-    const model = a.meta?.model || 'sonnet';
+    const routing = a.routing || {};
+    const modelLabel = routing.label || a.meta?.model || 'Opus 4.8';
+    const modelCls = routing.provider || 'sonnet';
     const status = state.fleetStatus[a.meta?.name] || 'idle';
     return `
       <div class="agent-card">
@@ -1034,7 +1036,7 @@ async function loadAgents() {
             <span class="fleet-dot ${status}" style="display:inline-block;width:8px;height:8px;margin-right:6px;vertical-align:middle;"></span>
             ${a.meta?.name || a.filename.replace('.md', '')}
           </span>
-          <span class="agent-model ${model}">${model}</span>
+          <span class="agent-model ${modelCls}" title="Effective model in ${a.reasoning_mode || 'balanced'} mode${routing.tier ? ` · ${routing.tier} tier` : ''}">${modelLabel}</span>
         </div>
         <div class="agent-desc">${escapeHtml(a.meta?.description || '')}</div>
         <div class="agent-tools">
@@ -8227,7 +8229,7 @@ async function showEmployee(empId, el) {
   const modal = document.getElementById('hqEmployeeModal');
   const detail = document.getElementById('hqEmployeeDetail');
   const tierClass = data.tier === 'strategic' ? 'opus' : data.tier === 'creative' ? 'omni' : data.tier === 'scout' ? 'haiku' : data.tier === 'persistent' ? 'hermes' : 'sonnet';
-  const routing = data.tier === 'strategic' ? 'Opus 4.8 xhigh' : data.tier === 'creative' ? 'Gemini Omni' : data.tier === 'scout' ? 'Opus 4.8 low' : data.tier === 'persistent' ? 'Hermes MCP' : data.tier === 'economy' ? 'DeepSeek V4' : data.tier === 'realtime' ? 'Grok-3' : 'Opus 4.8 high';
+  const routing = data.routing?.label || (data.tier === 'strategic' ? 'Opus 4.8 xhigh' : data.tier === 'creative' ? 'Gemini Omni' : data.tier === 'scout' ? 'Sonnet 5 low' : data.tier === 'persistent' ? 'Hermes MCP' : data.tier === 'economy' ? 'DeepSeek V4' : data.tier === 'realtime' ? 'Grok-3' : 'Sonnet 5 high');
 
   detail.innerHTML = `
     <div class="hq-modal-header">

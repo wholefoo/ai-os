@@ -2349,6 +2349,38 @@ function resolveAnthropicModel(routing) {
   return { apiModel: OPUS_MODEL, effort, modelString: `opus-4.8-${effort}` };
 }
 
+// Human-readable label for a resolved ledger model string (e.g. 'sonnet-5-high' -> 'Sonnet 5 high').
+function prettyModelString(m) {
+  return m.replace('opus-4.8-', 'Opus 4.8 ').replace('sonnet-5-', 'Sonnet 5 ');
+}
+
+// Effective routing (CSS provider class + display label) for a reasoning tier, honoring reasoning_mode.
+// Single source of truth for the Agents tab and HQ org chart so both reflect Sonnet 5 in balanced/sonnet
+// mode instead of a hardcoded "Opus 4.8". Non-Anthropic tiers have fixed providers.
+function tierRoutingLabel(tier) {
+  const fixed = {
+    creative: { provider: 'omni', label: 'Gemini Omni' },
+    persistent: { provider: 'persistent', label: 'Hermes MCP' },
+    economy: { provider: 'deepseek-v4', label: 'DeepSeek V4' },
+    realtime: { provider: 'grok', label: 'Grok-3' },
+  };
+  if (fixed[tier]) return fixed[tier];
+  const effort = tier === 'strategic' ? 'xhigh' : tier === 'scout' ? 'low' : 'high';
+  const picked = resolveAnthropicModel({ tier, effort });
+  return { provider: picked.apiModel === SONNET_MODEL ? 'sonnet' : 'opus', label: prettyModelString(picked.modelString) };
+}
+
+// Effective routing for a named agent — honor its declared non-Anthropic provider first, else the
+// reasoning tier (which resolveAnthropicModel maps to Opus/Sonnet per the current reasoning_mode).
+function agentRoutingLabel(name, declaredModel) {
+  const d = (declaredModel || '').toLowerCase();
+  if (d.includes('gemini')) return { provider: 'omni', label: 'Gemini Omni', tier: 'creative' };
+  if (d.includes('deepseek')) return { provider: 'deepseek-v4', label: 'DeepSeek V4', tier: 'economy' };
+  if (d.includes('grok')) return { provider: 'grok', label: 'Grok-3', tier: 'realtime' };
+  const { tier } = getAgentEffort(name);
+  return { ...tierRoutingLabel(tier), tier };
+}
+
 // Build Anthropic API request body with Opus 4.8 features
 function buildOpusRequest(messages, { effort = 'high', systemMessages = [], maxTokens = 4096 } = {}) {
   const body = {
@@ -3170,7 +3202,13 @@ function logActivity(type, message, details = {}) {
 
 // Agents
 app.get('/api/agents', (req, res) => {
-  res.json(readDir(path.join(CLAUDE_DIR, 'agents')));
+  const mode = (settings.ai && settings.ai.reasoning_mode) || 'balanced';
+  const agents = readDir(path.join(CLAUDE_DIR, 'agents')).map(a => ({
+    ...a,
+    routing: agentRoutingLabel(a.meta?.name || (a.filename || '').replace('.md', ''), a.meta?.model),
+    reasoning_mode: mode,
+  }));
+  res.json(agents);
 });
 
 app.get('/api/agents/:name', (req, res) => {
@@ -6486,7 +6524,13 @@ app.get('/api/hq/department/:id', (req, res) => {
 app.get('/api/hq/employee/:id', (req, res) => {
   for (const dept of ORG_CHART.departments) {
     const emp = dept.employees.find(e => e.id === req.params.id);
-    if (emp) return res.json({ ...emp, department: dept.name, departmentId: dept.id });
+    if (emp) return res.json({
+      ...emp,
+      department: dept.name,
+      departmentId: dept.id,
+      routing: tierRoutingLabel(emp.tier),
+      reasoning_mode: (settings.ai && settings.ai.reasoning_mode) || 'balanced',
+    });
   }
   res.status(404).json({ error: 'Employee not found' });
 });
