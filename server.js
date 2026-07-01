@@ -2307,6 +2307,7 @@ const updateProposals = loadState('update_proposals', []);
 // --- Cost Tracking State ---
 // --- Model Configuration ---
 const OPUS_MODEL = 'claude-opus-4-8';
+const SONNET_MODEL = 'claude-sonnet-5';
 const OPUS_API_VERSION = '2023-06-01';
 const GEMINI_OMNI_MODEL = 'gemini-omni-flash';
 
@@ -2331,6 +2332,21 @@ function getAgentEffort(agentName) {
     }
   }
   return { tier: 'professional', effort: 'high', model: 'opus-4.8-high' };
+}
+
+// Choose the Anthropic model + effort + ledger string for a reasoning tier, honoring the operator's
+// reasoning_mode: 'opus' (all Opus 4.8), 'sonnet' (all Sonnet 5), or 'balanced' (DEFAULT — Opus 4.8 for
+// the strategic tier, Sonnet 5 for professional/scout to cut cost on the bulk of agent work).
+// creative/realtime/economy tiers are unaffected (they route to Gemini/Grok/DeepSeek).
+function resolveAnthropicModel(routing) {
+  const mode = (settings.ai && settings.ai.reasoning_mode) || 'balanced';
+  let effort = routing.effort || 'high';
+  const useSonnet = mode === 'sonnet' ? true : mode === 'opus' ? false : routing.tier !== 'strategic';
+  if (useSonnet) {
+    if (effort === 'xhigh') effort = 'high'; // Sonnet 5 may not expose Opus's 'xhigh' tier — clamp. (Verify via the Models API.)
+    return { apiModel: SONNET_MODEL, effort, modelString: `sonnet-5-${effort}` };
+  }
+  return { apiModel: OPUS_MODEL, effort, modelString: `opus-4.8-${effort}` };
 }
 
 // Build Anthropic API request body with Opus 4.8 features
@@ -2415,12 +2431,14 @@ async function executeAgent(agentName, task, options = {}) {
       result = await callDeepSeek(fullSystem, fullTask, maxTokens);
       model = 'deepseek-v4';
     } else {
-      // Default: Anthropic Opus 4.8 — optionally with the operator's connected MCP tools (opt-in only,
-      // admin dispatch sets useMcpTools). NOTE: side-effectful tool calls are not yet behind the
-      // Auto-Mode approval gate — every call is audit-logged; gating is the next P1 safety step.
+      // Default: Anthropic — Opus 4.8 or Sonnet 5 per the operator's reasoning_mode (balanced by default:
+      // Opus for strategic, Sonnet 5 for professional/scout). Optionally with the operator's connected MCP
+      // tools (opt-in); side-effectful tool calls route through the Auto-Mode approval gate below.
+      const picked = resolveAnthropicModel(routing);
+      model = picked.modelString;
       const toolset = options.useMcpTools ? buildMcpToolset() : null;
       if (toolset && toolset.tools.length) {
-        result = await callAnthropicWithTools(fullSystem, fullTask, routing.effort, maxTokens, toolset.tools, async (toolName, input) => {
+        result = await callAnthropicWithTools(fullSystem, fullTask, picked.effort, maxTokens, toolset.tools, async (toolName, input) => {
           const entry = toolset.map[toolName];
           if (!entry) return `Error: unknown tool ${toolName}`;
           // A 'trusted' integration is pre-approved by the operator — run it directly (still audit-logged),
@@ -2443,9 +2461,9 @@ async function executeAgent(agentName, task, options = {}) {
             return `Not executed — this tool call requires human approval and was queued (approval id ${gate.approval.id}). Tell the user "${entry.toolName}" is pending approval in their Approvals inbox.`;
           }
           return (gate.result && gate.result.content) || 'Tool executed (no content returned).';
-        });
+        }, { model: picked.apiModel });
       } else {
-        result = await callAnthropic(fullSystem, fullTask, routing.effort, maxTokens);
+        result = await callAnthropic(fullSystem, fullTask, picked.effort, maxTokens, picked.apiModel);
       }
     }
 
@@ -2513,12 +2531,12 @@ async function fetchWithTimeout(url, opts = {}, ms = AGENT_FETCH_TIMEOUT_MS) {
 // Override the API base (e.g. a local mock or proxy) via ANTHROPIC_BASE_URL; defaults to the real API.
 const ANTHROPIC_API_BASE = process.env.ANTHROPIC_BASE_URL || 'https://api.anthropic.com';
 
-async function callAnthropic(systemPrompt, task, effort, maxTokens) {
+async function callAnthropic(systemPrompt, task, effort, maxTokens, model = OPUS_MODEL) {
   const apiKey = settings.ai.anthropic_api_key;
   if (!apiKey) throw new Error('Anthropic API key not configured — add it in Settings');
 
   const body = {
-    model: OPUS_MODEL,
+    model,
     max_tokens: maxTokens,
     thinking: { type: 'adaptive' },
     system: systemPrompt,
@@ -2549,14 +2567,14 @@ async function callAnthropic(systemPrompt, task, effort, maxTokens) {
 // Anthropic tool-use loop (P1): exposes MCP tools to the model and runs tool_use -> tool_result rounds
 // until a final answer. Thinking is omitted here to avoid thinking-block-signature plumbing across
 // rounds. `executor(name, input)` runs a tool and returns its result text. Iterations are capped.
-async function callAnthropicWithTools(systemPrompt, task, effort, maxTokens, tools, executor, { maxIters = 6 } = {}) {
+async function callAnthropicWithTools(systemPrompt, task, effort, maxTokens, tools, executor, { maxIters = 6, model = OPUS_MODEL } = {}) {
   const apiKey = settings.ai.anthropic_api_key;
   if (!apiKey) throw new Error('Anthropic API key not configured — add it in Settings');
   const messages = [{ role: 'user', content: task }];
   let inputTokens = 0, outputTokens = 0;
   const toolInvocations = [];
   for (let iter = 0; iter < maxIters; iter++) {
-    const body = { model: OPUS_MODEL, max_tokens: maxTokens, system: systemPrompt, messages, tools };
+    const body = { model, max_tokens: maxTokens, system: systemPrompt, messages, tools };
     if (effort) body.output_config = { effort };
     const res = await fetchWithTimeout(`${ANTHROPIC_API_BASE}/v1/messages`, {
       method: 'POST',
@@ -2756,6 +2774,11 @@ const COST_RATES = {
   'opus-4.8-xhigh':    { input: 5.00,  output: 25.00 },   // per 1M — flat Opus 4.8 rate; xhigh spends more TOKENS (deeper thinking), not a higher per-token rate
   'opus-4.8-high':     { input: 5.00,  output: 25.00 },   // standard — professional work
   'opus-4.8-low':      { input: 5.00,  output: 25.00 },   // standard — scout/quick tasks (fewer tokens, same flat rate)
+  // Sonnet 5 — the cost-efficient reasoning tier (settings.ai.reasoning_mode). PRICING IS PROVISIONAL:
+  // verify via the Models API (client.models.retrieve('claude-sonnet-5')); prior-gen Sonnet 4.6 was $3/$15.
+  'sonnet-5-xhigh':    { input: 3.00,  output: 15.00 },   // TODO verify Sonnet 5 pricing
+  'sonnet-5-high':     { input: 3.00,  output: 15.00 },   // TODO verify Sonnet 5 pricing
+  'sonnet-5-low':      { input: 3.00,  output: 15.00 },   // TODO verify Sonnet 5 pricing
   // Legacy aliases (for backward compat with existing ledger entries)
   'claude-4.7-opus':   { input: 15.00, output: 75.00 },
   'claude-4.7-sonnet': { input: 3.00,  output: 15.00 },
@@ -2853,6 +2876,9 @@ function getCostSummary() {
     'opus-4.8-xhigh': 'strategic',
     'opus-4.8-high': 'professional',
     'opus-4.8-low': 'scout',
+    'sonnet-5-xhigh': 'strategic',
+    'sonnet-5-high': 'professional',
+    'sonnet-5-low': 'scout',
     'deepseek-v4': 'economy',
     'gemini-omni': 'creative',
     // Legacy aliases — map ledger entries persisted before the Opus 4.8 consolidation
@@ -5812,6 +5838,7 @@ app.delete('/api/hermes/cron/:id', requireAdmin, (req, res) => {
 // responsibility (host disk encryption + filesystem permissions; deploy/install-vps.sh chmods .env 600).
 const settings = loadState('settings', {
   ai: {
+    reasoning_mode: process.env.AIOS_REASONING_MODE || 'balanced', // opus | balanced | sonnet — Anthropic reasoning-model routing (resolveAnthropicModel)
     anthropic_api_key: process.env.ANTHROPIC_API_KEY || '',
     deepseek_api_key: process.env.DEEPSEEK_API_KEY || '',
     zai_api_key: process.env.ZAI_API_KEY || '',
@@ -6023,6 +6050,7 @@ function maskKey(key) {
 app.get('/api/settings', requireAdmin, (req, res) => {
   const masked = {
     ai: {
+      reasoning_mode: settings.ai.reasoning_mode || 'balanced',
       anthropic_api_key: { value: maskKey(settings.ai.anthropic_api_key), configured: !!settings.ai.anthropic_api_key },
       deepseek_api_key: { value: maskKey(settings.ai.deepseek_api_key), configured: !!settings.ai.deepseek_api_key },
       zai_api_key: { value: maskKey(settings.ai.zai_api_key), configured: !!settings.ai.zai_api_key },
@@ -6109,6 +6137,9 @@ app.put('/api/settings/:section', requireAdmin, (req, res) => {
   // Validate the Auto-Mode setting (gateAction also falls back to 'supervised' for bad values).
   if (section === 'automation' && req.body && 'mode' in req.body && !approvalPolicy.MODES[req.body.mode]) {
     return res.status(400).json({ error: `mode must be one of: ${Object.keys(approvalPolicy.MODES).join(', ')}` });
+  }
+  if (section === 'ai' && req.body && 'reasoning_mode' in req.body && !['opus', 'balanced', 'sonnet'].includes(req.body.reasoning_mode)) {
+    return res.status(400).json({ error: 'reasoning_mode must be one of: opus, balanced, sonnet' });
   }
 
   const updates = req.body;

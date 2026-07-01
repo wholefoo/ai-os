@@ -1963,10 +1963,20 @@
               <h3 class="panel-title settings-section-title">
                 <span class="settings-section-icon">&#129302;</span> AI Model API Keys
               </h3>
-              <p class="settings-desc">Configure API keys for each AI model tier. Keys are stored encrypted on the server and never exposed to the browser.</p>
+              <p class="settings-desc">Configure API keys and reasoning-model routing. Keys are masked in the browser and stored server-side with restrictive file permissions; at-rest encryption is the host operator's responsibility.</p>
               <div class="settings-fields">
                 <div class="settings-field">
-                  <label class="settings-label">Anthropic API Key <span class="settings-tier">Opus 4.8 — Strategic / Professional / Scout</span></label>
+                  <label class="settings-label">Reasoning model <span class="settings-tier">Opus 4.8 vs. Sonnet 5 — cost/quality</span></label>
+                  <div class="settings-input-row">
+                    <select class="settings-input" id="set-reasoning_mode">
+                      <option value="balanced">Balanced — Opus 4.8 for strategic agents, Sonnet 5 for the rest (default)</option>
+                      <option value="opus">Max quality — every reasoning agent on Opus 4.8</option>
+                      <option value="sonnet">Cost saver — every reasoning agent on Sonnet 5</option>
+                    </select>
+                  </div>
+                </div>
+                <div class="settings-field">
+                  <label class="settings-label">Anthropic API Key <span class="settings-tier">Opus 4.8 + Sonnet 5 — all reasoning tiers</span></label>
                   <div class="settings-input-row">
                     <input type="text" class="settings-input settings-secret" id="set-anthropic_api_key" placeholder="sk-ant-..." autocomplete="new-password" data-lpignore="true" data-1p-ignore spellcheck="false">
                     <button type="button" class="btn btn-sm settings-eye" onclick="toggleKeyVisibility(this)" title="Show/hide">&#128065;</button>
