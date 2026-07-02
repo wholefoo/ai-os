@@ -1,10 +1,10 @@
-FROM node:20-alpine
+FROM node:24-alpine
 
 WORKDIR /app
 
 # Install production deps only
 COPY package*.json ./
-RUN npm ci --production
+RUN npm ci --omit=dev
 
 # Copy app source
 COPY server.js ./

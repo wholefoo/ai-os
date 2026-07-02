@@ -1515,7 +1515,8 @@ async function fetchJSON(url, opts = {}) {
     const text = await res.text();
     // Do NOT reflect the raw body: a non-JSON error page (nginx/Cloudflare/WAF HTML) would otherwise be
     // returned as {error: <html>} and interpolated into innerHTML at call sites → reflected XSS.
-    try { return JSON.parse(text); } catch { return { error: `HTTP ${res.status}` }; }
+    // Shape stays consistent with the network-error branch below: writes (opts.method) get {error}, GETs get [].
+    try { return JSON.parse(text); } catch { return opts.method ? { error: `HTTP ${res.status}` } : []; }
   } catch (e) {
     console.error('Fetch error:', e);
     return opts.method ? { error: e.message } : [];

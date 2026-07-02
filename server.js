@@ -7114,8 +7114,9 @@ async function runRealYouTubeAnalysis(analysis, analysisId, interval, type) {
   analysis.status = 'fetching_info';
 
   try {
-    const { execSync } = require('child_process');
-    const infoJson = execSync(`yt-dlp --dump-json --no-download "https://www.youtube.com/watch?v=${videoId}" 2>/dev/null`, { encoding: 'utf-8', timeout: 30000 }); // seclint-ok: videoId regex-locked [\w-]{11} at route; admin-gated; shell needed for redirection
+    const { execFileSync } = require('child_process');
+    // execFile (no shell) — videoId is regex-locked [\w-]{11} at the route; stdio ignores stderr (replaces 2>/dev/null).
+    const infoJson = execFileSync('yt-dlp', ['--dump-json', '--no-download', `https://www.youtube.com/watch?v=${videoId}`], { encoding: 'utf-8', timeout: 30000, stdio: ['ignore', 'pipe', 'ignore'], maxBuffer: 32 * 1024 * 1024 });
     const info = JSON.parse(infoJson);
     analysis.videoInfo = {
       title: info.title || 'Unknown',
@@ -7139,11 +7140,12 @@ async function runRealYouTubeAnalysis(analysis, analysisId, interval, type) {
     analysis.status = 'extracting_frames';
 
     try {
-      const { execSync } = require('child_process');
+      const { execFileSync } = require('child_process');
+      // execFile (no shell) — videoId regex-locked, interval clamped 1-60, videoDir server-built; stdio:'ignore' replaces 2>/dev/null.
       // Download video (low quality for speed)
-      execSync(`yt-dlp -f "worst[ext=mp4]" -o "${path.join(videoDir, 'video.mp4')}" "https://www.youtube.com/watch?v=${videoId}" 2>/dev/null`, { timeout: 120000 }); // seclint-ok: videoId regex-locked; videoDir server-built; admin-gated
+      execFileSync('yt-dlp', ['-f', 'worst[ext=mp4]', '-o', path.join(videoDir, 'video.mp4'), `https://www.youtube.com/watch?v=${videoId}`], { timeout: 120000, stdio: 'ignore' });
       // Extract frames
-      execSync(`ffmpeg -i "${path.join(videoDir, 'video.mp4')}" -vf "fps=1/${interval}" "${path.join(videoDir, 'frame_%04d.jpg')}" -y 2>/dev/null`, { timeout: 120000 }); // seclint-ok: interval clamped 1-60 at route; videoDir server-built; admin-gated
+      execFileSync('ffmpeg', ['-i', path.join(videoDir, 'video.mp4'), '-vf', `fps=1/${interval}`, path.join(videoDir, 'frame_%04d.jpg'), '-y'], { timeout: 120000, stdio: 'ignore' });
 
       const frameFiles = fs.readdirSync(videoDir).filter(f => f.startsWith('frame_') && f.endsWith('.jpg')).sort();
       analysis.frames = frameFiles.map((f, i) => ({
@@ -7163,8 +7165,9 @@ async function runRealYouTubeAnalysis(analysis, analysisId, interval, type) {
     analysis.status = 'transcribing';
 
     try {
-      const { execSync } = require('child_process');
-      execSync(`yt-dlp --write-auto-sub --sub-lang en --skip-download -o "${path.join(videoDir, 'subs')}" "https://www.youtube.com/watch?v=${videoId}" 2>/dev/null`, { timeout: 30000 }); // seclint-ok: videoId regex-locked; admin-gated; shell needed for redirection
+      const { execFileSync } = require('child_process');
+      // execFile (no shell) — videoId regex-locked, videoDir server-built; stdio:'ignore' replaces 2>/dev/null.
+      execFileSync('yt-dlp', ['--write-auto-sub', '--sub-lang', 'en', '--skip-download', '-o', path.join(videoDir, 'subs'), `https://www.youtube.com/watch?v=${videoId}`], { timeout: 30000, stdio: 'ignore' });
 
       // Try to parse the subtitle file
       const subFiles = fs.readdirSync(videoDir).filter(f => f.includes('subs') && (f.endsWith('.vtt') || f.endsWith('.srt')));
