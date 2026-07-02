@@ -197,6 +197,9 @@ function authMiddleware(req, res, next) {
   // Public AI Helpdesk: the contact-page support agent. Abuse is bounded by heavyLimiter on the POST
   // plus per-IP/global daily caps in the handler (each message is a paid, doc-grounded agent call).
   if (url === '/api/support/contact') return next();
+  // A2A message endpoint authenticates itself (admin OR a scoped A2A key) at the route level via a2aAuth —
+  // let it past the global gate so scoped-key callers reach it. /api/a2a/keys* stays admin-gated (requireAdmin).
+  if (url === '/api/a2a') return next();
   // Allow session-cookie auth (logged-in dashboard users)
   const sessionToken = req.cookies?.['ai-os-session'];
   if (sessionToken && isValidSession(sessionToken)) return next();
@@ -4415,6 +4418,53 @@ app.get('/api/n8n/templates/:id', requireAdmin, (req, res) => {
 // --- A2A (Agent-to-Agent) interop — let other vendors' agents discover + call this instance (P1) ---
 const a2a = require('./lib/a2a');
 
+// --- Scoped A2A keys (Option B): externally-issued, non-escalating credentials for /api/a2a ---
+// Each key is a random bearer token (shown ONCE, only its SHA-256 stored) scoped to a subset of the public
+// A2A skills, with a per-key daily USD spend cap + rate limit. An A2A key is DELIBERATELY not a session: it
+// never flows through resolveSession, so it can NEVER satisfy requireAdmin/requireClientOrAdmin — it can
+// reach ONLY /api/a2a. The operator (admin) may also call /api/a2a directly, with full skill access.
+const a2aCrypto = require('crypto');
+let a2aKeys = loadState('a2a-keys', []);
+const A2A_TOKEN_PREFIX = 'aiosa2a_';
+const a2aSha256 = (s) => a2aCrypto.createHash('sha256').update(String(s)).digest('hex');
+function a2aHashEq(a, b) {
+  const ba = Buffer.from(String(a)), bb = Buffer.from(String(b));
+  return ba.length === bb.length && a2aCrypto.timingSafeEqual(ba, bb);
+}
+function findA2AKeyByToken(token) {
+  if (!token || !token.startsWith(A2A_TOKEN_PREFIX)) return null;
+  const h = a2aSha256(token);
+  return a2aKeys.find(k => !k.revoked && a2aHashEq(k.tokenHash, h)) || null;
+}
+// Public projection of a key — never leaks tokenHash.
+function a2aKeyPublic(k) {
+  return { id: k.id, label: k.label, skills: k.skills, dailyBudgetUsd: k.dailyBudgetUsd, rateLimitPerMin: k.rateLimitPerMin, revoked: !!k.revoked, createdAt: k.createdAt, lastUsedAt: k.lastUsedAt || null, usage: k.usage || null };
+}
+
+// Auth for /api/a2a: admin (operator / master API_TOKEN) keeps FULL access; otherwise a valid, non-revoked
+// scoped A2A key is required. Sets req.a2aKey for scoped callers (skill + budget enforced in the handler).
+function a2aAuth(req, res, next) {
+  const session = resolveSession(req);
+  if (session && session.role === 'admin') { req.session = session; return next(); }
+  const token = (req.headers.authorization || '').replace('Bearer ', '');
+  const key = findA2AKeyByToken(token);
+  if (key) {
+    key.lastUsedAt = new Date().toISOString();
+    req.a2aKey = key;
+    saveState('a2a-keys', a2aKeys);
+    return next();
+  }
+  return res.status(401).json({ error: 'A2A access requires an operator-provisioned bearer token' });
+}
+
+// Per-key (per-IP for admin) rate limit for /api/a2a, honoring each key's rateLimitPerMin. Runs AFTER a2aAuth.
+const a2aLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: (req) => (req.a2aKey && req.a2aKey.rateLimitPerMin) || 30,
+  keyGenerator: (req) => (req.a2aKey ? `a2a-key:${req.a2aKey.id}` : `a2a-admin:${rateLimit.ipKeyGenerator(req.ip)}`),
+  message: { jsonrpc: '2.0', id: null, error: { code: -32029, message: 'A2A rate limit exceeded' } },
+});
+
 // Public Agent Card (discovery). Served outside /api/ so it isn't auth-gated — it only advertises
 // capabilities; the actual message endpoint below is authenticated.
 app.get(['/.well-known/agent.json', '/.well-known/agent-card.json'], (req, res) => {
@@ -4425,7 +4475,7 @@ app.get(['/.well-known/agent.json', '/.well-known/agent-card.json'], (req, res) 
 // A2A JSON-RPC endpoint — authenticated (Bearer/API token) + rate-limited. Handles `message/send`,
 // routing to a curated, allowlisted agent and returning a completed Task. External callers cannot reach
 // internal agents, and MCP tools are NOT enabled for these runs.
-app.post('/api/a2a', requireAdmin, heavyLimiter, async (req, res) => {
+app.post('/api/a2a', a2aAuth, a2aLimiter, async (req, res) => {
   const { jsonrpc, id = null, method, params } = req.body || {};
   const rpcError = (code, message) => res.json({ jsonrpc: '2.0', id, error: { code, message } });
   if (jsonrpc !== '2.0' || !method) return rpcError(-32600, 'Invalid JSON-RPC request');
@@ -4436,9 +4486,23 @@ app.post('/api/a2a', requireAdmin, heavyLimiter, async (req, res) => {
   if (!text) return rpcError(-32602, 'params.message must include a text part');
 
   const skill = a2a.resolveSkill(params && params.metadata && params.metadata.skillId);
+
+  // Scoped keys: enforce the per-key skill allowlist + daily USD budget BEFORE spending (admin is unrestricted).
+  if (req.a2aKey) {
+    if (!Array.isArray(req.a2aKey.skills) || !req.a2aKey.skills.includes(skill.id)) {
+      return rpcError(-32003, `skill "${skill.id}" is not permitted for this A2A key`);
+    }
+    const today = new Date().toISOString().slice(0, 10);
+    const usage = (req.a2aKey.usage && req.a2aKey.usage.date === today) ? req.a2aKey.usage : { date: today, spentUsd: 0 };
+    req.a2aKey.usage = usage;
+    if (usage.spentUsd >= (req.a2aKey.dailyBudgetUsd || 0)) {
+      return rpcError(-32004, 'daily budget for this A2A key is exhausted');
+    }
+  }
+
   const taskId = uuidv4();
   const contextId = (params && params.metadata && params.metadata.contextId) || uuidv4();
-  logActivity('a2a', `A2A message/send -> skill "${skill.id}" (agent ${skill.agent})`, { skill: skill.id });
+  logActivity('a2a', `A2A message/send -> skill "${skill.id}"${req.a2aKey ? ` (key ${req.a2aKey.id})` : ' (admin)'}`, { skill: skill.id, a2aKeyId: req.a2aKey ? req.a2aKey.id : null });
 
   // The inbound message comes from an external agent = untrusted. Fence it as DATA (nonce + system guard)
   // so embedded "ignore your rules / call this tool / exfiltrate" instructions are treated as content, not commands.
@@ -4448,6 +4512,11 @@ app.post('/api/a2a', requireAdmin, heavyLimiter, async (req, res) => {
     { skill: `a2a:${skill.id}`, maxTokens: 4096, untrusted: { label: `a2a:${skill.id} request`, text } },
   );
   const ok = !!(result && result.ok);
+  // Charge the scoped key's daily budget with the actual cost of this run.
+  if (req.a2aKey && result && typeof result.cost === 'number') {
+    req.a2aKey.usage.spentUsd = Math.round((req.a2aKey.usage.spentUsd + result.cost) * 10000) / 10000;
+    saveState('a2a-keys', a2aKeys);
+  }
   const now = new Date().toISOString();
   const task = {
     id: taskId, contextId, kind: 'task',
@@ -4460,6 +4529,58 @@ app.post('/api/a2a', requireAdmin, heavyLimiter, async (req, res) => {
     history: message && message.messageId ? [message] : [],
   };
   res.json({ jsonrpc: '2.0', id, result: task });
+});
+
+// --- A2A key management (admin only) — mint/list/revoke/delete the scoped external credentials ---
+app.get('/api/a2a/keys', requireAdmin, (req, res) => {
+  res.json({ keys: a2aKeys.map(a2aKeyPublic), availableSkills: a2a.listSkills() });
+});
+
+app.post('/api/a2a/keys', requireAdmin, (req, res) => {
+  const { label, skills, dailyBudgetUsd, rateLimitPerMin } = req.body || {};
+  if (!label || typeof label !== 'string' || label.trim().length === 0 || label.length > 80) {
+    return res.status(400).json({ error: 'label required (1–80 chars)' });
+  }
+  if (!Array.isArray(skills) || skills.length === 0 || !skills.every(s => a2a.isValidSkillId(s))) {
+    return res.status(400).json({ error: 'skills must be a non-empty array of valid A2A skill ids' });
+  }
+  const budget = Number(dailyBudgetUsd);
+  if (!Number.isFinite(budget) || budget <= 0 || budget > 1000) {
+    return res.status(400).json({ error: 'dailyBudgetUsd must be a positive number ≤ 1000' });
+  }
+  const rl = rateLimitPerMin === undefined ? 30 : Number(rateLimitPerMin);
+  if (!Number.isFinite(rl) || rl < 1 || rl > 600) {
+    return res.status(400).json({ error: 'rateLimitPerMin must be an integer 1–600' });
+  }
+  const token = A2A_TOKEN_PREFIX + a2aCrypto.randomBytes(32).toString('hex');
+  const key = {
+    id: uuidv4(), label: label.trim(), skills: [...new Set(skills)], tokenHash: a2aSha256(token),
+    dailyBudgetUsd: Math.round(budget * 100) / 100, rateLimitPerMin: Math.floor(rl),
+    revoked: false, createdAt: new Date().toISOString(), lastUsedAt: null, usage: null,
+  };
+  a2aKeys.push(key);
+  saveState('a2a-keys', a2aKeys);
+  logActivity('a2a', `A2A key minted: "${key.label}" (${key.skills.join(', ')})`, { a2aKeyId: key.id, actor: reqActor(req) });
+  // Return the raw token ONCE — it is never stored or recoverable after this response.
+  res.json({ ok: true, token, key: a2aKeyPublic(key) });
+});
+
+app.post('/api/a2a/keys/:id/revoke', requireAdmin, (req, res) => {
+  const key = a2aKeys.find(k => k.id === req.params.id);
+  if (!key) return res.status(404).json({ error: 'key not found' });
+  key.revoked = true;
+  saveState('a2a-keys', a2aKeys);
+  logActivity('a2a', `A2A key revoked: "${key.label}"`, { a2aKeyId: key.id, actor: reqActor(req) });
+  res.json({ ok: true, key: a2aKeyPublic(key) });
+});
+
+app.delete('/api/a2a/keys/:id', requireAdmin, (req, res) => {
+  const i = a2aKeys.findIndex(k => k.id === req.params.id);
+  if (i === -1) return res.status(404).json({ error: 'key not found' });
+  const [removed] = a2aKeys.splice(i, 1);
+  saveState('a2a-keys', a2aKeys);
+  logActivity('a2a', `A2A key deleted: "${removed.label}"`, { a2aKeyId: removed.id, actor: reqActor(req) });
+  res.json({ ok: true });
 });
 
 app.get('/api/costs/budget', (req, res) => {
