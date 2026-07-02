@@ -2793,9 +2793,20 @@ app.post('/api/chat', requireAdmin, async (req, res) => {
   try {
     const systemPrompt = `You are Atlas, the CEO and Chief Orchestrator of AI OS Corp — a Virtual Corporate Headquarters with 55 AI agents across 10 departments. You help users navigate the platform, dispatch tasks to the right agents, answer questions about features, and provide strategic guidance. Be concise, helpful, and professional. You know about the full model routing across 6 AI models, the SEO Agency, Creative Studio, YouTube Intelligence, and the full agent fleet.`;
 
-    const result = await callAnthropic(systemPrompt, messages.length === 1 ? message : JSON.stringify(messages), 'high', 2048);
+    // Route chat through the same reasoning-mode resolution as agents (honors the opus/balanced/sonnet
+    // toggle instead of always hitting Opus), and record spend — callAnthropic does not ledger, only executeAgent does.
+    const picked = resolveAnthropicModel(getAgentEffort('orchestrator'));
+    const result = await callAnthropic(systemPrompt, messages.length === 1 ? message : JSON.stringify(messages), picked.effort, 2048, picked.apiModel);
 
-    res.json({ ok: true, reply: result.content, inputTokens: result.inputTokens, outputTokens: result.outputTokens });
+    const rates = COST_RATES[picked.modelString] || COST_RATES['opus-4.8-high'];
+    const cost = (result.inputTokens / 1_000_000) * rates.input + (result.outputTokens / 1_000_000) * rates.output;
+    costLedger.push({
+      id: uuidv4(), agent: 'atlas-chat', model: picked.modelString, skill: 'chat',
+      inputTokens: result.inputTokens, outputTokens: result.outputTokens,
+      cost: Math.round(cost * 10000) / 10000, timestamp: new Date().toISOString(),
+    });
+
+    res.json({ ok: true, reply: result.content, model: picked.modelString, inputTokens: result.inputTokens, outputTokens: result.outputTokens });
   } catch (e) {
     res.json({ ok: false, error: e.message, reply: `Sorry, I couldn't process that: ${e.message}` });
   }
@@ -2884,8 +2895,10 @@ function getCostSummary() {
   const weekly = costLedger.filter(e => new Date(e.timestamp).getTime() > weekAgo);
   const monthly = costLedger.filter(e => new Date(e.timestamp).getTime() > monthAgo);
 
-  const sumCost = entries => entries.reduce((s, e) => s + e.cost, 0);
-  const sumTokens = entries => entries.reduce((s, e) => s + e.inputTokens + e.outputTokens, 0);
+  // NaN-proof reducers: one bad ledger entry must not poison every total (and thus the budget kill-switch).
+  const num = v => (Number.isFinite(v) ? v : 0);
+  const sumCost = entries => entries.reduce((s, e) => s + num(e.cost), 0);
+  const sumTokens = entries => entries.reduce((s, e) => s + num(e.inputTokens) + num(e.outputTokens), 0);
 
   // Per-model breakdown
   const byModel = {};
@@ -3211,17 +3224,29 @@ app.get('/api/agents', (req, res) => {
   res.json(agents);
 });
 
-app.get('/api/agents/:name', (req, res) => {
-  const fpath = path.join(CLAUDE_DIR, 'agents', req.params.name);
-  if (!fs.existsSync(fpath)) return res.status(404).json({ error: 'Not found' });
-  const content = fs.readFileSync(fpath, 'utf-8');
-  res.json({ filename: req.params.name, ...parseFrontmatter(content) });
+const AGENTS_DIR = () => path.join(CLAUDE_DIR, 'agents');
+// Collapse a route param to a bare `<name>.md` inside the agents dir, or null if it escapes/looks wrong.
+function safeAgentPath(name) {
+  const base = path.basename(String(name));
+  if (!/^[\w.-]+\.md$/.test(base)) return null;
+  const fpath = path.join(AGENTS_DIR(), base);
+  if (path.dirname(fpath) !== AGENTS_DIR()) return null;
+  return { base, fpath };
+}
+
+app.get('/api/agents/:name', requireAdmin, (req, res) => {
+  const safe = safeAgentPath(req.params.name);
+  if (!safe || !fs.existsSync(safe.fpath)) return res.status(404).json({ error: 'Not found' });
+  const content = fs.readFileSync(safe.fpath, 'utf-8');
+  res.json({ filename: safe.base, ...parseFrontmatter(content) });
 });
 
-app.put('/api/agents/:name', (req, res) => {
-  const fpath = path.join(CLAUDE_DIR, 'agents', req.params.name);
-  fs.writeFileSync(fpath, req.body.content, 'utf-8');
-  logActivity('agent', `Agent updated: ${req.params.name}`);
+app.put('/api/agents/:name', requireAdmin, (req, res) => {
+  const safe = safeAgentPath(req.params.name);
+  if (!safe) return res.status(400).json({ error: 'invalid agent name' });
+  if (typeof req.body.content !== 'string') return res.status(400).json({ error: 'content required' });
+  fs.writeFileSync(safe.fpath, req.body.content, 'utf-8');
+  logActivity('agent', `Agent updated: ${safe.base}`);
   res.json({ ok: true });
 });
 
@@ -3737,7 +3762,7 @@ app.post('/api/verify/run', requireAdmin, heavyLimiter, async (req, res) => {
 });
 
 // API: Override verification verdict (human override)
-app.put('/api/verify/:id/override', (req, res) => {
+app.put('/api/verify/:id/override', requireAdmin, (req, res) => {
   const v = verifications.get(req.params.id);
   if (!v) return res.status(404).json({ error: 'Verification not found' });
 
@@ -3817,7 +3842,7 @@ app.get('/api/plans', (req, res) => {
   res.json(readDir(path.join(MAGENT_DIR, 'plans')));
 });
 
-app.post('/api/plans', (req, res) => {
+app.post('/api/plans', requireAdmin, (req, res) => {
   const id = `plan-${Date.now()}`;
   const fpath = path.join(MAGENT_DIR, 'plans', `${id}.md`);
   const content = `---\nid: ${id}\nstatus: pending\ncreated: ${new Date().toISOString()}\n---\n${req.body.content}`;
@@ -3874,7 +3899,7 @@ app.get('/api/tech-radar/proposals', (req, res) => {
 });
 
 // Approve/reject an update proposal
-app.put('/api/tech-radar/proposals/:id', (req, res) => {
+app.put('/api/tech-radar/proposals/:id', requireAdmin, (req, res) => {
   const proposal = updateProposals.find(p => p.id === req.params.id);
   if (!proposal) return res.status(404).json({ error: 'Proposal not found' });
 
@@ -3903,7 +3928,7 @@ app.put('/api/tech-radar/proposals/:id', (req, res) => {
 });
 
 // Trigger a manual radar sweep
-app.post('/api/tech-radar/sweep', (req, res) => {
+app.post('/api/tech-radar/sweep', requireAdmin, (req, res) => {
   const sweepType = req.body.sweep_type || 'daily';
   const id = `radar-${Date.now()}`;
 
@@ -4096,7 +4121,7 @@ app.get('/api/schedules/history', (req, res) => {
   res.json(scheduleHistory.slice(0, limit));
 });
 
-app.put('/api/schedules/:id/toggle', (req, res) => {
+app.put('/api/schedules/:id/toggle', requireAdmin, (req, res) => {
   const sched = schedules.get(req.params.id);
   if (!sched) return res.status(404).json({ error: 'Schedule not found' });
 
@@ -4111,7 +4136,7 @@ app.put('/api/schedules/:id/toggle', (req, res) => {
   res.json({ id: sched.id, enabled: sched.enabled });
 });
 
-app.post('/api/schedules/:id/run', (req, res) => {
+app.post('/api/schedules/:id/run', requireAdmin, (req, res) => {
   const sched = schedules.get(req.params.id);
   if (!sched) return res.status(404).json({ error: 'Schedule not found' });
   if (sched.status === 'running') return res.status(409).json({ error: 'Already running' });
@@ -4120,7 +4145,7 @@ app.post('/api/schedules/:id/run', (req, res) => {
   res.json({ id: sched.id, status: 'running' });
 });
 
-app.post('/api/schedules', (req, res) => {
+app.post('/api/schedules', requireAdmin, (req, res) => {
   const { agent, skill, cron: cronExpr, description } = req.body;
   if (!agent || !skill || !cronExpr) {
     return res.status(400).json({ error: 'agent, skill, and cron are required' });
@@ -4173,16 +4198,20 @@ app.get('/api/vault/:folder', (req, res) => {
   res.json(result);
 });
 
-app.get('/api/vault/:folder/:file', (req, res) => {
-  const { folder, file } = req.params;
+app.get('/api/vault/:folder/:file', requireAdmin, (req, res) => {
+  const { folder } = req.params;
   if (!['raw', 'wiki', 'outputs'].includes(folder)) {
     return res.status(400).json({ error: 'Invalid vault folder' });
   }
-  const fpath = path.join(VAULT_DIR, folder, file);
+  // Collapse to a bare basename and confirm it stays inside the vault folder (mirrors POST /api/vault/:folder).
+  const safe = path.basename(String(req.params.file));
+  const dir = path.join(VAULT_DIR, folder);
+  const fpath = path.join(dir, safe);
+  if (safe.startsWith('.') || path.dirname(fpath) !== dir) return res.status(400).json({ error: 'invalid filename' });
   if (!fs.existsSync(fpath)) return res.status(404).json({ error: 'File not found' });
   const content = fs.readFileSync(fpath, 'utf-8');
   const parsed = parseFrontmatter(content);
-  res.json({ name: file, folder, content, ...parsed });
+  res.json({ name: safe, folder, content, ...parsed });
 });
 
 app.post('/api/vault/:folder', requireAdmin, (req, res) => {
@@ -4391,7 +4420,7 @@ app.get('/api/costs/budget', (req, res) => {
   res.json(costBudget);
 });
 
-app.put('/api/costs/budget', (req, res) => {
+app.put('/api/costs/budget', requireAdmin, (req, res) => {
   const { daily, weekly, monthly } = req.body;
   if (daily !== undefined) costBudget.daily = daily;
   if (weekly !== undefined) costBudget.weekly = weekly;
@@ -4403,15 +4432,21 @@ app.put('/api/costs/budget', (req, res) => {
 app.post('/api/costs/track', (req, res) => {
   const { agent, model, skill, inputTokens, outputTokens } = req.body;
   if (!agent || !model) return res.status(400).json({ error: 'agent and model required' });
+  // Coerce + validate tokens: a non-numeric value (e.g. "abc") is truthy and would slip past `|| 0`,
+  // producing NaN cost that poisons every summary AND silently disables the budget kill-switch (NaN >= n === false).
+  const it = Number(inputTokens), ot = Number(outputTokens);
+  if (!Number.isFinite(it) || !Number.isFinite(ot) || it < 0 || ot < 0) {
+    return res.status(400).json({ error: 'inputTokens and outputTokens must be non-negative numbers' });
+  }
   const rates = COST_RATES[model] || COST_RATES['opus-4.8-high'];
-  const cost = ((inputTokens || 0) / 1_000_000) * rates.input + ((outputTokens || 0) / 1_000_000) * rates.output;
+  const cost = (it / 1_000_000) * rates.input + (ot / 1_000_000) * rates.output;
   const entry = {
     id: uuidv4(),
     agent,
     model,
     skill: skill || 'unknown',
-    inputTokens: inputTokens || 0,
-    outputTokens: outputTokens || 0,
+    inputTokens: it,
+    outputTokens: ot,
     cost: Math.round(cost * 10000) / 10000,
     timestamp: new Date().toISOString(),
   };
@@ -4499,7 +4534,7 @@ app.get('/api/automations/history', (req, res) => {
   res.json(automationLog.slice(0, limit));
 });
 
-app.post('/api/automations/trigger', (req, res) => {
+app.post('/api/automations/trigger', requireAdmin, (req, res) => {
   const { action, payload, triggeredBy } = req.body;
   if (!action) return res.status(400).json({ error: 'action is required' });
 
@@ -4534,7 +4569,7 @@ app.post('/api/automations/trigger', (req, res) => {
   res.json(entry);
 });
 
-app.put('/api/automations/:id/approve', (req, res) => {
+app.put('/api/automations/:id/approve', requireAdmin, (req, res) => {
   const entry = automationLog.find(a => a.id === req.params.id);
   if (!entry) return res.status(404).json({ error: 'Not found' });
   if (entry.status !== 'pending_approval') return res.status(400).json({ error: 'Not pending approval' });
@@ -4558,7 +4593,7 @@ app.put('/api/automations/:id/approve', (req, res) => {
   res.json(entry);
 });
 
-app.put('/api/automations/:id/reject', (req, res) => {
+app.put('/api/automations/:id/reject', requireAdmin, (req, res) => {
   const entry = automationLog.find(a => a.id === req.params.id);
   if (!entry) return res.status(404).json({ error: 'Not found' });
   entry.status = 'rejected';
@@ -4672,7 +4707,7 @@ app.get('/api/social-intel', (req, res) => {
   });
 });
 
-app.post('/api/social-intel/sweep', (req, res) => {
+app.post('/api/social-intel/sweep', requireAdmin, (req, res) => {
   const sweepId = `social-${Date.now()}`;
   logActivity('social', `Social intelligence sweep initiated`);
   appendLog(`SOCIAL_SWEEP: ${sweepId}`);
@@ -4709,23 +4744,33 @@ app.get('/api/identity', (req, res) => {
   res.json(result);
 });
 
-app.get('/api/identity/:name', (req, res) => {
-  const fpath = path.join(IDENTITY_DIR, `${req.params.name}.md`);
-  if (!fs.existsSync(fpath)) return res.status(404).json({ error: 'Not found' });
-  const content = fs.readFileSync(fpath, 'utf-8');
+// Collapse an identity name to a bare `<name>.md` inside IDENTITY_DIR, or null if it escapes.
+function safeIdentityPath(name) {
+  const base = path.basename(`${name}.md`);
+  if (!/^[\w.-]+\.md$/.test(base)) return null;
+  const fpath = path.join(IDENTITY_DIR, base);
+  if (path.dirname(fpath) !== IDENTITY_DIR) return null;
+  return { base, fpath };
+}
+
+app.get('/api/identity/:name', requireAdmin, (req, res) => {
+  const safe = safeIdentityPath(req.params.name);
+  if (!safe || !fs.existsSync(safe.fpath)) return res.status(404).json({ error: 'Not found' });
+  const content = fs.readFileSync(safe.fpath, 'utf-8');
   const parsed = parseFrontmatter(content);
   res.json({ name: req.params.name, content, ...parsed });
 });
 
-app.put('/api/identity/:name', (req, res) => {
-  const fpath = path.join(IDENTITY_DIR, `${req.params.name}.md`);
-  if (!fs.existsSync(fpath)) return res.status(404).json({ error: 'Not found' });
-  const existing = parseFrontmatter(fs.readFileSync(fpath, 'utf-8'));
+app.put('/api/identity/:name', requireAdmin, (req, res) => {
+  const safe = safeIdentityPath(req.params.name);
+  if (!safe || !fs.existsSync(safe.fpath)) return res.status(404).json({ error: 'Not found' });
+  if (typeof req.body.content !== 'string') return res.status(400).json({ error: 'content required' });
+  const existing = parseFrontmatter(fs.readFileSync(safe.fpath, 'utf-8'));
   if (existing.meta?.immutable) {
     return res.status(403).json({ error: 'This identity file is immutable. Edit the file directly to modify.' });
   }
-  fs.writeFileSync(fpath, req.body.content, 'utf-8');
-  logActivity('identity', `Identity layer updated: ${req.params.name}`);
+  fs.writeFileSync(safe.fpath, req.body.content, 'utf-8');
+  logActivity('identity', `Identity layer updated: ${safe.base}`);
   res.json({ ok: true });
 });
 
@@ -4845,7 +4890,7 @@ app.get('/api/contexts/:slug', (req, res) => {
 });
 
 // API: Set active project context
-app.put('/api/contexts/active', (req, res) => {
+app.put('/api/contexts/active', requireAdmin, (req, res) => {
   const { slug } = req.body;
   if (slug) {
     const projects = loadProjects();
@@ -4869,7 +4914,7 @@ app.get('/api/contexts/resolve/:slug', (req, res) => {
 });
 
 // API: Create new project context
-app.post('/api/contexts', (req, res) => {
+app.post('/api/contexts', requireAdmin, (req, res) => {
   const { name, slug, description } = req.body;
   if (!name || !slug) return res.status(400).json({ error: 'Name and slug required' });
   const fpath = path.join(PROJECTS_DIR, `${slug}.yaml`);
@@ -5038,13 +5083,13 @@ app.get('/api/pipelines/runs/:id', (req, res) => {
   res.json(run);
 });
 
-app.post('/api/pipelines/:name/execute', (req, res) => {
+app.post('/api/pipelines/:name/execute', requireAdmin, (req, res) => {
   const run = executePipeline(req.params.name, req.body.params || {});
   if (!run) return res.status(404).json({ error: 'Pipeline not found' });
   res.json(run);
 });
 
-app.post('/api/pipelines/runs/:id/approve', (req, res) => {
+app.post('/api/pipelines/runs/:id/approve', requireAdmin, (req, res) => {
   const run = pipelineRuns.get(req.params.id);
   if (!run) return res.status(404).json({ error: 'Run not found' });
   if (run.status !== 'awaiting_approval') return res.status(400).json({ error: 'Not awaiting approval' });
@@ -5198,7 +5243,7 @@ app.get('/api/notifications/config', (req, res) => {
   });
 });
 
-app.put('/api/notifications/config', (req, res) => {
+app.put('/api/notifications/config', requireAdmin, (req, res) => {
   const { telegram, slack, escalation } = req.body;
   if (telegram) {
     if (telegram.enabled !== undefined) notificationConfig.telegram.enabled = telegram.enabled;
@@ -5526,7 +5571,7 @@ app.get('/api/golden-loop/stats', (req, res) => {
   });
 });
 
-app.post('/api/golden-loop/:id/sync', (req, res) => {
+app.post('/api/golden-loop/:id/sync', requireAdmin, (req, res) => {
   const loop = goldenLoop.loops.find(l => l.id === req.params.id);
   if (!loop) return res.status(404).json({ error: 'Loop not found' });
   loop.status = 'syncing';
@@ -5542,7 +5587,7 @@ app.post('/api/golden-loop/:id/sync', (req, res) => {
   res.json(loop);
 });
 
-app.post('/api/golden-loop', (req, res) => {
+app.post('/api/golden-loop', requireAdmin, (req, res) => {
   const { gem, notebook, syncInterval, dataSources } = req.body;
   const loop = {
     id: `gl-${Date.now()}`,
