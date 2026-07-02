@@ -1034,13 +1034,13 @@ async function loadAgents() {
         <div class="agent-card-header">
           <span class="agent-name">
             <span class="fleet-dot ${status}" style="display:inline-block;width:8px;height:8px;margin-right:6px;vertical-align:middle;"></span>
-            ${a.meta?.name || a.filename.replace('.md', '')}
+            ${escapeHtml(a.meta?.name || a.filename.replace('.md', ''))}
           </span>
-          <span class="agent-model ${modelCls}" title="Effective model in ${a.reasoning_mode || 'balanced'} mode${routing.tier ? ` · ${routing.tier} tier` : ''}">${modelLabel}</span>
+          <span class="agent-model ${escapeHtml(modelCls)}" title="Effective model in ${escapeHtml(a.reasoning_mode || 'balanced')} mode${routing.tier ? ` · ${escapeHtml(routing.tier)} tier` : ''}">${escapeHtml(modelLabel)}</span>
         </div>
         <div class="agent-desc">${escapeHtml(a.meta?.description || '')}</div>
         <div class="agent-tools">
-          ${tools.map(t => `<span class="agent-tool-tag">${t}</span>`).join('')}
+          ${tools.map(t => `<span class="agent-tool-tag">${escapeHtml(t)}</span>`).join('')}
         </div>
       </div>
     `;
@@ -1513,7 +1513,9 @@ async function fetchJSON(url, opts = {}) {
       console.warn('Unauthorized — session may have expired');
     }
     const text = await res.text();
-    try { return JSON.parse(text); } catch { return { error: text || `HTTP ${res.status}` }; }
+    // Do NOT reflect the raw body: a non-JSON error page (nginx/Cloudflare/WAF HTML) would otherwise be
+    // returned as {error: <html>} and interpolated into innerHTML at call sites → reflected XSS.
+    try { return JSON.parse(text); } catch { return { error: `HTTP ${res.status}` }; }
   } catch (e) {
     console.error('Fetch error:', e);
     return opts.method ? { error: e.message } : [];
@@ -1982,7 +1984,7 @@ function renderVaultFolder(containerId, files) {
     return;
   }
   container.innerHTML = files.map(f => `
-    <div class="vault-file" onclick="viewVaultFile('${f.folder}', '${f.name}')">
+    <div class="vault-file" data-folder="${escapeHtml(f.folder)}" data-file="${escapeHtml(f.name)}" onclick="viewVaultFile(this.dataset.folder, this.dataset.file)">
       <div>
         <div class="vault-file-name">${escapeHtml(f.name)}</div>
         <div class="vault-file-meta">${formatFileSize(f.size)} · ${timeAgo(f.modified)}</div>
@@ -2017,7 +2019,7 @@ async function searchVault(query) {
     return;
   }
   container.innerHTML = results.map(r => `
-    <div class="vault-result" onclick="viewVaultFile('${r.folder}', '${r.file}')">
+    <div class="vault-result" data-folder="${escapeHtml(r.folder)}" data-file="${escapeHtml(r.file)}" onclick="viewVaultFile(this.dataset.folder, this.dataset.file)">
       <div class="vault-result-header">
         <span class="vault-result-file">${escapeHtml(r.file)}</span>
         <span class="vault-result-folder">${r.folder}</span>
@@ -5883,7 +5885,7 @@ async function submitProposal() {
     el.innerHTML = '<div class="hq-dispatch-success">Proposal submitted — check Telegram/Slack for approval request</div>';
     setTimeout(() => { document.getElementById('platformModal').style.display = 'none'; loadPlatform(); }, 1500);
   } else {
-    el.innerHTML = `<div class="hq-dispatch-error">${result.error || 'Failed'}</div>`;
+    el.innerHTML = `<div class="hq-dispatch-error">${escapeHtml(result.error || 'Failed')}</div>`;
   }
 }
 
@@ -6479,7 +6481,7 @@ async function startYTAnalysis() {
   const result = await fetchJSON('/api/youtube/analyze', { method: 'POST', body: { url, frameInterval, analysisType } });
 
   if (!result.ok) {
-    progressEl.innerHTML = `<div class="empty-state" style="color:var(--error);">${result.error || 'Analysis failed'}</div>`;
+    progressEl.innerHTML = `<div class="empty-state" style="color:var(--error);">${escapeHtml(result.error || 'Analysis failed')}</div>`;
     btn.disabled = false;
     btn.innerHTML = '&#127909; Analyze';
     return;
@@ -8273,10 +8275,10 @@ async function dispatchHQTask(employeeId) {
 
   const result = await fetchJSON(`/api/hq/dispatch/${employeeId}`, { method: 'POST', body: { task } });
   if (result.ok) {
-    resultEl.innerHTML = `<div class="hq-dispatch-success">&#9989; Task dispatched to <strong>${result.employee}</strong> (${result.title}) via ${result.model}</div>`;
+    resultEl.innerHTML = `<div class="hq-dispatch-success">&#9989; Task dispatched to <strong>${escapeHtml(result.employee)}</strong> (${escapeHtml(result.title)}) via ${escapeHtml(result.model)}</div>`;
     input.value = '';
   } else {
-    resultEl.innerHTML = `<div class="hq-dispatch-error">${result.error || 'Dispatch failed'}</div>`;
+    resultEl.innerHTML = `<div class="hq-dispatch-error">${escapeHtml(result.error || 'Dispatch failed')}</div>`;
   }
 }
 
@@ -8304,7 +8306,7 @@ async function startOmniGeneration() {
 
   if (!result.ok) {
     progressEl.innerHTML = '';
-    resultEl.innerHTML = `<div class="empty-state" style="color:var(--error);">${result.error || 'Generation failed'}</div>`;
+    resultEl.innerHTML = `<div class="empty-state" style="color:var(--error);">${escapeHtml(result.error || 'Generation failed')}</div>`;
     btn.disabled = false;
     btn.innerHTML = '&#10024; Generate';
     return;
@@ -8354,7 +8356,7 @@ function renderOmniResult(type, result) {
 
   const details = Object.entries(result)
     .filter(([k]) => !['prompt', 'model', 'watermark', 'generatedAt', 'preview'].includes(k))
-    .map(([k, v]) => `<div class="omni-result-detail"><span class="omni-detail-key">${k.replace(/([A-Z])/g, ' $1').trim()}</span><span class="omni-detail-val">${v}</span></div>`)
+    .map(([k, v]) => `<div class="omni-result-detail"><span class="omni-detail-key">${escapeHtml(k.replace(/([A-Z])/g, ' $1').trim())}</span><span class="omni-detail-val">${escapeHtml(v)}</span></div>`)
     .join('');
 
   el.innerHTML = `
@@ -8365,7 +8367,7 @@ function renderOmniResult(type, result) {
           <strong>${capitalize(type)} Generated</strong>
           <div style="font-size:12px; color:var(--text-muted);">${escapeHtml(result.prompt.substring(0, 100))}${result.prompt.length > 100 ? '...' : ''}</div>
         </div>
-        <span class="omni-result-badge">${result.model}</span>
+        <span class="omni-result-badge">${escapeHtml(result.model)}</span>
       </div>
       <div class="omni-result-details">${details}</div>
       <div class="omni-result-preview">${escapeHtml(result.preview)}</div>
@@ -8644,7 +8646,7 @@ async function seoPostAction(endpoint, auditId, loadingText) {
   const container = document.getElementById('seoPostActionResult');
   container.innerHTML = `<div class="empty-state">${loadingText}</div>`;
   const result = await fetchJSON(`/api/seo/${endpoint}/${auditId}`, { method: 'POST', body: {} });
-  if (!result.ok) { container.innerHTML = `<div class="empty-state" style="color:var(--error);">${result.error || 'Failed'}</div>`; return null; }
+  if (!result.ok) { container.innerHTML = `<div class="empty-state" style="color:var(--error);">${escapeHtml(result.error || 'Failed')}</div>`; return null; }
   return { container, result };
 }
 
