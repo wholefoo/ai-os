@@ -12,5 +12,18 @@
     "allow": [
       "mcp__firecrawl__*"
     ]
+  },
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write|MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node tools/seclint.js --hook"
+          }
+        ]
+      }
+    ]
   }
 }

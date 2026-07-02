@@ -35,6 +35,11 @@ jobs:
       - name: Duplication check (fallow)
         run: npx fallow dupes
 
+      # Deterministic security gate: encodes the vuln classes from the 2026-07-01 audit
+      # (path traversal, missing-auth routes, shell injection, JSON-LD breakout). Fails on any ERROR.
+      - name: Security lint (seclint)
+        run: node tools/seclint.js --ci
+
       - name: Verify commercial fallback (Community core)
         run: |
           node -e "

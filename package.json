@@ -17,6 +17,7 @@
     "maps": "node tools/generate-maps.js",
     "lint:dead": "fallow dead-code",
     "lint:dupes": "fallow dupes",
+    "lint:sec": "node tools/seclint.js --ci",
     "test": "node --check server.js && node -e \"let c; try{c=require('./commercial/loader')}catch{c=require('./lib/commercial-stub')} if(c.tier !== 'community') process.exit(1); console.log('All checks passed')\"",
     "audit": "npm audit"
   },

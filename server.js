@@ -3322,12 +3322,14 @@ app.get('/api/skills', (req, res) => {
 });
 
 app.get('/api/skills/:name', (req, res) => {
-  const fpath = path.join(CLAUDE_DIR, 'skills', req.params.name);
-  if (!fs.existsSync(fpath)) return res.status(404).json({ error: 'Skill not found' });
+  const skillsDir = path.join(CLAUDE_DIR, 'skills');
+  const base = path.basename(String(req.params.name));
+  const fpath = path.join(skillsDir, base);
+  if (path.dirname(fpath) !== skillsDir || !fs.existsSync(fpath)) return res.status(404).json({ error: 'Skill not found' });
   const content = fs.readFileSync(fpath, 'utf-8');
   const parsed = parseFrontmatter(content);
   res.json({
-    filename: req.params.name,
+    filename: base,
     ...parsed,
     parameters: parseSkillParams(parsed.body),
     steps: parseSkillSteps(parsed.body),
@@ -4429,7 +4431,7 @@ app.put('/api/costs/budget', requireAdmin, (req, res) => {
   res.json(costBudget);
 });
 
-app.post('/api/costs/track', (req, res) => {
+app.post('/api/costs/track', requireAdmin, (req, res) => {
   const { agent, model, skill, inputTokens, outputTokens } = req.body;
   if (!agent || !model) return res.status(400).json({ error: 'agent and model required' });
   // Coerce + validate tokens: a non-numeric value (e.g. "abc") is truthy and would slip past `|| 0`,
@@ -5262,7 +5264,7 @@ app.put('/api/notifications/config', requireAdmin, (req, res) => {
   res.json({ ok: true });
 });
 
-app.post('/api/notifications/test', (req, res) => {
+app.post('/api/notifications/test', requireAdmin, (req, res) => {
   const channel = req.body.channel || 'dashboard';
   const notification = sendNotification(
     'Test Notification',
@@ -5625,7 +5627,7 @@ app.get('/api/inbox/stats', (req, res) => {
   res.json({ total: inbox.length, pending, byGate });
 });
 
-app.post('/api/inbox', (req, res) => {
+app.post('/api/inbox', requireAdmin, (req, res) => {
   const { title, agent, gate, context } = req.body;
   const item = {
     id: `gate-${Date.now()}`,
@@ -5642,7 +5644,7 @@ app.post('/api/inbox', (req, res) => {
   res.json(item);
 });
 
-app.put('/api/inbox/:id', (req, res) => {
+app.put('/api/inbox/:id', requireAdmin, (req, res) => {
   const item = inbox.find(i => i.id === req.params.id);
   if (!item) return res.status(404).json({ error: 'Inbox item not found' });
   const { status } = req.body;
@@ -5654,7 +5656,7 @@ app.put('/api/inbox/:id', (req, res) => {
   res.json(item);
 });
 
-app.delete('/api/inbox/:id', (req, res) => {
+app.delete('/api/inbox/:id', requireAdmin, (req, res) => {
   const idx = inbox.findIndex(i => i.id === req.params.id);
   if (idx === -1) return res.status(404).json({ error: 'Inbox item not found' });
   const removed = inbox.splice(idx, 1)[0];
@@ -5663,7 +5665,7 @@ app.delete('/api/inbox/:id', (req, res) => {
   res.json({ ok: true, deleted: removed.id });
 });
 
-app.delete('/api/inbox', (req, res) => {
+app.delete('/api/inbox', requireAdmin, (req, res) => {
   // Clear all resolved items (keep pending)
   const kept = inbox.filter(i => i.status === 'pending');
   const removed = inbox.length - kept.length;
@@ -6772,7 +6774,7 @@ async function applyProposal(proposal) {
         const pkgMatch = (proposal.title + ' ' + proposal.description).match(/(?:update|upgrade)\s+(\S+)/i);
         if (pkgMatch) {
           const pkg = pkgMatch[1].replace(/[^a-zA-Z0-9@/_-]/g, '');
-          execSync(`npm update ${pkg}`, { cwd: BASE, encoding: 'utf-8', timeout: 60000 });
+          execSync(`npm update ${pkg}`, { cwd: BASE, encoding: 'utf-8', timeout: 60000 }); // seclint-ok: pkg stripped to [a-zA-Z0-9@/_-] above; admin-gated self-improve
           results.steps.push({ action: 'npm-update', package: pkg, success: true });
         } else {
           execSync('npm update', { cwd: BASE, encoding: 'utf-8', timeout: 120000 });
@@ -6923,7 +6925,7 @@ async function applyProposal(proposal) {
     if (results.rollbackCommit) {
       try {
         const { execSync } = require('child_process');
-        execSync(`git reset --hard ${results.rollbackCommit}`, { cwd: BASE, encoding: 'utf-8' });
+        execSync(`git reset --hard ${results.rollbackCommit}`, { cwd: BASE, encoding: 'utf-8' }); // seclint-ok: rollbackCommit is an internal git hash, not user input; admin-gated
         results.steps.push({ action: 'rollback', commit: results.rollbackCommit, success: true });
       } catch (rollbackErr) {
         results.steps.push({ action: 'rollback', error: 'Rollback failed — manual intervention required' });
@@ -7075,7 +7077,7 @@ async function runRealYouTubeAnalysis(analysis, analysisId, interval, type) {
 
   try {
     const { execSync } = require('child_process');
-    const infoJson = execSync(`yt-dlp --dump-json --no-download "https://www.youtube.com/watch?v=${videoId}" 2>/dev/null`, { encoding: 'utf-8', timeout: 30000 });
+    const infoJson = execSync(`yt-dlp --dump-json --no-download "https://www.youtube.com/watch?v=${videoId}" 2>/dev/null`, { encoding: 'utf-8', timeout: 30000 }); // seclint-ok: videoId regex-locked [\w-]{11} at route; admin-gated; shell needed for redirection
     const info = JSON.parse(infoJson);
     analysis.videoInfo = {
       title: info.title || 'Unknown',
@@ -7101,9 +7103,9 @@ async function runRealYouTubeAnalysis(analysis, analysisId, interval, type) {
     try {
       const { execSync } = require('child_process');
       // Download video (low quality for speed)
-      execSync(`yt-dlp -f "worst[ext=mp4]" -o "${path.join(videoDir, 'video.mp4')}" "https://www.youtube.com/watch?v=${videoId}" 2>/dev/null`, { timeout: 120000 });
+      execSync(`yt-dlp -f "worst[ext=mp4]" -o "${path.join(videoDir, 'video.mp4')}" "https://www.youtube.com/watch?v=${videoId}" 2>/dev/null`, { timeout: 120000 }); // seclint-ok: videoId regex-locked; videoDir server-built; admin-gated
       // Extract frames
-      execSync(`ffmpeg -i "${path.join(videoDir, 'video.mp4')}" -vf "fps=1/${interval}" "${path.join(videoDir, 'frame_%04d.jpg')}" -y 2>/dev/null`, { timeout: 120000 });
+      execSync(`ffmpeg -i "${path.join(videoDir, 'video.mp4')}" -vf "fps=1/${interval}" "${path.join(videoDir, 'frame_%04d.jpg')}" -y 2>/dev/null`, { timeout: 120000 }); // seclint-ok: interval clamped 1-60 at route; videoDir server-built; admin-gated
 
       const frameFiles = fs.readdirSync(videoDir).filter(f => f.startsWith('frame_') && f.endsWith('.jpg')).sort();
       analysis.frames = frameFiles.map((f, i) => ({
@@ -7124,7 +7126,7 @@ async function runRealYouTubeAnalysis(analysis, analysisId, interval, type) {
 
     try {
       const { execSync } = require('child_process');
-      execSync(`yt-dlp --write-auto-sub --sub-lang en --skip-download -o "${path.join(videoDir, 'subs')}" "https://www.youtube.com/watch?v=${videoId}" 2>/dev/null`, { timeout: 30000 });
+      execSync(`yt-dlp --write-auto-sub --sub-lang en --skip-download -o "${path.join(videoDir, 'subs')}" "https://www.youtube.com/watch?v=${videoId}" 2>/dev/null`, { timeout: 30000 }); // seclint-ok: videoId regex-locked; admin-gated; shell needed for redirection
 
       // Try to parse the subtitle file
       const subFiles = fs.readdirSync(videoDir).filter(f => f.includes('subs') && (f.endsWith('.vtt') || f.endsWith('.srt')));
