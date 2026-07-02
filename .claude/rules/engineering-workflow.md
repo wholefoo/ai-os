@@ -12,7 +12,7 @@ real server and exercising routes. These are the mechanics that keep changes cor
 ## Pre-commit self-check (the real CI gate)
 Before every commit that touches JS:
 1. `node --check <file>` on each changed `.js` (server.js, dashboard/js/*.js, lib/**). Syntax errors here are the #1 avoidable break.
-2. `node tools/seclint.js --ci` → **must be 0 errors**. seclint flags path-traversal routes, missing `requireAdmin` on mutating routes, unescaped `innerHTML`, shell-string `exec`, and outbound `fetch` bypassing `lib/net` safeFetch.
+2. `node tools/seclint.js --ci` → **must be 0 errors**. seclint's ERROR rules: `route-no-auth` (mutating `/api` route with no auth middleware), `path-traversal` (`path.join` from `req.*` without `path.basename`), `shell-injection` (`exec`/`execSync` with an interpolated string), `jsonld-breakout` (generated-site `set:html={JSON.stringify(...)}` not escaping `<`→`<`). WARN-only: `innerhtml-unescaped`. (WARN never fails CI; keep ERRORs at 0.)
    - A genuine false positive gets a `// seclint-ok: <one-line reason>` on that line — never a blanket disable.
    - seclint also runs as a **PostToolUse hook** (`node tools/seclint.js --hook`) on every Edit/Write, and as a **CI gate** ("Security lint"). Keep the tree at **0/0**.
 3. For CSS/HTML-only or lib changes the preview can't exercise, static check is enough — don't boot a server that proves nothing.
