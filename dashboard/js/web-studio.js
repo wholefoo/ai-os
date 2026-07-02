@@ -286,7 +286,7 @@ function wsRenderSecurity(site) {
   if (!body) return;
   const s = site && site.security;
   if (!s) { body.textContent = 'Not scanned yet — the publish gate scans the built output automatically, or scan now.'; return; }
-  if (!s.available) { body.innerHTML = `<span style="color:var(--warning,#eab308);">Scanner unavailable${s.reason ? ' — ' + escapeHtml(s.reason) : ''}.</span> Publishing is not blocked.`; return; }
+  if (!s.available) { body.innerHTML = `<span style="color:var(--warning,#eab308);">Scanner unavailable${s.reason ? ' — ' + escapeHtml(s.reason) : ''}.</span> Publishing is not blocked.`; return; } // seclint-ok: s.reason is escaped inside the ternary
   const c = s.counts || {};
   const clean = !(c.error || c.warning || c.info);
   const head = clean
@@ -296,7 +296,7 @@ function wsRenderSecurity(site) {
     const col = f.severity === 'ERROR' ? '#ef4444' : (f.severity === 'WARNING' ? 'var(--warning,#eab308)' : '#6b7280');
     return `<div style="margin:4px 0;font-size:12px;"><span style="color:${col};font-weight:600;">${escapeHtml(f.severity || '')}</span> ${escapeHtml(f.title || '')}${f.file ? ` <code style="font-size:11px;">${escapeHtml(f.file)}${f.line ? ':' + f.line : ''}</code>` : ''}</div>`;
   }).join('');
-  body.innerHTML = `<div>${head} <span class="ws-hint">scanned ${escapeHtml(s.scannedAt || '')}</span></div>`
+  body.innerHTML = `<div>${head} <span class="ws-hint">scanned ${escapeHtml(s.scannedAt || '')}</span></div>` // seclint-ok: head is trusted server-derived markup (numeric counts); scannedAt escaped
     + (list || '<div class="ws-hint" style="margin-top:4px;">No findings.</div>')
     + ((s.findings || []).length > 12 ? `<div class="ws-hint">…and ${s.findings.length - 12} more</div>` : '');
 }
@@ -527,7 +527,7 @@ async function wsExportGithub() {
   const el = document.getElementById('wsExportHint');
   if (el) {
     el.textContent = `Pushed ${r.files} files to ${r.owner}/${r.repo} (branch ${r.branch}). `;
-    if (r.commitUrl) el.innerHTML += `<a href="${r.commitUrl}" target="_blank" rel="noopener">View commit ↗</a> · <a href="${r.repoUrl}" target="_blank" rel="noopener">Open repo ↗</a>`;
+    if (r.commitUrl) el.innerHTML += `<a href="${escapeHtml(r.commitUrl)}" target="_blank" rel="noopener">View commit ↗</a> · <a href="${escapeHtml(r.repoUrl)}" target="_blank" rel="noopener">Open repo ↗</a>`;
   }
 }
 

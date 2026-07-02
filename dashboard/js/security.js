@@ -30,7 +30,7 @@ async function securityLoadStatus() {
   } else if (!s.available) {
     el.innerHTML = `<div style="color:#fca5a5;">⚠ mythos enabled but unavailable: ${escapeHtml(s.reason || '')}</div>`;
   } else {
-    el.innerHTML = `<div class="crm-muted">✓ mythos ready · adapter <strong>${escapeHtml(s.adapter || '')}</strong> · semgrep ${s.semgrep ? '✓' : '✗'} · API key ${s.anthropicKey ? '✓' : '✗'}</div>`;
+    el.innerHTML = `<div class="crm-muted">✓ mythos ready · adapter <strong>${escapeHtml(s.adapter || '')}</strong> · semgrep ${s.semgrep ? '✓' : '✗'} · API key ${s.anthropicKey ? '✓' : '✗'}</div>`; // seclint-ok: ternaries yield static glyphs; adapter is escaped
   }
   const ok = !!(s.enabled && s.available);
   ['secQuickBtn', 'secDeepBtn'].forEach((id) => { const b = document.getElementById(id); if (b) b.disabled = !ok; });

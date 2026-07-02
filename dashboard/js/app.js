@@ -2208,7 +2208,7 @@ async function runAgentWithTools() {
   out.innerHTML = `<div class="panel" style="white-space:pre-wrap;font-size:13px;">${escapeHtml(r.content || '(no output)')}</div>`;
   const pend = await fetchJSON('/api/approvals?status=pending');
   const n = Array.isArray(pend) ? pend.filter(a => a.type === 'mcp.tool-call').length : 0;
-  if (n) out.innerHTML += `<div style="font-size:12px;color:var(--text-muted);margin-top:8px;">&#9203; ${n} tool call(s) awaiting approval — open <b>Settings &rarr; Automation</b> to approve.</div>`;
+  if (n) out.innerHTML += `<div style="font-size:12px;color:var(--text-muted);margin-top:8px;">&#9203; ${n} tool call(s) awaiting approval — open <b>Settings &rarr; Automation</b> to approve.</div>`; // seclint-ok: n is an integer count
 }
 
 // --- Cost Tracker ---
@@ -3574,7 +3574,7 @@ async function sendGrokQuery() {
   const output = document.getElementById('grokStreamOutput');
   if (output) {
     output.classList.add('streaming');
-    output.innerHTML = `<span style="color:var(--text-muted);">Querying Grok (${type})...</span><span class="grok-stream-cursor"></span>`;
+    output.innerHTML = `<span style="color:var(--text-muted);">Querying Grok (${escapeHtml(type)})...</span><span class="grok-stream-cursor"></span>`;
   }
 
   // Animate fleet
@@ -7905,7 +7905,7 @@ function addAvatarBotMessage(text) {
   if (!container) return;
   const div = document.createElement('div');
   div.className = 'avatar-msg avatar-msg-bot';
-  div.innerHTML = `<div class="avatar-msg-face">${renderAvatar(avatarState.employee, 'sm')}</div><div class="avatar-msg-text">${escapeHtml(text)}</div>`;
+  div.innerHTML = `<div class="avatar-msg-face">${renderAvatar(avatarState.employee, 'sm')}</div><div class="avatar-msg-text">${escapeHtml(text)}</div>`; // seclint-ok: renderAvatar returns trusted markup; text is escaped
   container.appendChild(div);
   container.scrollTop = container.scrollHeight;
   speakText(text);
@@ -7968,7 +7968,7 @@ function addAvatarBotMessageNoSpeak(text) {
   if (!container) return;
   const div = document.createElement('div');
   div.className = 'avatar-msg avatar-msg-bot';
-  div.innerHTML = `<div class="avatar-msg-face">${renderAvatar(avatarState.employee, 'sm')}</div><div class="avatar-msg-text">${escapeHtml(text)}</div>`;
+  div.innerHTML = `<div class="avatar-msg-face">${renderAvatar(avatarState.employee, 'sm')}</div><div class="avatar-msg-text">${escapeHtml(text)}</div>`; // seclint-ok: renderAvatar returns trusted markup; text is escaped
   container.appendChild(div);
   container.scrollTop = container.scrollHeight;
 }
@@ -8644,7 +8644,7 @@ async function generateSeoReport(auditId) {
 // endpoint, render the error state on failure. Returns { container, result } or null.
 async function seoPostAction(endpoint, auditId, loadingText) {
   const container = document.getElementById('seoPostActionResult');
-  container.innerHTML = `<div class="empty-state">${loadingText}</div>`;
+  container.innerHTML = `<div class="empty-state">${escapeHtml(loadingText)}</div>`;
   const result = await fetchJSON(`/api/seo/${endpoint}/${auditId}`, { method: 'POST', body: {} });
   if (!result.ok) { container.innerHTML = `<div class="empty-state" style="color:var(--error);">${escapeHtml(result.error || 'Failed')}</div>`; return null; }
   return { container, result };
