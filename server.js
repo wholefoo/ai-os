@@ -1261,7 +1261,9 @@ function loadState(key, fallback) {
       if (defaults && typeof defaults === 'object' && !Array.isArray(defaults)) {
         for (const [section, vals] of Object.entries(defaults)) {
           if (typeof vals === 'object' && !Array.isArray(vals) && vals !== null) {
-            if (!data[section]) data[section] = {};
+            // Reset a corrupt/mismatched persisted section (primitive or array where an object is expected)
+            // before merging — otherwise `data[section][k] = v` on a primitive silently no-ops.
+            if (!data[section] || typeof data[section] !== 'object' || Array.isArray(data[section])) data[section] = {};
             for (const [k, v] of Object.entries(vals)) {
               if (!(k in data[section])) {
                 data[section][k] = v;
@@ -2518,7 +2520,7 @@ async function executeAgent(agentName, task, options = {}) {
     outputTokens = result.outputTokens || 0;
 
     // Track cost
-    const rates = COST_RATES[model] || COST_RATES['opus-4.8-high'];
+    const rates = costRateFor(model);
     const cost = (inputTokens / 1_000_000) * rates.input + (outputTokens / 1_000_000) * rates.output;
     const elapsed = Date.now() - startTime;
     costLedger.push({
@@ -2531,7 +2533,7 @@ async function executeAgent(agentName, task, options = {}) {
     logActivity('agent', `${agentName} completed in ${elapsed}ms (${model})`, { agentName, model, inputTokens, outputTokens, cost: Math.round(cost * 10000) / 10000 });
     broadcast({ event: 'agent_complete', data: { agent: agentName, model, elapsed, cost: Math.round(cost * 10000) / 10000 } });
 
-    return { ok: true, content: result.content, model, inputTokens, outputTokens, elapsed };
+    return { ok: true, content: result.content, model, inputTokens, outputTokens, elapsed, cost: Math.round(cost * 10000) / 10000 };
 
   } catch (e) {
     const elapsed = Date.now() - startTime;
@@ -2820,7 +2822,7 @@ app.post('/api/chat', requireAdmin, async (req, res) => {
     const picked = resolveAnthropicModel(getAgentEffort('orchestrator'));
     const result = await callAnthropic(systemPrompt, messages.length === 1 ? message : JSON.stringify(messages), picked.effort, 2048, picked.apiModel);
 
-    const rates = COST_RATES[picked.modelString] || COST_RATES['opus-4.8-high'];
+    const rates = costRateFor(picked.modelString);
     const cost = (result.inputTokens / 1_000_000) * rates.input + (result.outputTokens / 1_000_000) * rates.output;
     costLedger.push({
       id: uuidv4(), agent: 'atlas-chat', model: picked.modelString, skill: 'chat',
@@ -2867,6 +2869,19 @@ const COST_RATES = {
   'manus':             { input: 0,     output: 0     },   // credit-based, not per-token
 };
 
+// Look up a per-1M-token rate, warning ONCE per unknown model so a new/typo'd model string surfaces
+// in the logs instead of silently billing at the priciest Opus rate (the old `|| opus-4.8-high` masked it).
+const _warnedRateModels = new Set();
+function costRateFor(model) {
+  const r = COST_RATES[model];
+  if (r) return r;
+  if (!_warnedRateModels.has(model)) {
+    _warnedRateModels.add(model);
+    console.warn(`[COST] no rate for model "${model}" — falling back to opus-4.8-high ($5/$25). Add it to COST_RATES.`);
+  }
+  return COST_RATES['opus-4.8-high'];
+}
+
 const costLedger = loadState('cost-ledger', []);   // individual cost entries
 const costBudget = {
   daily: 50.00,
@@ -2895,7 +2910,7 @@ function seedCostLedger() {
   ];
 
   entries.forEach(e => {
-    const rates = COST_RATES[e.model] || COST_RATES['opus-4.8-high'];
+    const rates = costRateFor(e.model);
     const cost = (e.inputTokens / 1_000_000) * rates.input + (e.outputTokens / 1_000_000) * rates.output;
     costLedger.push({
       id: uuidv4(),
@@ -2977,7 +2992,8 @@ function getCostSummary() {
 
   // Latency percentiles (only runs that recorded an elapsed time — entries predating this are skipped)
   const lat = monthly.map(e => e.elapsed).filter(n => typeof n === 'number' && n >= 0).sort((a, b) => a - b);
-  const pctl = (arr, p) => (arr.length ? arr[Math.min(arr.length - 1, Math.floor((p / 100) * arr.length))] : 0);
+  // Nearest-rank percentile (arr is sorted ascending): index = ceil(p/100 * n) - 1, clamped.
+  const pctl = (arr, p) => (arr.length ? arr[Math.min(arr.length - 1, Math.max(0, Math.ceil((p / 100) * arr.length) - 1))] : 0);
   const latency = {
     samples: lat.length,
     avgMs: lat.length ? Math.round(lat.reduce((s, n) => s + n, 0) / lat.length) : 0,
@@ -4462,7 +4478,7 @@ app.post('/api/costs/track', requireAdmin, (req, res) => {
   if (!Number.isFinite(it) || !Number.isFinite(ot) || it < 0 || ot < 0) {
     return res.status(400).json({ error: 'inputTokens and outputTokens must be non-negative numbers' });
   }
-  const rates = COST_RATES[model] || COST_RATES['opus-4.8-high'];
+  const rates = costRateFor(model);
   const cost = (it / 1_000_000) * rates.input + (ot / 1_000_000) * rates.output;
   const entry = {
     id: uuidv4(),
@@ -5064,7 +5080,7 @@ async function runPipelineStages(run, startIdx = 0) {
     stage.completedAt = new Date().toISOString();
     stage.output = String(r.content || '');
     stage.model = r.model;
-    const rates = (COST_RATES && (COST_RATES[r.model] || COST_RATES['opus-4.8-high'])) || { input: 0, output: 0 };
+    const rates = costRateFor(r.model);
     run.cost = Math.round((((run.cost || 0) + ((r.inputTokens || 0) / 1e6) * rates.input + ((r.outputTokens || 0) / 1e6) * rates.output)) * 10000) / 10000;
     logActivity('pipeline', `Stage completed: ${stage.id} (${stage.agent} → ${stage.skill}) [${r.model}]`, { runId: run.id });
     broadcast({ event: 'pipeline_update', data: run });
@@ -6597,7 +6613,7 @@ app.get('/api/hq/employee/:id', (req, res) => {
       ...emp,
       department: dept.name,
       departmentId: dept.id,
-      routing: tierRoutingLabel(emp.tier),
+      routing: { ...tierRoutingLabel(emp.tier), tier: emp.tier },
       reasoning_mode: (settings.ai && settings.ai.reasoning_mode) || 'balanced',
     });
   }
