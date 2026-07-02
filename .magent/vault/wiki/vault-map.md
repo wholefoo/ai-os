@@ -8,11 +8,12 @@
 | `vault/wiki/` | Synthesized knowledge: decision records, rosters, this map | Session start and before re-deriving anything |
 | `vault/outputs/` | Final deliverables already shipped | Before producing something similar — reuse, do not regenerate |
 
-## vault/wiki/ (3)
+## vault/wiki/ (4)
 
 - `agent-roster.md` (2026-05-25) — Agent Roster Knowledge Base
-- `stack-decisions.md` (2026-05-25) — Stack Architecture Decisions
+- `stack-decisions.md` (2026-06-12) — Stack Architecture Decisions
 - `vault-map.md` — this file
+- `web-studio-design.md` (2026-06-14) — AI Web Studio — Unified Architecture & Delivery Plan
 
 ## vault/raw/ (2)
 
