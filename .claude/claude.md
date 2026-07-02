@@ -3,8 +3,11 @@
 ## Session Start (read these first)
 1. **`.claude/SKILL-MAP.md`** — capability inventory: all agents, skills, and pipelines. Consult before assuming a capability is missing or building one that already exists.
 2. **`.magent/vault/wiki/vault-map.md`** — memory table of contents. Consult before searching the vault blind or re-deriving stored knowledge.
+3. **`.claude/rules/engineering-workflow.md`** — how we actually ship: pre-commit self-check (`node --check` + `node tools/seclint.js --ci` must be 0/0), commit **and** push, local boot-verify, the deploy ritual, and Windows/PowerShell reality. Read before editing `server.js` or dashboard JS.
 
-Both maps are auto-generated (`npm run maps`) and refreshed by the server's session-context hook. Regenerate after adding/removing agents, skills, pipelines, or vault files.
+The first two maps are auto-generated (`npm run maps`) and refreshed by the server's session-context hook. Regenerate after adding/removing agents, skills, pipelines, or vault files.
+
+> **Note:** this guidance (and `.claude/rules/`) only auto-loads when the session's working directory is this project (`.../ai-os`). If you launched from elsewhere (e.g. `~/.claude`), read these explicitly.
 
 ## Mission
 This is a multi-agentic AI Operating System that orchestrates specialized sub-agents to execute complex workflows autonomously. The system bridges the gap between technical AI tools and user accessibility through a visual dashboard.
@@ -38,7 +41,7 @@ This is a multi-agentic AI Operating System that orchestrates specialized sub-ag
 
 ## Execution Engines
 The system uses a multi-engine architecture for cost-optimized task routing:
-- **Claude Code** — Primary engine running Opus 4.8 across strategic (xhigh effort), professional (high effort), and scout (low effort) tasks
+- **Claude Code** — Primary engine. Effective model is chosen at run time by `resolveAnthropicModel()` from `settings.ai.reasoning_mode`: **`balanced` (default)** = Opus 4.8 for the strategic tier (xhigh) + **Sonnet 5** for professional (high) and scout (low); `opus` = all Opus; `sonnet` = all Sonnet (xhigh clamps to high). Agent `.md` frontmatter (`claude-opus-4-8`) is the declared default, NOT the effective model — derive "the model" from the routing on any UI/ledger surface.
 - **DeepSeek Tui** — Economy engine for bulk content, data processing, and batch operations via DeepSeek V4
 - **Codex CLI** — Cross-model verification engine (gpt-5.5, read-only `reviewer` profile); used only for adversarial review seats and second-opinion code reviews, never production tasks. Headless calls must close stdin (`< NUL` on Windows, `< /dev/null` on Linux)
 - Routing rules defined in `.claude/rules/cost-routing.md`
@@ -126,7 +129,7 @@ The vault prevents "context rot" by maintaining a structured, searchable knowled
 
 ## Cost Tracking
 Real-time token usage and API spend monitoring across all execution engines:
-- 4-tier tracking: Strategic (Opus 4.8 xhigh), Professional (Opus 4.8 high), Scout (Opus 4.8 low), Economy (DeepSeek)
+- Tier tracking keyed by effective model+effort: Strategic (Opus 4.8 xhigh), Professional/Scout (Sonnet 5 high/low in `balanced` mode, else Opus), Economy (DeepSeek). Rates via `costRateFor(model)` — unknown models warn once instead of silently billing at the Opus rate. Sonnet 5 = $2/$10 introductory through 2026-08-31, then $3/$15.
 - Budget alerts at 75% threshold with auto-downgrade recommendations
 - Per-agent and per-skill cost attribution
 - Daily/weekly/monthly budget caps configurable via API
@@ -196,7 +199,8 @@ Mass content production using economy-tier agents. Rate-limit tripping to build 
 ## Production Hardening
 - **Auth**: Bearer token via `API_TOKEN` env var; middleware gates all `/api/` routes (except `/api/health`)
 - **Security headers**: Helmet with CSP (self + fonts.googleapis + ws/wss), X-Frame-Options, HSTS
-- **CORS**: Configurable via `CORS_ORIGIN` env var
+- **CORS**: Same-origin only by default in production (the dashboard is served from this origin); set `CORS_ORIGIN` (comma-separated) to allow specific external origins. Dev stays open (`*`).
+- **Self-check gate**: `tools/seclint.js` runs as a PostToolUse hook on every edit + a CI gate ("Security lint"); keep the tree at 0 errors. It catches path traversal, missing `requireAdmin` on mutating routes, unescaped `innerHTML`, shell-string `exec`, and safeFetch bypass.
 - **Rate limiting**: 120 req/min global API; 10 req/min on heavy POST operations (batch, grok, media, browser, clone-url, 3d, vibe-design)
 - **Input validation**: `validateBody()` with type/required/maxLength/oneOf/min/max rules on critical POST endpoints
 - **Compression**: gzip via `compression` middleware
