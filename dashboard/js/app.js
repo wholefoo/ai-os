@@ -5539,6 +5539,7 @@ async function loadSettings() {
     }
   }
   loadApprovals();
+  loadA2AKeys();
 }
 
 // ---------- Auto-Mode approvals inbox ----------
@@ -5586,6 +5587,62 @@ async function rejectAction(id) {
   const r = await fetchJSON(`/api/approvals/${id}/reject`, { method: 'POST', body: {} });
   if (r && r.error) { alert('Reject failed: ' + r.error); }
   await loadApprovals();
+}
+
+// ---------- A2A external keys (scoped agent-to-agent credentials) ----------
+async function loadA2AKeys() {
+  const listEl = document.getElementById('a2aKeysList');
+  const skillsEl = document.getElementById('a2a-skills');
+  if (!listEl) return;
+  const data = await fetchJSON('/api/a2a/keys');
+  if (!data || data.error || !Array.isArray(data.keys)) { listEl.innerHTML = '<p class="settings-desc">Could not load A2A keys.</p>'; return; }
+  if (skillsEl && !skillsEl.dataset.rendered) {
+    skillsEl.innerHTML = (data.availableSkills || []).map(renderA2ASkillCheck).join('');
+    skillsEl.dataset.rendered = '1';
+  }
+  if (!data.keys.length) { listEl.innerHTML = '<p class="settings-desc">No A2A keys yet. Mint one above to let an external agent call this instance without your admin token.</p>'; return; }
+  listEl.innerHTML = data.keys.map(renderA2AKeyRow).join('');
+}
+function renderA2ASkillCheck(s) {
+  return `<label style="display:inline-flex;align-items:center;gap:5px;margin:2px 12px 2px 0;font-size:13px;"><input type="checkbox" class="a2a-skill" value="${escapeHtml(s.id)}"> ${escapeHtml(s.name)}</label>`;
+}
+function renderA2AKeyRow(k) {
+  const used = `$${Number((k.usage && k.usage.spentUsd) || 0).toFixed(2)}`;
+  const last = k.lastUsedAt ? new Date(k.lastUsedAt).toLocaleString() : 'never';
+  const badge = k.revoked ? '<span style="color:#ef4444;font-weight:700;">revoked</span>' : '<span style="color:#10b981;font-weight:700;">active</span>';
+  const skills = (k.skills || []).map(escapeHtml).join(', ');
+  const revokeBtn = k.revoked ? '' : `<button class="btn btn-sm btn-danger" style="padding:4px 12px;" onclick="revokeA2AKey('${k.id}')">Revoke</button>`;
+  return `<div style="border:1px solid var(--border,#333);border-radius:8px;padding:10px 12px;margin-bottom:8px;"><div style="display:flex;justify-content:space-between;gap:10px;align-items:center;"><strong>${escapeHtml(k.label)}</strong> ${badge}</div><div class="settings-desc" style="margin:4px 0;">Skills: ${skills} &middot; Budget $${Number(k.dailyBudgetUsd).toFixed(2)}/day (used today ${used}) &middot; ${escapeHtml(String(k.rateLimitPerMin))}/min &middot; last used ${escapeHtml(last)}</div><div style="display:flex;gap:8px;margin-top:6px;">${revokeBtn}<button class="btn btn-sm" style="padding:4px 12px;" onclick="deleteA2AKey('${k.id}')">Delete</button></div></div>`;
+}
+async function mintA2AKey() {
+  const label = (document.getElementById('a2a-label')?.value || '').trim();
+  const skills = [...document.querySelectorAll('.a2a-skill:checked')].map(c => c.value);
+  const dailyBudgetUsd = Number(document.getElementById('a2a-budget')?.value);
+  const rateLimitPerMin = Number(document.getElementById('a2a-rate')?.value);
+  const resEl = document.getElementById('a2aMintResult');
+  if (!label) { alert('Enter a label for the key.'); return; }
+  if (!skills.length) { alert('Select at least one skill.'); return; }
+  const r = await fetchJSON('/api/a2a/keys', { method: 'POST', body: { label, skills, dailyBudgetUsd, rateLimitPerMin } });
+  if (!r || r.error || !r.token) { if (resEl) resEl.innerHTML = `<p class="settings-desc" style="color:#ef4444;">${escapeHtml((r && r.error) || 'Mint failed')}</p>`; return; }
+  if (resEl) resEl.innerHTML = renderA2AMintedToken(r.token);
+  const lab = document.getElementById('a2a-label'); if (lab) lab.value = '';
+  document.querySelectorAll('.a2a-skill:checked').forEach(c => { c.checked = false; });
+  await loadA2AKeys();
+}
+function renderA2AMintedToken(token) {
+  return `<div style="border:1px solid #10b981;border-radius:8px;padding:10px 12px;margin-top:10px;background:rgba(16,185,129,0.08);"><div style="font-weight:700;margin-bottom:4px;">Key minted &mdash; copy it now, it is shown only once:</div><input class="settings-input" style="font-family:monospace;font-size:12px;" readonly value="${escapeHtml(token)}" onclick="this.select()"></div>`;
+}
+async function revokeA2AKey(id) {
+  if (!window.confirm('Revoke this key? External agents using it are denied immediately.')) return;
+  const r = await fetchJSON(`/api/a2a/keys/${id}/revoke`, { method: 'POST', body: {} });
+  if (r && r.error) alert('Revoke failed: ' + r.error);
+  await loadA2AKeys();
+}
+async function deleteA2AKey(id) {
+  if (!window.confirm('Delete this key permanently?')) return;
+  const r = await fetchJSON(`/api/a2a/keys/${id}`, { method: 'DELETE' });
+  if (r && r.error) alert('Delete failed: ' + r.error);
+  await loadA2AKeys();
 }
 
 async function saveSettings(section) {

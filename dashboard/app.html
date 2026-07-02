@@ -2170,6 +2170,35 @@
               <button class="btn btn-primary settings-save" onclick="saveSettings('mcp')">Save MCP Settings</button>
             </section>
 
+            <!-- A2A External Keys -->
+            <section class="panel settings-section">
+              <h3 class="panel-title settings-section-title">
+                <span class="settings-section-icon">&#128279;</span> A2A External Keys
+              </h3>
+              <p class="settings-desc">Scoped credentials that let an external agent call this instance over A2A (<code>/api/a2a</code>) without your admin token. Each key is limited to specific skills and a daily spend cap, and is shown only once at creation. Discovery card: <code>/.well-known/agent.json</code>.</p>
+              <div class="settings-fields">
+                <div class="settings-field">
+                  <label class="settings-label">Label</label>
+                  <input type="text" class="settings-input" id="a2a-label" placeholder="e.g. partner-acme" maxlength="80" autocomplete="off">
+                </div>
+                <div class="settings-field">
+                  <label class="settings-label">Allowed skills</label>
+                  <div id="a2a-skills"></div>
+                </div>
+                <div class="settings-field">
+                  <label class="settings-label">Daily budget (USD)</label>
+                  <input type="number" class="settings-input" id="a2a-budget" value="1.00" min="0.01" max="1000" step="0.01">
+                </div>
+                <div class="settings-field">
+                  <label class="settings-label">Rate limit (requests / minute)</label>
+                  <input type="number" class="settings-input" id="a2a-rate" value="30" min="1" max="600" step="1">
+                </div>
+              </div>
+              <button class="btn btn-primary settings-save" onclick="mintA2AKey()">Mint Key</button>
+              <div id="a2aMintResult"></div>
+              <div id="a2aKeysList" style="margin-top:16px;"></div>
+            </section>
+
             <!-- Notifications -->
             <section class="panel settings-section">
               <h3 class="panel-title settings-section-title">
