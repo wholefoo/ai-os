@@ -104,7 +104,7 @@ function wsRenderSites(data) {
     <div class="ws-site-card">
       <div>
         <div><strong>${escapeHtml(s.name)}</strong> <span class="ws-badge ${s.status}">${escapeHtml(s.status)}</span></div>
-        <div class="ws-site-meta">${s.domain ? escapeHtml(s.domain) + ' &middot; ' : ''}${s.redesignedFrom ? 'redesigned from ' + escapeHtml(s.redesignedFrom) + ' &middot; ' : ''}${s.chatEnabled ? '&#128172; chat &middot; ' : ''}${s.lastBuiltAt ? 'built ' + timeAgo(s.lastBuiltAt) : 'created ' + timeAgo(s.createdAt)}</div>
+        <div class="ws-site-meta">${s.domain ? escapeHtml(s.domain) + ' &middot; ' : ''}${s.redesignedFrom ? 'redesigned from ' + escapeHtml(s.redesignedFrom) + ' &middot; ' : ''}${s.researchedFrom ? 'affiliate page (researched ' + escapeHtml(s.researchedFrom) + ') &middot; ' : ''}${s.chatEnabled ? '&#128172; chat &middot; ' : ''}${s.lastBuiltAt ? 'built ' + timeAgo(s.lastBuiltAt) : 'created ' + timeAgo(s.createdAt)}</div>
       </div>
       <div class="ws-row">
         <button class="btn" onclick="wsOpen('${s.id}')">Open</button>
@@ -122,6 +122,8 @@ async function wsCreate() {
   const brandKitId = ((document.getElementById('wsBrandKit') || {}).value || '').trim();
   const redesignUrl = ((document.getElementById('wsRedesignUrl') || {}).value || '').trim();
   const maintainBranding = (document.getElementById('wsMaintainBranding') || {}).checked !== false;
+  const researchUrl = ((document.getElementById('wsResearchUrl') || {}).value || '').trim();
+  const affiliateUrl = ((document.getElementById('wsAffiliateUrl') || {}).value || '').trim();
   const features = {
     enableChat: !!(document.getElementById('wsFeatChat') || {}).checked,
     enableDarkMode: !!(document.getElementById('wsFeatDark') || {}).checked,
@@ -132,14 +134,16 @@ async function wsCreate() {
   if (brief.length < 10) { if (hint) hint.textContent = 'Add a longer brief (at least 10 characters).'; return; }
   const btn = document.getElementById('wsCreateBtn');
   if (btn) btn.disabled = true;
-  if (hint) hint.textContent = redesignUrl ? 'Reusing the existing site’s content + branding, then generating your redesign…' : (brandKitId || cloneUrl) ? 'Applying design + generating your site…' : 'Generating — the studio team is planning, writing and building your site…';
-  const r = await fetchJSON('/api/web-studio/sites', { method: 'POST', body: { name, brief, siteType, domain, cloneUrl, brandKitId, redesignUrl, maintainBranding, features } });
+  if (hint) hint.textContent = researchUrl ? 'Researching the product, then writing original affiliate copy…' : redesignUrl ? 'Reusing the existing site’s content + branding, then generating your redesign…' : (brandKitId || cloneUrl) ? 'Applying design + generating your site…' : 'Generating — the studio team is planning, writing and building your site…';
+  const r = await fetchJSON('/api/web-studio/sites', { method: 'POST', body: { name, brief, siteType, domain, cloneUrl, brandKitId, redesignUrl, maintainBranding, researchUrl, affiliateUrl, features } });
   if (r && r.error) { if (hint) hint.textContent = `Could not create: ${r.error}`; if (btn) btn.disabled = false; return; }
   document.getElementById('wsName').value = '';
   document.getElementById('wsBrief').value = '';
   if (document.getElementById('wsCreateDomain')) document.getElementById('wsCreateDomain').value = '';
   if (document.getElementById('wsCloneUrl')) document.getElementById('wsCloneUrl').value = '';
   if (document.getElementById('wsRedesignUrl')) document.getElementById('wsRedesignUrl').value = '';
+  if (document.getElementById('wsResearchUrl')) document.getElementById('wsResearchUrl').value = '';
+  if (document.getElementById('wsAffiliateUrl')) document.getElementById('wsAffiliateUrl').value = '';
   ['wsFeatChat', 'wsFeatDark', 'wsFeatMotion'].forEach((id) => { const el = document.getElementById(id); if (el) el.checked = false; });
   const sw = document.getElementById('wsCloneSwatches'); if (sw) sw.innerHTML = '';
   await wsFetchAndRenderSites(); // shows the new "building" site; WS events flip its status

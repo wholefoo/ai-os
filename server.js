@@ -1615,10 +1615,23 @@ function wsCleanFeatures(raw) {
   };
 }
 
+// A tracked outbound affiliate link — must be a real absolute http(s) URL, same shape rules as
+// safeHref (no injection chars), reasonable length cap. Not fetched server-side (it's only ever
+// embedded for a visitor's browser to follow), so no SSRF concern — just injection/shape safety.
+function wsCleanAffiliateUrl(raw) {
+  const s = String(raw || '').trim();
+  if (!s || s.length > 2000) return null;
+  if (!/^https?:\/\/[^\s"'<>]+$/i.test(s)) return null;
+  try { new URL(s); } catch { return null; }
+  return s;
+}
+
 // --- Create from a brief (tier-limit gated; pipeline runs async) ---
 app.post('/api/web-studio/sites', requireClientOrAdmin, heavyLimiter, async (req, res) => {
-  const { name, brief, siteType, domain, cloneUrl, brandKitId, redesignUrl, maintainBranding, features } = req.body || {};
+  const { name, brief, siteType, domain, cloneUrl, brandKitId, redesignUrl, maintainBranding, features, researchUrl, affiliateUrl } = req.body || {};
   if (!brief || String(brief).trim().length < 10) return res.status(400).json({ error: 'A brief of at least 10 characters is required' });
+  const cleanAffiliateUrl = wsCleanAffiliateUrl(affiliateUrl);
+  if (affiliateUrl && !cleanAffiliateUrl) return res.status(400).json({ error: 'affiliateUrl must be a valid http(s) URL' });
   const limit = wsSiteLimit(req.session);
   if (wsActiveCount(req.session) >= limit) return res.status(403).json({ error: `Site limit reached (${limit}).`, limit });
 
@@ -1662,9 +1675,19 @@ app.post('/api/web-studio/sites', requireClientOrAdmin, heavyLimiter, async (req
       try { design = await webStudioDesign.extractProfile(String(cloneUrl).trim()); site.clonedFrom = design.sourceUrl; appendLog(`web-studio: design cloned from ${design.sourceUrl}`); }
       catch (e) { appendLog(`web-studio: design clone failed (${cloneUrl}): ${e.message}`); }
     }
+    // Affiliate mode: bounded fact-only research on a THIRD-PARTY product (never the client's own
+    // content) — content-writer is instructed to compose entirely original copy from these facts,
+    // never reproduce/paraphrase the source. See pipeline.js's researchContentNote/applyAffiliateLink.
+    let research = null;
+    if (researchUrl && String(researchUrl).trim()) {
+      const src = String(researchUrl).trim();
+      try { research = await webStudioContentScrape.scrapeForResearch(src); site.researchedFrom = research.sourceUrl; appendLog(`web-studio: affiliate research gathered from ${research.sourceUrl} (${research.pages.length} page(s))`); }
+      catch (e) { appendLog(`web-studio: affiliate research failed (${src}): ${e.message}`); }
+    }
+    if (cleanAffiliateUrl) site.affiliateUrl = cleanAffiliateUrl;
     const platformBaseUrl = process.env.AIOS_PUBLIC_URL || `${req.protocol}://${req.get('host')}`;
     const result = await webStudioPipeline.createSiteFromBrief(
-      { siteId: id, workspaceDir: wsWorkspaceDir(id), brief: wsBriefWithType(site), domain: site.domain, siteName: site.name, design, scraped, features: cleanFeatures, platformBaseUrl },
+      { siteId: id, workspaceDir: wsWorkspaceDir(id), brief: wsBriefWithType(site), domain: site.domain, siteName: site.name, design, scraped, research, affiliateUrl: cleanAffiliateUrl, features: cleanFeatures, platformBaseUrl },
       { executeAgent, broadcast, log: appendLog, signProvenance }
     );
     site.status = result.ok ? result.status : 'failed';
