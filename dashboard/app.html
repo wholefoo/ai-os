@@ -1225,6 +1225,24 @@
                   <span id="wsCloneSwatches" style="display:inline-flex;gap:4px;align-items:center;"></span>
                   <span class="ws-hint" id="wsCloneHint">Borrows the palette, fonts &amp; section structure &mdash; your copy stays original.</span>
                 </div>
+                <div class="ws-row" style="flex-wrap:wrap;gap:8px;border-top:1px solid var(--border,#2a2a2a);padding-top:10px;margin-top:2px;">
+                  <input type="text" class="settings-input" id="wsRedesignUrl" placeholder="Redesign an EXISTING site (your client's own URL)" style="max-width:340px;" />
+                  <label style="display:inline-flex;align-items:center;gap:5px;font-size:13px;white-space:nowrap;">
+                    <input type="checkbox" id="wsMaintainBranding" checked /> Maintain existing branding
+                  </label>
+                  <span class="ws-hint">Reuses their real content (headings, copy, contact info) instead of inventing it &mdash; up to 6 pages, same-site only.</span>
+                </div>
+                <div class="ws-row" style="flex-wrap:wrap;gap:14px;">
+                  <label style="display:inline-flex;align-items:center;gap:5px;font-size:13px;white-space:nowrap;">
+                    <input type="checkbox" id="wsFeatChat" /> Agent-ready + on-page AI chat
+                  </label>
+                  <label style="display:inline-flex;align-items:center;gap:5px;font-size:13px;white-space:nowrap;">
+                    <input type="checkbox" id="wsFeatDark" /> Dark mode + liquid glass theme
+                  </label>
+                  <label style="display:inline-flex;align-items:center;gap:5px;font-size:13px;white-space:nowrap;">
+                    <input type="checkbox" id="wsFeatMotion" /> Scroll &amp; hover motion
+                  </label>
+                </div>
                 <div class="ws-row">
                   <button class="btn btn-primary" id="wsCreateBtn">Generate site</button>
                   <span class="ws-hint" id="wsCreateHint"></span>
