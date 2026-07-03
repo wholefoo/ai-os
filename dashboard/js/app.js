@@ -1477,6 +1477,20 @@ function setupModal() {
   document.getElementById('newWorkflowBtn').addEventListener('click', () => {
     switchView('skills');
   });
+  document.getElementById('logoutBtn').addEventListener('click', logout);
+}
+
+// --- Logout ---
+async function logout() {
+  try {
+    await fetchJSON('/api/auth/logout', { method: 'POST', body: {} });
+  } catch (e) {
+    console.error('Logout request failed:', e);
+  }
+  // Clear the Bearer-token fallback (fetchJSON reads this from localStorage on every request);
+  // the session cookie itself is cleared server-side by the logout endpoint.
+  localStorage.removeItem('ai-os-token');
+  window.location.href = '/';
 }
 
 function showModal(title, bodyHtml, buttons = []) {
