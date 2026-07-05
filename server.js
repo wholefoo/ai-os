@@ -1299,6 +1299,7 @@ function persistAllState() {
   saveState('notifications', notifications.slice(-200));
   saveState('tech_radar_reports', techRadarReports.slice(-50));
   saveState('update_proposals', updateProposals.slice(-100));
+  saveState('dev_plans', devPlans.slice(-200));
   saveState('automation_log', automationLog.slice(-200));
   saveState('social_findings', socialFindings.slice(-200));
   saveState('knowledge_graph', knowledgeGraph);
@@ -1335,6 +1336,8 @@ const webStudioImport = require('./lib/web-studio/import');
 const webStudioExport = require('./lib/web-studio/export');
 const webStudioDesign = require('./lib/web-studio/design-extract');
 const webStudioContentScrape = require('./lib/web-studio/content-scrape');
+const selfImprovePlanStore = require('./lib/self-improve/plan-store');
+const selfImproveGithubPr = require('./lib/self-improve/github-pr');
 const trendsLib = require('./lib/trends');
 const { fenceUntrusted } = require('./lib/safety/untrusted');
 const orchestrator = require('./lib/orchestrator');
@@ -1359,6 +1362,7 @@ try {
 const signProvenance = provenanceKeys ? (payload) => provenanceLib.sign(payload, provenanceKeys.privateKey, { publicKeyId: provenanceKeys.publicKeyId }) : null;
 
 const webStudioSites = loadState('web_studio_sites', []); // [{id,name,brief,status,domain,createdAt,...}]
+const devPlans = loadState('dev_plans', []); // AI-proposed platform upgrade plans [{id,goal,plan,status,appliedAt,distributionPr,...}]
 const brandKits = loadState('brand_kits', []); // reusable design profiles [{id,name,contactId,sourceUrl,design,createdAt,updatedAt}]
 const WS_ROOT = path.join(MAGENT_DIR, 'artifacts', 'web-studio');
 const WS_SITES_ROOT = path.join(BASE, 'sites'); // nginx serves <WS_SITES_ROOT>/<domain>/current
@@ -1987,12 +1991,52 @@ const ACTION_EXECUTORS = {
     if (!r.ok) throw new Error(r.error || 'tool call failed');
     return { content: r.content };
   },
+  // Write an APPROVED dev-project plan to this platform's own source tree. Re-validates the plan
+  // (path denylist, shape) even though it was already validated at proposal time — the last line of
+  // defense right before a write happens. Snapshots via git first; see plan-store.js's own header.
+  'self-improve.apply-plan': async ({ planId }) => {
+    const plan = devPlans.find(p => p.id === planId);
+    if (!plan) throw new Error('plan not found');
+    if (plan.appliedAt) throw new Error('this plan was already applied');
+    const r = selfImprovePlanStore.applyPlan(BASE, plan.plan);
+    plan.appliedAt = new Date().toISOString();
+    plan.rollbackCommit = r.rollbackCommit;
+    plan.filesWritten = r.filesWritten;
+    saveState('dev_plans', devPlans);
+    logActivity('self-improve', `Applied dev-project plan "${plan.goal.slice(0, 60)}" — ${r.filesWritten.length} file(s), rollback ${r.rollbackCommit.slice(0, 8)}`, { planId });
+    return r;
+  },
+  // Open a draft PR on the public distribution repo proposing the plan's files. Never touches the
+  // repo's default branch ref (see github-pr.js) — only ever creates a new branch + PR.
+  'self-improve.distribution-pr': async ({ planId }) => {
+    const plan = devPlans.find(p => p.id === planId);
+    if (!plan) throw new Error('plan not found');
+    const token = settings.self_improve.github_pat;
+    if (!token) throw new Error('no GitHub PAT configured — add one in Settings → Self-Improve');
+    const body = `${plan.plan.summary}\n\n**Risk:** ${plan.plan.risk}\n\n**Rollback:** ${plan.plan.rollbackNotes}\n\n${plan.plan.distributionNotes ? `**Distribution notes:** ${plan.plan.distributionNotes}\n\n` : ''}---\n_Proposed by AI OS's dev-architect-grok agent (grok-build-0.1) — this PR was opened as a DRAFT for human review; nothing here has been merged._`;
+    const r = await selfImproveGithubPr.openDraftUpgradePR({
+      repoUrl: settings.self_improve.distribution_repo || 'wholefoo/ai-os',
+      token, files: plan.plan.files, title: plan.goal.slice(0, 200), body,
+    });
+    plan.distributionPr = { url: r.prUrl, number: r.prNumber, branch: r.branch, openedAt: new Date().toISOString() };
+    saveState('dev_plans', devPlans);
+    logActivity('self-improve', `Opened draft distribution PR: ${r.prUrl}`, { planId });
+    return r;
+  },
 };
 
 // gateAction({type, summary, target, params, secrets[], req}) -> {executed, result} | {pending, approval}
+// Action types that NEVER auto-run, no matter what the operator's Auto-Mode setting is (even
+// 'auto', whose whole point is "run everything without asking" — everywhere else in the platform).
+// These two specifically modify the platform's OWN source code or open a real PR against the public
+// distribution repo; the consequence of a stale/misconfigured 'auto' setting silently doing either
+// is severe enough to warrant a hard, non-negotiable human checkpoint independent of the general
+// risk-ceiling mechanism. See lib/self-improve/plan-store.js and lib/self-improve/github-pr.js.
+const ALWAYS_GATE = new Set(['self-improve.apply-plan', 'self-improve.distribution-pr']);
+
 async function gateAction({ type, summary, target = null, params = {}, secrets = [], req }) {
   const mode = (settings.automation && settings.automation.mode) || 'supervised';
-  const d = approvalPolicy.decide(type, mode);
+  const d = ALWAYS_GATE.has(type) ? { allow: false, risk: 'critical', mode, reason: 'always requires human approval (self-modifying-code action)' } : approvalPolicy.decide(type, mode);
   const actor = (req && req.session && (req.session.email || req.session.name)) || 'operator';
 
   if (d.allow) {
@@ -2476,6 +2520,10 @@ const OPUS_MODEL = 'claude-opus-4-8';
 const SONNET_MODEL = 'claude-sonnet-5';
 const OPUS_API_VERSION = '2023-06-01';
 const GEMINI_OMNI_MODEL = 'gemini-omni-flash';
+// xAI's dev-planning-tuned model (2026 release). Pricing/exact-alias details were flagged as having
+// conflicting figures across sources at integration time — verify against docs.x.ai before relying
+// on COST_RATES['grok-build-0.1'] for real budgeting.
+const GROK_BUILD_MODEL = 'grok-build-0.1';
 
 // Effort-level routing: maps agent tiers to Opus 4.8 effort levels
 const EFFORT_ROUTING = {
@@ -2624,6 +2672,10 @@ async function executeAgent(agentName, task, options = {}) {
       // Grok — route to xAI
       result = await callGrok(fullSystem, fullTask, maxTokens);
       model = 'grok-3';
+    } else if (agentName === 'dev-architect-grok') {
+      // Grok Build's model (grok-build-0.1) — the platform's dev-project/upgrade planner
+      result = await callGrokBuild(fullSystem, fullTask, maxTokens);
+      model = GROK_BUILD_MODEL;
     } else if (agentName === 'deepseek-worker' || routing.tier === 'economy') {
       // DeepSeek — economy tier
       result = await callDeepSeek(fullSystem, fullTask, maxTokens);
@@ -2850,6 +2902,18 @@ async function callGrok(systemPrompt, task, maxTokens) {
   return { content, inputTokens, outputTokens };
 }
 
+// grok-build-0.1 — xAI's dev-planning-tuned model, reached via the SAME OpenAI-compatible
+// /v1/chat/completions endpoint and xai_api_key as callGrok (not the separate Grok Build CLI
+// product's own /v1/responses surface or its subagent/worktree orchestration, which this platform
+// does not run — see .claude/agents/dev-architect-grok.md for the boundary this draws).
+async function callGrokBuild(systemPrompt, task, maxTokens) {
+  const { content, inputTokens, outputTokens } = await callChatCompletions({
+    provider: 'Grok Build', keyName: 'xAI', url: 'https://api.x.ai/v1/chat/completions', model: GROK_BUILD_MODEL,
+    apiKey: settings.ai.xai_api_key, systemPrompt, task, maxTokens,
+  });
+  return { content, inputTokens, outputTokens };
+}
+
 async function callDeepSeek(systemPrompt, task, maxTokens) {
   const { content, inputTokens, outputTokens } = await callChatCompletions({
     provider: 'DeepSeek', keyName: 'DeepSeek', url: 'https://api.deepseek.com/chat/completions', model: 'deepseek-chat',
@@ -3005,6 +3069,10 @@ const COST_RATES = {
   // External models
   'deepseek-v4':       { input: 0.14,  output: 0.28  },
   'grok-3':            { input: 3.00,  output: 15.00 },
+  // UNCONFIRMED at integration time — xAI's own docs and secondary reporting showed conflicting
+  // figures for grok-build-0.1 ($1.00/$2.00 per docs.x.ai vs $0.20/$1.50 in some grok-code-fast-1
+  // reporting it may supersede). Verify against docs.x.ai/developers/models before real budgeting.
+  'grok-build-0.1':    { input: 1.00,  output: 2.00 },
   'glm-5.2':           { input: 1.40,  output: 4.40  },   // Z.ai GLM-5.2 (OpenAI-compatible)
   // Gemini Omni — multimodal creative generation (video, image, audio)
   'gemini-omni':       { input: 1.25,  output: 5.00  },   // Omni Flash pricing (text+image input, video output)
@@ -6014,6 +6082,106 @@ const batchQueue = loadState('batch_queue', { batches: [] });
 
 // Batch queue routes extracted to commercial/modules/hermes-advanced (batchQueue feature)
 
+// --- Self-Improve: dev-project planning (Grok Build) + gated apply / distribution PR ---
+// The planning agent (dev-architect-grok) is read-only — it can never write a file or open a PR
+// itself. This module owns the only path from "a goal" to "bytes on disk or a GitHub PR", and both
+// of those paths go through gateAction, which ALWAYS_GATE hard-stops behind human approval.
+
+// Kick off planning in the background and mutate `record` in place as it resolves. Called both by
+// POST /api/self-improve/plan directly and by Hermes's 'dev-project' delegation mode.
+async function dispatchDevProjectPlan(record) {
+  try {
+    const task = `${record.distribution
+      ? 'Produce a DISTRIBUTION BLUEPRINT (for the public wholefoo/ai-os repo) for the following goal'
+      : 'Plan a LOCAL upgrade for this running AI OS instance for the following goal'}:\n\n${record.goal}`;
+    const result = await executeAgent('dev-architect-grok', task, { maxTokens: 16000, skill: 'self-improve-plan' });
+    if (!result.ok) throw new Error(result.error || 'planning failed');
+    const parsed = webStudioPipeline.extractJson(result.content);
+    const v = selfImprovePlanStore.validatePlan(parsed);
+    if (!parsed || !v.ok) {
+      record.status = 'plan_failed';
+      record.error = `dev-architect-grok's plan did not validate: ${(v.errors || ['no JSON returned']).join('; ')}`;
+    } else {
+      record.plan = parsed;
+      record.status = 'ready';
+      record.model = result.model;
+    }
+  } catch (e) {
+    record.status = 'plan_failed';
+    record.error = e.message;
+  }
+  saveState('dev_plans', devPlans);
+  logActivity('self-improve', `Dev-project plan ${record.status}: ${record.goal.slice(0, 80)}`, { id: record.id });
+  broadcast({ event: 'dev_plan_update', data: record });
+}
+
+app.post('/api/self-improve/plan', requireAdmin, heavyLimiter, (req, res) => {
+  const errors = validateBody(req.body, { goal: { type: 'string', required: true, maxLength: 2000 } });
+  if (errors) return res.status(400).json({ error: errors.join(', ') });
+  const goal = req.body.goal.trim();
+  if (goal.length < 10) return res.status(400).json({ error: 'goal must be at least 10 characters' });
+
+  const record = {
+    id: uuidv4(), goal, distribution: !!req.body.distribution, status: 'planning', plan: null,
+    createdAt: new Date().toISOString(), createdBy: reqActor(req),
+  };
+  devPlans.push(record);
+  saveState('dev_plans', devPlans);
+  logActivity('self-improve', `Dev-project plan requested: ${goal.slice(0, 80)}`, { id: record.id, distribution: record.distribution, actor: reqActor(req) });
+  res.json({ ok: true, plan: record });
+
+  dispatchDevProjectPlan(record); // fire-and-forget — client polls GET /plans/:id or listens for dev_plan_update
+});
+
+app.get('/api/self-improve/plans', requireAdmin, (req, res) => {
+  res.json(devPlans.slice().sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || '')));
+});
+
+app.get('/api/self-improve/plans/:id', requireAdmin, (req, res) => {
+  const plan = devPlans.find(p => p.id === req.params.id);
+  if (!plan) return res.status(404).json({ error: 'Plan not found' });
+  res.json(plan);
+});
+
+app.post('/api/self-improve/plans/:id/apply', requireAdmin, heavyLimiter, async (req, res) => {
+  const plan = devPlans.find(p => p.id === req.params.id);
+  if (!plan) return res.status(404).json({ error: 'Plan not found' });
+  if (plan.status !== 'ready') return res.status(400).json({ error: `Plan is not ready to apply (status: ${plan.status})` });
+  if (plan.appliedAt) return res.status(409).json({ error: 'This plan was already applied' });
+  try {
+    const gate = await gateAction({
+      type: 'self-improve.apply-plan',
+      summary: `Apply dev-project plan "${plan.goal.slice(0, 80)}" (${plan.plan.files.length} file(s), risk: ${plan.plan.risk})`,
+      target: plan.id,
+      params: { planId: plan.id },
+      req,
+    });
+    res.json({ ok: true, ...gate });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.post('/api/self-improve/plans/:id/distribution-pr', requireAdmin, heavyLimiter, async (req, res) => {
+  const plan = devPlans.find(p => p.id === req.params.id);
+  if (!plan) return res.status(404).json({ error: 'Plan not found' });
+  if (plan.status !== 'ready') return res.status(400).json({ error: `Plan is not ready (status: ${plan.status})` });
+  if (plan.distributionPr) return res.status(409).json({ error: 'A distribution PR was already opened for this plan' });
+  if (!settings.self_improve.github_pat) return res.status(400).json({ error: 'Configure a GitHub PAT in Settings → Self-Improve first' });
+  try {
+    const gate = await gateAction({
+      type: 'self-improve.distribution-pr',
+      summary: `Open a draft PR on ${settings.self_improve.distribution_repo} proposing "${plan.goal.slice(0, 80)}"`,
+      target: plan.id,
+      params: { planId: plan.id },
+      req,
+    });
+    res.json({ ok: true, ...gate });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // --- Hermes Agent (Persistent Background Worker via MCP) ---
 
 // Hermes MCP connection state
@@ -6029,13 +6197,24 @@ const hermesState = {
   stats: { tasksCompleted: 0, tasksFailed: 0, approvalsPending: 0, cronExecutions: 0 },
 };
 
-// Simulate Hermes connection check
+// The dev-project planning skill is REAL — an in-process dispatch to dev-architect-grok (Grok
+// Build), gated behind human approval for apply/distribution-pr — regardless of DEMO_MODE. It is
+// not an MCP connection (the user explicitly chose an in-process dispatcher over a standalone MCP
+// server), so it works even when there's no Hermes MCP server to connect to. Every other skill
+// below is still 100% simulated pending its own real backend — do not read `connected: true` as
+// "all of Hermes is live."
+const HERMES_REAL_SKILLS = [
+  { name: 'dev-project', description: 'Plan + gated-apply platform upgrades via Grok Build (dev-architect-grok)', real: true },
+];
+
+// Simulate Hermes connection check (except dev-project, which is real — see HERMES_REAL_SKILLS)
 function checkHermesConnection() {
   if (DEMO_MODE) {
     hermesState.connected = true;
     hermesState.lastPing = new Date().toISOString();
     hermesState.uptime = Math.floor((Date.now() - startTime) / 1000);
     hermesState.skills = [
+      ...HERMES_REAL_SKILLS,
       { name: 'inbox-summary', description: 'Daily email inbox digest' },
       { name: 'news-brief', description: 'Morning AI/tech news roundup' },
       { name: 'github-backup', description: 'Nightly repository backup' },
@@ -6044,7 +6223,8 @@ function checkHermesConnection() {
     ];
     return true;
   }
-  // Real MCP connection would go here
+  // No real Hermes MCP server to connect to — but dev-project dispatch works anyway (see above).
+  hermesState.skills = HERMES_REAL_SKILLS;
   return false;
 }
 
@@ -6065,11 +6245,11 @@ app.get('/api/hermes/status', (req, res) => {
 app.post('/api/hermes/delegate', requireAdmin, (req, res) => {
   const errors = validateBody(req.body, {
     task: { type: 'string', required: true, maxLength: 2000 },
-    mode: { type: 'string' }, // 'background' | 'walkaway' | 'cron'
+    mode: { type: 'string' }, // 'background' | 'walkaway' | 'cron' | 'dev-project'
   });
   if (errors) return res.status(400).json({ error: errors.join(', ') });
 
-  const { task, mode = 'background', schedule, notifyVia } = req.body;
+  const { task, mode = 'background', schedule, notifyVia, distribution } = req.body;
   const id = uuidv4();
   const delegated = {
     id,
@@ -6094,8 +6274,37 @@ app.post('/api/hermes/delegate', requireAdmin, (req, res) => {
   logActivity('hermes', `Task delegated to Hermes: ${task.substring(0, 80)}`, { id, mode, actor: reqActor(req) });
   broadcast({ event: 'hermes_task', data: delegated });
 
-  // Simulate progress for demo
-  if (DEMO_MODE && mode !== 'cron') {
+  if (mode === 'dev-project') {
+    // REAL dispatch (see HERMES_REAL_SKILLS): hands off to dev-architect-grok for planning, then
+    // lands in devPlans exactly like a direct POST /api/self-improve/plan call — same record, same
+    // gated apply/distribution-pr path. Nothing here is simulated.
+    const planRecord = {
+      id: uuidv4(), goal: task, distribution: !!distribution, status: 'planning', plan: null,
+      createdAt: new Date().toISOString(), createdBy: reqActor(req),
+    };
+    devPlans.push(planRecord);
+    saveState('dev_plans', devPlans);
+    delegated.planId = planRecord.id;
+    delegated.status = 'running';
+    delegated.progress = 20;
+    delegated.log.push('Handed off to dev-architect-grok (Grok Build) for planning');
+    broadcast({ event: 'hermes_progress', data: delegated });
+
+    dispatchDevProjectPlan(planRecord).then(() => {
+      if (planRecord.status === 'ready') {
+        delegated.status = 'complete';
+        delegated.progress = 100;
+        delegated.completedAt = new Date().toISOString();
+        delegated.log.push(`Plan ready — ${planRecord.plan.files.length} file(s) proposed, risk: ${planRecord.plan.risk}. Review it in Self-Improve before anything is applied or a PR is opened.`);
+        delegated.result = planRecord.plan.summary;
+      } else {
+        delegated.status = 'failed';
+        delegated.log.push(`Planning failed: ${planRecord.error}`);
+      }
+      broadcast({ event: 'hermes_complete', data: delegated });
+    });
+  } else if (DEMO_MODE && mode !== 'cron') {
+    // Simulated progress — these skills (background/walkaway) have no real execution backend yet.
     setTimeout(() => {
       delegated.status = 'running';
       delegated.progress = 35;
@@ -6261,6 +6470,12 @@ const settings = loadState('settings', {
   mcp: {
     hermes_url: process.env.HERMES_MCP_URL || 'http://127.0.0.1:8420',
     hermes_enabled: false,
+  },
+  self_improve: {
+    // GitHub PAT used ONLY to open draft PRs proposing distribution upgrades (repo scope) — never
+    // used for anything else, never sent anywhere but the Authorization header of a GitHub API call.
+    github_pat: process.env.AIOS_SELF_IMPROVE_GITHUB_PAT || '',
+    distribution_repo: process.env.AIOS_DISTRIBUTION_REPO || 'wholefoo/ai-os',
   },
   notifications: {
     telegram_bot_token: process.env.TELEGRAM_BOT_TOKEN || '',
@@ -6473,6 +6688,10 @@ app.get('/api/settings', requireAdmin, (req, res) => {
     mcp: {
       hermes_url: settings.mcp.hermes_url,
       hermes_enabled: settings.mcp.hermes_enabled,
+    },
+    self_improve: {
+      github_pat: { value: maskKey(settings.self_improve.github_pat), configured: !!settings.self_improve.github_pat },
+      distribution_repo: settings.self_improve.distribution_repo || 'wholefoo/ai-os',
     },
     notifications: {
       telegram_bot_token: { value: maskKey(settings.notifications.telegram_bot_token), configured: !!settings.notifications.telegram_bot_token },

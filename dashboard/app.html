@@ -143,6 +143,9 @@
         <a href="#" class="nav-item" data-view="hermes">
           <span class="nav-icon">&#9889;</span> Hermes
         </a>
+        <a href="#" class="nav-item" data-view="self-improve">
+          <span class="nav-icon">&#9881;</span> Self-Improve
+        </a>
         <a href="#" class="nav-item" data-view="youtube">
           <span class="nav-icon">&#127909;</span> YouTube Intel
         </a>
@@ -1584,6 +1587,26 @@
           </section>
         </div>
 
+        <!-- Self-Improve View -->
+        <div class="view" id="view-self-improve">
+          <div class="radar-header">
+            <div class="radar-header-left">
+              <h2 class="radar-title">Self-Improve</h2>
+              <span class="radar-subtitle">Grok Build (dev-architect-grok) plans upgrades to this instance and the public distribution repo — plans are read-only until you approve an apply or a draft PR</span>
+            </div>
+            <div class="radar-actions">
+              <button class="btn btn-primary" id="devPlanNewBtn">+ New Plan</button>
+            </div>
+          </div>
+
+          <section class="panel">
+            <h3 class="panel-title">Plans</h3>
+            <div id="devPlansList">
+              <div class="empty-state">No plans yet — click "+ New Plan" to ask Grok Build for an upgrade plan.</div>
+            </div>
+          </section>
+        </div>
+
         <!-- Logs View -->
         <div class="view" id="view-logs">
           <div class="logs-container" id="logsContainer">
@@ -2192,6 +2215,29 @@
                 </div>
               </div>
               <button class="btn btn-primary settings-save" onclick="saveSettings('mcp')">Save MCP Settings</button>
+            </section>
+
+            <!-- Self-Improve (Grok Build + Distribution PR) -->
+            <section class="panel settings-section">
+              <h3 class="panel-title settings-section-title">
+                <span class="settings-section-icon">&#9881;</span> Self-Improve
+              </h3>
+              <p class="settings-desc">Used only by the Self-Improve dev-project planner (Self-Improve view) to open a DRAFT pull request on your distribution repo. This key alone does not let anything auto-merge — every apply and every PR still waits in the Approvals queue below for your decision.</p>
+              <div class="settings-fields">
+                <div class="settings-field">
+                  <label class="settings-label">GitHub PAT (repo scope) <span class="settings-tier">Distribution PR only</span></label>
+                  <div class="settings-input-row">
+                    <input type="text" class="settings-input settings-secret" id="set-github_pat" placeholder="ghp_..." autocomplete="new-password" data-lpignore="true" data-1p-ignore spellcheck="false">
+                    <button type="button" class="btn btn-sm settings-eye" onclick="toggleKeyVisibility(this)" title="Show/hide">&#128065;</button>
+                    <span class="settings-status" id="status-github_pat"></span>
+                  </div>
+                </div>
+                <div class="settings-field">
+                  <label class="settings-label">Distribution Repo</label>
+                  <input type="text" class="settings-input" id="set-distribution_repo" placeholder="wholefoo/ai-os" autocomplete="off">
+                </div>
+              </div>
+              <button class="btn btn-primary settings-save" onclick="saveSettings('self_improve')">Save Self-Improve Settings</button>
             </section>
 
             <!-- A2A External Keys -->

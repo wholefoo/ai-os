@@ -121,6 +121,7 @@ function switchView(view) {
     predictions: loadPredictions,
     batch: loadBatch,
     hermes: loadHermes,
+    'self-improve': loadDevPlans,
     youtube: loadYouTube,
     hq: loadHQ,
     'seo-agency': loadSeoAgency,
@@ -268,6 +269,11 @@ function handleWsMessage(msg) {
         loadVerification();
       }
       addTimelineEvent('verification', `Verification ${msg.data.status}: ${msg.data.skillName}${msg.data.verdict ? ' (' + msg.data.verdict + ')' : ''}`, msg.data.completedAt || msg.data.startedAt);
+      break;
+    case 'dev_plan_update':
+      if (document.getElementById('view-self-improve').classList.contains('active')) {
+        loadDevPlans();
+      }
       break;
     case 'grok_stream_start':
       if (document.getElementById('view-grok').classList.contains('active')) {
@@ -5440,12 +5446,21 @@ function showDelegateModal() {
           <option value="background">Background — fire and forget</option>
           <option value="walkaway">Walkaway — progress pings to mobile</option>
           <option value="cron">Cron — scheduled recurring task</option>
+          <option value="dev-project">Dev Project — Grok Build plans a platform upgrade (real)</option>
         </select></div>
       <div id="hermesCronScheduleWrap" style="display:none;">
         <label class="form-label">Cron Schedule</label>
         <input type="text" id="hermesCronSchedule" class="form-input" placeholder="0 8 * * * (daily at 8am)">
       </div>
-      <div><label class="form-label">Notify Via</label>
+      <div id="hermesDevProjectWrap" style="display:none;">
+        <label class="settings-toggle">
+          <input type="checkbox" id="hermesDevProjectDistribution">
+          <span class="settings-toggle-slider"></span>
+          <span class="settings-toggle-label">Also frame this as a distribution blueprint (for the public repo)</span>
+        </label>
+        <p class="settings-desc" style="margin-top:6px;">This hands off to the Self-Improve planner (see its own view) — the plan it produces is read-only until you approve an apply or draft PR.</p>
+      </div>
+      <div id="hermesNotifyWrap"><label class="form-label">Notify Via</label>
         <select id="hermesNotify" class="grok-type-select" style="width:100%;">
           <option value="websocket">Dashboard (WebSocket)</option>
           <option value="telegram">Telegram</option>
@@ -5456,6 +5471,8 @@ function showDelegateModal() {
   `);
   document.getElementById('hermesMode').addEventListener('change', (e) => {
     document.getElementById('hermesCronScheduleWrap').style.display = e.target.value === 'cron' ? 'block' : 'none';
+    document.getElementById('hermesDevProjectWrap').style.display = e.target.value === 'dev-project' ? 'block' : 'none';
+    document.getElementById('hermesNotifyWrap').style.display = e.target.value === 'dev-project' ? 'none' : 'block';
   });
 }
 
@@ -5468,6 +5485,9 @@ async function submitHermesDelegate() {
   const body = { task, mode, notifyVia };
   if (mode === 'cron') {
     body.schedule = document.getElementById('hermesCronSchedule').value.trim() || '0 8 * * *';
+  }
+  if (mode === 'dev-project') {
+    body.distribution = document.getElementById('hermesDevProjectDistribution').checked;
   }
   await fetchJSON('/api/hermes/delegate', { method: 'POST', body });
   closeModal();
@@ -5509,12 +5529,123 @@ document.addEventListener('DOMContentLoaded', () => {
   if (cronAddBtn) cronAddBtn.addEventListener('click', showAddCronModal);
 });
 
+// --- Self-Improve (Grok Build dev-project planner) ---
+// A plan is READ-ONLY output from dev-architect-grok until a human clicks Apply or Open Draft PR
+// below — both of those route through gateAction server-side and land in the Approvals inbox
+// (Settings) rather than running immediately, regardless of the operator's Auto-Mode setting.
+
+async function loadDevPlans() {
+  const plans = await fetchJSON('/api/self-improve/plans');
+  renderDevPlans(Array.isArray(plans) ? plans : []);
+}
+
+function renderDevPlans(plans) {
+  const el = document.getElementById('devPlansList');
+  if (!el) return;
+  if (!plans.length) {
+    el.innerHTML = '<div class="empty-state">No plans yet — click "+ New Plan" to ask Grok Build for an upgrade plan.</div>';
+    return;
+  }
+  const statusColor = { ready: '#22c55e', planning: '#94a3b8', plan_failed: '#ef4444' };
+  el.innerHTML = plans.map(p => {
+    const color = statusColor[p.status] || '#94a3b8';
+    const when = p.createdAt ? new Date(p.createdAt).toLocaleString() : '';
+    return `<div class="hermes-task-card">
+      <div class="hermes-task-header">
+        <span class="hermes-task-name">${escapeHtml(p.goal)}</span>
+        <span class="hermes-mode-badge" style="border-color:${color};color:${color};">${escapeHtml(p.status)}</span>
+      </div>
+      <div class="hermes-task-meta">
+        <span class="hermes-mode-badge">${p.distribution ? 'distribution blueprint' : 'local upgrade'}</span>
+        <span>${escapeHtml(when)}</span>
+      </div>
+      ${p.status === 'plan_failed' ? `<div class="hermes-task-log"><div class="hermes-log-line">${escapeHtml(p.error || 'planning failed')}</div></div>` : ''}
+      ${p.status === 'ready' && p.plan ? renderDevPlanReady(p) : ''}
+    </div>`;
+  }).join('');
+}
+
+function renderDevPlanReady(p) {
+  const riskColor = p.plan.risk === 'high' ? '#ef4444' : p.plan.risk === 'medium' ? '#f59e0b' : '#22c55e';
+  // Full proposed content per file, not just path+reason — the approval you're about to make is only
+  // as informed as what you can see here. This is a whole-file overwrite, not a diff: read it in full
+  // before clicking Apply, especially for files that already exist.
+  const files = (p.plan.files || []).map(f => `
+    <details style="margin:4px 0;">
+      <summary style="cursor:pointer;">${escapeHtml(f.path)}${f.reason ? ' — ' + escapeHtml(f.reason) : ''}</summary>
+      <pre style="max-height:320px;overflow:auto;background:var(--bg-secondary,#111);padding:8px;border-radius:6px;font-size:12px;white-space:pre-wrap;word-break:break-word;">${escapeHtml(f.content || '')}</pre>
+    </details>`).join('');
+  return `
+    <div class="hermes-task-log">
+      <div class="hermes-log-line"><strong>Summary:</strong> ${escapeHtml(p.plan.summary || '')}</div>
+      <div class="hermes-log-line"><strong>Risk:</strong> <span style="color:${riskColor};">${escapeHtml(p.plan.risk || 'unknown')}</span></div>
+      <div class="hermes-log-line"><strong>Rollback:</strong> ${escapeHtml(p.plan.rollbackNotes || '')}</div>
+      <div class="hermes-log-line"><strong>Files (${(p.plan.files || []).length}):</strong></div>
+      ${files}
+    </div>
+    <div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap;">
+      ${p.appliedAt
+        ? `<span class="settings-status active">Applied ${new Date(p.appliedAt).toLocaleString()} (rollback ${escapeHtml((p.rollbackCommit || '').slice(0, 8))})</span>`
+        : `<button class="btn btn-primary btn-sm" onclick="applyDevPlan('${p.id}')">Apply to this instance</button>`}
+      ${p.distributionPr
+        ? `<a class="btn btn-sm" href="${escapeHtml(p.distributionPr.url)}" target="_blank" rel="noopener noreferrer">View draft PR #${p.distributionPr.number}</a>`
+        : `<button class="btn btn-sm" onclick="distributionPrDevPlan('${p.id}')">Open draft PR on distribution repo</button>`}
+    </div>`;
+}
+
+async function applyDevPlan(id) {
+  if (!window.confirm('This REPLACES each listed file in full (not a merge/diff) once approved — expand and read every file above first. A git snapshot is taken before writing, for rollback. Continue?')) return;
+  const r = await fetchJSON(`/api/self-improve/plans/${id}/apply`, { method: 'POST', body: {} });
+  if (r && r.error) { alert('Apply failed: ' + r.error); return; }
+  if (r && r.pending) alert('Queued for approval — review it in Settings → Approvals.');
+  await loadDevPlans();
+}
+
+async function distributionPrDevPlan(id) {
+  if (!window.confirm('This opens a DRAFT pull request on your distribution repo once approved. Nothing merges automatically. Continue?')) return;
+  const r = await fetchJSON(`/api/self-improve/plans/${id}/distribution-pr`, { method: 'POST', body: {} });
+  if (r && r.error) { alert('Failed: ' + r.error); return; }
+  if (r && r.pending) alert('Queued for approval — review it in Settings → Approvals.');
+  await loadDevPlans();
+}
+
+function showDevPlanModal() {
+  showModal('New Dev-Project Plan', `
+    <div style="display:flex;flex-direction:column;gap:14px;">
+      <div><label class="form-label">Goal</label>
+        <textarea id="devPlanGoal" class="form-input" rows="4" placeholder="Describe the upgrade, feature, or refactor you want Grok Build to plan..."></textarea></div>
+      <label class="settings-toggle">
+        <input type="checkbox" id="devPlanDistribution">
+        <span class="settings-toggle-slider"></span>
+        <span class="settings-toggle-label">Also frame this as a distribution blueprint (for the public repo)</span>
+      </label>
+      <button class="btn btn-primary" onclick="submitDevPlan()">&#129504; Ask Grok Build to Plan</button>
+    </div>
+  `);
+}
+
+async function submitDevPlan() {
+  const goal = document.getElementById('devPlanGoal').value.trim();
+  const distribution = document.getElementById('devPlanDistribution').checked;
+  if (goal.length < 10) { alert('Describe the goal in at least 10 characters.'); return; }
+  const r = await fetchJSON('/api/self-improve/plan', { method: 'POST', body: { goal, distribution } });
+  if (r && r.error) { alert('Failed: ' + r.error); return; }
+  closeModal();
+  await loadDevPlans();
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  const newPlanBtn = document.getElementById('devPlanNewBtn');
+  if (newPlanBtn) newPlanBtn.addEventListener('click', showDevPlanModal);
+});
+
 // --- Settings ---
 
 // Map of section → field → input ID
 const settingsFieldMap = {
   ai: ['reasoning_mode', 'anthropic_api_key', 'openai_api_key', 'deepseek_api_key', 'zai_api_key', 'xai_api_key', 'gemini_api_key', 'perplexity_api_key', 'firecrawl_api_key', 'tavily_api_key', 'apify_api_token', 'manus_api_key', 'heygen_api_key', 'did_api_key', 'youtube_api_key', 'livekit_api_key', 'livekit_api_secret', 'livekit_url', 'deepgram_api_key', 'cartesia_api_key'],
   mcp: ['hermes_url', 'hermes_enabled'],
+  self_improve: ['github_pat', 'distribution_repo'],
   notifications: ['telegram_bot_token', 'telegram_chat_id', 'slack_webhook_url'],
   automation: ['mode', 'n8n_webhook_base', 'n8n_api_key', 'team_webhook_url'],
   stripe: ['secret_key', 'webhook_secret', 'business_price_id', 'enterprise_price_id', 'enterprise_renewal_price_id'],
