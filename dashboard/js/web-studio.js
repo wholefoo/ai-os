@@ -117,6 +117,7 @@ async function wsCreate() {
   const name = (document.getElementById('wsName').value || '').trim();
   const brief = (document.getElementById('wsBrief').value || '').trim();
   const siteType = (document.getElementById('wsType') || {}).value || '';
+  const model = ((document.getElementById('wsModel') || {}).value || '').trim();
   const domain = ((document.getElementById('wsCreateDomain') || {}).value || '').trim();
   const cloneUrl = ((document.getElementById('wsCloneUrl') || {}).value || '').trim();
   const brandKitId = ((document.getElementById('wsBrandKit') || {}).value || '').trim();
@@ -135,7 +136,7 @@ async function wsCreate() {
   const btn = document.getElementById('wsCreateBtn');
   if (btn) btn.disabled = true;
   if (hint) hint.textContent = researchUrl ? 'Researching the product, then writing original affiliate copy…' : redesignUrl ? 'Reusing the existing site’s content + branding, then generating your redesign…' : (brandKitId || cloneUrl) ? 'Applying design + generating your site…' : 'Generating — the studio team is planning, writing and building your site…';
-  const r = await fetchJSON('/api/web-studio/sites', { method: 'POST', body: { name, brief, siteType, domain, cloneUrl, brandKitId, redesignUrl, maintainBranding, researchUrl, affiliateUrl, features } });
+  const r = await fetchJSON('/api/web-studio/sites', { method: 'POST', body: { name, brief, siteType, domain, cloneUrl, brandKitId, redesignUrl, maintainBranding, researchUrl, affiliateUrl, features, model } });
   if (r && r.error) { if (hint) hint.textContent = `Could not create: ${r.error}`; if (btn) btn.disabled = false; return; }
   document.getElementById('wsName').value = '';
   document.getElementById('wsBrief').value = '';

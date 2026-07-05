@@ -1654,8 +1654,12 @@ function wsCleanAffiliateUrl(raw) {
 
 // --- Create from a brief (tier-limit gated; pipeline runs async) ---
 app.post('/api/web-studio/sites', requireClientOrAdmin, heavyLimiter, async (req, res) => {
-  const { name, brief, siteType, domain, cloneUrl, brandKitId, redesignUrl, maintainBranding, features, researchUrl, affiliateUrl } = req.body || {};
+  const { name, brief, siteType, domain, cloneUrl, brandKitId, redesignUrl, maintainBranding, features, researchUrl, affiliateUrl, model } = req.body || {};
   if (!brief || String(brief).trim().length < 10) return res.status(400).json({ error: 'A brief of at least 10 characters is required' });
+  // Optional model choice for this build: 'fable' routes the design agents to Claude Fable 5 (premium);
+  // anything else (default) keeps the operator's normal reasoning-mode routing. Mapped to an allowlisted
+  // Anthropic model here so only a known/priced model can reach executeAgent's override.
+  const modelOverride = model === 'fable' ? FABLE_MODEL : null;
   const cleanAffiliateUrl = wsCleanAffiliateUrl(affiliateUrl);
   if (affiliateUrl && !cleanAffiliateUrl) return res.status(400).json({ error: 'affiliateUrl must be a valid http(s) URL' });
   const limit = wsSiteLimit(req.session);
@@ -1670,7 +1674,7 @@ app.post('/api/web-studio/sites', requireClientOrAdmin, heavyLimiter, async (req
 
   const cleanFeatures = wsCleanFeatures(features);
   const id = uuidv4();
-  const site = { id, name: String(name || 'Untitled site').slice(0, 80), brief: String(brief).slice(0, 4000), siteType: wsCleanType(siteType), kind: 'generated', status: 'building', domain: cfgDomain, hostingSetup: false, published: false, ownerEmail: wsIsClient(req.session) ? req.session.email : null, createdAt: new Date().toISOString(), lastBuiltAt: null, pages: [], features: cleanFeatures, chatEnabled: cleanFeatures.enableChat };
+  const site = { id, name: String(name || 'Untitled site').slice(0, 80), brief: String(brief).slice(0, 4000), siteType: wsCleanType(siteType), kind: 'generated', status: 'building', domain: cfgDomain, hostingSetup: false, published: false, ownerEmail: wsIsClient(req.session) ? req.session.email : null, createdAt: new Date().toISOString(), lastBuiltAt: null, pages: [], features: cleanFeatures, chatEnabled: cleanFeatures.enableChat, buildModel: modelOverride ? 'Fable 5' : null };
   webStudioSites.push(site);
   saveState('web_studio_sites', webStudioSites);
   logActivity('web-studio', `Site build started: ${site.name}`, { id });
@@ -1713,7 +1717,7 @@ app.post('/api/web-studio/sites', requireClientOrAdmin, heavyLimiter, async (req
     if (cleanAffiliateUrl) site.affiliateUrl = cleanAffiliateUrl;
     const platformBaseUrl = process.env.AIOS_PUBLIC_URL || `${req.protocol}://${req.get('host')}`;
     const result = await webStudioPipeline.createSiteFromBrief(
-      { siteId: id, workspaceDir: wsWorkspaceDir(id), brief: wsBriefWithType(site), domain: site.domain, siteName: site.name, design, scraped, research, affiliateUrl: cleanAffiliateUrl, features: cleanFeatures, platformBaseUrl },
+      { siteId: id, workspaceDir: wsWorkspaceDir(id), brief: wsBriefWithType(site), domain: site.domain, siteName: site.name, design, scraped, research, affiliateUrl: cleanAffiliateUrl, features: cleanFeatures, platformBaseUrl, modelOverride },
       { executeAgent, broadcast, log: appendLog, signProvenance }
     );
     site.status = result.ok ? result.status : 'failed';
@@ -2540,6 +2544,14 @@ const updateProposals = loadState('update_proposals', []);
 // --- Model Configuration ---
 const OPUS_MODEL = 'claude-opus-4-8';
 const SONNET_MODEL = 'claude-sonnet-5';
+// Anthropic's most capable model — an opt-in premium option (e.g. the Web Studio design flow). Same
+// request surface as Opus 4.8 (adaptive thinking, output_config.effort, no sampling params), so
+// callAnthropic needs no special handling; it only needs to be a permitted per-call model override.
+// $10/$50 per 1M (above Opus-tier) — NOT a default; requires 30-day data retention (not ZDR-eligible).
+const FABLE_MODEL = 'claude-fable-5';
+// Anthropic models that a caller may request per-call via executeAgent's options.modelOverride. Kept
+// as an allowlist so an override can never smuggle in an arbitrary/unpriced model string.
+const OVERRIDABLE_ANTHROPIC_MODELS = new Set([FABLE_MODEL, OPUS_MODEL, SONNET_MODEL]);
 const OPUS_API_VERSION = '2023-06-01';
 const GEMINI_OMNI_MODEL = 'gemini-omni-flash';
 // xAI's dev-planning-tuned model (2026 release, agentic-coding-focused, 256k context). Reachability
@@ -2585,9 +2597,17 @@ function resolveAnthropicModel(routing) {
   return { apiModel: OPUS_MODEL, effort, modelString: `opus-4.8-${effort}` };
 }
 
+// Ledger model string for an Anthropic API model at a given effort (e.g. FABLE_MODEL + 'high' ->
+// 'fable-5-high'). Mirrors resolveAnthropicModel's `${family}-${effort}` convention so cost lookup and
+// the pretty label work uniformly for an overridden model.
+function anthropicLedgerString(apiModel, effort) {
+  const family = apiModel === FABLE_MODEL ? 'fable-5' : apiModel === SONNET_MODEL ? 'sonnet-5' : 'opus-4.8';
+  return `${family}-${effort || 'high'}`;
+}
+
 // Human-readable label for a resolved ledger model string (e.g. 'sonnet-5-high' -> 'Sonnet 5 high').
 function prettyModelString(m) {
-  return m.replace('opus-4.8-', 'Opus 4.8 ').replace('sonnet-5-', 'Sonnet 5 ');
+  return m.replace('opus-4.8-', 'Opus 4.8 ').replace('sonnet-5-', 'Sonnet 5 ').replace('fable-5-', 'Fable 5 ');
 }
 
 // Effective routing (CSS provider class + display label) for a reasoning tier, honoring reasoning_mode.
@@ -2707,10 +2727,18 @@ async function executeAgent(agentName, task, options = {}) {
       // Opus for strategic, Sonnet 5 for professional/scout). Optionally with the operator's connected MCP
       // tools (opt-in); side-effectful tool calls route through the Auto-Mode approval gate below.
       const picked = resolveAnthropicModel(routing);
+      // Per-call model override (e.g. the Web Studio "build with Fable 5" option): swap the Anthropic
+      // model while keeping the agent's own effort routing. Allowlisted (OVERRIDABLE_ANTHROPIC_MODELS)
+      // so a caller can never force an arbitrary/unpriced model string.
+      let apiModel = picked.apiModel, effort = picked.effort;
       model = picked.modelString;
+      if (options.modelOverride && OVERRIDABLE_ANTHROPIC_MODELS.has(options.modelOverride)) {
+        apiModel = options.modelOverride;
+        model = anthropicLedgerString(apiModel, effort);
+      }
       const toolset = options.useMcpTools ? buildMcpToolset() : null;
       if (toolset && toolset.tools.length) {
-        result = await callAnthropicWithTools(fullSystem, fullTask, picked.effort, maxTokens, toolset.tools, async (toolName, input) => {
+        result = await callAnthropicWithTools(fullSystem, fullTask, effort, maxTokens, toolset.tools, async (toolName, input) => {
           const entry = toolset.map[toolName];
           if (!entry) return `Error: unknown tool ${toolName}`;
           // A 'trusted' integration is pre-approved by the operator — run it directly (still audit-logged),
@@ -2733,9 +2761,9 @@ async function executeAgent(agentName, task, options = {}) {
             return `Not executed — this tool call requires human approval and was queued (approval id ${gate.approval.id}). Tell the user "${entry.toolName}" is pending approval in their Approvals inbox.`;
           }
           return (gate.result && gate.result.content) || 'Tool executed (no content returned).';
-        }, { model: picked.apiModel });
+        }, { model: apiModel });
       } else {
-        result = await callAnthropic(fullSystem, fullTask, picked.effort, maxTokens, picked.apiModel);
+        result = await callAnthropic(fullSystem, fullTask, effort, maxTokens, apiModel);
       }
     }
 
@@ -2828,6 +2856,13 @@ async function callAnthropic(systemPrompt, task, effort, maxTokens, model = OPUS
   }
 
   const data = await res.json();
+  // Fable 5 (and future models) can decline with HTTP 200 + stop_reason:"refusal" and an empty/partial
+  // content array. Surface it as a real error so callers see "why" instead of silently getting an empty
+  // result (e.g. a blank generated page). No-op for models that never emit this stop reason.
+  if (data.stop_reason === 'refusal') {
+    const cat = data.stop_details?.category ? ` (${data.stop_details.category})` : '';
+    throw new Error(`${model} declined this request${cat} — try rephrasing or a different model`);
+  }
   const textBlock = data.content?.find(b => b.type === 'text');
   return {
     content: textBlock?.text || '',
@@ -3215,6 +3250,11 @@ const COST_RATES = {
   'sonnet-5-xhigh':    { input: 2.00,  output: 10.00 },
   'sonnet-5-high':     { input: 2.00,  output: 10.00 },
   'sonnet-5-low':      { input: 2.00,  output: 10.00 },
+  // Fable 5 — Anthropic's most capable model, an opt-in premium override (e.g. Web Studio design).
+  // $10/$50 per 1M (flat across effort tiers), verified against docs.claude.com/pricing 2026-07-05.
+  'fable-5-xhigh':     { input: 10.00, output: 50.00 },
+  'fable-5-high':      { input: 10.00, output: 50.00 },
+  'fable-5-low':       { input: 10.00, output: 50.00 },
   // Legacy aliases (for backward compat with existing ledger entries)
   'claude-4.7-opus':   { input: 15.00, output: 75.00 },
   'claude-4.7-sonnet': { input: 3.00,  output: 15.00 },
