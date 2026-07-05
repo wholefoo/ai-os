@@ -34,9 +34,10 @@
     { "file": "lib/web-studio/dns.js", "exports": ["getPublicIps"] },
     { "file": "lib/web-studio/hosting.js", "exports": ["DOMAIN_RE", "attachDomainWithTls"] },
     { "file": "lib/web-studio/import.js", "exports": ["MAX_FILES", "MAX_TOTAL_BYTES", "SAFE_EXT", "cloneGitHub", "extractZip", "findStaticRoot", "ingestDir", "sanitizeRelPath"] },
-    { "file": "lib/web-studio/pipeline.js", "exports": ["extractJson", "renderBase", "renderPage", "renderSection"] },
+    { "file": "lib/web-studio/pipeline.js", "exports": ["extractJson", "renderBase", "renderPage", "renderSection", "buildSiteKnowledge"] },
     { "file": "lib/web-studio/publish.js", "exports": ["KEEP_RELEASES", "pruneReleases", "rollback"] },
-    { "file": "lib/web-studio/scaffold.js", "exports": ["tokensCss"] }
+    { "file": "lib/web-studio/scaffold.js", "exports": ["tokensCss"] },
+    { "file": "lib/self-improve/plan-store.js", "exports": ["DENIED_PATH_PREFIXES", "isPathAllowed"] }
   ],
   "duplicates": {
     "minOccurrences": 3
