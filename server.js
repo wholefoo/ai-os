@@ -2923,16 +2923,147 @@ async function callGrok(systemPrompt, task, maxTokens) {
   return { content, inputTokens, outputTokens };
 }
 
+// Bounded, read-only repo tools for dev-architect-grok's tool-calling loop (Read/Grep/Glob only —
+// matches its .claude/agents/dev-architect-grok.md `tools:` declaration exactly, no Write/Edit/Bash).
+// Gated by the SAME denylist plan-store.js uses for WRITES, even though reading is lower-risk than
+// writing: letting the planner read .env/commercial/.magent-vault would risk it quoting a real
+// secret into a public distribution-PR body. No shell-out — Grep/Glob are a plain directory walk +
+// JS RegExp, not a spawned grep/find process, so there's no command-injection surface either.
+const REPO_TOOL_SKIP_DIRS = new Set(['node_modules', '.git', 'commercial']);
+const REPO_TOOL_MAX_OUTPUT = 150_000; // generous — a truncated Read (e.g. mid-README) silently starves grounding
+const REPO_TOOL_MAX_HITS = 200;
+
+function repoToolRel(absPath) { return path.relative(BASE, absPath).replace(/\\/g, '/'); }
+
+function walkRepoFiles(startDir, onFile, limit) {
+  const stack = [startDir];
+  let count = 0;
+  while (stack.length && count < limit) {
+    const dir = stack.pop();
+    let entries;
+    try { entries = fs.readdirSync(dir, { withFileTypes: true }); } catch { continue; }
+    for (const e of entries) {
+      if (count >= limit) break;
+      const abs = path.join(dir, e.name);
+      if (e.isDirectory()) {
+        if (!REPO_TOOL_SKIP_DIRS.has(e.name)) stack.push(abs);
+        continue;
+      }
+      if (!e.isFile()) continue;
+      const rel = repoToolRel(abs);
+      if (!selfImprovePlanStore.isPathAllowed(rel)) continue;
+      if (onFile(abs, rel)) count++;
+    }
+  }
+}
+
+async function runReadOnlyRepoTool(name, args) {
+  try {
+    if (name === 'Read') {
+      const rel = String(args.path || '');
+      if (!selfImprovePlanStore.isPathAllowed(rel)) return `Error: reading "${rel}" is not allowed.`;
+      const abs = path.join(BASE, rel);
+      if (!fs.existsSync(abs) || !fs.statSync(abs).isFile()) return `Error: no such file: ${rel}`;
+      const content = fs.readFileSync(abs, 'utf-8');
+      return content.length > REPO_TOOL_MAX_OUTPUT ? content.slice(0, REPO_TOOL_MAX_OUTPUT) + '\n...[truncated]' : content;
+    }
+    if (name === 'Grep') {
+      let re;
+      try { re = new RegExp(String(args.pattern || '')); } catch { return 'Error: invalid regex pattern.'; }
+      const hits = [];
+      const grepOneFile = (abs, rel) => {
+        let text; try { text = fs.readFileSync(abs, 'utf-8'); } catch { return; }
+        text.split('\n').forEach((line, i) => {
+          if (hits.length < REPO_TOOL_MAX_HITS && re.test(line)) hits.push(`${rel}:${i + 1}: ${line.slice(0, 200)}`);
+        });
+      };
+      if (args.path) {
+        // args.path may name a single FILE (the natural thing to pass right after Reading it) or a
+        // directory to scope a broader search — support both instead of only the directory case.
+        const rel = String(args.path);
+        if (!selfImprovePlanStore.isPathAllowed(rel)) return `Error: reading "${rel}" is not allowed.`;
+        const abs = path.join(BASE, rel);
+        if (!abs.startsWith(BASE)) return 'Error: path escapes the repo root.';
+        if (fs.existsSync(abs) && fs.statSync(abs).isFile()) {
+          grepOneFile(abs, rel);
+        } else if (fs.existsSync(abs) && fs.statSync(abs).isDirectory()) {
+          walkRepoFiles(abs, (a, r) => { grepOneFile(a, r); return hits.length > 0; }, REPO_TOOL_MAX_HITS);
+        } else {
+          return `Error: no such file or directory: ${rel}`;
+        }
+      } else {
+        walkRepoFiles(BASE, (a, r) => { grepOneFile(a, r); return hits.length > 0; }, REPO_TOOL_MAX_HITS);
+      }
+      return hits.length ? hits.join('\n') : 'No matches.';
+    }
+    if (name === 'Glob') {
+      // Minimal glob (no dependency): '**' -> any depth, '*' -> any run of non-slash chars.
+      const pattern = String(args.pattern || '*');
+      const reSrc = '^' + pattern.replace(/[.+^${}()|[\]\\]/g, '\\$&').replace(/\*\*/g, '§§').replace(/\*/g, '[^/]*').replace(/§§/g, '.*') + '$';
+      const re = new RegExp(reSrc);
+      const matches = [];
+      walkRepoFiles(BASE, (abs, rel) => {
+        if (matches.length < REPO_TOOL_MAX_HITS && re.test(rel)) { matches.push(rel); return true; }
+        return false;
+      }, REPO_TOOL_MAX_HITS);
+      return matches.length ? matches.join('\n') : 'No files matched.';
+    }
+    return `Error: unknown tool "${name}"`;
+  } catch (e) {
+    return `Error: ${e.message}`;
+  }
+}
+
 // grok-build-0.1 — xAI's dev-planning-tuned model, reached via the SAME OpenAI-compatible
 // /v1/chat/completions endpoint and xai_api_key as callGrok (not the separate Grok Build CLI
 // product's own /v1/responses surface or its subagent/worktree orchestration, which this platform
 // does not run — see .claude/agents/dev-architect-grok.md for the boundary this draws).
+//
+// Runs a bounded Read/Grep/Glob tool-calling loop: without this, the model has no way to ground
+// itself in an existing file and either fabricates plausible-looking content (dangerous — see
+// dev-architect-grok.md's "must Read before modifying" rule) or, for a file it recognizes it can't
+// safely guess at, emits a stub tool-call-shaped text fragment and stops (observed directly:
+// "call Read with path is README.md", 7 tokens, finish_reason 'stop' — the model tries to call a
+// tool that doesn't exist in a tool-less chat-completions request).
 async function callGrokBuild(systemPrompt, task, maxTokens) {
-  const { content, inputTokens, outputTokens } = await callChatCompletions({
-    provider: 'Grok Build', keyName: 'xAI', url: 'https://api.x.ai/v1/chat/completions', model: GROK_BUILD_MODEL,
-    apiKey: settings.ai.xai_api_key, systemPrompt, task, maxTokens,
-  });
-  return { content, inputTokens, outputTokens };
+  if (!settings.ai.xai_api_key) throw new Error('xAI API key not configured — add it in Settings');
+
+  const tools = [
+    { type: 'function', function: { name: 'Read', description: 'Read a file from the repo (read-only, repo-root-contained). Returns the full content, or an error if the path is denied or missing.', parameters: { type: 'object', properties: { path: { type: 'string', description: 'Path relative to the repo root, e.g. "README.md" or "lib/foo.js"' } }, required: ['path'] } } },
+    { type: 'function', function: { name: 'Grep', description: 'Search file contents by regex across the repo (or a subdirectory).', parameters: { type: 'object', properties: { pattern: { type: 'string', description: 'JS-flavored regex' }, path: { type: 'string', description: 'Optional subdirectory to scope the search to' } }, required: ['pattern'] } } },
+    { type: 'function', function: { name: 'Glob', description: 'List repo files matching a glob pattern, e.g. "lib/**/*.js".', parameters: { type: 'object', properties: { pattern: { type: 'string' } }, required: ['pattern'] } } },
+  ];
+  const messages = [{ role: 'system', content: systemPrompt }, { role: 'user', content: task }];
+  let inputTokens = 0, outputTokens = 0;
+
+  for (let turn = 0; turn < 8; turn++) { // bounded turns — no runaway tool-call loop
+    const res = await fetchWithTimeout('https://api.x.ai/v1/chat/completions', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${settings.ai.xai_api_key}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ model: GROK_BUILD_MODEL, messages, tools, max_tokens: maxTokens }),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error?.message || `Grok Build HTTP ${res.status}`);
+    }
+    const data = await res.json();
+    inputTokens += data.usage?.prompt_tokens || 0;
+    outputTokens += data.usage?.completion_tokens || 0;
+    const msg = data.choices?.[0]?.message;
+    if (!msg) throw new Error('Grok Build returned no message');
+    messages.push(msg);
+
+    if (!msg.tool_calls || !msg.tool_calls.length) {
+      return { content: msg.content || '', inputTokens, outputTokens };
+    }
+    for (const call of msg.tool_calls) {
+      let args = {};
+      try { args = JSON.parse(call.function.arguments || '{}'); } catch { /* malformed args -> empty object */ }
+      const result = await runReadOnlyRepoTool(call.function.name, args);
+      messages.push({ role: 'tool', tool_call_id: call.id, content: result });
+    }
+  }
+  throw new Error('dev-architect-grok exceeded the tool-call turn limit (8) without a final answer');
 }
 
 async function callDeepSeek(systemPrompt, task, maxTokens) {
@@ -6132,7 +6263,11 @@ async function dispatchDevProjectPlan(record) {
     const task = `${record.distribution
       ? 'Produce a DISTRIBUTION BLUEPRINT (for the public wholefoo/ai-os repo) for the following goal'
       : 'Plan a LOCAL upgrade for this running AI OS instance for the following goal'}:\n\n${record.goal}`;
-    const result = await executeAgent('dev-architect-grok', task, { maxTokens: 16000, skill: 'self-improve-plan' });
+    // Generous ceiling: a plan echoes back COMPLETE files (never a diff — see plan-store.js), and an
+    // existing file being modified (e.g. a large README) plus JSON-string escaping overhead can cost
+    // far more output tokens than the file's own raw size. 16000 silently truncated a real plan's
+    // JSON mid-file; 64000 leaves headroom for whole-file plans against this codebase's larger files.
+    const result = await executeAgent('dev-architect-grok', task, { maxTokens: 64000, skill: 'self-improve-plan' });
     if (!result.ok) throw new Error(result.error || 'planning failed');
     const parsed = webStudioPipeline.extractJson(result.content);
     const v = selfImprovePlanStore.validatePlan(parsed);
