@@ -4,6 +4,7 @@ const express = require('express');
 const { WebSocketServer } = require('ws');
 const http = require('http');
 const fs = require('fs');
+const os = require('os');
 const path = require('path');
 const yaml = require('js-yaml');
 const { v4: uuidv4 } = require('uuid');
@@ -1189,16 +1190,31 @@ app.use(express.static(path.join(BASE, 'dashboard'), {
 
 // Health check endpoint
 const startTime = Date.now();
-app.get('/api/health', (req, res) => {
+
+// Real system metrics — shared by /api/health and the sysadmin uptime-check skill (which reasons
+// over THIS exact data, not a hallucinated guess, so it needs no external tool access to be honest).
+function getHealthSnapshot() {
   const agentDir = path.join(CLAUDE_DIR, 'agents');
   const skillDir = path.join(CLAUDE_DIR, 'skills');
   const agentCount = fs.existsSync(agentDir) ? fs.readdirSync(agentDir).filter(f => f.endsWith('.md')).length : 0;
   const skillCount = fs.existsSync(skillDir) ? fs.readdirSync(skillDir).filter(f => f.endsWith('.md')).length : 0;
 
-  res.json({
+  let disk = null;
+  try {
+    const stats = fs.statfsSync(BASE);
+    disk = {
+      totalGB: Math.round((stats.blocks * stats.bsize) / 1073741824 * 10) / 10,
+      freeGB: Math.round((stats.bfree * stats.bsize) / 1073741824 * 10) / 10,
+    };
+  } catch { /* statfsSync unsupported on this platform/Node version — omit, don't fake it */ }
+
+  return {
     status: 'ok',
     uptime: Math.floor((Date.now() - startTime) / 1000),
     memoryMB: Math.round(process.memoryUsage().rss / 1048576),
+    systemMemory: { totalGB: Math.round(os.totalmem() / 1073741824 * 10) / 10, freeGB: Math.round(os.freemem() / 1073741824 * 10) / 10 },
+    loadAvg: os.loadavg(), // [1m, 5m, 15m] — 0s on Windows (unsupported there), real on Linux/the VPS
+    disk,
     version: require('./package.json').version,
     demoMode: DEMO_MODE,
     nodeEnv: process.env.NODE_ENV || 'development',
@@ -1208,7 +1224,12 @@ app.get('/api/health', (req, res) => {
     activeUsers: users.filter(u => u.plan && u.plan !== 'free').length,
     activeSessions: sessions.size,
     missionActive: workflows.size > 0,
-  });
+    hardBudgetTripped: (settings.security && settings.security.hard_budget === 'true') || process.env.AIOS_HARD_BUDGET === 'true',
+  };
+}
+
+app.get('/api/health', (req, res) => {
+  res.json(getHealthSnapshot());
 });
 
 // WebSocket server with auth + heartbeat
@@ -2520,9 +2541,9 @@ const OPUS_MODEL = 'claude-opus-4-8';
 const SONNET_MODEL = 'claude-sonnet-5';
 const OPUS_API_VERSION = '2023-06-01';
 const GEMINI_OMNI_MODEL = 'gemini-omni-flash';
-// xAI's dev-planning-tuned model (2026 release). Pricing/exact-alias details were flagged as having
-// conflicting figures across sources at integration time — verify against docs.x.ai before relying
-// on COST_RATES['grok-build-0.1'] for real budgeting.
+// xAI's dev-planning-tuned model (2026 release, agentic-coding-focused, 256k context). Reachability
+// and pricing confirmed 2026-07-05: a live API call succeeded, and $1.00/$2.00 per COST_RATES below
+// matches docs.x.ai's published rate for this model.
 const GROK_BUILD_MODEL = 'grok-build-0.1';
 
 // Effort-level routing: maps agent tiers to Opus 4.8 effort levels
@@ -3069,9 +3090,7 @@ const COST_RATES = {
   // External models
   'deepseek-v4':       { input: 0.14,  output: 0.28  },
   'grok-3':            { input: 3.00,  output: 15.00 },
-  // UNCONFIRMED at integration time — xAI's own docs and secondary reporting showed conflicting
-  // figures for grok-build-0.1 ($1.00/$2.00 per docs.x.ai vs $0.20/$1.50 in some grok-code-fast-1
-  // reporting it may supersede). Verify against docs.x.ai/developers/models before real budgeting.
+  // Confirmed 2026-07-05 against docs.x.ai/developers/models — $1.00/$2.00 per 1M tokens.
   'grok-build-0.1':    { input: 1.00,  output: 2.00 },
   'glm-5.2':           { input: 1.40,  output: 4.40  },   // Z.ai GLM-5.2 (OpenAI-compatible)
   // Gemini Omni — multimodal creative generation (video, image, audio)
@@ -4227,6 +4246,55 @@ app.post('/api/tech-radar/sweep', requireAdmin, (req, res) => {
 const schedules = new Map();
 const scheduleHistory = [];
 
+// Real task prompt per known skill — grounded in the platform's own live state where that's what
+// "real" means for the skill (uptime-check embeds an actual health snapshot rather than asking the
+// agent to guess), so a run without any connected search-capable MCP integration still produces an
+// honest result instead of hallucinated content.
+function buildScheduleTask(skill) {
+  switch (skill) {
+    case 'tech-radar':
+      return 'Run today\'s scheduled intelligence sweep per your Tier 1 source list and Crawl Protocol. Produce the Tech Radar Report exactly per your Output Format and save it to the Output Location specified in your instructions.';
+    case 'research-brief':
+      return 'Produce today\'s research brief: trending topics, industry news, and competitive intelligence relevant to this platform, with cited sources.';
+    case 'uptime-check':
+      return `Review this real health snapshot of the running AI OS instance and report status (healthy/degraded/critical). Flag any concerning metrics (low free disk/memory, high load average) and recommend action ONLY if something is actually wrong — do not invent metrics not shown here, and do not recommend restarting or patching anything without explicit approval per your own gotchas.\n\n${JSON.stringify(getHealthSnapshot(), null, 2)}`;
+    default:
+      return `Execute the scheduled skill "${skill}".`;
+  }
+}
+
+// Real "did this run actually produce grounded findings" dispatcher — shared by the cron scheduler
+// (runScheduledAgent) and Hermes's on-demand delegate (news-brief/uptime-check modes), so both paths
+// share one execution + logging + broadcast path instead of duplicating it. useMcpTools is passed
+// through unconditionally: if the operator has a connected search-capable MCP integration, tool-use
+// engages (subject to the same Auto-Mode approval gate as any other MCP call); if not, executeAgent
+// simply falls back to a plain (tool-less) call — no new failure mode either way.
+async function dispatchSkillRun({ agent, skill, task }) {
+  const runEntry = { id: uuidv4(), agent, skill, startedAt: new Date().toISOString(), status: 'running' };
+  scheduleHistory.unshift(runEntry);
+  if (scheduleHistory.length > 100) scheduleHistory.length = 100;
+  broadcast({ event: 'fleet_update', data: { agent, status: 'running' } });
+
+  try {
+    const result = await executeAgent(agent, task, { useMcpTools: true, skill: `schedule:${skill}`, maxTokens: 6000 });
+    runEntry.completedAt = new Date().toISOString();
+    if (!result.ok) {
+      runEntry.status = 'failed';
+      runEntry.error = result.error;
+    } else {
+      runEntry.status = 'completed';
+      runEntry.summary = String(result.content || '').slice(0, 4000);
+    }
+  } catch (e) {
+    runEntry.status = 'failed';
+    runEntry.error = e.message;
+    runEntry.completedAt = new Date().toISOString();
+  }
+  broadcast({ event: 'fleet_update', data: { agent, status: 'idle' } });
+  logActivity('schedule', `${agent} → ${skill}: ${runEntry.status}`);
+  return runEntry;
+}
+
 function runScheduledAgent(scheduleId) {
   const sched = schedules.get(scheduleId);
   if (!sched || !sched.enabled) return;
@@ -4234,62 +4302,25 @@ function runScheduledAgent(scheduleId) {
   sched.lastRun = new Date().toISOString();
   sched.runCount = (sched.runCount || 0) + 1;
   sched.status = 'running';
-
-  const runEntry = {
-    id: uuidv4(),
-    scheduleId,
-    agent: sched.agent,
-    skill: sched.skill,
-    startedAt: sched.lastRun,
-    status: 'running',
-  };
-  scheduleHistory.unshift(runEntry);
-  if (scheduleHistory.length > 100) scheduleHistory.length = 100;
-
-  logActivity('schedule', `Scheduled run: ${sched.agent} → ${sched.skill}`);
   appendLog(`SCHEDULE_RUN: ${sched.agent} (${sched.skill}) [${scheduleId}]`);
-
-  broadcast({ event: 'fleet_update', data: { agent: sched.agent, status: 'running' } });
   broadcast({ event: 'schedule_update', data: { ...sched, _job: undefined } });
 
-  // Simulate agent execution (in production, this would invoke Claude Code CLI or Codex)
-  setTimeout(() => {
+  dispatchSkillRun({ agent: sched.agent, skill: sched.skill, task: buildScheduleTask(sched.skill) }).then((runEntry) => {
     sched.status = 'idle';
     sched.nextRun = getNextRun(sched.cron);
-    runEntry.status = 'completed';
-    runEntry.completedAt = new Date().toISOString();
-
-    broadcast({ event: 'fleet_update', data: { agent: sched.agent, status: 'idle' } });
     broadcast({ event: 'schedule_update', data: { ...sched, _job: undefined } });
+    if (runEntry.status !== 'completed') return;
 
-    logActivity('schedule', `Scheduled run completed: ${sched.agent} → ${sched.skill}`);
-
-    // For scout, broadcast that findings are ready for review
-    if (sched.agent === 'scout') {
-      broadcast({
-        event: 'activity',
-        data: {
-          id: uuidv4(),
-          type: 'radar',
-          message: 'Daily intelligence sweep completed — review new findings in Tech Radar',
-          timestamp: new Date().toISOString(),
-        },
-      });
-    }
-
-    // For researcher, broadcast that brief is ready
-    if (sched.agent === 'researcher') {
-      broadcast({
-        event: 'activity',
-        data: {
-          id: uuidv4(),
-          type: 'skill',
-          message: 'Daily research brief completed — new insights available in Artifacts',
-          timestamp: new Date().toISOString(),
-        },
-      });
-    }
-  }, 8000);
+    const messages = {
+      'tech-radar': 'Daily intelligence sweep completed — review new findings in Tech Radar',
+      'research-brief': 'Daily research brief completed — new insights available in Artifacts',
+      'uptime-check': 'Scheduled uptime check completed — see Schedules history for the report',
+    };
+    broadcast({
+      event: 'activity',
+      data: { id: uuidv4(), type: sched.agent === 'scout' ? 'radar' : 'skill', message: messages[sched.skill] || `${sched.description} completed`, timestamp: new Date().toISOString() },
+    });
+  });
 }
 
 function getNextRun(cronExpr) {
@@ -4352,6 +4383,13 @@ createSchedule('sched-researcher-daily', {
   skill: 'research-brief',
   cron: '0 7 * * *',  // 7:00 AM daily
   description: 'Daily research brief — gather trending topics, industry news, and competitive intelligence',
+});
+
+createSchedule('sched-sysadmin-uptime', {
+  agent: 'sysadmin',
+  skill: 'uptime-check',
+  cron: '*/30 * * * *',  // every 30 minutes
+  description: 'VPS and service health monitor — reviews a real health snapshot and flags anything degraded',
 });
 
 // --- Schedule API ---
@@ -6197,17 +6235,20 @@ const hermesState = {
   stats: { tasksCompleted: 0, tasksFailed: 0, approvalsPending: 0, cronExecutions: 0 },
 };
 
-// The dev-project planning skill is REAL — an in-process dispatch to dev-architect-grok (Grok
-// Build), gated behind human approval for apply/distribution-pr — regardless of DEMO_MODE. It is
-// not an MCP connection (the user explicitly chose an in-process dispatcher over a standalone MCP
-// server), so it works even when there's no Hermes MCP server to connect to. Every other skill
-// below is still 100% simulated pending its own real backend — do not read `connected: true` as
-// "all of Hermes is live."
+// These skills are REAL — in-process dispatch to a real agent via executeAgent/dispatchSkillRun,
+// regardless of DEMO_MODE. None of them are an MCP connection (the user explicitly chose an
+// in-process dispatcher over a standalone MCP server), so they work even when there's no Hermes MCP
+// server to connect to. Every other skill below is still 100% simulated pending its own real backend
+// (inbox-summary needs a from-scratch email/OAuth integration; comment-monitor needs YouTube/social
+// polling; github-backup's scope — snapshot this platform's own state vs. mirror managed repos — is
+// still undecided) — do not read `connected: true` as "all of Hermes is live."
 const HERMES_REAL_SKILLS = [
   { name: 'dev-project', description: 'Plan + gated-apply platform upgrades via Grok Build (dev-architect-grok)', real: true },
+  { name: 'news-brief', description: 'AI/tech intelligence sweep via the scout agent (also runs on its own daily schedule)', real: true },
+  { name: 'uptime-check', description: 'Real health-snapshot review via the sysadmin agent (also runs every 30 min on its own schedule)', real: true },
 ];
 
-// Simulate Hermes connection check (except dev-project, which is real — see HERMES_REAL_SKILLS)
+// Simulate Hermes connection check (except HERMES_REAL_SKILLS, which are real)
 function checkHermesConnection() {
   if (DEMO_MODE) {
     hermesState.connected = true;
@@ -6216,14 +6257,12 @@ function checkHermesConnection() {
     hermesState.skills = [
       ...HERMES_REAL_SKILLS,
       { name: 'inbox-summary', description: 'Daily email inbox digest' },
-      { name: 'news-brief', description: 'Morning AI/tech news roundup' },
       { name: 'github-backup', description: 'Nightly repository backup' },
       { name: 'comment-monitor', description: 'YouTube/social comment tracker' },
-      { name: 'uptime-check', description: 'VPS and service health monitor' },
     ];
     return true;
   }
-  // No real Hermes MCP server to connect to — but dev-project dispatch works anyway (see above).
+  // No real Hermes MCP server to connect to — but HERMES_REAL_SKILLS dispatch works anyway (see above).
   hermesState.skills = HERMES_REAL_SKILLS;
   return false;
 }
@@ -6245,7 +6284,7 @@ app.get('/api/hermes/status', (req, res) => {
 app.post('/api/hermes/delegate', requireAdmin, (req, res) => {
   const errors = validateBody(req.body, {
     task: { type: 'string', required: true, maxLength: 2000 },
-    mode: { type: 'string' }, // 'background' | 'walkaway' | 'cron' | 'dev-project'
+    mode: { type: 'string' }, // 'background' | 'walkaway' | 'cron' | 'dev-project' | 'news-brief' | 'uptime-check'
   });
   if (errors) return res.status(400).json({ error: errors.join(', ') });
 
@@ -6300,6 +6339,33 @@ app.post('/api/hermes/delegate', requireAdmin, (req, res) => {
       } else {
         delegated.status = 'failed';
         delegated.log.push(`Planning failed: ${planRecord.error}`);
+      }
+      broadcast({ event: 'hermes_complete', data: delegated });
+    });
+  } else if (mode === 'news-brief' || mode === 'uptime-check') {
+    // REAL dispatch (see HERMES_REAL_SKILLS) — reuses the exact same dispatchSkillRun path the cron
+    // scheduler uses (buildScheduleTask/dispatchSkillRun), just triggered on-demand instead of by
+    // node-cron. The operator's free-text `task` is an optional focus note, not the real grounding —
+    // buildScheduleTask() supplies the actual prompt (for uptime-check, a real live health snapshot).
+    const agent = mode === 'news-brief' ? 'scout' : 'sysadmin';
+    const skill = mode === 'news-brief' ? 'tech-radar' : 'uptime-check';
+    let realTask = buildScheduleTask(skill);
+    if (task && task.trim() && task.trim().toLowerCase() !== mode) realTask += `\n\nOperator focus note: ${task.trim()}`;
+    delegated.status = 'running';
+    delegated.progress = 20;
+    delegated.log.push(`Handed off to ${agent} for real execution`);
+    broadcast({ event: 'hermes_progress', data: delegated });
+
+    dispatchSkillRun({ agent, skill, task: realTask }).then((runEntry) => {
+      if (runEntry.status === 'completed') {
+        delegated.status = 'complete';
+        delegated.progress = 100;
+        delegated.completedAt = new Date().toISOString();
+        delegated.log.push('Run completed — see result below');
+        delegated.result = runEntry.summary;
+      } else {
+        delegated.status = 'failed';
+        delegated.log.push(`Run failed: ${runEntry.error}`);
       }
       broadcast({ event: 'hermes_complete', data: delegated });
     });

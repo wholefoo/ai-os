@@ -5447,6 +5447,8 @@ function showDelegateModal() {
           <option value="walkaway">Walkaway — progress pings to mobile</option>
           <option value="cron">Cron — scheduled recurring task</option>
           <option value="dev-project">Dev Project — Grok Build plans a platform upgrade (real)</option>
+          <option value="news-brief">News Brief — real scout intelligence sweep (real)</option>
+          <option value="uptime-check">Uptime Check — real sysadmin health review (real)</option>
         </select></div>
       <div id="hermesCronScheduleWrap" style="display:none;">
         <label class="form-label">Cron Schedule</label>
@@ -5470,9 +5472,10 @@ function showDelegateModal() {
     </div>
   `);
   document.getElementById('hermesMode').addEventListener('change', (e) => {
-    document.getElementById('hermesCronScheduleWrap').style.display = e.target.value === 'cron' ? 'block' : 'none';
-    document.getElementById('hermesDevProjectWrap').style.display = e.target.value === 'dev-project' ? 'block' : 'none';
-    document.getElementById('hermesNotifyWrap').style.display = e.target.value === 'dev-project' ? 'none' : 'block';
+    const v = e.target.value;
+    document.getElementById('hermesCronScheduleWrap').style.display = v === 'cron' ? 'block' : 'none';
+    document.getElementById('hermesDevProjectWrap').style.display = v === 'dev-project' ? 'block' : 'none';
+    document.getElementById('hermesNotifyWrap').style.display = (v === 'dev-project' || v === 'news-brief' || v === 'uptime-check') ? 'none' : 'block';
   });
 }
 
