@@ -93,6 +93,9 @@ Each virtual employee maps to an AI agent with a specific model tier, can receiv
 - **Risk-Scored Actions** — Each action is risk-scored, with secrets stripped from the audit trail
 - **Agent-Buyable Offers** — High-impact purchases (e.g. the Managed Website add-on) route through the gate rather than running unattended
 
+### Self-Improve (Grok Build)
+- **Grok Build (the dev-architect-grok agent)** — Plans upgrades to this platform and can propose a distribution blueprint as a draft PR against this repo. Every apply and every PR always requires explicit human approval, regardless of Auto-Mode setting.
+
 ### Security Suite (Opt-In)
 - **AI Security Self-Assessment** — STRIDE threat-model + [semgrep](https://semgrep.dev) static analysis + an AI blue-team review loop, run on demand or on a schedule from an operator **Security dashboard** (driven by the [mythos-defense](https://github.com/wholefoo/mythos-defense) engine). **Report-only** — it surfaces findings and patch *recommendations*, and never auto-patches the live system
 - **Web Studio Publish Gate** — every generated or imported site is security-scanned (read-only) before it goes live; configurable `off` / `warn` / `block`
@@ -359,7 +362,7 @@ PUT  /api/settings/:section         Update settings
 POST /api/settings/test/:service    Test API connection
 POST /api/seo/audit                 Launch SEO audit
 POST /api/seo/briefs/:id            Generate content briefs
-POST /api/seo/calendar/:id          Generate content calendar
+POST /api/seo/calendar/:id            Generate content calendar
 POST /api/seo/meta/:id              Optimize meta tags
 POST /api/omni/generate             Gemini Omni creative generation
 GET  /api/omni/capabilities         List generation types
