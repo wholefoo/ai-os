@@ -27,6 +27,29 @@
   }
   </script>
   <script type="application/ld+json">{"@context":"https://schema.org","@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Home","item":"https://aiosorchestrationlab.com/"},{"@type":"ListItem","position":2,"name":"Documentation","item":"https://aiosorchestrationlab.com/docs/"},{"@type":"ListItem","position":3,"name":"Hermes Agent"}]}</script>
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "FAQPage",
+    "mainEntity": [
+      {
+        "@type": "Question",
+        "name": "Is Hermes a separate server I need to run?",
+        "acceptedAnswer": { "@type": "Answer", "text": "No. Hermes's real skills run as an in-process dispatcher inside your AI OS instance — there is no standalone Hermes MCP server to install or manage." }
+      },
+      {
+        "@type": "Question",
+        "name": "How do I know if a Hermes skill is real or simulated?",
+        "acceptedAnswer": { "@type": "Answer", "text": "Check the Scheduled Skills tables in this doc, or call GET /api/hermes/status — each entry in the returned skills array is tagged real: true when it dispatches to an actual agent." }
+      },
+      {
+        "@type": "Question",
+        "name": "How is Hermes's Dev Project skill different from Self-Improve?",
+        "acceptedAnswer": { "@type": "Answer", "text": "They're the same underlying feature reached two ways — Dev Project is Self-Improve's planning flow triggered through Hermes's delegate API instead of the dedicated Self-Improve dashboard view." }
+      }
+    ]
+  }
+  </script>
 </head>
 <body>
   <nav class="landing-nav">
@@ -111,24 +134,50 @@
             <li>Optionally, approve a fix from mobile</li>
           </ol>
 
-          <h2 id="cron-jobs">24/7 Cron Jobs</h2>
-          <p>While AI OS requires your environment to be open, Hermes runs persistently. Delegate scheduled tasks that execute automatically:</p>
+          <h2 id="cron-jobs">Scheduled Skills</h2>
+          <p>Hermes has six named skills. Three run for real today — dispatched to a real agent on a schedule, or on demand from the dashboard or via <code>/api/hermes/delegate</code>. The other three are still simulated pending their own real integrations.</p>
 
+          <h3 id="real-skills">Real skills</h3>
           <table class="docs-table">
             <thead>
               <tr><th>Job</th><th>Schedule</th><th>Description</th></tr>
             </thead>
             <tbody>
-              <tr><td><strong>Inbox Summary</strong></td><td><code>0 8 * * *</code></td><td>Daily email digest pushed to Telegram</td></tr>
-              <tr><td><strong>AI News Brief</strong></td><td><code>30 7 * * 1-5</code></td><td>Weekday morning AI/tech roundup</td></tr>
-              <tr><td><strong>GitHub Backup</strong></td><td><code>0 2 * * *</code></td><td>Nightly repository backup to secondary location</td></tr>
-              <tr><td><strong>Comment Monitor</strong></td><td><code>0 */4 * * *</code></td><td>YouTube/social comment tracker every 4 hours</td></tr>
-              <tr><td><strong>Health Check</strong></td><td><code>*/30 * * * *</code></td><td>Platform health, memory, and service monitoring</td></tr>
+              <tr><td><strong>Dev Project</strong></td><td>On demand</td><td>Grok Build plans a platform upgrade — see <a href="/docs/self-improve">Self-Improve</a></td></tr>
+              <tr><td><strong>News Brief</strong></td><td><code>0 6 * * *</code></td><td>Live intelligence sweep via the scout agent</td></tr>
+              <tr><td><strong>Uptime Check</strong></td><td><code>*/30 * * * *</code></td><td>Health-snapshot review via the sysadmin agent (real disk, memory, and load metrics)</td></tr>
             </tbody>
           </table>
 
-          <h2 id="self-improving-skills">Self-Improving Skills</h2>
-          <p>Hermes has an autonomous "do, learn, improve" loop. When it solves a complex problem, it extracts the successful patterns and writes them into reusable skill files for faster future execution. These skills are stored on the platform and available to all agents in your tenant.</p>
+          <h3 id="simulated-skills">Simulated skills</h3>
+          <p>The schedule and dashboard UI exist for these, but delegating them does not yet call a real agent or touch a real external service — treat their output as a placeholder, not a real result:</p>
+          <table class="docs-table">
+            <thead>
+              <tr><th>Job</th><th>Schedule</th><th>Why it's not real yet</th></tr>
+            </thead>
+            <tbody>
+              <tr><td><strong>Inbox Summary</strong></td><td><code>0 8 * * *</code></td><td>No email/OAuth integration yet</td></tr>
+              <tr><td><strong>GitHub Backup</strong></td><td><code>0 2 * * *</code></td><td>Scope not yet decided (state snapshot vs. repo mirror)</td></tr>
+              <tr><td><strong>Comment Monitor</strong></td><td><code>0 */4 * * *</code></td><td>No YouTube/social polling integration yet</td></tr>
+            </tbody>
+          </table>
+
+          <h2 id="self-improving-skills">Platform Self-Improvement</h2>
+          <p>Hermes's <strong>Dev Project</strong> skill hands off to <a href="/docs/self-improve">Self-Improve</a>, which reads AI OS's own code and proposes upgrade plans using xAI's Grok Build — either to apply to your instance or as a draft pull request against the public distribution repo. Every apply and every PR always requires your explicit approval; see the Self-Improve docs for the full safety architecture.</p>
+
+          <h2 id="faq">Frequently asked questions</h2>
+          <div class="docs-callout info">
+            <strong>Is Hermes a separate server I need to run?</strong>
+            <p>No. Hermes's real skills run as an in-process dispatcher inside your AI OS instance — there is no standalone Hermes MCP server to install or manage.</p>
+          </div>
+          <div class="docs-callout info">
+            <strong>How do I know if a Hermes skill is real or simulated?</strong>
+            <p>Check the tables above, or call <code>GET /api/hermes/status</code> — each entry in the returned <code>skills</code> array is tagged <code>real: true</code> when it dispatches to an actual agent.</p>
+          </div>
+          <div class="docs-callout info">
+            <strong>How is Hermes's Dev Project skill different from Self-Improve?</strong>
+            <p>They're the same underlying feature reached two ways — Dev Project is Self-Improve's planning flow triggered through Hermes's delegate API instead of the dedicated Self-Improve dashboard view. See <a href="/docs/self-improve">Self-Improve</a> for the full picture.</p>
+          </div>
 
           <h2 id="api-endpoints">API Endpoints</h2>
 
@@ -141,7 +190,7 @@
           <div class="docs-endpoint">
             <span class="docs-endpoint-method post">POST</span>
             <span class="docs-endpoint-path">/api/hermes/delegate</span>
-            <p class="docs-endpoint-desc">Delegate a task to Hermes. Modes: background, walkaway, or cron.</p>
+            <p class="docs-endpoint-desc">Delegate a task to Hermes. Modes: <code>background</code>, <code>walkaway</code>, <code>cron</code> (simulated), or the real <code>dev-project</code>, <code>news-brief</code>, <code>uptime-check</code>.</p>
           </div>
 
           <div class="docs-endpoint">
@@ -195,7 +244,7 @@
 
           <div class="docs-page-nav">
             <a href="/docs/notifications">&larr; Notifications</a>
-            <span></span>
+            <a href="/docs/self-improve">Self-Improve &rarr;</a>
           </div>
         </div>
 
@@ -205,8 +254,9 @@
           <a href="#remote-approval-gate">Approval Gate</a>
           <a href="#walkaway-mode">Walkaway Mode</a>
           <a href="#remote-bug-diagnosis">Bug Diagnosis</a>
-          <a href="#cron-jobs">Cron Jobs</a>
-          <a href="#self-improving-skills">Skills</a>
+          <a href="#cron-jobs">Scheduled Skills</a>
+          <a href="#self-improving-skills">Self-Improvement</a>
+          <a href="#faq">FAQ</a>
           <a href="#api-endpoints">API</a>
           <a href="#configuration">Configuration</a>
         </aside>

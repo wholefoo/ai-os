@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Self-Improve (Grok Build) — AI OS Docs</title>
+  <meta name="description" content="Self-Improve uses xAI's Grok Build to plan platform upgrades and propose draft GitHub PRs. Every apply and every PR always requires your explicit approval.">
+  <link rel="canonical" href="https://aiosorchestrationlab.com/docs/self-improve">
+  <meta property="og:title" content="Self-Improve (Grok Build) — AI OS Docs">
+  <meta property="og:description" content="An agent plans upgrades to AI OS itself using xAI's Grok Build, and can open a draft PR against the public repo. Nothing applies or merges without your approval.">
+  <meta name="twitter:card" content="summary">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/css/landing.css">
+  <link rel="stylesheet" href="/css/docs.css">
+  <script async src="https://www.googletagmanager.com/gtag/js?id=G-SMHYRX8D4P"></script>
+  <script>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}gtag('js',new Date());gtag('config','G-SMHYRX8D4P');</script>
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "TechArticle",
+    "headline": "Self-Improve (Grok Build) — AI OS Docs",
+    "description": "Self-Improve uses xAI's Grok Build to plan platform upgrades and propose draft GitHub PRs. Every apply and every PR always requires your explicit approval.",
+    "url": "https://aiosorchestrationlab.com/docs/self-improve",
+    "author": { "@type": "Organization", "name": "AI OS Orchestration Lab" },
+    "publisher": { "@type": "Organization", "name": "AI OS Orchestration Lab", "url": "https://aiosorchestrationlab.com" }
+  }
+  </script>
+  <script type="application/ld+json">{"@context":"https://schema.org","@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Home","item":"https://aiosorchestrationlab.com/"},{"@type":"ListItem","position":2,"name":"Documentation","item":"https://aiosorchestrationlab.com/docs/"},{"@type":"ListItem","position":3,"name":"Self-Improve"}]}</script>
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "FAQPage",
+    "mainEntity": [
+      {
+        "@type": "Question",
+        "name": "Does Self-Improve apply changes to my platform automatically?",
+        "acceptedAnswer": { "@type": "Answer", "text": "No. Every apply to your own running instance requires your explicit approval in the Approvals queue, regardless of your Auto-Mode setting. There is no auto-apply tier for this feature — the automation ceiling that lets other action types run unattended in 'auto' mode is deliberately bypassed here." }
+      },
+      {
+        "@type": "Question",
+        "name": "Can Self-Improve merge a pull request or push directly to my repo's default branch?",
+        "acceptedAnswer": { "@type": "Answer", "text": "No. It can only create a new branch and open a draft pull request. There is no code path that updates an existing branch ref, so it cannot touch your default branch even in principle. Merging is always a manual step you take yourself on GitHub." }
+      },
+      {
+        "@type": "Question",
+        "name": "Which AI OS tier includes Self-Improve?",
+        "acceptedAnswer": { "@type": "Answer", "text": "Self-Improve (the dev-architect-grok agent) is part of the open-source Community core — it is not gated behind a commercial license. It is a separate system from the Enterprise-only self-improving Telegram-approval module described in the Notifications docs." }
+      },
+      {
+        "@type": "Question",
+        "name": "What happens if a proposed plan is wrong or the apply fails partway through?",
+        "acceptedAnswer": { "@type": "Answer", "text": "Applying a plan first takes a git snapshot commit, so there is always a rollback point. If any file write in the plan fails, the apply engine automatically reverts tracked-file changes to that snapshot and removes anything it had newly created, rather than leaving your repo half-updated." }
+      }
+    ]
+  }
+  </script>
+</head>
+<body>
+  <nav class="landing-nav">
+    <div class="nav-container">
+      <a href="/" class="nav-brand">
+        <span class="nav-logo">&#9678;</span>
+        <span class="nav-name">AI OS</span>
+      </a>
+      <div class="nav-links">
+        <a href="/">Home</a>
+        <a href="/docs" class="active">Docs</a>
+        <a href="/blog">Blog</a>
+        <a href="/about">About</a>
+        <a href="/contact">Contact</a>
+      </div>
+      <div class="nav-cta">
+        <a href="/login" class="btn-nav-login">Log In</a>
+      </div>
+    </div>
+  </nav>
+
+  <main class="docs-page">
+    <div class="docs-container">
+      <div class="docs-layout">
+        <div class="docs-content">
+          <div class="docs-breadcrumb">
+            <a href="/docs">Docs</a> <span>/</span> Self-Improve
+          </div>
+
+          <h1>Self-Improve (Grok Build)</h1>
+          <p class="docs-lead">Self-Improve is AI OS's platform-upgrade planner: an agent called <code>dev-architect-grok</code>, powered by xAI's <code>grok-build-0.1</code> model, reads this platform's own real source code and proposes a structured upgrade plan — either to apply to your own running instance, or as a draft pull request against the public distribution repo. Every apply and every PR always requires your explicit approval; nothing executes automatically, regardless of your Auto-Mode setting.</p>
+
+          <h2 id="how-it-works">How it works</h2>
+          <p>You describe a goal in plain language — a feature, a refactor, a dependency upgrade, a bug fix — from the <strong>Self-Improve</strong> dashboard view or via Hermes's <code>dev-project</code> delegation mode. From there:</p>
+          <ol>
+            <li><code>dev-architect-grok</code> reads the real codebase using bounded, read-only <code>Read</code>/<code>Grep</code>/<code>Glob</code> tools — it never guesses at a file it hasn't actually looked at</li>
+            <li>It returns a structured plan: a summary, a risk rating, rollback notes, and the complete new content of every file it touches</li>
+            <li>You review the plan in the dashboard, including the full proposed content of every file — not just a path and a one-line reason</li>
+            <li>You choose to apply it to this instance, propose it as a distribution blueprint, or discard it</li>
+            <li>Either action queues to your Approvals inbox; nothing happens until you approve it there</li>
+          </ol>
+          <p>The agent has no write access of its own — <code>Read</code>/<code>Grep</code>/<code>Glob</code> only. A separate, code-enforced executor is the only thing that ever touches disk or calls the GitHub API, and only after your approval.</p>
+
+          <h2 id="apply-vs-distribution">Two ways to use a plan</h2>
+
+          <h3 id="apply-to-instance">Apply to this instance</h3>
+          <p>Writes the plan's files directly into your own running AI OS installation. Before any write happens, the apply engine takes a git snapshot commit as a rollback point — if anything fails partway through, it automatically reverts to that snapshot rather than leaving a half-applied repo. Every file path is checked against a denylist (secrets, <code>.git/</code>, <code>node_modules/</code>, the private commercial module) and every write is atomic.</p>
+
+          <h3 id="distribution-blueprint">Propose a distribution blueprint</h3>
+          <p>Opens a <strong>draft</strong> pull request on a brand-new branch against your configured distribution repository (by default, the public <a href="https://github.com/wholefoo/ai-os" target="_blank" rel="noopener">wholefoo/ai-os</a> repo). This path has no code that can update an existing branch ref, so it structurally cannot touch your default branch. You review, edit, close, or merge the resulting PR yourself on GitHub — Self-Improve never merges anything.</p>
+
+          <h2 id="safety">Safety architecture</h2>
+          <p>Self-Improve is the platform proposing changes to its own code, so it's held to a higher bar than routine automation:</p>
+          <ul>
+            <li><strong>Always gated, no exceptions</strong> — applying a plan and opening a distribution PR are hard-coded to always require human approval, independent of your Auto-Mode setting (even "auto" mode, which lets other action types run unattended, does not bypass this)</li>
+            <li><strong>Git snapshot before every write</strong> — no snapshot, no apply; this is enforced, not best-effort</li>
+            <li><strong>A checked path denylist</strong> — re-validated at apply time even though the plan was already checked when proposed, and hardened against case-insensitive filesystems, symlink/junction escapes, and reserved Windows device names</li>
+            <li><strong>Draft-PR-only distribution</strong> — the only way to publish a blueprint is a new branch and a draft PR; there is no path that writes to your default branch</li>
+          </ul>
+
+          <h2 id="hermes-integration">Hermes integration</h2>
+          <p>Self-Improve's dev-project planning is also reachable through <a href="/docs/hermes">Hermes</a>, alongside two other real Hermes skills that ship with this feature: <strong>news-brief</strong> (a live intelligence sweep via the scout agent) and <strong>uptime-check</strong> (a health-snapshot review via the sysadmin agent, backed by real disk, memory, and load metrics). Hermes's other skills — inbox summaries, GitHub repository backups, and social comment monitoring — remain simulated pending their own real integrations.</p>
+
+          <h2 id="configuration">Configuration</h2>
+          <table class="docs-table">
+            <thead>
+              <tr><th>Setting</th><th>Where</th><th>Description</th></tr>
+            </thead>
+            <tbody>
+              <tr><td><code>xai_api_key</code></td><td>Settings &rarr; AI Keys</td><td>xAI API key used to call <code>grok-build-0.1</code> (same key used for Grok live search)</td></tr>
+              <tr><td><code>self_improve.github_pat</code></td><td>Settings &rarr; Self-Improve</td><td>GitHub personal access token, repo scope — used only to open draft distribution PRs</td></tr>
+              <tr><td><code>self_improve.distribution_repo</code></td><td>Settings &rarr; Self-Improve</td><td>Target <code>owner/repo</code> for distribution blueprints (defaults to <code>wholefoo/ai-os</code>)</td></tr>
+            </tbody>
+          </table>
+
+          <h2 id="api-endpoints">API Endpoints</h2>
+
+          <div class="docs-endpoint">
+            <span class="docs-endpoint-method post">POST</span>
+            <span class="docs-endpoint-path">/api/self-improve/plan</span>
+            <p class="docs-endpoint-desc">Submit a goal for dev-architect-grok to plan. Body: <code>{ "goal": "...", "distribution": false }</code></p>
+          </div>
+
+          <div class="docs-endpoint">
+            <span class="docs-endpoint-method get">GET</span>
+            <span class="docs-endpoint-path">/api/self-improve/plans</span>
+            <p class="docs-endpoint-desc">List all plans, newest first.</p>
+          </div>
+
+          <div class="docs-endpoint">
+            <span class="docs-endpoint-method get">GET</span>
+            <span class="docs-endpoint-path">/api/self-improve/plans/:id</span>
+            <p class="docs-endpoint-desc">Get a single plan's full detail, including proposed file content.</p>
+          </div>
+
+          <div class="docs-endpoint">
+            <span class="docs-endpoint-method post">POST</span>
+            <span class="docs-endpoint-path">/api/self-improve/plans/:id/apply</span>
+            <p class="docs-endpoint-desc">Request applying a ready plan to this instance. Always queues to Approvals.</p>
+          </div>
+
+          <div class="docs-endpoint">
+            <span class="docs-endpoint-method post">POST</span>
+            <span class="docs-endpoint-path">/api/self-improve/plans/:id/distribution-pr</span>
+            <p class="docs-endpoint-desc">Request opening a draft PR for a ready plan. Always queues to Approvals.</p>
+          </div>
+
+          <h2 id="faq">Frequently asked questions</h2>
+          <div class="docs-callout info">
+            <strong>Does Self-Improve apply changes automatically?</strong>
+            <p>No. Every apply and every distribution PR requires your explicit approval, regardless of your Auto-Mode setting — there is no auto-apply tier for this feature.</p>
+          </div>
+          <div class="docs-callout info">
+            <strong>Can it merge a PR or push to my default branch?</strong>
+            <p>No. It can only open a new branch and a draft pull request. Merging is always a manual step you take yourself on GitHub.</p>
+          </div>
+          <div class="docs-callout info">
+            <strong>Which tier includes this?</strong>
+            <p>Community — it's part of the open-source core, not gated behind a commercial license. It's a separate system from the Enterprise-only self-improving Telegram-approval module (see <a href="/docs/notifications">Notifications</a>).</p>
+          </div>
+
+          <div class="docs-page-nav">
+            <a href="/docs/hermes">&larr; Hermes Agent</a>
+            <a href="/docs/skills">Skills &amp; Pipelines &rarr;</a>
+          </div>
+        </div>
+
+        <aside class="docs-toc">
+          <div class="docs-toc-title">On this page</div>
+          <a href="#how-it-works">How It Works</a>
+          <a href="#apply-vs-distribution">Apply vs. Distribution</a>
+          <a href="#safety">Safety</a>
+          <a href="#hermes-integration">Hermes Integration</a>
+          <a href="#configuration">Configuration</a>
+          <a href="#api-endpoints">API</a>
+          <a href="#faq">FAQ</a>
+        </aside>
+      </div>
+    </div>
+  </main>
+
+  <footer class="site-footer">
+    <div class="footer-container">
+      <div class="footer-brand">
+        <span class="nav-logo">&#9678;</span>
+        <span class="nav-name">AI OS</span>
+        <p class="footer-tagline">The Agentic Operating System</p>
+      </div>
+      <div class="footer-links">
+        <div class="footer-col">
+          <h4>Product</h4>
+          <a href="/#features">Features</a>
+          <a href="/#pricing">Pricing</a>
+          <a href="/docs">Documentation</a>
+        </div>
+        <div class="footer-col">
+          <h4>Resources</h4>
+          <a href="/blog">Blog</a>
+          <a href="/about">About</a>
+          <a href="/contact">Contact</a>
+        </div>
+        <div class="footer-col">
+          <h4>Legal</h4>
+          <a href="/trust">Trust &amp; Security</a>
+          <a href="/terms">Terms of Service</a>
+          <a href="/privacy">Privacy Policy</a>
+        </div>
+      </div>
+    </div>
+    <div class="footer-bottom">
+      <p>&copy; 2026 AI OS Orchestration Lab. All rights reserved.</p>
+    </div>
+  </footer>
+</body>
+</html>

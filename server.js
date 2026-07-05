@@ -808,6 +808,7 @@ app.get('/sitemap.xml', (req, res) => {
     { url: '/docs/notifications', priority: '0.5', freq: 'monthly' },
     { url: '/docs/security', priority: '0.7', freq: 'monthly' },
     { url: '/docs/hermes', priority: '0.7', freq: 'monthly' },
+    { url: '/docs/self-improve', priority: '0.7', freq: 'monthly' },
     { url: '/docs/billing', priority: '0.6', freq: 'monthly' },
     { url: '/docs/license-community', priority: '0.5', freq: 'yearly' },
     { url: '/docs/license-business', priority: '0.5', freq: 'yearly' },
@@ -1170,7 +1171,7 @@ app.get('/privacy', (req, res) => res.sendFile(path.join(BASE, 'dashboard', 'pri
 
 // Documentation pages
 app.get('/docs', (req, res) => res.sendFile(path.join(BASE, 'dashboard', 'docs', 'index.html')));
-const docPages = ['getting-started','architecture','agents','skills','knowledge-graph','design-system','media-production','monetization','batch-queue','api','deployment','notifications','security','hermes','billing','license-community','license-business','license-enterprise'];
+const docPages = ['getting-started','architecture','agents','skills','knowledge-graph','design-system','media-production','monetization','batch-queue','api','deployment','notifications','security','hermes','self-improve','billing','license-community','license-business','license-enterprise'];
 docPages.forEach(page => {
   app.get(`/docs/${page}`, (req, res) => res.sendFile(path.join(BASE, 'dashboard', 'docs', `${page}.html`)));
 });
