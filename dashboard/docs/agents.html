@@ -4,10 +4,10 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Agent Fleet — AI OS Docs</title>
-  <meta name="description" content="Complete guide to all 55 AI agents, powered by 6 AI models across 4 routing tiers — Claude Opus 4.8, OpenAI/GPT, Gemini Omni, DeepSeek, Grok (xAI), and Perplexity. Includes SEO &amp; AEO Agency sub-agents, AI Web Studio crew, and Legal department.">
+  <meta name="description" content="Complete guide to all 57 AI agents, powered by 6 AI models across 4 routing tiers — Claude Opus 4.8, OpenAI/GPT, Gemini Omni, DeepSeek, Grok (xAI), and Perplexity. Includes SEO &amp; AEO Agency sub-agents, AI Web Studio crew, and Legal department.">
   <link rel="canonical" href="https://aiosorchestrationlab.com/docs/agents">
   <meta property="og:title" content="Agent Fleet — AI OS Docs">
-  <meta property="og:description" content="All 55 AI agents powered by 6 AI models across 4 routing tiers — Strategic, Professional, Scout, and Specialized. SEO &amp; AEO, Web Studio, and Legal included.">
+  <meta property="og:description" content="All 57 AI agents powered by 6 AI models across 4 routing tiers — Strategic, Professional, Scout, and Specialized. SEO &amp; AEO, Web Studio, and Legal included.">
   <meta name="twitter:card" content="summary">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
@@ -20,13 +20,36 @@
     "@context": "https://schema.org",
     "@type": "TechArticle",
     "headline": "Agent Fleet — AI OS Docs",
-    "description": "Complete guide to all 55 AI agents, powered by 6 AI models across 4 routing tiers — Claude Opus 4.8, OpenAI/GPT, Gemini Omni, DeepSeek, Grok (xAI), and Perplexity. Includes SEO & AEO Agency sub-agents, AI Web Studio crew, and Legal department.",
+    "description": "Complete guide to all 57 AI agents, powered by 6 AI models across 4 routing tiers — Claude Opus 4.8, OpenAI/GPT, Gemini Omni, DeepSeek, Grok (xAI), and Perplexity. Includes SEO & AEO Agency sub-agents, AI Web Studio crew, and Legal department.",
     "url": "https://aiosorchestrationlab.com/docs/agents",
     "author": { "@type": "Organization", "name": "AI OS Orchestration Lab" },
     "publisher": { "@type": "Organization", "name": "AI OS Orchestration Lab", "url": "https://aiosorchestrationlab.com" }
   }
   </script>
   <script type="application/ld+json">{"@context":"https://schema.org","@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Home","item":"https://aiosorchestrationlab.com/"},{"@type":"ListItem","position":2,"name":"Documentation","item":"https://aiosorchestrationlab.com/docs/"},{"@type":"ListItem","position":3,"name":"Agent Fleet"}]}</script>
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "FAQPage",
+    "mainEntity": [
+      {
+        "@type": "Question",
+        "name": "How many AI agents does AI OS have?",
+        "acceptedAnswer": { "@type": "Answer", "text": "57, across 10 departments. Business and Enterprise licenses unlock all 57; the Community edition includes 15 across 5 departments." }
+      },
+      {
+        "@type": "Question",
+        "name": "What determines which model an agent uses?",
+        "acceptedAnswer": { "@type": "Answer", "text": "The agent's tier frontmatter field. Strategic, Professional, and Scout all run Claude Opus 4.8 at different effort levels (xhigh, high, low); Specialized routes to Gemini Omni, DeepSeek, Grok, or Grok Build depending on the job." }
+      },
+      {
+        "@type": "Question",
+        "name": "Can I add my own agent?",
+        "acceptedAnswer": { "@type": "Answer", "text": "Yes — add a Markdown file with YAML frontmatter to .claude/agents/ following the documented agent-definition format." }
+      }
+    ]
+  }
+  </script>
 </head>
 <body>
   <nav class="landing-nav">
@@ -57,9 +80,9 @@
           </div>
 
           <h1>Agent Fleet</h1>
-          <p class="docs-lead">AI OS orchestrates <strong>55 specialized agents</strong> powered by <strong>6 AI models across 4 routing tiers</strong>. Claude Opus 4.8 is the default brain and powers the three reasoning tiers — Strategic (effort: xhigh), Professional (high), and Scout (low) — while the Specialized tier routes to the right model for the job: Gemini Omni for creative generation, DeepSeek for economy batch work, Grok (xAI) for real-time intelligence, OpenAI/GPT for alternate reasoning, and Perplexity for grounded search. Each agent has a defined role, capabilities, and escalation path managed through Markdown files with YAML frontmatter in <code>.claude/agents/</code>.</p>
+          <p class="docs-lead">AI OS orchestrates <strong>57 specialized agents</strong> powered by <strong>6 AI models across 4 routing tiers</strong>. Claude Opus 4.8 is the default brain and powers the three reasoning tiers — Strategic (effort: xhigh), Professional (high), and Scout (low) — while the Specialized tier routes to the right model for the job: Gemini Omni for creative generation, DeepSeek for economy batch work, Grok (xAI) for real-time intelligence, OpenAI/GPT for alternate reasoning, and Perplexity for grounded search. Each agent has a defined role, capabilities, and escalation path managed through Markdown files with YAML frontmatter in <code>.claude/agents/</code>.</p>
 
-          <p>The fleet breaks down as <strong>43 named employees</strong> on the <a href="/docs/getting-started#step-4-explore-your-virtual-hq">Virtual HQ org chart</a> (10 departments) plus <strong>12 system &amp; orchestration agents</strong> that power the platform behind the scenes — the SEO Agency sub-agents, the AI Web Studio crew, and the orchestration kernel.</p>
+          <p>The fleet breaks down as <strong>45 named employees</strong> on the <a href="/docs/getting-started#step-4-explore-your-virtual-hq">Virtual HQ org chart</a> (10 departments) plus <strong>12 system &amp; orchestration agents</strong> that power the platform behind the scenes — the SEO Agency sub-agents, the AI Web Studio crew, and the orchestration kernel.</p>
 
           <h2 id="strategic-tier">Strategic Tier — Claude Opus 4.8 (effort: xhigh)</h2>
           <p>Maximum reasoning depth for decisions requiring deep analysis, architectural judgment, and cross-system awareness. Uses adaptive thinking for complex multi-step planning.</p>
@@ -137,8 +160,8 @@
             </tbody>
           </table>
 
-          <h2 id="realtime-tier">Specialized Tier — Realtime (Grok / xAI) &amp; Grounded Search (Perplexity)</h2>
-          <p>Part of the Specialized routing tier. Grok handles live web intelligence; Perplexity Sonar provides grounded search with source citations and powers multi-model consensus in the AEO engine.</p>
+          <h2 id="realtime-tier">Specialized Tier — Realtime &amp; Dev Planning (Grok / xAI) &amp; Grounded Search (Perplexity)</h2>
+          <p>Part of the Specialized routing tier. Grok handles live web intelligence; Grok Build plans platform upgrades; Perplexity Sonar provides grounded search with source citations and powers multi-model consensus in the AEO engine.</p>
 
           <table class="docs-table">
             <thead>
@@ -146,6 +169,7 @@
             </thead>
             <tbody>
               <tr><td><strong>Grok Realtime</strong></td><td>Live data queries, current events, real-time web intelligence, and social platform analysis (Grok / xAI).</td></tr>
+              <tr><td><strong>Dev Architect Grok</strong></td><td>Plans upgrades to AI OS itself using xAI's Grok Build (grok-build-0.1), and proposes distribution blueprints as draft GitHub PRs — see <a href="/docs/self-improve">Self-Improve</a>. Read-only; every apply and every PR always requires human approval.</td></tr>
             </tbody>
           </table>
 
@@ -177,6 +201,7 @@
               <tr><td><strong>IT Director (Matrix)</strong></td><td>Infrastructure oversight, system health, and deployment coordination.</td></tr>
               <tr><td><strong>Sysadmin (Root)</strong></td><td>Server management, monitoring, uptime, and security patches.</td></tr>
               <tr><td><strong>Help Desk (Guide)</strong></td><td>Internal support, tool provisioning, and access management.</td></tr>
+              <tr><td><strong>AI Helpdesk Concierge (Beacon)</strong></td><td>Public-facing contact-page support agent — answers visitor questions from AI OS documentation, escalates unresolved issues to a logged ticket.</td></tr>
             </tbody>
           </table>
 
@@ -293,6 +318,20 @@ You are a deep research specialist. Your role is to...
             <li>The Orchestrator is the terminal escalation point and can re-delegate to any agent</li>
           </ul>
 
+          <h2 id="faq">Frequently asked questions</h2>
+          <div class="docs-callout info">
+            <strong>How many AI agents does AI OS have?</strong>
+            <p>57, across 10 departments. Business and Enterprise licenses unlock all 57; the Community edition includes 15 across 5 departments.</p>
+          </div>
+          <div class="docs-callout info">
+            <strong>What determines which model an agent uses?</strong>
+            <p>The agent's <code>tier</code> frontmatter field. Strategic, Professional, and Scout all run Claude Opus 4.8 at different effort levels (xhigh, high, low); Specialized routes to Gemini Omni, DeepSeek, Grok, or Grok Build depending on the job.</p>
+          </div>
+          <div class="docs-callout info">
+            <strong>Can I add my own agent?</strong>
+            <p>Yes — add a Markdown file with YAML frontmatter to <code>.claude/agents/</code> following the format in <a href="#agent-definitions">Agent Definitions</a> above.</p>
+          </div>
+
           <div class="docs-page-nav">
             <a href="/docs/architecture">&larr; Architecture</a>
             <a href="/docs/skills">Skills &amp; Pipelines &rarr;</a>
@@ -315,6 +354,7 @@ You are a deep research specialist. Your role is to...
           <a href="#persistent-tier">Persistent — Hermes</a>
           <a href="#agent-definitions">Agent Definitions</a>
           <a href="#escalation-paths">Escalation Paths</a>
+          <a href="#faq">FAQ</a>
         </aside>
       </div>
     </div>

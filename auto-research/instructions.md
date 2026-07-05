@@ -17,7 +17,7 @@ The score (0-100) measures, deterministically:
 ## Hard Constraints (violations = automatic revert)
 - NEVER modify `auto-research/score.js`, `auto-research/run-loop.js`, or anything outside `auto-research/asset/`.
 - Keep all six `<!-- element: ... -->` markers and the surrounding tag structure (title, meta, og meta, h1 with gradient span, p.hero-subtitle).
-- Facts must stay true: 55 agents, 10 departments, open-source core, self-hosted, Business license $1,997 one-time, Enterprise $4,997 one-time. Never invent statistics, customer counts, or awards.
+- Facts must stay true: 57 agents, 10 departments, open-source core, self-hosted, Business license $1,997 one-time, Enterprise $4,997 one-time. Never invent statistics, customer counts, or awards.
 - No hard guarantees ("guaranteed", "SLA") — support commitments are target-based.
 - Brand name is "AI OS" — never restyle it.
 
