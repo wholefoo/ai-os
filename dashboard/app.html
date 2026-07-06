@@ -1227,6 +1227,11 @@
                   <span class="ws-hint">Apply a saved brand kit — takes precedence over a URL clone.</span>
                 </div>
                 <div class="ws-row" style="flex-wrap:wrap;gap:8px;">
+                  <select class="settings-input" id="wsTemplate" style="max-width:340px;"><option value="">Template: none (from scratch)</option></select>
+                  <span class="ws-hint">Start from a template — the studio still tailors copy &amp; design to your brief.</span>
+                </div>
+                <div id="wsTemplatesLibrary" class="ws-row" style="flex-wrap:wrap;gap:6px;"></div>
+                <div class="ws-row" style="flex-wrap:wrap;gap:8px;">
                   <input type="text" class="settings-input" id="wsCloneUrl" placeholder="Clone design from a URL (optional, e.g. https://stripe.com)" style="max-width:340px;" />
                   <button class="btn" id="wsClonePreviewBtn">Preview design</button>
                   <span id="wsCloneSwatches" style="display:inline-flex;gap:4px;align-items:center;"></span>
@@ -1293,6 +1298,7 @@
               <div class="radar-actions ws-row">
                 <button class="btn" id="wsSaveBtn">Save</button>
                 <button class="btn btn-primary" id="wsBuildBtn">Save &amp; Build</button>
+                <button class="btn" id="wsSaveTemplateBtn" title="Save this built site's structure as a reusable template">&#43; Save as template</button>
               </div>
             </div>
             <div class="ws-editor-grid">

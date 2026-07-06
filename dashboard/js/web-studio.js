@@ -37,6 +37,7 @@ function loadWebStudio() {
     on('wsBackBtn', 'click', wsBack);
     on('wsSaveBtn', 'click', wsSave);
     on('wsBuildBtn', 'click', wsBuild);
+    on('wsSaveTemplateBtn', 'click', wsSaveTemplate);
     on('wsAiEditBtn', 'click', wsAiEdit);
     on('wsRefreshPreview', 'click', wsRefreshPreview);
     on('wsFileList', 'change', (e) => wsLoadFile(e.target.value));
@@ -60,6 +61,7 @@ function loadWebStudio() {
   }
   wsFetchAndRenderSites();
   wsPopulateBrandKits();
+  wsPopulateTemplates();
 }
 
 // Fill the "apply a saved brand kit" picker in the create form from /api/brand-kits.
@@ -72,6 +74,55 @@ async function wsPopulateBrandKits() {
   sel.innerHTML = '<option value="">Brand kit: none (or clone a URL below)</option>'
     + kits.map((k) => `<option value="${escapeHtml(k.id)}">${escapeHtml(k.name)}</option>`).join('');
   if (cur) sel.value = cur;
+}
+
+// Fill the "start from a template" picker + the saved-templates library list from
+// /api/web-studio/templates (built-ins + the operator's own saved templates).
+async function wsPopulateTemplates() {
+  const sel = document.getElementById('wsTemplate');
+  const lib = document.getElementById('wsTemplatesLibrary');
+  const data = await fetchJSON('/api/web-studio/templates');
+  const templates = Array.isArray(data) ? data : [];
+  if (sel) {
+    const cur = sel.value;
+    const builtins = templates.filter(t => t.builtin);
+    const mine = templates.filter(t => !t.builtin);
+    const opt = (t) => `<option value="${escapeHtml(t.id)}">${escapeHtml(t.name)}${t.category ? ' — ' + escapeHtml(t.category) : ''}</option>`;
+    sel.innerHTML = '<option value="">Template: none (from scratch)</option>'
+      + (builtins.length ? `<optgroup label="Starters">${builtins.map(opt).join('')}</optgroup>` : '')
+      + (mine.length ? `<optgroup label="Your templates">${mine.map(opt).join('')}</optgroup>` : '');
+    if (cur) sel.value = cur;
+  }
+  // Library management: list the operator's OWN saved templates with a delete control (built-ins are
+  // read-only and only appear in the picker above).
+  if (lib) {
+    const mine = templates.filter(t => !t.builtin);
+    lib.innerHTML = mine.length
+      ? `<span class="ws-hint" style="width:100%;">Your saved templates:</span>` + mine.map(t =>
+          `<span class="ws-chip" style="display:inline-flex;align-items:center;gap:6px;border:1px solid var(--border,#2a2a2a);border-radius:6px;padding:3px 8px;font-size:12px;">
+             ${escapeHtml(t.name)}
+             <button class="btn btn-sm btn-danger" style="padding:0 6px;line-height:1.4;" title="Delete template" onclick="wsDeleteTemplate('${escapeHtml(t.id)}')">&#10005;</button>
+           </span>`).join('')
+      : '';
+  }
+}
+
+// Save the currently-open (built) site as a reusable template.
+async function wsSaveTemplate() {
+  if (!wsState.currentId) return;
+  const name = window.prompt('Name this template:', (wsState.currentSite && wsState.currentSite.name) || 'My template');
+  if (name == null || !name.trim()) return;
+  const r = await fetchJSON(`/api/web-studio/sites/${wsState.currentId}/save-template`, { method: 'POST', body: { name: name.trim() } });
+  if (r && r.error) { alert('Could not save template: ' + r.error); return; }
+  await wsPopulateTemplates();
+  alert('Template saved. It’s now in the "Start from a template" picker.');
+}
+
+async function wsDeleteTemplate(id) {
+  if (!window.confirm('Delete this saved template? This cannot be undone.')) return;
+  const r = await fetchJSON(`/api/web-studio/templates/${id}`, { method: 'DELETE' });
+  if (r && r.error) { alert('Could not delete: ' + r.error); return; }
+  await wsPopulateTemplates();
 }
 
 async function wsFetchAndRenderSites() {
@@ -118,6 +169,7 @@ async function wsCreate() {
   const brief = (document.getElementById('wsBrief').value || '').trim();
   const siteType = (document.getElementById('wsType') || {}).value || '';
   const model = ((document.getElementById('wsModel') || {}).value || '').trim();
+  const templateId = ((document.getElementById('wsTemplate') || {}).value || '').trim();
   const domain = ((document.getElementById('wsCreateDomain') || {}).value || '').trim();
   const cloneUrl = ((document.getElementById('wsCloneUrl') || {}).value || '').trim();
   const brandKitId = ((document.getElementById('wsBrandKit') || {}).value || '').trim();
@@ -136,7 +188,7 @@ async function wsCreate() {
   const btn = document.getElementById('wsCreateBtn');
   if (btn) btn.disabled = true;
   if (hint) hint.textContent = researchUrl ? 'Researching the product, then writing original affiliate copy…' : redesignUrl ? 'Reusing the existing site’s content + branding, then generating your redesign…' : (brandKitId || cloneUrl) ? 'Applying design + generating your site…' : 'Generating — the studio team is planning, writing and building your site…';
-  const r = await fetchJSON('/api/web-studio/sites', { method: 'POST', body: { name, brief, siteType, domain, cloneUrl, brandKitId, redesignUrl, maintainBranding, researchUrl, affiliateUrl, features, model } });
+  const r = await fetchJSON('/api/web-studio/sites', { method: 'POST', body: { name, brief, siteType, domain, cloneUrl, brandKitId, redesignUrl, maintainBranding, researchUrl, affiliateUrl, features, model, templateId } });
   if (r && r.error) { if (hint) hint.textContent = `Could not create: ${r.error}`; if (btn) btn.disabled = false; return; }
   document.getElementById('wsName').value = '';
   document.getElementById('wsBrief').value = '';

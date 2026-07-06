@@ -1337,6 +1337,7 @@ function persistAllState() {
   saveState('batch_queue', batchQueue);
   saveState('pending_approvals', pendingApprovals);
   saveState('web_studio_sites', webStudioSites);
+  saveState('web_studio_templates', webStudioTemplates);
   saveState('brand_kits', brandKits);
 }
 
@@ -1351,6 +1352,7 @@ function persistAllState() {
 // ============================================================
 const webStudioBuild = require('./lib/web-studio/build');
 const webStudioPipeline = require('./lib/web-studio/pipeline');
+const { BUILTIN_TEMPLATES } = require('./lib/web-studio/templates');
 const webStudioHosting = require('./lib/web-studio/hosting');
 const webStudioPublish = require('./lib/web-studio/publish');
 const webStudioDns = require('./lib/web-studio/dns');
@@ -1384,6 +1386,7 @@ try {
 const signProvenance = provenanceKeys ? (payload) => provenanceLib.sign(payload, provenanceKeys.privateKey, { publicKeyId: provenanceKeys.publicKeyId }) : null;
 
 const webStudioSites = loadState('web_studio_sites', []); // [{id,name,brief,status,domain,createdAt,...}]
+const webStudioTemplates = loadState('web_studio_templates', []); // operator-saved starter templates [{id,name,category,description,plan,ownerEmail,createdAt}]
 const devPlans = loadState('dev_plans', []); // AI-proposed platform upgrade plans [{id,goal,plan,status,appliedAt,distributionPr,...}]
 const brandKits = loadState('brand_kits', []); // reusable design profiles [{id,name,contactId,sourceUrl,design,createdAt,updatedAt}]
 const WS_ROOT = path.join(MAGENT_DIR, 'artifacts', 'web-studio');
@@ -1457,6 +1460,83 @@ function wsFindSite(req, res) {
   if (!site || !wsOwns(req.session, site)) { res.status(404).json({ error: 'Site not found' }); return null; }
   return site;
 }
+
+// ============================================================
+//  Web Studio Templates — a starter library. Built-ins (lib/web-studio/templates.js, id 'builtin:*')
+//  ship with the platform and are read-only; operators also save their own from a built site. Picking
+//  a template ANCHORS a new build (its plan seeds web-studio-lead) — the agents still tailor copy +
+//  design to the brief (see pipeline.templateRefBlock), so a template is guidance, not final output.
+// ============================================================
+// A user template is visible to its owner (client) or to any admin; built-ins are visible to everyone.
+function wsTemplateVisible(session, t) {
+  if (!t) return false;
+  if (t.builtin || String(t.id).startsWith('builtin:')) return true;
+  if (session && session.role === 'admin') return true;
+  return wsIsClient(session) && !!t.ownerEmail
+    && String(t.ownerEmail).toLowerCase() === String(session.ownerEmail || session.email).toLowerCase();
+}
+// Resolve a template id to its plan-bearing record (built-in or a visible user template), else null.
+function wsResolveTemplate(id, session) {
+  const s = String(id || '');
+  if (s.startsWith('builtin:')) return BUILTIN_TEMPLATES.find(t => t.id === s) || null;
+  const t = webStudioTemplates.find(x => x.id === s);
+  return (t && wsTemplateVisible(session, t)) ? t : null;
+}
+// Keep only the known plan fields (defense against storing arbitrary/huge objects as a "plan").
+const WS_TEMPLATE_MAX_CHARS = 200_000;
+function wsSanitizePlan(plan) {
+  if (!plan || typeof plan !== 'object' || !Array.isArray(plan.pages) || !plan.pages.length) return null;
+  const clean = {
+    siteName: typeof plan.siteName === 'string' ? plan.siteName.slice(0, 120) : '',
+    tokens: (plan.tokens && typeof plan.tokens === 'object') ? plan.tokens : undefined,
+    nav: Array.isArray(plan.nav) ? plan.nav : undefined,
+    footer: typeof plan.footer === 'string' ? plan.footer.slice(0, 400) : undefined,
+    pages: plan.pages,
+  };
+  if (JSON.stringify(clean).length > WS_TEMPLATE_MAX_CHARS) return null;
+  return clean;
+}
+
+// List templates: built-ins + the requester's own saved templates (metadata only — the dropdown just
+// needs id + label; the full plan is loaded server-side at create time).
+app.get('/api/web-studio/templates', requireClientOrAdmin, (req, res) => {
+  const meta = (t, builtin) => ({ id: t.id, name: t.name, category: t.category || '', description: t.description || '', builtin, createdAt: t.createdAt || null });
+  const list = [
+    ...BUILTIN_TEMPLATES.map(t => meta(t, true)),
+    ...webStudioTemplates.filter(t => wsTemplateVisible(req.session, t)).map(t => meta(t, false)),
+  ];
+  res.json(list);
+});
+
+// Save a built site as a reusable template.
+app.post('/api/web-studio/sites/:id/save-template', requireClientOrAdmin, heavyLimiter, (req, res) => {
+  const site = wsFindSite(req, res); if (!site) return;
+  const plan = wsSanitizePlan(site.plan);
+  if (!plan) return res.status(400).json({ error: 'This site has no built plan to save yet — build it first.' });
+  const name = String((req.body && req.body.name) || site.name || 'Untitled template').trim().slice(0, 80);
+  if (!name) return res.status(400).json({ error: 'A template name is required' });
+  const owner = wsIsClient(req.session) ? (req.session.ownerEmail || req.session.email) : null;
+  // Light per-owner cap so the library can't grow unbounded (admin-owned templates have ownerEmail null).
+  const ownCount = webStudioTemplates.filter(t => (t.ownerEmail || null) === (owner || null)).length;
+  if (ownCount >= 100) return res.status(403).json({ error: 'Template limit reached (100). Delete some first.' });
+  const tpl = { id: uuidv4(), name, category: wsCleanType(req.body && req.body.category) || site.siteType || '', description: String((req.body && req.body.description) || '').slice(0, 240), plan, ownerEmail: owner, sourceSiteId: site.id, createdAt: new Date().toISOString() };
+  webStudioTemplates.push(tpl);
+  saveState('web_studio_templates', webStudioTemplates);
+  logActivity('web-studio', `Template saved: ${tpl.name}`, { id: tpl.id, from: site.id });
+  res.json({ ok: true, template: { id: tpl.id, name: tpl.name, category: tpl.category, description: tpl.description, builtin: false, createdAt: tpl.createdAt } });
+});
+
+// Delete a saved template (user templates only; built-ins are read-only).
+app.delete('/api/web-studio/templates/:id', requireClientOrAdmin, (req, res) => {
+  const id = req.params.id;
+  if (String(id).startsWith('builtin:')) return res.status(400).json({ error: 'Built-in templates cannot be deleted' });
+  const idx = webStudioTemplates.findIndex(t => t.id === id);
+  if (idx < 0 || !wsTemplateVisible(req.session, webStudioTemplates[idx])) return res.status(404).json({ error: 'Template not found' });
+  const removed = webStudioTemplates.splice(idx, 1)[0];
+  saveState('web_studio_templates', webStudioTemplates);
+  logActivity('web-studio', `Template deleted: ${removed.name}`, { id: removed.id });
+  res.json({ ok: true });
+});
 
 // ============================================================
 //  Brand Kits — reusable design profiles (palette/fonts/section structure) saved from a URL,
@@ -1654,12 +1734,18 @@ function wsCleanAffiliateUrl(raw) {
 
 // --- Create from a brief (tier-limit gated; pipeline runs async) ---
 app.post('/api/web-studio/sites', requireClientOrAdmin, heavyLimiter, async (req, res) => {
-  const { name, brief, siteType, domain, cloneUrl, brandKitId, redesignUrl, maintainBranding, features, researchUrl, affiliateUrl, model } = req.body || {};
+  const { name, brief, siteType, domain, cloneUrl, brandKitId, redesignUrl, maintainBranding, features, researchUrl, affiliateUrl, model, templateId } = req.body || {};
   if (!brief || String(brief).trim().length < 10) return res.status(400).json({ error: 'A brief of at least 10 characters is required' });
   // Optional model choice for this build: 'fable' routes the design agents to Claude Fable 5 (premium);
   // anything else (default) keeps the operator's normal reasoning-mode routing. Mapped to an allowlisted
   // Anthropic model here so only a known/priced model can reach executeAgent's override.
   const modelOverride = model === 'fable' ? FABLE_MODEL : null;
+  // Optional starter template: resolve now (with the requester's access) so a bad/foreign id fails fast.
+  let template = null;
+  if (templateId) {
+    template = wsResolveTemplate(templateId, req.session);
+    if (!template) return res.status(400).json({ error: 'That template was not found or is not available to you.' });
+  }
   const cleanAffiliateUrl = wsCleanAffiliateUrl(affiliateUrl);
   if (affiliateUrl && !cleanAffiliateUrl) return res.status(400).json({ error: 'affiliateUrl must be a valid http(s) URL' });
   const limit = wsSiteLimit(req.session);
@@ -1674,7 +1760,7 @@ app.post('/api/web-studio/sites', requireClientOrAdmin, heavyLimiter, async (req
 
   const cleanFeatures = wsCleanFeatures(features);
   const id = uuidv4();
-  const site = { id, name: String(name || 'Untitled site').slice(0, 80), brief: String(brief).slice(0, 4000), siteType: wsCleanType(siteType), kind: 'generated', status: 'building', domain: cfgDomain, hostingSetup: false, published: false, ownerEmail: wsIsClient(req.session) ? req.session.email : null, createdAt: new Date().toISOString(), lastBuiltAt: null, pages: [], features: cleanFeatures, chatEnabled: cleanFeatures.enableChat, buildModel: modelOverride ? 'Fable 5' : null };
+  const site = { id, name: String(name || 'Untitled site').slice(0, 80), brief: String(brief).slice(0, 4000), siteType: wsCleanType(siteType), kind: 'generated', status: 'building', domain: cfgDomain, hostingSetup: false, published: false, ownerEmail: wsIsClient(req.session) ? req.session.email : null, createdAt: new Date().toISOString(), lastBuiltAt: null, pages: [], features: cleanFeatures, chatEnabled: cleanFeatures.enableChat, buildModel: modelOverride ? 'Fable 5' : null, templateId: template ? template.id : null, templateName: template ? template.name : null };
   webStudioSites.push(site);
   saveState('web_studio_sites', webStudioSites);
   logActivity('web-studio', `Site build started: ${site.name}`, { id });
@@ -1717,7 +1803,7 @@ app.post('/api/web-studio/sites', requireClientOrAdmin, heavyLimiter, async (req
     if (cleanAffiliateUrl) site.affiliateUrl = cleanAffiliateUrl;
     const platformBaseUrl = process.env.AIOS_PUBLIC_URL || `${req.protocol}://${req.get('host')}`;
     const result = await webStudioPipeline.createSiteFromBrief(
-      { siteId: id, workspaceDir: wsWorkspaceDir(id), brief: wsBriefWithType(site), domain: site.domain, siteName: site.name, design, scraped, research, affiliateUrl: cleanAffiliateUrl, features: cleanFeatures, platformBaseUrl, modelOverride },
+      { siteId: id, workspaceDir: wsWorkspaceDir(id), brief: wsBriefWithType(site), domain: site.domain, siteName: site.name, design, scraped, research, affiliateUrl: cleanAffiliateUrl, features: cleanFeatures, platformBaseUrl, modelOverride, templatePlan: template ? template.plan : null },
       { executeAgent, broadcast, log: appendLog, signProvenance }
     );
     site.status = result.ok ? result.status : 'failed';
