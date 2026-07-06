@@ -156,6 +156,7 @@ function wsRenderSites(data) {
       <div>
         <div><strong>${escapeHtml(s.name)}</strong> <span class="ws-badge ${s.status}">${escapeHtml(s.status)}</span></div>
         <div class="ws-site-meta">${s.domain ? escapeHtml(s.domain) + ' &middot; ' : ''}${s.redesignedFrom ? 'redesigned from ' + escapeHtml(s.redesignedFrom) + ' &middot; ' : ''}${s.researchedFrom ? 'affiliate page (researched ' + escapeHtml(s.researchedFrom) + ') &middot; ' : ''}${s.chatEnabled ? '&#128172; chat &middot; ' : ''}${s.lastBuiltAt ? 'built ' + timeAgo(s.lastBuiltAt) : 'created ' + timeAgo(s.createdAt)}</div>
+        ${(s.status === 'failed' || s.status === 'build_failed') && s.error ? `<div class="ws-site-error">${escapeHtml(s.error)}</div>` : ''}
       </div>
       <div class="ws-row">
         <button class="btn" onclick="wsOpen('${s.id}')">Open</button>
@@ -646,7 +647,7 @@ function onWebStudioEvent(msg) {
       // on a plain build/publish completion.
       if (wsState.aiEditing) { wsState.aiEditing = false; wsHint('Updated by AI.'); wsReloadFiles(false); wsLoadContent(); }
     }
-    if (d.status === 'failed' || d.status === 'build_failed') wsHint('Build failed.');
+    if (d.status === 'failed' || d.status === 'build_failed') wsHint(d.error ? ('Import/build failed: ' + d.error) : 'Build failed.');
     // web_studio_site carries the full site object (has d.id) — reflect publish-state changes live.
     if (d.id === wsState.currentId) { wsState.currentSite = d; wsRenderPublishState(d); wsRenderProvenance(d); wsRenderSecurity(d); }
   } else if (!inEditor) {

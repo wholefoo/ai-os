@@ -1928,7 +1928,7 @@ async function wsFinishImport(site, importPromise) {
     site.status = b.ok ? 'ready' : 'build_failed';
     site.lastBuiltAt = new Date().toISOString();
     site.importInfo = { files: r.count, dropped: (r.warnings || []).length, hasIndex: r.hasIndex };
-    site.error = b.ok ? undefined : 'no index.html at the imported site root (source-only repos must be built first)';
+    site.error = b.ok ? undefined : (r.reason || 'No index.html at the imported site root. Import a pre-built static site, or a committed dist/ or build/ folder.');
   } catch (e) { site.status = 'failed'; site.error = e.message; }
   saveState('web_studio_sites', webStudioSites);
   broadcast({ event: 'web_studio_site', data: site });
