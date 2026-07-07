@@ -1,6 +1,6 @@
 # Working discipline
 
-Distilled working-discipline guidance for agent sessions in this repo.
+Distilled working-discipline guidance for agent sessions in this repo. Full essay: `docs/fable-handover.md`.
 
 ## Verification: check by breaking, not by re-reading
 - Re-derive, don't re-read. Verify from a different direction than you produced: run the code, trace a concrete input by hand, compute the result backward. A check that couldn't possibly fail is not a check.
