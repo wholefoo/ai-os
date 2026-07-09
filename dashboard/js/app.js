@@ -93,6 +93,7 @@ function switchView(view) {
     'web-studio': loadWebStudio,
     'brand-kits': loadBrandKits,
     crm: loadCrm,
+    analytics: loadAnalytics,
     security: loadSecurity,
     mission: loadMission,
     inbox: loadInbox,
@@ -208,6 +209,9 @@ function handleWsMessage(msg) {
       break;
     case 'crm_update':
       if (typeof onCrmEvent === 'function') onCrmEvent(msg);
+      break;
+    case 'web_analytics_bot':
+      if (typeof onAnalyticsEvent === 'function') onAnalyticsEvent(msg);
       break;
     case 'connected':
       state.health = msg.data.health;

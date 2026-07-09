@@ -8312,6 +8312,41 @@ try {
   console.error('[crm] init failed:', e.message);
 }
 
+// --- Analytics: first-party, AI-signal-first (nginx-log ingest — sees the AI crawlers GA can't) ---
+let analyticsDb = null;
+try {
+  analyticsDb = require('./lib/analytics/db');
+  const ingest = require('./lib/analytics/ingest-logs');
+  analyticsDb.openDb(path.join(MAGENT_DIR, 'analytics.sqlite'));
+  const logPath = process.env.ANALYTICS_ACCESS_LOG || '/var/log/nginx/access.log';
+  ingest.startIngest({
+    logPath,
+    secret: process.env.SESSION_SECRET || 'ai-os-analytics',
+    onBotEvent: (ev) => broadcast({ event: 'web_analytics_bot', data: ev }),
+    log: appendLog,
+  });
+  appendLog(`[analytics] ingest watching ${logPath}${fs.existsSync(logPath) ? '' : ' (absent — idle until it appears)'}`);
+} catch (e) {
+  analyticsDb = null;
+  console.error('[analytics] init failed:', e.message);
+}
+
+app.get('/api/analytics/summary', requireAdmin, (req, res) => {
+  if (!analyticsDb) return res.status(503).json({ error: 'analytics unavailable' });
+  const days = Math.min(Math.max(parseInt(req.query.days, 10) || 7, 1), 90);
+  res.json({ ok: true, ...analyticsDb.summary('platform', days) });
+});
+app.get('/api/analytics/ai-crawlers', requireAdmin, (req, res) => {
+  if (!analyticsDb) return res.status(503).json({ error: 'analytics unavailable' });
+  const days = Math.min(Math.max(parseInt(req.query.days, 10) || 7, 1), 90);
+  res.json({ ok: true, leaderboard: analyticsDb.botLeaderboard('platform', days), recent: analyticsDb.recentBotEvents('platform', 50) });
+});
+app.get('/api/analytics/pages', requireAdmin, (req, res) => {
+  if (!analyticsDb) return res.status(503).json({ error: 'analytics unavailable' });
+  const days = Math.min(Math.max(parseInt(req.query.days, 10) || 7, 1), 90);
+  res.json({ ok: true, crawlHeat: analyticsDb.crawlHeat('platform', days) });
+});
+
 // --- Security: mythos-defense bridge (AI-driven security assessment CLI; OFF until installed) ---
 try {
   mythos.configure({

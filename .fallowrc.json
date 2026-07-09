@@ -4,6 +4,7 @@
     "server.js",
     "agent-worker/agent.js",
     "tools/generate-maps.js",
+    "tools/test-analytics.js",
     "ecosystem.config.js",
     "dashboard/js/*.js"
   ],
