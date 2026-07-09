@@ -26,6 +26,14 @@ const L = [
   '1.2.3.7 - - [08/Jul/2026:04:05:30 +0000] "GET /docs HTTP/1.1" 200 9000 "-" "Mozilla/5.0 Firefox/127"',
   '1.2.3.8 - - [08/Jul/2026:04:06:00 +0000] "GET /js/app.js HTTP/1.1" 200 100 "-" "Mozilla/5.0 Chrome/126"',
   '66.249.66.1 - - [08/Jul/2026:04:06:30 +0000] "GET / HTTP/1.1" 200 9000 "-" "Mozilla/5.0 (compatible; Googlebot/2.1)"',
+  // --- real-world lines from the production access log (2026-07-09) ---
+  '104.23.190.231 - - [08/Jul/2026:04:07:00 +0000] "GET / HTTP/2.0" 200 17541 "-" "Go-http-client/1.1"', // non-browser client: NOT a pageview
+  '172.68.50.242 - - [08/Jul/2026:04:07:10 +0000] "GET /wp-json/gravitysmtp/v1/tests/mock-data?page=x HTTP/1.1" 200 17940 "-" "Mozilla/5.0 (compatible; SecurityResearch/1.0; )"', // scanner soft-200: NOT a pageview
+  '172.71.184.10 - - [08/Jul/2026:04:07:20 +0000] "GET /wp-admin/install.php?step=1 HTTP/2.0" 200 1393 "-" "http://example.com/wp-admin/install.php?step=1"', // URL-as-UA scanner: NOT a pageview
+  '172.68.50.135 - - [08/Jul/2026:04:07:30 +0000] "GET / HTTP/2.0" 200 17541 "-" "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"', // real Mac human: IS a pageview ("Intel" must not trip the blocklist)
+  '172.64.217.12 - - [08/Jul/2026:04:07:40 +0000] "GET /dashboard HTTP/1.1" 200 17940 "-" "Mozilla/5.0 (Linux; Android 5.0) AppleWebKit/537.36 (KHTML, like Gecko) Mobile Safari/537.36 (compatible; Bytespider; https://zhanzhang.toutiao.com/)"', // AI training bot
+  '172.71.167.92 - - [08/Jul/2026:04:07:50 +0000] "GET /robots.txt HTTP/1.1" 301 162 "-" "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36; compatible; OAI-SearchBot/1.0; +https://openai.com/searchbot"', // AI search bot, 301 kept
+  '104.23.243.63 - - [08/Jul/2026:04:07:55 +0000] "HEAD /api/health HTTP/2.0" 200 0 "https://x.com/api/health" "Mozilla/5.0+(compatible; UptimeRobot/2.0; http://www.uptimerobot.com/)"', // health check: NOT a pageview
 ];
 fs.writeFileSync(logPath, L.join('\n') + '\n');
 
@@ -34,8 +42,8 @@ const assert = (cond, msg) => { if (!cond) { console.error('FAIL:', msg); proces
 // --- pass 1: full ingest
 let botEvents = 0;
 const r1 = ingestOnce({ logPath, secret: 'test', onBotEvent: () => botEvents++ });
-assert(r1.events === 9, `9 events stored (5 bot + 4 human), got ${r1.events}`);
-assert(botEvents === 5, `5 bot SSE callbacks, got ${botEvents}`);
+assert(r1.events === 12, `12 events stored (7 bot + 5 human), got ${r1.events}`);
+assert(botEvents === 7, `7 bot SSE callbacks, got ${botEvents}`);
 
 // --- idempotency: nothing new
 const r2 = ingestOnce({ logPath, secret: 'test' });
@@ -65,14 +73,17 @@ const heat = adb.crawlHeat('platform', 7);
 assert(heat.find((h) => h.path === '/pricing' && h.count === 2), `/pricing crawl heat = 2 (GPTBot + ChatGPT-User), got ${JSON.stringify(heat)}`);
 assert(heat.find((h) => h.path === '/llms.txt'), 'llms.txt fetch tracked');
 
+assert(lb.find((x) => x.bot === 'Bytespider' && x.purpose === 'training'), 'Bytespider classified training');
+assert(lb.find((x) => x.bot === 'OAI-SearchBot' && x.purpose === 'search'), 'OAI-SearchBot 301 counted as search hit');
+
 const s = adb.summary('platform', 7);
-assert(s.botHits === 5, `summary botHits 5, got ${s.botHits}`);
-assert(s.pageviews === 7, `summary pageviews 7 (4 + new + partial + rotate; asset+Googlebot dropped), got ${s.pageviews}`);
+assert(s.botHits === 7, `summary botHits 7, got ${s.botHits}`);
+assert(s.pageviews === 8, `summary pageviews 8 (5 + new + partial + rotate; assets/crawlers/scanners dropped), got ${s.pageviews}`);
 assert(s.referrers.find((x) => x.class === 'ai' && x.count === 2), `2 AI-referred humans (referrer + utm), got ${JSON.stringify(s.referrers)}`);
 assert(s.aiReferrers.find((x) => x.engine === 'ChatGPT' && x.count === 2), 'both AI referrals attributed to ChatGPT');
 
 const live = adb.recentBotEvents('platform', 10);
-assert(live.length === 5 && live[0].bot === 'ChatGPT-User', `live feed: 5 rows newest-first, got ${live.length}/${live[0] && live[0].bot}`);
+assert(live.length === 7 && live[0].bot === 'OAI-SearchBot', `live feed: 7 rows newest-first, got ${live.length}/${live[0] && live[0].bot}`);
 
 // --- visitor hash: same day+ip+ua stable; different day differs
 const l1 = parseLine(L[5], { secret: 's' });
