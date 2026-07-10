@@ -2191,6 +2191,56 @@ app.get('/api/web-studio/sites/:id/export.zip', requireClientOrAdmin, async (req
   res.send(buf);
 });
 
+// GET /api/okf/export.zip — the platform's own knowledge as an Open Knowledge Format (OKF v0.1)
+// bundle: the agent registry (from .claude/agents frontmatter) + the docs map. Deterministic,
+// zero-token, admin-only. Consumable by any OKF-aware agent/tool without translation.
+app.get('/api/okf/export.zip', requireAdmin, (req, res) => {
+  const okf = require('./lib/okf');
+  const now = new Date().toISOString();
+  const files = [];
+  const agentsDir = path.join(CLAUDE_DIR, 'agents');
+  const agentFiles = fs.existsSync(agentsDir) ? fs.readdirSync(agentsDir).filter((f) => f.endsWith('.md')).sort() : [];
+  const agentConcepts = [];
+  for (const f of agentFiles) {
+    const fm = (okf.parseConcept(fs.readFileSync(path.join(agentsDir, f), 'utf-8')).frontmatter) || {};
+    const name = fm.name || f.replace(/\.md$/, '');
+    agentConcepts.push({ name, description: fm.description || '', model: fm.model || '', tools: fm.tools || '' });
+  }
+  files.push({
+    relPath: 'index.md',
+    fm: { type: 'Knowledge Bundle', title: 'AI OS Platform Knowledge', description: 'Agent registry and documentation map for this AI OS instance.', tags: ['ai-os', 'okf'], timestamp: now },
+    body: `# AI OS Platform Knowledge\n\n## Agents\n\n${agentConcepts.map((a) => `- [${a.name}](/agents/${a.name}.md)`).join('\n')}\n\n## Documentation\n\n${docPages.map((d) => `- [${d}](/docs/${d}.md)`).join('\n')}`,
+  });
+  for (const a of agentConcepts) {
+    files.push({
+      relPath: `agents/${a.name}.md`,
+      fm: { type: 'AI Agent', title: a.name, description: String(a.description).slice(0, 300), tags: ['agent'], timestamp: now },
+      body: `# ${a.name}\n\n${a.description}\n\n- Model: ${a.model || 'default routing'}\n- Tools: ${Array.isArray(a.tools) ? a.tools.join(', ') : (a.tools || 'default')}`,
+    });
+  }
+  for (const d of docPages) {
+    files.push({
+      relPath: `docs/${d}.md`,
+      fm: { type: 'Documentation', title: d, resource: `/docs/${d}`, tags: ['docs'], timestamp: now },
+      body: `# ${d}\n\nPlatform documentation page, served at [/docs/${d}](/docs/${d}).`,
+    });
+  }
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'aios-okf-'));
+  try {
+    okf.writeBundle(tmp, files);
+    const check = okf.validateBundle(tmp);
+    if (!check.ok) return res.status(500).json({ error: 'bundle failed OKF validation', issues: check.issues.slice(0, 10) });
+    const buf = webStudioExport.zipDir(tmp);
+    res.setHeader('Content-Type', 'application/zip');
+    res.setHeader('Content-Disposition', 'attachment; filename="ai-os-okf-bundle.zip"');
+    res.send(buf);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
 app.post('/api/web-studio/sites/:id/export/github', requireClientOrAdmin, heavyLimiter, async (req, res) => {
   const site = wsFindSite(req, res); if (!site) return;
   const { mode, repoName, repoUrl, token, private: isPrivate, message } = req.body || {};
