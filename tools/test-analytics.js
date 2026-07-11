@@ -37,7 +37,7 @@ const L = [
 ];
 fs.writeFileSync(logPath, L.join('\n') + '\n');
 
-const assert = (cond, msg) => { if (!cond) { console.error('FAIL:', msg); process.exitCode = 1; } else console.log('ok  :', msg); };
+const { assert, done } = require('./test-util');
 
 // --- pass 1: full ingest
 let botEvents = 0;
@@ -114,4 +114,4 @@ assert(platBots.find((x) => x.bot === 'ClaudeBot' && x.count === 2), 'unknown vh
 assert(platBots.find((x) => x.bot === 'PerplexityBot' && x.count === 2), 'combined-format line still parses into platform (PerplexityBot 1+1)');
 assert(!platBots.find((x) => x.bot === 'GPTBot' && x.count > 2), 'site-attributed GPTBot hit did NOT leak into the platform bucket');
 
-console.log(process.exitCode ? '\nTESTS FAILED' : '\nALL TESTS PASSED');
+done();

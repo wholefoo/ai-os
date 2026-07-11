@@ -32,6 +32,8 @@ function loadWebStudio() {
     on('wsCreateBtn', 'click', wsCreate);
     on('wsClonePreviewBtn', 'click', wsClonePreview);
     on('wsTrendBtn', 'click', wsTrends);
+    on('wsAssistToggle', 'click', wsAssistToggle);
+    on('wsAssistWrite', 'click', wsAssistWrite);
     on('wsImportZipBtn', 'click', wsImportZip);
     on('wsImportGhBtn', 'click', wsImportGithub);
     on('wsBackBtn', 'click', wsBack);
@@ -163,6 +165,34 @@ function wsRenderSites(data) {
         <button class="btn" onclick="wsDelete('${s.id}')">Delete</button>
       </div>
     </div>`).join('');
+}
+
+// ---------- Guided brief (Assist mode) ----------
+// Six structured questions → an assembled brief written INTO the normal brief textarea, so the
+// operator reviews/edits before creating and the create flow itself is untouched. Zero model cost.
+function wsAssistToggle() {
+  const p = document.getElementById('wsAssistPanel');
+  if (p) p.style.display = p.style.display === 'none' ? '' : 'none';
+}
+
+function wsAssistWrite() {
+  const val = (id) => ((document.getElementById(id) || {}).value || '').trim();
+  const biz = val('wsAskBiz'), audience = val('wsAskAudience'), action = val('wsAskAction');
+  const feel = val('wsAskFeel'), pages = val('wsAskPages'), avoid = val('wsAskAvoid');
+  const hint = document.getElementById('wsAssistHint');
+  if (!biz || !audience || !action) { if (hint) hint.textContent = 'Questions 1–3 are the essentials — fill those in at minimum.'; return; }
+  const parts = [
+    `Website for ${biz}.`,
+    `Audience & offer: ${audience}.`,
+    `The #1 goal: get visitors to ${action} — make that the primary call to action throughout.`,
+  ];
+  if (feel) parts.push(`Brand feel: ${feel}.`);
+  if (pages) parts.push(`Pages: ${pages}.`);
+  parts.push('Include a FAQ section answering the questions real customers ask before choosing a business like this.');
+  if (avoid) parts.push(`Notes: ${avoid}.`);
+  const ta = document.getElementById('wsBrief');
+  if (ta) { ta.value = parts.join(' '); ta.focus(); }
+  if (hint) hint.textContent = 'Brief written below — tweak anything, then hit Create.';
 }
 
 async function wsCreate() {
@@ -730,6 +760,36 @@ function wsRenderContentForm(plan) {
         out.push(wsCField('Body', `${base}.body`, s.body, true));
         out.push(wsCField('Email', `${base}.email`, s.email));
       }
+      if (s.type === 'testimonials') (s.items || []).forEach((it, k) => {
+        out.push(wsCField(`Quote ${k + 1}`, `${base}.items.${k}.quote`, it.quote, true));
+        out.push(wsCField(`Quote ${k + 1} — name`, `${base}.items.${k}.name`, it.name));
+        out.push(wsCField(`Quote ${k + 1} — role`, `${base}.items.${k}.role`, it.role));
+      });
+      if (s.type === 'faq') (s.items || []).forEach((it, k) => {
+        out.push(wsCField(`Question ${k + 1}`, `${base}.items.${k}.q`, it.q));
+        out.push(wsCField(`Answer ${k + 1}`, `${base}.items.${k}.a`, it.a, true));
+      });
+      if (s.type === 'pricing') (s.items || []).forEach((it, k) => {
+        out.push(wsCField(`Plan ${k + 1} — name`, `${base}.items.${k}.name`, it.name));
+        out.push(wsCField(`Plan ${k + 1} — price`, `${base}.items.${k}.price`, it.price));
+        out.push(wsCField(`Plan ${k + 1} — period`, `${base}.items.${k}.period`, it.period));
+        (it.features || []).forEach((f, m) => out.push(wsCField(`Plan ${k + 1} — feature ${m + 1}`, `${base}.items.${k}.features.${m}`, f)));
+        out.push(wsCField(`Plan ${k + 1} — button text`, `${base}.items.${k}.cta.label`, (it.cta || {}).label));
+        out.push(wsCField(`Plan ${k + 1} — button link`, `${base}.items.${k}.cta.href`, (it.cta || {}).href));
+      });
+      if (s.type === 'stats') (s.items || []).forEach((it, k) => {
+        out.push(wsCField(`Stat ${k + 1} — value`, `${base}.items.${k}.value`, it.value));
+        out.push(wsCField(`Stat ${k + 1} — label`, `${base}.items.${k}.label`, it.label));
+      });
+      if (s.type === 'team') (s.items || []).forEach((it, k) => {
+        out.push(wsCField(`Member ${k + 1} — name`, `${base}.items.${k}.name`, it.name));
+        out.push(wsCField(`Member ${k + 1} — role`, `${base}.items.${k}.role`, it.role));
+        out.push(wsCField(`Member ${k + 1} — bio`, `${base}.items.${k}.bio`, it.bio, true));
+      });
+      if (s.type === 'steps') (s.items || []).forEach((it, k) => {
+        out.push(wsCField(`Step ${k + 1} — title`, `${base}.items.${k}.title`, it.title));
+        out.push(wsCField(`Step ${k + 1} — text`, `${base}.items.${k}.body`, it.body, true));
+      });
     });
     out.push('</div>');
   });

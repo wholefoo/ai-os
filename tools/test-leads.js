@@ -3,7 +3,7 @@
 // Leads P1 commit body); this covers the deterministic render layer.
 const { renderPage, renderSection } = require('../lib/web-studio/pipeline.js');
 
-const assert = (cond, msg) => { if (!cond) { console.error('FAIL:', msg); process.exitCode = 1; } else console.log('ok  :', msg); };
+const { assert, done } = require('./test-util');
 
 const contact = { type: 'contact', heading: 'Talk to us', body: 'We reply fast.', email: 'hi@acme.com' };
 const endpoint = 'https://platform.example/api/public/site-lead/site-123';
@@ -32,4 +32,4 @@ assert(html.includes(`action="${endpoint}"`), 'renderPage threads plan.leadEndpo
 const evil = renderSection(contact, { leadEndpoint: 'https://x.example/a"><script>alert(1)</script>' });
 assert(!evil.includes('<script>alert(1)</script>'), 'lead endpoint is escaped in the action attribute');
 
-console.log(process.exitCode ? '\nTESTS FAILED' : '\nALL TESTS PASSED');
+done();

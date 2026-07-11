@@ -1220,6 +1220,22 @@
                   </select>
                 </div>
                 <textarea class="settings-input" id="wsBrief" rows="3" placeholder="Describe the site: who it's for, the vibe, the pages you want, and the main call to action."></textarea>
+                <div class="ws-row" style="gap:8px;align-items:center;">
+                  <button class="btn" id="wsAssistToggle" type="button">&#129504; Guided brief</button>
+                  <span class="ws-hint">Answer 6 quick questions and we&rsquo;ll write the brief for you &mdash; review it before creating.</span>
+                </div>
+                <div id="wsAssistPanel" style="display:none;border:1px solid var(--border,#2a2a3a);border-radius:10px;padding:12px;margin:6px 0;">
+                  <input type="text" class="settings-input" id="wsAskBiz" placeholder="1. What is the business? (e.g. family dental clinic in Mesa, AZ)" style="margin-bottom:6px;" />
+                  <input type="text" class="settings-input" id="wsAskAudience" placeholder="2. Who is it for, and what do they buy? (e.g. local families; cleanings, implants)" style="margin-bottom:6px;" />
+                  <input type="text" class="settings-input" id="wsAskAction" placeholder="3. The ONE action a visitor should take (e.g. book an appointment)" style="margin-bottom:6px;" />
+                  <input type="text" class="settings-input" id="wsAskFeel" placeholder="4. Brand feel in 3 adjectives (e.g. warm, modern, trustworthy)" style="margin-bottom:6px;" />
+                  <input type="text" class="settings-input" id="wsAskPages" placeholder="5. Pages wanted (e.g. Home, Services, Contact — or single page)" style="margin-bottom:6px;" />
+                  <input type="text" class="settings-input" id="wsAskAvoid" placeholder="6. Anything to avoid or must-include? (optional)" style="margin-bottom:8px;" />
+                  <div class="ws-row" style="gap:8px;">
+                    <button class="btn btn-primary" id="wsAssistWrite" type="button">Write my brief</button>
+                    <span class="ws-hint" id="wsAssistHint"></span>
+                  </div>
+                </div>
                 <div class="ws-row" style="flex-wrap:wrap;gap:8px;">
                   <input type="text" class="settings-input" id="wsTrendTopic" placeholder="Trending ideas for a topic (optional)" style="max-width:280px;" />
                   <button class="btn" id="wsTrendBtn">Find trending</button>
@@ -2619,7 +2635,7 @@
 
   <script src="js/app.js?v=49"></script>
   <script src="https://cdn.jsdelivr.net/npm/monaco-editor@0.52.2/min/vs/loader.js"></script>
-  <script src="js/web-studio.js?v=13"></script>
+  <script src="js/web-studio.js?v=14"></script>
   <script src="js/crm.js?v=4"></script>
   <script src="js/analytics.js?v=2"></script>
   <script src="js/security.js?v=1"></script>

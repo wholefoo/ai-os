@@ -7,7 +7,7 @@ const os = require('os');
 const okf = require('../lib/okf');
 const aeoEmit = require('../lib/web-studio/aeo-emit');
 
-const assert = (cond, msg) => { if (!cond) { console.error('FAIL:', msg); process.exitCode = 1; } else console.log('ok  :', msg); };
+const { assert, done } = require('./test-util');
 
 // --- serialize → parse roundtrip, incl. characters that force YAML quoting
 const doc = okf.serializeConcept(
@@ -65,4 +65,4 @@ assert(home.frontmatter.title === 'Acme Dental — Home', 'page concept prefers 
 assert(home.body.includes('Cleanings'), 'page body carries section content');
 assert(aeoEmit.llmsTxt(plan).includes('/knowledge/index.md'), 'llms.txt advertises the knowledge bundle');
 
-console.log(process.exitCode ? '\nTESTS FAILED' : '\nALL TESTS PASSED');
+done();
