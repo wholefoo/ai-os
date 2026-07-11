@@ -92,4 +92,26 @@ const otherDay = parseLine(L[5].replace('08/Jul', '09/Jul'), { secret: 's' });
 assert(l1.visitorHash === l1b.visitorHash, 'visitor hash deterministic within a day');
 assert(l1.visitorHash !== otherDay.visitorHash, 'visitor hash rotates across days');
 
+// --- P2: vhost-format lines attribute to the owning site; combined lines stay 'platform'
+const resolveSite = (host) => (host === 'acmedental.com' ? 'site-acme' : null);
+fs.appendFileSync(logPath, [
+  // aios_vhost format (host first) — client site traffic
+  'acmedental.com 20.171.207.1 - - [08/Jul/2026:07:00:00 +0000] "GET /pricing HTTP/1.1" 200 4000 "-" "Mozilla/5.0 (compatible; GPTBot/1.2)"',
+  'www.acmedental.com 1.2.3.4 - - [08/Jul/2026:07:00:10 +0000] "GET / HTTP/2.0" 200 9000 "https://chatgpt.com/" "Mozilla/5.0 (Windows NT 10.0) Chrome/126"',
+  // vhost format but an unknown host → platform bucket
+  'unknown-host.example 5.6.7.8 - - [08/Jul/2026:07:00:20 +0000] "GET / HTTP/1.1" 200 9000 "-" "Mozilla/5.0 (compatible; ClaudeBot/1.0)"',
+  // old combined format still parses (no host) → platform bucket
+  '9.9.9.9 - - [08/Jul/2026:07:00:30 +0000] "GET /legacy HTTP/1.1" 200 1 "-" "Mozilla/5.0 (compatible; PerplexityBot/1.0)"',
+].join('\n') + '\n');
+const r6 = ingestOnce({ logPath, secret: 'test', resolveSite });
+assert(r6.events === 4, `vhost pass ingested 4 events, got ${r6.events}`);
+const acmeBots = adb.botLeaderboard('site-acme', 7);
+assert(acmeBots.length === 1 && acmeBots[0].bot === 'GPTBot', `GPTBot attributed to site-acme (${JSON.stringify(acmeBots)})`);
+const acmeSum = adb.summary('site-acme', 7);
+assert(acmeSum.pageviews === 1 && acmeSum.aiReferrers.length === 1, `www. host normalized onto site-acme; human AI referral counted (${acmeSum.pageviews}/${JSON.stringify(acmeSum.aiReferrers)})`);
+const platBots = adb.botLeaderboard('platform', 7);
+assert(platBots.find((x) => x.bot === 'ClaudeBot' && x.count === 2), 'unknown vhost host fell back to platform (ClaudeBot 1+1)');
+assert(platBots.find((x) => x.bot === 'PerplexityBot' && x.count === 2), 'combined-format line still parses into platform (PerplexityBot 1+1)');
+assert(!platBots.find((x) => x.bot === 'GPTBot' && x.count > 2), 'site-attributed GPTBot hit did NOT leak into the platform bucket');
+
 console.log(process.exitCode ? '\nTESTS FAILED' : '\nALL TESTS PASSED');

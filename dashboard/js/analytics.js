@@ -5,7 +5,7 @@
 //  derived — the AI-crawler layer GA can't see); live rows arrive over SSE as 'web_analytics_bot'.
 // ============================================================
 
-const anState = { wired: false, days: 7, feed: [] };
+const anState = { wired: false, days: 7, site: 'platform', feed: [] };
 
 function loadAnalytics() {
   if (!anState.wired) {
@@ -14,16 +14,44 @@ function loadAnalytics() {
     if (range) range.addEventListener('change', () => { anState.days = parseInt(range.value, 10) || 7; anFetchAll(); });
     const refresh = document.getElementById('anRefresh');
     if (refresh) refresh.addEventListener('click', anFetchAll);
+    const siteSel = document.getElementById('anSite');
+    if (siteSel) siteSel.addEventListener('change', () => { anState.site = siteSel.value; anFetchAll(); });
   }
-  anFetchAll();
+  anPopulateSites().then(anFetchAll);
+}
+
+// Site scope dropdown. Admin: Platform + every site (the sites endpoint returns all for admins).
+// Client: their OWN sites only (same endpoint, server-filtered) — no Platform option, and the
+// default scope is their first site.
+async function anPopulateSites() {
+  const sel = document.getElementById('anSite');
+  if (!sel) return;
+  const isClient = window.aiosRole === 'client';
+  const r = await fetchJSON('/api/web-studio/sites');
+  const sites = (r && r.sites) || [];
+  const opts = [];
+  if (!isClient) opts.push({ v: 'platform', label: 'Platform (this dashboard)' });
+  for (const s of sites) opts.push({ v: s.id, label: s.name + (s.domain ? ` — ${s.domain}` : '') });
+  sel.innerHTML = opts.map((o) => `<option value="${escapeHtml(o.v)}">${escapeHtml(o.label)}</option>`).join('');
+  if (!opts.some((o) => o.v === anState.site)) anState.site = opts.length ? opts[0].v : 'platform';
+  sel.value = anState.site;
 }
 
 async function anFetchAll() {
-  const [summary, crawlers, pages] = await Promise.all([
-    fetchJSON(`/api/analytics/summary?days=${anState.days}`),
-    fetchJSON(`/api/analytics/ai-crawlers?days=${anState.days}`),
-    fetchJSON(`/api/analytics/pages?days=${anState.days}`),
-  ]);
+  let summary, crawlers, pages;
+  if (anState.site === 'platform') {
+    // Admin platform scope: the three admin endpoints.
+    [summary, crawlers, pages] = await Promise.all([
+      fetchJSON(`/api/analytics/summary?days=${anState.days}`),
+      fetchJSON(`/api/analytics/ai-crawlers?days=${anState.days}`),
+      fetchJSON(`/api/analytics/pages?days=${anState.days}`),
+    ]);
+  } else {
+    // A specific site: one combined owner-scoped payload (works for admin AND client).
+    const all = await fetchJSON(`/api/web-studio/sites/${encodeURIComponent(anState.site)}/analytics?days=${anState.days}`);
+    if (all && all.ok) { summary = all; crawlers = all; pages = all; }
+    else if (all && all.error) { wsHintAn(all.error); return; }
+  }
   if (summary && summary.ok) anRenderStats(summary);
   if (crawlers && crawlers.ok) {
     anState.feed = crawlers.recent || [];
@@ -32,6 +60,11 @@ async function anFetchAll() {
   }
   if (pages && pages.ok) anRenderHeat(pages.crawlHeat || []);
   if (summary && summary.ok) anRenderRefs(summary.aiReferrers || [], summary.referrers || []);
+}
+
+function wsHintAn(msg) {
+  const el = document.getElementById('anFeed');
+  if (el) el.innerHTML = `<div class="an-empty">${escapeHtml(msg)}</div>`;
 }
 
 function anRenderStats(s) {
@@ -103,6 +136,7 @@ function onAnalyticsEvent(msg) {
   const view = document.getElementById('view-analytics');
   if (!view || !view.classList.contains('active')) return;
   if (msg.event === 'web_analytics_bot' && msg.data) {
+    if ((msg.data.siteId || 'platform') !== anState.site) return; // live rows only for the scoped site
     anState.feed.unshift(msg.data);
     if (anState.feed.length > 100) anState.feed.length = 100;
     anRenderFeed();

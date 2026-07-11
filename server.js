@@ -2246,6 +2246,23 @@ app.get('/api/web-studio/sites/:id/export.zip', requireClientOrAdmin, async (req
   res.send(buf);
 });
 
+// GET /api/web-studio/sites/:id/analytics — per-site analytics for the site's OWNER (client or
+// admin; wsFindSite 404s cross-tenant). One combined payload (summary + crawlers + crawl heat):
+// the client view renders it in a single fetch. Client-reachable via the /api/web-studio
+// allowlist prefix — ownership enforcement is the gate, per the CLIENT_API_ALLOW rule.
+app.get('/api/web-studio/sites/:id/analytics', requireClientOrAdmin, (req, res) => {
+  const site = wsFindSite(req, res); if (!site) return;
+  if (!analyticsDb) return res.status(503).json({ error: 'analytics unavailable' });
+  const days = Math.min(Math.max(parseInt(req.query.days, 10) || 7, 1), 90);
+  res.json({
+    ok: true, site: site.id, days,
+    ...analyticsDb.summary(site.id, days),
+    leaderboard: analyticsDb.botLeaderboard(site.id, days),
+    recent: analyticsDb.recentBotEvents(site.id, 25),
+    crawlHeat: analyticsDb.crawlHeat(site.id, days, 15),
+  });
+});
+
 // GET /api/okf/export.zip — the platform's own knowledge as an Open Knowledge Format (OKF v0.1)
 // bundle: the agent registry (from .claude/agents frontmatter) + the docs map. Deterministic,
 // zero-token, admin-only. Consumable by any OKF-aware agent/tool without translation.
@@ -2693,7 +2710,11 @@ function broadcast(data) {
     });
     console.warn(`[broadcast] dropped circular refs from payload: ${e.message}`);
   }
-  wss.clients.forEach(c => { if (c.readyState === 1) c.send(msg); });
+  wss.clients.forEach(c => {
+    if (c.readyState !== 1) return;
+    if (c.role && c.role !== 'admin' && !wsClientCanReceive(c, data)) return; // non-admin sockets: owner-scoped allowlist only
+    c.send(msg);
+  });
 }
 
 function appendLog(entry) {
@@ -8424,9 +8445,20 @@ try {
   const ingest = require('./lib/analytics/ingest-logs');
   analyticsDb.openDb(path.join(MAGENT_DIR, 'analytics.sqlite'));
   const logPath = process.env.ANALYTICS_ACCESS_LOG || '/var/log/nginx/access.log';
+  // Host→site attribution (vhost-format log lines): a request served for a Web Studio site's
+  // registered domain is bucketed under that site's id; the platform's own domains and unknown
+  // hosts fall back to 'platform'. Reads webStudioSites live (mutated in place), so newly
+  // published domains attribute without a restart.
+  const resolveSite = (host) => {
+    const h = String(host || '').toLowerCase();
+    if (!h) return null;
+    const s = webStudioSites.find((x) => x.domain && String(x.domain).toLowerCase().replace(/^www\./, '') === h);
+    return s ? s.id : null;
+  };
   ingest.startIngest({
     logPath,
     secret: process.env.SESSION_SECRET || 'ai-os-analytics',
+    resolveSite,
     onBotEvent: (ev) => broadcast({ event: 'web_analytics_bot', data: ev }),
     log: appendLog,
   });
@@ -8436,20 +8468,29 @@ try {
   console.error('[analytics] init failed:', e.message);
 }
 
-app.get('/api/analytics/summary', requireAdmin, (req, res) => {
-  if (!analyticsDb) return res.status(503).json({ error: 'analytics unavailable' });
+// Admin analytics: ?site=<webStudioSiteId> scopes to one hosted site, default = the platform
+// itself. The site id is validated against the live site list (arbitrary bucket names would let
+// a typo silently read an empty bucket and look like "no traffic").
+function anResolveScope(req, res) {
+  if (!analyticsDb) { res.status(503).json({ error: 'analytics unavailable' }); return null; }
   const days = Math.min(Math.max(parseInt(req.query.days, 10) || 7, 1), 90);
-  res.json({ ok: true, ...analyticsDb.summary('platform', days) });
+  const siteParam = String(req.query.site || '').trim();
+  if (!siteParam || siteParam === 'platform') return { siteId: 'platform', days };
+  const site = webStudioSites.find((s) => s.id === siteParam);
+  if (!site) { res.status(404).json({ error: 'unknown site' }); return null; }
+  return { siteId: site.id, days };
+}
+app.get('/api/analytics/summary', requireAdmin, (req, res) => {
+  const scope = anResolveScope(req, res); if (!scope) return;
+  res.json({ ok: true, site: scope.siteId, ...analyticsDb.summary(scope.siteId, scope.days) });
 });
 app.get('/api/analytics/ai-crawlers', requireAdmin, (req, res) => {
-  if (!analyticsDb) return res.status(503).json({ error: 'analytics unavailable' });
-  const days = Math.min(Math.max(parseInt(req.query.days, 10) || 7, 1), 90);
-  res.json({ ok: true, leaderboard: analyticsDb.botLeaderboard('platform', days), recent: analyticsDb.recentBotEvents('platform', 50) });
+  const scope = anResolveScope(req, res); if (!scope) return;
+  res.json({ ok: true, site: scope.siteId, leaderboard: analyticsDb.botLeaderboard(scope.siteId, scope.days), recent: analyticsDb.recentBotEvents(scope.siteId, 50) });
 });
 app.get('/api/analytics/pages', requireAdmin, (req, res) => {
-  if (!analyticsDb) return res.status(503).json({ error: 'analytics unavailable' });
-  const days = Math.min(Math.max(parseInt(req.query.days, 10) || 7, 1), 90);
-  res.json({ ok: true, crawlHeat: analyticsDb.crawlHeat('platform', days) });
+  const scope = anResolveScope(req, res); if (!scope) return;
+  res.json({ ok: true, site: scope.siteId, crawlHeat: analyticsDb.crawlHeat(scope.siteId, scope.days) });
 });
 
 // --- Security: mythos-defense bridge (AI-driven security assessment CLI; OFF until installed) ---
@@ -9541,12 +9582,44 @@ app.get('/download/:filename', (req, res) => {
 
 // --- WebSocket ---
 
-wss.on('connection', (ws) => {
+wss.on('connection', (ws, req) => {
   ws.isAlive = true;
+  // Stamp the socket with the session's role/email so broadcast() can scope pushes: managed
+  // clients must not receive other tenants' events (sites, builds, leads, analytics). API-token
+  // and admin-session sockets are operator-grade.
+  ws.role = 'admin'; ws.email = null;
+  try {
+    const url = new URL(req.url, `http://${req.headers.host}`);
+    const qtoken = url.searchParams.get('token');
+    const ctoken = (req.headers.cookie || '').match(/ai-os-session=([^;]+)/)?.[1];
+    if (qtoken && API_TOKEN && qtoken === API_TOKEN) { ws.role = 'admin'; }
+    else {
+      const session = isValidSession(qtoken) || isValidSession(ctoken);
+      if (session) { ws.role = session.role || 'user'; ws.email = session.email || null; }
+      else if (API_TOKEN) { ws.role = 'user'; } // authenticated upgrade but unresolvable session — least privilege
+    }
+  } catch { if (API_TOKEN) ws.role = 'user'; }
   ws.on('pong', () => { ws.isAlive = true; });
   ws.on('error', () => { /* swallow client errors */ });
   ws.send(JSON.stringify({ event: 'connected', data: { health: getSystemHealth() } }));
 });
+
+// Which broadcast events may reach a NON-admin socket, and only when owner-matched. Everything
+// not listed here is operator telemetry (activity, CRM, schedules, costs, ...) — admin-only.
+function wsClientCanReceive(ws, data) {
+  const ev = data && data.event;
+  if (ev === 'connected' || ev === 'server_shutdown') return true;
+  const email = String(ws.email || '').toLowerCase();
+  if (!email) return false;
+  const ownsSiteId = (siteId) => {
+    const s = siteId && webStudioSites.find((x) => x.id === siteId);
+    return !!(s && s.ownerEmail && String(s.ownerEmail).toLowerCase() === email);
+  };
+  if (ev === 'web_studio_site') return !!(data.data && data.data.ownerEmail && String(data.data.ownerEmail).toLowerCase() === email);
+  if (ev === 'web_studio_build' || ev === 'web_studio_publish') return ownsSiteId(data.data && data.data.siteId);
+  if (ev === 'web_analytics_bot') return ownsSiteId(data.data && data.data.siteId);
+  return false;
+}
 
 // --- Commercial Module Routes (registered last so all globals are available) ---
 if (commercial.registerRoutes) {

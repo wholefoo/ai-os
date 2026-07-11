@@ -50,6 +50,9 @@ static_body() {
   cat <<EOF
     root ${SITE_ROOT};
     index index.html;
+    # vhost-attributed analytics (format defined in /etc/nginx/conf.d/aios-logformat.conf;
+    # if that drop-in is absent nginx -t fails loudly rather than silently losing attribution)
+    access_log /var/log/nginx/access.log aios_vhost;
     location / { try_files \$uri \$uri/ \$uri.html /index.html =404; }
 
     gzip on;

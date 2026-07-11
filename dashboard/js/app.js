@@ -44,7 +44,7 @@ async function applyRoleGating() {
   window.aiosRole = role;
   // 'client-security' is a client deliverable; operators have richer equivalents, so hide it for them.
   if (role !== 'client') { const n = document.querySelector('.nav-item[data-view="client-security"]'); if (n) n.style.display = 'none'; return role; }
-  const CLIENT_VIEWS = new Set(['web-studio', 'seo-agency', 'client-security']); // web studio + their own SEO/AEO audits + site security
+  const CLIENT_VIEWS = new Set(['web-studio', 'seo-agency', 'client-security', 'analytics']); // web studio + their own SEO/AEO audits + site security + their own site analytics (owner-scoped server-side)
   document.querySelectorAll('.nav-item').forEach((item) => {
     if (item.dataset.view && !CLIENT_VIEWS.has(item.dataset.view)) item.style.display = 'none';
   });
