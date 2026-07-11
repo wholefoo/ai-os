@@ -1202,6 +1202,7 @@
                 <div class="ws-row">
                   <select class="settings-input" id="wsType" style="max-width:220px;">
                     <option value="">Type: General</option>
+                    <option>Funnel</option>
                     <option>Landing Page</option>
                     <option>Business</option>
                     <option>Portfolio</option>
@@ -1218,6 +1219,10 @@
                     <option value="">Model: Auto (recommended)</option>
                     <option value="fable">Fable 5 — premium ($10/$50 per 1M)</option>
                   </select>
+                </div>
+                <div class="ws-row" id="wsCheckoutRow" style="display:none;gap:8px;align-items:center;">
+                  <input type="text" class="settings-input" id="wsCheckoutUrl" placeholder="Checkout URL — your Stripe Payment Link (https://buy.stripe.com/…)" style="max-width:460px;" />
+                  <span class="ws-hint">Landing CTAs lead to /offer; /offer CTAs go to this link. Set the payment link&rsquo;s success URL to your site&rsquo;s /thanks page.</span>
                 </div>
                 <textarea class="settings-input" id="wsBrief" rows="3" placeholder="Describe the site: who it's for, the vibe, the pages you want, and the main call to action."></textarea>
                 <div class="ws-row" style="gap:8px;align-items:center;">
@@ -2635,7 +2640,7 @@
 
   <script src="js/app.js?v=49"></script>
   <script src="https://cdn.jsdelivr.net/npm/monaco-editor@0.52.2/min/vs/loader.js"></script>
-  <script src="js/web-studio.js?v=14"></script>
+  <script src="js/web-studio.js?v=15"></script>
   <script src="js/crm.js?v=4"></script>
   <script src="js/analytics.js?v=2"></script>
   <script src="js/security.js?v=1"></script>

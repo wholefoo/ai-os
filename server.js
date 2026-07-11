@@ -1737,7 +1737,7 @@ function wsCleanAffiliateUrl(raw) {
 
 // --- Create from a brief (tier-limit gated; pipeline runs async) ---
 app.post('/api/web-studio/sites', requireClientOrAdmin, heavyLimiter, async (req, res) => {
-  const { name, brief, siteType, domain, cloneUrl, brandKitId, redesignUrl, maintainBranding, features, researchUrl, affiliateUrl, model, templateId } = req.body || {};
+  const { name, brief, siteType, domain, cloneUrl, brandKitId, redesignUrl, maintainBranding, features, researchUrl, affiliateUrl, checkoutUrl, model, templateId } = req.body || {};
   if (!brief || String(brief).trim().length < 10) return res.status(400).json({ error: 'A brief of at least 10 characters is required' });
   // Optional model choice for this build: 'fable' routes the design agents to Claude Fable 5 (premium);
   // anything else (default) keeps the operator's normal reasoning-mode routing. Mapped to an allowlisted
@@ -1751,6 +1751,10 @@ app.post('/api/web-studio/sites', requireClientOrAdmin, heavyLimiter, async (req
   }
   const cleanAffiliateUrl = wsCleanAffiliateUrl(affiliateUrl);
   if (affiliateUrl && !cleanAffiliateUrl) return res.status(400).json({ error: 'affiliateUrl must be a valid http(s) URL' });
+  // Funnel checkout link (Stripe Payment Link or any https checkout). https-only — this is a
+  // payment destination; the platform never handles the money, it only points CTAs at it.
+  const cleanCheckoutUrl = wsCleanAffiliateUrl(checkoutUrl);
+  if (checkoutUrl && (!cleanCheckoutUrl || !/^https:\/\//i.test(cleanCheckoutUrl))) return res.status(400).json({ error: 'checkoutUrl must be a valid https URL (e.g. a Stripe Payment Link)' });
   const limit = wsSiteLimit(req.session);
   if (wsActiveCount(req.session) >= limit) return res.status(403).json({ error: `Site limit reached (${limit}).`, limit });
 
@@ -1804,9 +1808,10 @@ app.post('/api/web-studio/sites', requireClientOrAdmin, heavyLimiter, async (req
       catch (e) { appendLog(`web-studio: affiliate research failed (${src}): ${e.message}`); }
     }
     if (cleanAffiliateUrl) site.affiliateUrl = cleanAffiliateUrl;
+    if (cleanCheckoutUrl) site.checkoutUrl = cleanCheckoutUrl;
     const platformBaseUrl = process.env.AIOS_PUBLIC_URL || `${req.protocol}://${req.get('host')}`;
     const result = await webStudioPipeline.createSiteFromBrief(
-      { siteId: id, workspaceDir: wsWorkspaceDir(id), brief: wsBriefWithType(site), domain: site.domain, siteName: site.name, design, scraped, research, affiliateUrl: cleanAffiliateUrl, features: cleanFeatures, platformBaseUrl, modelOverride, templatePlan: template ? template.plan : null },
+      { siteId: id, workspaceDir: wsWorkspaceDir(id), brief: wsBriefWithType(site), domain: site.domain, siteName: site.name, design, scraped, research, affiliateUrl: cleanAffiliateUrl, checkoutUrl: cleanCheckoutUrl, features: cleanFeatures, platformBaseUrl, modelOverride, templatePlan: template ? template.plan : null },
       { executeAgent, broadcast, log: appendLog, signProvenance }
     );
     site.status = result.ok ? result.status : 'failed';

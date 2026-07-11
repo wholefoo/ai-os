@@ -34,6 +34,10 @@ function loadWebStudio() {
     on('wsTrendBtn', 'click', wsTrends);
     on('wsAssistToggle', 'click', wsAssistToggle);
     on('wsAssistWrite', 'click', wsAssistWrite);
+    on('wsType', 'change', () => {
+      const row = document.getElementById('wsCheckoutRow');
+      if (row) row.style.display = ((document.getElementById('wsType') || {}).value === 'Funnel') ? '' : 'none';
+    });
     on('wsImportZipBtn', 'click', wsImportZip);
     on('wsImportGhBtn', 'click', wsImportGithub);
     on('wsBackBtn', 'click', wsBack);
@@ -208,6 +212,7 @@ async function wsCreate() {
   const maintainBranding = (document.getElementById('wsMaintainBranding') || {}).checked !== false;
   const researchUrl = ((document.getElementById('wsResearchUrl') || {}).value || '').trim();
   const affiliateUrl = ((document.getElementById('wsAffiliateUrl') || {}).value || '').trim();
+  const checkoutUrl = siteType === 'Funnel' ? ((document.getElementById('wsCheckoutUrl') || {}).value || '').trim() : '';
   const features = {
     enableChat: !!(document.getElementById('wsFeatChat') || {}).checked,
     enableDarkMode: !!(document.getElementById('wsFeatDark') || {}).checked,
@@ -219,7 +224,7 @@ async function wsCreate() {
   const btn = document.getElementById('wsCreateBtn');
   if (btn) btn.disabled = true;
   if (hint) hint.textContent = researchUrl ? 'Researching the product, then writing original affiliate copy…' : redesignUrl ? 'Reusing the existing site’s content + branding, then generating your redesign…' : (brandKitId || cloneUrl) ? 'Applying design + generating your site…' : 'Generating — the studio team is planning, writing and building your site…';
-  const r = await fetchJSON('/api/web-studio/sites', { method: 'POST', body: { name, brief, siteType, domain, cloneUrl, brandKitId, redesignUrl, maintainBranding, researchUrl, affiliateUrl, features, model, templateId } });
+  const r = await fetchJSON('/api/web-studio/sites', { method: 'POST', body: { name, brief, siteType, domain, cloneUrl, brandKitId, redesignUrl, maintainBranding, researchUrl, affiliateUrl, checkoutUrl, features, model, templateId } });
   if (r && r.error) { if (hint) hint.textContent = `Could not create: ${r.error}`; if (btn) btn.disabled = false; return; }
   document.getElementById('wsName').value = '';
   document.getElementById('wsBrief').value = '';
@@ -793,7 +798,55 @@ function wsRenderContentForm(plan) {
     });
     out.push('</div>');
   });
+  // Dynamic pages: one template page + pasted rows → N static pages at build time. Inputs use
+  // ids (not data-path), so wsCollectContent ignores them — wsDynApply owns plan.dynamic.
+  const dyn = plan.dynamic || {};
+  const csv = Array.isArray(dyn.items) && dyn.items.length
+    ? (() => { const cols = Object.keys(dyn.items[0]); return [cols.join(','), ...dyn.items.map((it) => cols.map((c) => String(it[c] ?? '')).join(','))].join('\n'); })()
+    : '';
+  out.push(`<div class="ws-cgroup"><div class="ws-cgroup-title">Dynamic pages &mdash; one template, many pages</div>
+    <div class="ws-cfield"><label>Template page (its text may use {{column}} placeholders)</label>
+      <select class="settings-input" id="wsDynSource">${(plan.pages || []).map((p, i) => `<option value="${i}"${dyn._sourceIndex === i ? ' selected' : ''}>${escapeHtml(p.title || p.path)}</option>`).join('')}</select></div>
+    <div class="ws-cfield"><label>Path prefix (pages land at /prefix/slug)</label><input type="text" class="settings-input" id="wsDynPrefix" value="${escapeHtml(dyn.pathPrefix || '')}" placeholder="e.g. areas" /></div>
+    <div class="ws-cfield"><label>Rows &mdash; simple CSV, first line headers, must include a <b>slug</b> column (no quoted commas)</label>
+      <textarea class="settings-input" id="wsDynCsv" rows="5" placeholder="slug,city,phone\nmesa,Mesa,480-555-0100\ntempe,Tempe,480-555-0101">${escapeHtml(csv)}</textarea></div>
+    <div class="ws-row" style="gap:8px;">
+      <button class="btn" onclick="wsDynApply()">Apply &amp; rebuild</button>
+      ${plan.dynamic ? '<button class="btn" onclick="wsDynClear()">Remove dynamic pages</button>' : ''}
+      <span class="ws-hint" id="wsDynHint">${plan.dynamic ? `${(dyn.items || []).length} dynamic page(s) active under /${escapeHtml(dyn.pathPrefix || '')}` : 'Example: a service-area page per city, a page per menu item, per product…'}</span>
+    </div>
+  </div>`);
   pane.innerHTML = out.join('');
+}
+
+function wsDynApply() {
+  if (!wsState.plan) return;
+  const hint = document.getElementById('wsDynHint');
+  const prefix = ((document.getElementById('wsDynPrefix') || {}).value || '').trim();
+  const csvText = ((document.getElementById('wsDynCsv') || {}).value || '').trim();
+  const srcIdx = parseInt((document.getElementById('wsDynSource') || {}).value, 10) || 0;
+  if (!prefix || !csvText) { if (hint) hint.textContent = 'A path prefix and at least one data row are required.'; return; }
+  const lines = csvText.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+  if (lines.length < 2) { if (hint) hint.textContent = 'Need a header line plus at least one row.'; return; }
+  const headers = lines[0].split(',').map((h) => h.trim());
+  if (!headers.includes('slug')) { if (hint) hint.textContent = 'The header line must include a "slug" column.'; return; }
+  const items = lines.slice(1).map((line) => {
+    const cells = line.split(',');
+    const row = {};
+    headers.forEach((h, i) => { row[h] = (cells[i] || '').trim(); });
+    return row;
+  }).filter((r) => r.slug);
+  if (!items.length) { if (hint) hint.textContent = 'No rows with a slug value found.'; return; }
+  const template = JSON.parse(JSON.stringify((wsState.plan.pages || [])[srcIdx] || {}));
+  delete template.path; // the expander assigns /prefix/slug
+  wsState.plan.dynamic = { pathPrefix: prefix, template, items, _sourceIndex: srcIdx };
+  wsSaveContent();
+}
+
+function wsDynClear() {
+  if (!wsState.plan) return;
+  delete wsState.plan.dynamic;
+  wsSaveContent();
 }
 
 function wsSetByPath(obj, pathStr, value) {
