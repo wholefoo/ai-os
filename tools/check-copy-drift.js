@@ -41,12 +41,13 @@ for (const surface of SURFACES) {
 }
 
 // Docs corpus (dashboard/docs/*.html) — AGGREGATE check: every feature must be documented
-// SOMEWHERE across the docs, not on every page. WARN-ONLY for now: 7 features shipped ahead of
-// their docs (2026-07-12 audit) — flip `DOCS_ENFORCE` to true once dashboard/docs covers them,
-// and from then on shipping an undocumented feature fails CI like the surfaces above.
+// SOMEWHERE across the docs, not on every page. ENFORCING since 2026-07-12 (the 7 features
+// that had shipped ahead of their docs are now covered by analytics.html,
+// web-studio-business.html, and agent-ready-sites.html) — shipping an undocumented feature
+// fails CI like the surfaces above. Set false only for a deliberate, temporary grace period.
 // (dashboard/blog/ is deliberately NOT audited — posts are topical marketing, not the
 // reference surface; auditing them for feature mentions would just generate noise.)
-const DOCS_ENFORCE = false;
+const DOCS_ENFORCE = true;
 const docsDir = path.join(__dirname, '..', 'dashboard', 'docs');
 const docsCorpus = fs.readdirSync(docsDir).filter((f) => f.endsWith('.html'))
   .map((f) => fs.readFileSync(path.join(docsDir, f), 'utf8')).join('\n');

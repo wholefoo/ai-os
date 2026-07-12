@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Web Studio Business Tools — AI OS Docs</title>
+  <meta name="description" content="Lead capture that feeds the CRM, sales funnels wired to your Stripe Payment Link, dynamic pages from a dataset, and a per-site Site Manager dashboard.">
+  <link rel="canonical" href="https://aiosorchestrationlab.com/docs/web-studio-business">
+  <meta property="og:title" content="Web Studio Business Tools — AI OS Docs">
+  <meta property="og:description" content="Lead capture into the CRM, sales funnels with Stripe checkout wiring, dynamic pages from a dataset, and a per-site business dashboard for every hosted site.">
+  <meta name="twitter:card" content="summary">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/css/landing.css">
+  <link rel="stylesheet" href="/css/docs.css">
+  <script async src="https://www.googletagmanager.com/gtag/js?id=G-SMHYRX8D4P"></script>
+  <script>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}gtag('js',new Date());gtag('config','G-SMHYRX8D4P');</script>
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "TechArticle",
+    "headline": "Web Studio Business Tools — Leads, Funnels, Dynamic Pages & Site Manager",
+    "description": "Every AI OS hosted site is a business tool: lead-capture forms that feed the CRM, sales funnels wired to your Stripe Payment Link, dynamic pages generated from a dataset, and a per-site Site Manager dashboard.",
+    "url": "https://aiosorchestrationlab.com/docs/web-studio-business",
+    "author": { "@type": "Organization", "name": "AI OS Orchestration Lab" },
+    "publisher": { "@type": "Organization", "name": "AI OS Orchestration Lab", "url": "https://aiosorchestrationlab.com" }
+  }
+  </script>
+  <script type="application/ld+json">{"@context":"https://schema.org","@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Home","item":"https://aiosorchestrationlab.com/"},{"@type":"ListItem","position":2,"name":"Documentation","item":"https://aiosorchestrationlab.com/docs/"},{"@type":"ListItem","position":3,"name":"Web Studio Business Tools"}]}</script>
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "FAQPage",
+    "mainEntity": [
+      {
+        "@type": "Question",
+        "name": "Where do leads from my website's contact form go?",
+        "acceptedAnswer": { "@type": "Answer", "text": "Two places at once. Each submission becomes a contact and an activity in the operator's CRM (with the site and page it came from), and it appears in the site's own lead inbox on the Manage tab — so a managed client sees every lead their site captured without needing CRM access. The form is plain HTML: it works even for visitors who block JavaScript, and a hidden honeypot field silently absorbs bot submissions." }
+      },
+      {
+        "@type": "Question",
+        "name": "Does AI OS process payments for funnel sites?",
+        "acceptedAnswer": { "@type": "Answer", "text": "No. A funnel's purchase buttons point at your own checkout link — typically a Stripe Payment Link — and the platform never touches the money. You set the payment link's success URL to the funnel's /thanks page. Only https checkout URLs are accepted." }
+      },
+      {
+        "@type": "Question",
+        "name": "How do dynamic pages work?",
+        "acceptedAnswer": { "@type": "Answer", "text": "You pick one existing page as a template, choose a path prefix, and paste rows of data (a header line including a slug column, then one row per page). At build time the platform generates one static page per row, substituting {{column}} placeholders — for example a service page per city. Generated pages are included in the sitemap, llms.txt, structured data, and the site's knowledge bundle automatically, and are capped at 200 per site." }
+      },
+      {
+        "@type": "Question",
+        "name": "What is the Site Manager?",
+        "acceptedAnswer": { "@type": "Answer", "text": "Every hosted site has a Manage tab in its editor: status, domain, 30-day traffic, AI-crawler visibility, and lead counts at a glance, the lead inbox itself, and one-click actions — view the live site, download a ZIP export, edit content, open full analytics, or run an SEO/AEO audit. For managed clients it is scoped server-side to their own sites only." }
+      },
+      {
+        "@type": "Question",
+        "name": "Is there a separate admin backend for each generated site?",
+        "acceptedAnswer": { "@type": "Answer", "text": "Deliberately not. Generated sites stay static — fast and with almost no attack surface — and all management happens in the platform dashboard behind one authenticated login, scoped per owner. One hardened backend beats many small ones to patch and secure." }
+      }
+    ]
+  }
+  </script>
+</head>
+<body>
+  <nav class="landing-nav">
+    <div class="nav-container">
+      <a href="/" class="nav-brand">
+        <span class="nav-logo">&#9678;</span>
+        <span class="nav-name">AI OS</span>
+      </a>
+      <div class="nav-links">
+        <a href="/">Home</a>
+        <a href="/docs" class="active">Docs</a>
+        <a href="/blog">Blog</a>
+        <a href="/about">About</a>
+        <a href="/contact">Contact</a>
+      </div>
+      <div class="nav-cta">
+        <a href="/login" class="btn-nav-login">Log In</a>
+      </div>
+    </div>
+  </nav>
+
+  <main class="docs-page">
+    <div class="docs-container">
+      <div class="docs-layout">
+        <div class="docs-content">
+          <div class="docs-breadcrumb">
+            <a href="/docs">Docs</a> <span>/</span> Web Studio Business Tools
+          </div>
+
+          <h1>Web Studio Business Tools</h1>
+          <p class="docs-lead">An AI OS hosted site is a working business system, not a brochure: the platform provides the capture, wiring, and reporting, and every site offers its owner a management dashboard. Contact forms feed a real CRM and a per-site lead inbox, a Funnel site type wires purchase buttons to your Stripe checkout, dynamic pages turn one template into a page per city or product, and every site carries its own <strong>Site Manager</strong> dashboard. This page documents the four business tools; the build pipeline itself (sections, templates, guided briefs) is covered in the platform overview.</p>
+
+          <h2 id="lead-capture">Lead capture &rarr; CRM</h2>
+          <p>Contact sections on platform-hosted sites render a real lead form (name, email, message) instead of a bare email link. Submissions are plain HTML form posts — no JavaScript required on the visitor's side, so even script-blocking visitors convert — protected by a strict rate limit and a hidden honeypot field that silently absorbs bot submissions.</p>
+          <p>Each submission lands in two places:</p>
+          <ul>
+            <li><strong>The operator's CRM</strong> — a contact (source <code>site-lead</code>) plus an activity carrying the message, the site, and the page it came from</li>
+            <li><strong>The site's own lead inbox</strong> — on the Manage tab, visible to the site's owner (including managed clients), with a mailto link per lead</li>
+          </ul>
+          <p>Sites exported off-platform keep a graceful email-link fallback, and a per-site setting can disable the form entirely. After submitting, visitors return to the page with a confirmation message — no redirect to a foreign domain, ever.</p>
+
+          <h2 id="funnels">Sales funnels</h2>
+          <p>Choose the <strong>Funnel</strong> site type and paste your checkout URL (a <a href="https://stripe.com/payments/payment-links" target="_blank" rel="noopener">Stripe Payment Link</a> or any https checkout). The generated funnel has a fixed three-page shape, and the platform wires the links deterministically — this is never left to the AI:</p>
+          <ol>
+            <li><strong>/</strong> — the landing page: core promise, proof (testimonials or stats), and a call to action leading to the offer</li>
+            <li><strong>/offer</strong> — the decision page: pricing or a strong offer presentation plus an objection-handling FAQ; every purchase button (including individual pricing-tier buttons) points at your checkout link</li>
+            <li><strong>/thanks</strong> — the post-purchase confirmation with next steps; created automatically if the plan omitted it. Set your payment link's success URL here</li>
+          </ol>
+          <p>The wiring re-applies on every rebuild, so later content edits cannot break the purchase path. The platform points buttons at your checkout — it never handles the payment itself.</p>
+
+          <h2 id="dynamic-pages">Dynamic pages</h2>
+          <p>One template page plus a dataset produces N static pages at build time — the classic local-business play of a service page per suburb, or a page per menu item, per product, per practice area.</p>
+          <ol>
+            <li>In the editor's content tab, pick a <strong>template page</strong> and a <strong>path prefix</strong> (pages land at <code>/prefix/slug</code>)</li>
+            <li>Paste rows as simple CSV — a header line that includes a <code>slug</code> column, then one row per page</li>
+            <li>Any <code>{{column}}</code> placeholder in the template's text is substituted per row; apply and rebuild</li>
+          </ol>
+          <p>Generated pages join the sitemap, llms.txt, structured data (including per-page FAQPage markup when the template has a FAQ section), and the site's knowledge bundle automatically. Hand-written pages win path collisions, slugs are sanitized, and generation is capped at 200 pages per site.</p>
+
+          <h2 id="site-manager">Site Manager</h2>
+          <p>Every site's editor has a <strong>Manage</strong> tab — the per-site business dashboard:</p>
+          <ul>
+            <li><strong>Overview cards</strong> — status, domain, 30-day pageviews, AI-crawler hits, AI-referred visits, and lead count</li>
+            <li><strong>Lead inbox</strong> — everyone who submitted the contact form, newest first, with message previews and mailto links</li>
+            <li><strong>Quick actions</strong> — view the live site, download a ZIP export, jump to the content editor, open full <a href="/docs/analytics">analytics</a>, or run an SEO/AEO audit</li>
+          </ul>
+          <p>There is deliberately no separate backend per generated site: sites stay static (fast, minimal attack surface) while management lives in the platform dashboard behind one authenticated login. For managed clients everything on this tab is scoped server-side to the sites they own.</p>
+
+          <h2 id="api-endpoints">API Endpoints</h2>
+          <div class="docs-endpoint">
+            <span class="docs-endpoint-method post">POST</span>
+            <span class="docs-endpoint-path">/api/public/site-lead/:siteId</span>
+            <p class="docs-endpoint-desc">Public form target on hosted sites (rate-limited, honeypot-protected, email-validated). Creates the CRM contact + activity.</p>
+          </div>
+          <div class="docs-endpoint">
+            <span class="docs-endpoint-method get">GET</span>
+            <span class="docs-endpoint-path">/api/web-studio/sites/:id/leads</span>
+            <p class="docs-endpoint-desc">The site's lead inbox — owner-scoped (managed clients see their own sites' leads only).</p>
+          </div>
+          <div class="docs-endpoint">
+            <span class="docs-endpoint-method post">POST</span>
+            <span class="docs-endpoint-path">/api/web-studio/sites</span>
+            <p class="docs-endpoint-desc">Create a site; for funnels pass <code>siteType: "Funnel"</code> and a https <code>checkoutUrl</code>. Dynamic pages ride the plan (<code>plan.dynamic</code>) via the content update endpoint.</p>
+          </div>
+
+          <h2 id="faq">Frequently asked questions</h2>
+          <div class="docs-callout info">
+            <strong>Where do my website's leads go?</strong>
+            <p>Into the operator CRM (contact + activity with site/page attribution) and into the site's own lead inbox on the Manage tab — both from the same submission.</p>
+          </div>
+          <div class="docs-callout info">
+            <strong>Does the platform take a cut of funnel sales?</strong>
+            <p>No. Purchase buttons point at your own Stripe Payment Link; the money flows through your Stripe account. The platform only wires the links.</p>
+          </div>
+          <div class="docs-callout info">
+            <strong>How many dynamic pages can one site generate?</strong>
+            <p>Up to 200 per site, from one template and one pasted dataset. All of them are indexed in the sitemap and knowledge files automatically.</p>
+          </div>
+
+          <div class="docs-page-nav">
+            <a href="/docs/agent-ready-sites">&larr; Agent-Ready Sites</a>
+            <a href="/docs/analytics">Analytics &rarr;</a>
+          </div>
+        </div>
+
+        <aside class="docs-toc">
+          <div class="docs-toc-title">On this page</div>
+          <a href="#lead-capture">Lead Capture</a>
+          <a href="#funnels">Sales Funnels</a>
+          <a href="#dynamic-pages">Dynamic Pages</a>
+          <a href="#site-manager">Site Manager</a>
+          <a href="#api-endpoints">API</a>
+          <a href="#faq">FAQ</a>
+        </aside>
+      </div>
+    </div>
+  </main>
+
+  <footer class="site-footer">
+    <div class="footer-container">
+      <div class="footer-brand">
+        <span class="nav-logo">&#9678;</span>
+        <span class="nav-name">AI OS</span>
+        <p class="footer-tagline">The Agentic Operating System</p>
+      </div>
+      <div class="footer-links">
+        <div class="footer-col">
+          <h4>Product</h4>
+          <a href="/#features">Features</a>
+          <a href="/#pricing">Pricing</a>
+          <a href="/docs">Documentation</a>
+        </div>
+        <div class="footer-col">
+          <h4>Resources</h4>
+          <a href="/blog">Blog</a>
+          <a href="/about">About</a>
+          <a href="/contact">Contact</a>
+        </div>
+        <div class="footer-col">
+          <h4>Legal</h4>
+          <a href="/trust">Trust &amp; Security</a>
+          <a href="/terms">Terms of Service</a>
+          <a href="/privacy">Privacy Policy</a>
+        </div>
+      </div>
+    </div>
+    <div class="footer-bottom">
+      <p>&copy; 2026 AI OS Orchestration Lab. All rights reserved.</p>
+    </div>
+  </footer>
+</body>
+</html>

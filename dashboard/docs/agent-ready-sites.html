@@ -1,0 +1,210 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Agent-Ready Sites — Structured Data, OKF Bundles &amp; Content Provenance — AI OS Docs</title>
+  <meta name="description" content="Every AI OS generated site ships machine-readable knowledge for AI agents: JSON-LD (including FAQPage), llms.txt, an Open Knowledge Format (OKF) bundle, an AI-crawler robots.txt, and Ed25519-signed content provenance.">
+  <link rel="canonical" href="https://aiosorchestrationlab.com/docs/agent-ready-sites">
+  <meta property="og:title" content="Agent-Ready Sites — AI OS Docs">
+  <meta property="og:description" content="JSON-LD, llms.txt, Open Knowledge Format bundles, and signed content provenance — what AI OS emits so answer engines and AI agents can read, cite, and trust your site.">
+  <meta name="twitter:card" content="summary">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/css/landing.css">
+  <link rel="stylesheet" href="/css/docs.css">
+  <script async src="https://www.googletagmanager.com/gtag/js?id=G-SMHYRX8D4P"></script>
+  <script>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}gtag('js',new Date());gtag('config','G-SMHYRX8D4P');</script>
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "TechArticle",
+    "headline": "Agent-Ready Sites — Structured Data, OKF Bundles & Content Provenance",
+    "description": "Every AI OS generated site ships machine-readable knowledge for AI agents: JSON-LD (including FAQPage), llms.txt, an Open Knowledge Format (OKF) bundle, an AI-crawler robots.txt, and Ed25519-signed content provenance.",
+    "url": "https://aiosorchestrationlab.com/docs/agent-ready-sites",
+    "author": { "@type": "Organization", "name": "AI OS Orchestration Lab" },
+    "publisher": { "@type": "Organization", "name": "AI OS Orchestration Lab", "url": "https://aiosorchestrationlab.com" }
+  }
+  </script>
+  <script type="application/ld+json">{"@context":"https://schema.org","@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Home","item":"https://aiosorchestrationlab.com/"},{"@type":"ListItem","position":2,"name":"Documentation","item":"https://aiosorchestrationlab.com/docs/"},{"@type":"ListItem","position":3,"name":"Agent-Ready Sites"}]}</script>
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "FAQPage",
+    "mainEntity": [
+      {
+        "@type": "Question",
+        "name": "What does 'agent-ready' mean for a website?",
+        "acceptedAnswer": { "@type": "Answer", "text": "The site publishes machine-readable descriptions of itself alongside its human-readable pages, so AI answer engines and agents can navigate, understand, and cite it without scraping and guessing: schema.org JSON-LD entities on every page, a curated llms.txt content map, a robots.txt that explicitly allows the major AI crawlers, a sitemap, and an Open Knowledge Format bundle at /knowledge/." }
+      },
+      {
+        "@type": "Question",
+        "name": "What is the Open Knowledge Format (OKF)?",
+        "acceptedAnswer": { "@type": "Answer", "text": "OKF is an open, Apache-2.0-licensed specification introduced by Google Cloud in June 2026: knowledge represented as a directory of markdown files with YAML frontmatter, where the file path is a concept's identity and normal markdown links form the knowledge graph. Only one frontmatter field (type) is required, and no SDK or runtime is needed to read a bundle. AI OS generates an OKF bundle for every hosted site and can export the platform's own knowledge as one." }
+      },
+      {
+        "@type": "Question",
+        "name": "Is the FAQPage structured data guaranteed to match what visitors see?",
+        "acceptedAnswer": { "@type": "Answer", "text": "Yes, by construction: the FAQPage JSON-LD is generated from the exact same question-and-answer pairs the page visibly renders in its FAQ section. There is no separate hand-maintained markup that could drift out of sync with the content." }
+      },
+      {
+        "@type": "Question",
+        "name": "Is AI OS content provenance the same as C2PA Content Credentials?",
+        "acceptedAnswer": { "@type": "Answer", "text": "No, and the docs say so plainly. AI OS provenance uses C2PA vocabulary for interoperability, but it is not certified C2PA. It is an Ed25519-signed sidecar binding a hash of the served homepage, plus an unsigned JSON-LD disclosure on each page. The signed sidecar is the integrity artifact; the on-page disclosure is transparency, not tamper-evidence." }
+      },
+      {
+        "@type": "Question",
+        "name": "Why disclose that a site was AI-generated at all?",
+        "acceptedAnswer": { "@type": "Answer", "text": "Machine-readable AI-generation disclosure aligns with emerging transparency rules such as EU AI Act Article 50, and honest provenance builds trust with both visitors and answer engines. The disclosure states how the site was made; the cryptographic signature lets anyone verify the served content hasn't been altered since it was signed." }
+      }
+    ]
+  }
+  </script>
+</head>
+<body>
+  <nav class="landing-nav">
+    <div class="nav-container">
+      <a href="/" class="nav-brand">
+        <span class="nav-logo">&#9678;</span>
+        <span class="nav-name">AI OS</span>
+      </a>
+      <div class="nav-links">
+        <a href="/">Home</a>
+        <a href="/docs" class="active">Docs</a>
+        <a href="/blog">Blog</a>
+        <a href="/about">About</a>
+        <a href="/contact">Contact</a>
+      </div>
+      <div class="nav-cta">
+        <a href="/login" class="btn-nav-login">Log In</a>
+      </div>
+    </div>
+  </nav>
+
+  <main class="docs-page">
+    <div class="docs-container">
+      <div class="docs-layout">
+        <div class="docs-content">
+          <div class="docs-breadcrumb">
+            <a href="/docs">Docs</a> <span>/</span> Agent-Ready Sites
+          </div>
+
+          <h1>Agent-Ready Sites</h1>
+          <p class="docs-lead">The web's fastest-growing readers are not people — they are AI answer engines and agents. Every site AI OS generates ships a complete machine-readable layer alongside its pages: schema.org JSON-LD, a curated <code>llms.txt</code>, an AI-crawler-allowing <code>robots.txt</code>, a sitemap, an <strong>Open Knowledge Format (OKF)</strong> bundle, and Ed25519-signed <strong>content provenance</strong>. All of it is emitted deterministically from the site's own content — no extra AI calls, and nothing that can drift out of sync with what visitors see.</p>
+
+          <h2 id="structured-data">Structured data (JSON-LD)</h2>
+          <ul>
+            <li><strong>Site-wide</strong> — <code>Organization</code> and <code>WebSite</code> entities on every page</li>
+            <li><strong>Per page</strong> — a <code>WebPage</code> entity with canonical URL and description</li>
+            <li><strong>FAQPage</strong> — built from the exact question/answer pairs the page's FAQ section visibly renders, so the markup can never disagree with the content</li>
+            <li><strong>Actions</strong> — a <code>ContactAction</code> only when the page genuinely has a contact capability; the emitter is deliberately conservative and never claims capabilities a static site cannot verify</li>
+          </ul>
+
+          <h2 id="llms-robots">llms.txt, robots.txt &amp; sitemap</h2>
+          <p>Each site serves a curated <code>/llms.txt</code> content map (title, description, page list, and a pointer to the knowledge bundle) so answer engines can navigate deliberately instead of crawling blind. The generated <code>robots.txt</code> explicitly allows the major AI crawlers — an engine that cannot read a site cannot cite it — and a standard <code>sitemap.xml</code> lists every page, including <a href="/docs/web-studio-business">dynamically generated ones</a>.</p>
+
+          <h2 id="okf">The Open Knowledge Format bundle</h2>
+          <p><a href="https://github.com/GoogleCloudPlatform/knowledge-catalog/tree/main/okf" target="_blank" rel="noopener">OKF</a> is a vendor-neutral open specification from Google Cloud (June 2026, Apache 2.0) for agent-ready knowledge — it provides a shared format any producer can write and any agent can read: a directory of markdown files with YAML frontmatter, where file paths are concept identities and ordinary markdown links form the knowledge graph. No SDK, no runtime — any agent that can read files can consume a bundle.</p>
+          <p>Every hosted site publishes one at <code>/knowledge/</code>:</p>
+          <ul>
+            <li><code>index.md</code> — the site as a <code>Website</code> concept, linking to every page concept</li>
+            <li><code>pages/*.md</code> — one concept per page carrying its actual content (FAQ pairs, pricing tiers, stats) in typed, readable markdown</li>
+            <li><code>provenance.md</code> — how the site was generated and how to verify it</li>
+          </ul>
+          <p>AI OS offers the same in reverse: the platform can export its <em>own</em> knowledge — the agent registry and documentation map — as a validated OKF bundle for any OKF-aware tool to ingest.</p>
+
+          <h2 id="provenance">Content provenance</h2>
+          <p>Generated sites carry a two-layer provenance record:</p>
+          <ul>
+            <li><strong>The signed sidecar</strong> — <code>/.well-known/aios-provenance.json</code>, an Ed25519-signed credential binding a SHA-256 hash of the served homepage. It is re-generated and re-signed on every rebuild, so the binding never goes stale, and anyone can verify it against the platform's published public key</li>
+            <li><strong>The on-page disclosure</strong> — schema.org <code>CreativeWork</code> JSON-LD stating the site was AI-generated (aligned with EU AI Act Article 50 transparency expectations), plus training/data-mining preference assertions. This layer is unsigned by design: it is disclosure, not tamper-evidence</li>
+          </ul>
+          <div class="docs-callout info">
+            <strong>Honest naming:</strong>
+            <p>AI OS provenance uses C2PA <em>vocabulary</em> for interoperability but is <strong>not certified C2PA</strong> — the sidecar is the integrity artifact, and the docs never claim otherwise.</p>
+          </div>
+
+          <h2 id="api-endpoints">API Endpoints</h2>
+          <div class="docs-endpoint">
+            <span class="docs-endpoint-method get">GET</span>
+            <span class="docs-endpoint-path">/api/provenance/public-key</span>
+            <p class="docs-endpoint-desc">The platform's Ed25519 public key for verifying site provenance sidecars.</p>
+          </div>
+          <div class="docs-endpoint">
+            <span class="docs-endpoint-method post">POST</span>
+            <span class="docs-endpoint-path">/api/provenance/verify</span>
+            <p class="docs-endpoint-desc">Verify a provenance credential against served content.</p>
+          </div>
+          <div class="docs-endpoint">
+            <span class="docs-endpoint-method get">GET</span>
+            <span class="docs-endpoint-path">/api/okf/export.zip</span>
+            <p class="docs-endpoint-desc">Operator-only: the platform's own knowledge (agent registry + docs map) as a validated OKF bundle.</p>
+          </div>
+
+          <h2 id="faq">Frequently asked questions</h2>
+          <div class="docs-callout info">
+            <strong>Does any of this cost tokens to generate?</strong>
+            <p>No. The entire machine-readable layer is emitted deterministically from the site's plan — the same content the pages render — with zero additional AI calls.</p>
+          </div>
+          <div class="docs-callout info">
+            <strong>Can the structured data drift from the visible content?</strong>
+            <p>Not by construction — FAQPage markup, OKF concepts, and llms.txt are all generated from the same source the pages render from, on every build.</p>
+          </div>
+          <div class="docs-callout info">
+            <strong>Is this certified C2PA?</strong>
+            <p>No — C2PA vocabulary for interoperability, honest about not being certified. The Ed25519-signed sidecar is the verifiable integrity artifact.</p>
+          </div>
+
+          <div class="docs-page-nav">
+            <a href="/docs/security">&larr; Security</a>
+            <a href="/docs/web-studio-business">Web Studio Business Tools &rarr;</a>
+          </div>
+        </div>
+
+        <aside class="docs-toc">
+          <div class="docs-toc-title">On this page</div>
+          <a href="#structured-data">Structured Data</a>
+          <a href="#llms-robots">llms.txt &amp; robots.txt</a>
+          <a href="#okf">OKF Bundle</a>
+          <a href="#provenance">Provenance</a>
+          <a href="#api-endpoints">API</a>
+          <a href="#faq">FAQ</a>
+        </aside>
+      </div>
+    </div>
+  </main>
+
+  <footer class="site-footer">
+    <div class="footer-container">
+      <div class="footer-brand">
+        <span class="nav-logo">&#9678;</span>
+        <span class="nav-name">AI OS</span>
+        <p class="footer-tagline">The Agentic Operating System</p>
+      </div>
+      <div class="footer-links">
+        <div class="footer-col">
+          <h4>Product</h4>
+          <a href="/#features">Features</a>
+          <a href="/#pricing">Pricing</a>
+          <a href="/docs">Documentation</a>
+        </div>
+        <div class="footer-col">
+          <h4>Resources</h4>
+          <a href="/blog">Blog</a>
+          <a href="/about">About</a>
+          <a href="/contact">Contact</a>
+        </div>
+        <div class="footer-col">
+          <h4>Legal</h4>
+          <a href="/trust">Trust &amp; Security</a>
+          <a href="/terms">Terms of Service</a>
+          <a href="/privacy">Privacy Policy</a>
+        </div>
+      </div>
+    </div>
+    <div class="footer-bottom">
+      <p>&copy; 2026 AI OS Orchestration Lab. All rights reserved.</p>
+    </div>
+  </footer>
+</body>
+</html>
