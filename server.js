@@ -3160,7 +3160,7 @@ async function callAnthropicWithTools(systemPrompt, task, effort, maxTokens, too
 
 // Shared caller for OpenAI-compatible chat-completions providers (Grok, DeepSeek, OpenAI, Perplexity).
 // Returns { content, inputTokens, outputTokens, data } — wrappers shape their own public result.
-async function callChatCompletions({ provider, keyName, url, model, apiKey, systemPrompt, task, maxTokens }) {
+async function callChatCompletions({ provider, keyName, url, model, apiKey, systemPrompt, task, maxTokens, tokenParam = 'max_tokens' }) {
   if (!apiKey) throw new Error(`${keyName} API key not configured — add it in Settings`);
 
   const res = await fetchWithTimeout(url, {
@@ -3169,7 +3169,10 @@ async function callChatCompletions({ provider, keyName, url, model, apiKey, syst
     body: JSON.stringify({
       model,
       messages: [{ role: 'system', content: systemPrompt }, { role: 'user', content: task }],
-      max_tokens: maxTokens,
+      // OpenAI GPT-5.x rejects legacy max_tokens ("Use 'max_completion_tokens'"); the OTHER
+      // OpenAI-compatible providers (Perplexity, xAI, Z.ai) still expect max_tokens — hence
+      // the per-caller param name. Verified live against gpt-5.6-terra 2026-07-12.
+      [tokenParam]: maxTokens,
     }),
   });
 
@@ -3350,13 +3353,16 @@ async function callGemini(systemPrompt, task, maxTokens) {
   const apiKey = settings.ai.gemini_api_key;
   if (!apiKey) throw new Error('Gemini API key not configured — add it in Settings');
 
-  const res = await fetchWithTimeout(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`, {
+  const res = await fetchWithTimeout(`https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash:generateContent?key=${apiKey}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       system_instruction: { parts: [{ text: systemPrompt }] },
       contents: [{ parts: [{ text: task }] }],
-      generationConfig: { maxOutputTokens: maxTokens },
+      // Gemini 3.5 Flash thinks by default and maxOutputTokens covers thoughts + answer — a
+      // small budget yields an EMPTY (but billed) response. This is the cheap utility text path
+      // (consensus answers, quick calls), so thinking is off. Verified live 2026-07-12.
+      generationConfig: { maxOutputTokens: maxTokens, thinkingConfig: { thinkingBudget: 0 } },
     }),
   });
 
@@ -3376,8 +3382,8 @@ async function callGemini(systemPrompt, task, maxTokens) {
 
 async function callOpenAI(systemPrompt, task, maxTokens) {
   const { content, inputTokens, outputTokens } = await callChatCompletions({
-    provider: 'OpenAI', keyName: 'OpenAI', url: 'https://api.openai.com/v1/chat/completions', model: 'gpt-4o',
-    apiKey: settings.ai.openai_api_key, systemPrompt, task, maxTokens,
+    provider: 'OpenAI', keyName: 'OpenAI', url: 'https://api.openai.com/v1/chat/completions', model: 'gpt-5.6-terra',
+    apiKey: settings.ai.openai_api_key, systemPrompt, task, maxTokens, tokenParam: 'max_completion_tokens',
   });
   return { content, inputTokens, outputTokens };
 }
@@ -3497,6 +3503,13 @@ const COST_RATES = {
   'claude-4.7-haiku':  { input: 0.25,  output: 1.25  },
   // External models
   'deepseek-v4':       { input: 0.14,  output: 0.28  },
+  // OpenAI GPT-5.6 family — GA 2026-07-09; verified against launch coverage 2026-07-12.
+  // callOpenAI defaults to Terra (the same $2.50/$15 price point gpt-4o held, current generation).
+  'gpt-5.6-sol':       { input: 5.00,  output: 30.00 },
+  'gpt-5.6-terra':     { input: 2.50,  output: 15.00 },
+  'gpt-5.6-luna':      { input: 1.00,  output: 6.00  },
+  // Gemini 3.5 Flash (text path in callGemini) — verified against ai.google.dev pricing 2026-07-12.
+  'gemini-3.5-flash':  { input: 1.50,  output: 9.00  },
   'grok-3':            { input: 3.00,  output: 15.00 },
   // Confirmed 2026-07-05 against docs.x.ai/developers/models — $1.00/$2.00 per 1M tokens.
   'grok-build-0.1':    { input: 1.00,  output: 2.00 },
