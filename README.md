@@ -61,7 +61,7 @@ Each virtual employee maps to an AI agent with a specific model tier, can receiv
 - **Tech Radar** — Automated intelligence sweeps with proposal system and upgrade tracking
 - **Continuous Loops** — CRON-scheduled autonomous routines with rate limiting
 - **Adversarial Verification** — Agent deliverables pass a skeptic-panel stage where independent verifiers try to refute each finding before it ships, catching plausible-but-wrong output
-- **Cross-Model Review** — A second-model review seat (OpenAI Codex / GPT-5.5) independently checks code and findings for verification diversity — distinct from the Claude work tiers, never used for production work
+- **Cross-Model Review** — A second-model review seat (OpenAI Codex / GPT-5.6) independently checks code and findings for verification diversity — distinct from the Claude work tiers, never used for production work
 
 ### SEO + AEO Agency
 - **Automated SEO Audits** — 5 parallel sub-agents (Keyword, Technical, Competitor, Content, Backlink)
@@ -71,17 +71,31 @@ Each virtual employee maps to an AI agent with a specific model tier, can receiv
 - **DataForSEO Integration** — Real keyword, backlink, and competitor data
 
 ### AI Web Studio
-- **Design + Build** — Prompt-driven static-site generation, design clone from a URL, and a no-code content editor
+- **Design + Build** — Prompt-driven static-site generation with an 11-type section library (hero, features, prose, CTA, contact, testimonials, pricing, FAQ, stats, team, steps), design clone from a URL, a no-code content editor, and a guided 6-question brief mode
+- **Starter Templates** — Curated built-in templates plus save-your-own; the AI anchors to the template's structure and tailors all copy to your brief
+- **Premium Model Option** — Any build can run on Claude Fable 5 (Anthropic's most capable model) as an opt-in upgrade
+- **Sales Funnels** — A Funnel site type generates landing → offer → thank-you with purchase CTAs deterministically wired to your Stripe Payment Link (the platform never touches the money)
+- **Dynamic Pages** — One template page + a pasted dataset → N static pages at build time ({{placeholders}} substituted; e.g. a service page per city), all included in the sitemap, llms.txt, and structured data
+- **Lead Capture → CRM** — Contact sections on hosted sites render a real form (no JS required, honeypot-protected); submissions land in the CRM and in the site's own lead inbox
+- **Site Manager** — every site gets a Manage tab: status/domain/traffic/lead overview, the lead inbox, and one-click actions into analytics, audits, editing, and export
+- **Agent-Ready Output** — Every site ships JSON-LD (incl. FAQPage built from its visible FAQ content), a curated llms.txt, AI-crawler-allowing robots.txt, a sitemap, and an [Open Knowledge Format](https://github.com/GoogleCloudPlatform/knowledge-catalog/tree/main/okf) bundle at /knowledge/ describing the site for AI agents
 - **Host on the VPS** — Generated sites are hosted directly on the platform's own infrastructure
 - **Custom Domains + TLS** — Bring your own domain with automatic Let's Encrypt certificates
 - **Import / Export** — Import existing sites (ZIP/tar upload or GitHub clone, host-as-is) and export any site (ZIP download or GitHub push)
-- **Tap into AI OS** — Sites auto-route across the agent fleet so models and agents continuously optimize them (including against AI OS's own AEO scorer: JSON-LD, llms.txt, AI-crawler robots.txt)
+- **Tap into AI OS** — Sites auto-route across the agent fleet so models and agents continuously optimize them against AI OS's own AEO scorer
 
 ### CRM + Client Management
 - **CRM** — node:sqlite-backed contact/account store with live ingest seams, notes, edits, and linking
 - **AI Helpdesk (Contact Page)** — the public contact page is a documentation-grounded support agent: visitors submit email + subject + problem and get an instant answer from the docs in a multi-turn thread; anything it can't resolve is logged to the CRM for human follow-up. Visitor input is prompt-injection-fenced, and the support email is not exposed (Enterprise priority channel only)
 - **Client-Account Management** — Operators manage client accounts from the dashboard
-- **Scoped Client Workspace** — Each client gets a scoped workspace dashboard
+- **Scoped Client Workspace** — Each client gets a scoped workspace dashboard: their sites, their SEO/AEO audits, their site analytics, and their lead inbox — isolated server-side from every other tenant
+- **Lead Pipeline** — Hosted-site contact forms feed the CRM live (contact + activity per submission, with site/page attribution)
+
+### First-Party Analytics (AI-Signal-First)
+- **The traffic Google Analytics can't see** — AI crawlers don't execute JavaScript; AI OS reads the origin server's own logs, so GPTBot, ClaudeBot, PerplexityBot, Bytespider & co. are first-class citizens: live activity feed, engine leaderboard (training vs search-index vs live user-triggered fetches), and per-page crawl heat
+- **Per-Site Attribution** — a vhost-aware log format buckets every request under the hosted site that served it; owners see their own site's analytics in their workspace
+- **Answer-Engine Referrals** — human visitors arriving FROM ChatGPT, Perplexity, Gemini, and Copilot are classified separately from classic search/social
+- **Cookieless + First-Party** — no tags, no consent banners, no third-party phone-home; visitor estimates use a daily-rotating hash that is unlinkable across days by construction
 
 ### Content Provenance
 - **Ed25519-Signed Provenance** — Generated sites carry cryptographically signed provenance metadata
@@ -329,7 +343,7 @@ DeepSeek V4, Grok (xAI), and Perplexity.
 | Strategic | Claude Opus 4.8 | xhigh | 5 | Orchestration, architecture, critical review, security audit, Web Studio lead |
 | Professional | Claude Opus 4.8 | high | 40 | Research, coding, writing, SEO/AEO, marketing, support, IT, legal, compliance, hosting ops, creative direction |
 | Scout | Claude Opus 4.8 | low | 3 | Fast lookups, triage, scheduled monitoring, social intel |
-| Specialized | Gemini Omni / DeepSeek V4 / Grok-3 / Grok Build | — | 9 | Creative media (5, Gemini Omni), bulk economy processing (2, DeepSeek V4), realtime web search (1, Grok-3), platform-upgrade planning (1, Grok Build) |
+| Specialized | Gemini Omni / DeepSeek V4 / Grok 4.5 / Grok Build | — | 9 | Creative media (5, Gemini Omni), bulk economy processing (2, DeepSeek V4), realtime web search (1, Grok 4.5), platform-upgrade planning (1, Grok Build) |
 | **Total** | | | **57** | |
 
 OpenAI GPT and Perplexity are additionally available across these tiers — GPT as an
