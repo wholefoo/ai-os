@@ -39,6 +39,26 @@ for (const surface of SURFACES) {
     console.log(`✓ ${surface}: all ${FEATURES.length} public features mentioned`);
   }
 }
+
+// Docs corpus (dashboard/docs/*.html) — AGGREGATE check: every feature must be documented
+// SOMEWHERE across the docs, not on every page. WARN-ONLY for now: 7 features shipped ahead of
+// their docs (2026-07-12 audit) — flip `DOCS_ENFORCE` to true once dashboard/docs covers them,
+// and from then on shipping an undocumented feature fails CI like the surfaces above.
+// (dashboard/blog/ is deliberately NOT audited — posts are topical marketing, not the
+// reference surface; auditing them for feature mentions would just generate noise.)
+const DOCS_ENFORCE = false;
+const docsDir = path.join(__dirname, '..', 'dashboard', 'docs');
+const docsCorpus = fs.readdirSync(docsDir).filter((f) => f.endsWith('.html'))
+  .map((f) => fs.readFileSync(path.join(docsDir, f), 'utf8')).join('\n');
+const undocumented = FEATURES.filter((f) => !f.pattern.test(docsCorpus));
+if (undocumented.length) {
+  const msg = `docs corpus (dashboard/docs) does not document: ${undocumented.map((m) => m.name).join(', ')}`;
+  if (DOCS_ENFORCE) { failed++; console.error(`✗ ${msg}`); }
+  else console.warn(`⚠ ${msg} (warn-only until DOCS_ENFORCE flips)`);
+} else {
+  console.log(`✓ docs corpus: all ${FEATURES.length} public features documented somewhere`);
+}
+
 if (failed) {
   console.error('\nCopy drift detected — update the surface(s) above (and this manifest if a feature was retired).');
   process.exit(1);
