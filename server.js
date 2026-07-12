@@ -2854,7 +2854,7 @@ function tierRoutingLabel(tier) {
     creative: { provider: 'omni', label: 'Gemini Omni' },
     persistent: { provider: 'persistent', label: 'Hermes MCP' },
     economy: { provider: 'deepseek-v4', label: 'DeepSeek V4' },
-    realtime: { provider: 'grok', label: 'Grok-3' },
+    realtime: { provider: 'grok', label: 'Grok 4.5' },
   };
   if (fixed[tier]) return fixed[tier];
   const effort = tier === 'strategic' ? 'xhigh' : tier === 'scout' ? 'low' : 'high';
@@ -2868,7 +2868,7 @@ function agentRoutingLabel(name, declaredModel) {
   const d = (declaredModel || '').toLowerCase();
   if (d.includes('gemini')) return { provider: 'omni', label: 'Gemini Omni', tier: 'creative' };
   if (d.includes('deepseek')) return { provider: 'deepseek-v4', label: 'DeepSeek V4', tier: 'economy' };
-  if (d.includes('grok')) return { provider: 'grok', label: 'Grok-3', tier: 'realtime' };
+  if (d.includes('grok')) return { provider: 'grok', label: 'Grok 4.5', tier: 'realtime' };
   const { tier } = getAgentEffort(name);
   return { ...tierRoutingLabel(tier), tier };
 }
@@ -2949,7 +2949,7 @@ async function executeAgent(agentName, task, options = {}) {
     } else if (agentName === 'grok-realtime' || routing.tier === 'realtime') {
       // Grok — route to xAI
       result = await callGrok(fullSystem, fullTask, maxTokens);
-      model = 'grok-3';
+      model = 'grok-4.5';
     } else if (agentName === 'dev-architect-grok') {
       // Grok Build's model (grok-build-0.1) — the platform's dev-project/upgrade planner
       result = await callGrokBuild(fullSystem, fullTask, maxTokens);
@@ -3160,7 +3160,7 @@ async function callAnthropicWithTools(systemPrompt, task, effort, maxTokens, too
 
 // Shared caller for OpenAI-compatible chat-completions providers (Grok, DeepSeek, OpenAI, Perplexity).
 // Returns { content, inputTokens, outputTokens, data } — wrappers shape their own public result.
-async function callChatCompletions({ provider, keyName, url, model, apiKey, systemPrompt, task, maxTokens, tokenParam = 'max_tokens' }) {
+async function callChatCompletions({ provider, keyName, url, model, apiKey, systemPrompt, task, maxTokens, tokenParam = 'max_tokens', extraBody = null }) {
   if (!apiKey) throw new Error(`${keyName} API key not configured — add it in Settings`);
 
   const res = await fetchWithTimeout(url, {
@@ -3173,6 +3173,7 @@ async function callChatCompletions({ provider, keyName, url, model, apiKey, syst
       // OpenAI-compatible providers (Perplexity, xAI, Z.ai) still expect max_tokens — hence
       // the per-caller param name. Verified live against gpt-5.6-terra 2026-07-12.
       [tokenParam]: maxTokens,
+      ...(extraBody || {}),
     }),
   });
 
@@ -3192,7 +3193,7 @@ async function callChatCompletions({ provider, keyName, url, model, apiKey, syst
 
 async function callGrok(systemPrompt, task, maxTokens) {
   const { content, inputTokens, outputTokens } = await callChatCompletions({
-    provider: 'Grok', keyName: 'xAI', url: 'https://api.x.ai/v1/chat/completions', model: 'grok-3',
+    provider: 'Grok', keyName: 'xAI', url: 'https://api.x.ai/v1/chat/completions', model: 'grok-4.5',
     apiKey: settings.ai.xai_api_key, systemPrompt, task, maxTokens,
   });
   return { content, inputTokens, outputTokens };
@@ -3343,8 +3344,13 @@ async function callGrokBuild(systemPrompt, task, maxTokens) {
 
 async function callDeepSeek(systemPrompt, task, maxTokens) {
   const { content, inputTokens, outputTokens } = await callChatCompletions({
-    provider: 'DeepSeek', keyName: 'DeepSeek', url: 'https://api.deepseek.com/chat/completions', model: 'deepseek-chat',
+    provider: 'DeepSeek', keyName: 'DeepSeek', url: 'https://api.deepseek.com/chat/completions', model: 'deepseek-v4-flash',
     apiKey: settings.ai.deepseek_api_key, systemPrompt, task, maxTokens,
+    // deepseek-v4-flash unifies the old deepseek-chat/-reasoner aliases (which deprecate
+    // 2026-07-24) and THINKS by default — reasoning eats the token budget and content comes
+    // back empty (caught live 2026-07-12). Thinking off preserves the old deepseek-chat
+    // behavior exactly, which is what this economy bulk tier wants.
+    extraBody: { thinking: { type: 'disabled' } },
   });
   return { content, inputTokens, outputTokens };
 }
@@ -3510,7 +3516,10 @@ const COST_RATES = {
   'gpt-5.6-luna':      { input: 1.00,  output: 6.00  },
   // Gemini 3.5 Flash (text path in callGemini) — verified against ai.google.dev pricing 2026-07-12.
   'gemini-3.5-flash':  { input: 1.50,  output: 9.00  },
-  'grok-3':            { input: 3.00,  output: 15.00 },
+  // Grok 4.5 — xAI flagship, GA 2026-07-08; $2/$6 verified against launch coverage 2026-07-12
+  // (cheaper AND newer than grok-3's $3/$15 — a rare free upgrade).
+  'grok-4.5':          { input: 2.00,  output: 6.00  },
+  'grok-3':            { input: 3.00,  output: 15.00 },  // legacy ledger entries
   // Confirmed 2026-07-05 against docs.x.ai/developers/models — $1.00/$2.00 per 1M tokens.
   'grok-build-0.1':    { input: 1.00,  output: 2.00 },
   'glm-5.2':           { input: 1.40,  output: 4.40  },   // Z.ai GLM-5.2 (OpenAI-compatible)
