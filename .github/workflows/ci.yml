@@ -45,6 +45,11 @@ jobs:
       - name: Regression suites
         run: node tools/test-all.js
 
+      # Public copy must mention every feature in the manifest (README + landing featureList).
+      # Shipped a public-surface feature? Update both surfaces + the manifest in the same commit.
+      - name: Copy drift check
+        run: node tools/check-copy-drift.js
+
       - name: Verify commercial fallback (Community core)
         run: |
           node -e "

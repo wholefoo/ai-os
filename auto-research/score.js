@@ -49,7 +49,10 @@ function score() {
   pts += Math.round((hits.length / KEYWORDS.length) * 25);
 
   // 3. Concrete facts (20 pts) — AEO answers cite specifics
-  const FACTS = [/\b57\b/, /\b10 departments\b/i, /\$1,?997/];
+  // 'web studio' is a SOFT feature fact (proportional points, no throw): the loop's regenerated
+  // copy should keep the flagship feature present without stuffing a meta-description-scale
+  // asset with the full feature list — that list is guarded by tools/check-copy-drift.js in CI.
+  const FACTS = [/\b57\b/, /\b10 departments\b/i, /\$1,?997/, /web studio/i];
   const factHits = FACTS.filter(r => r.test(all)).length;
   details.factsPresent = factHits;
   pts += Math.round((factHits / FACTS.length) * 20);
