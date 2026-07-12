@@ -2268,6 +2268,25 @@ app.get('/api/web-studio/sites/:id/analytics', requireClientOrAdmin, (req, res) 
   });
 });
 
+// GET /api/web-studio/sites/:id/leads — the site's lead inbox for its OWNER (client or admin;
+// wsFindSite 404s cross-tenant). A site owner seeing the leads their own contact form captured
+// is the point of the lead pipeline; the CRM contact records themselves stay operator-only.
+app.get('/api/web-studio/sites/:id/leads', requireClientOrAdmin, (req, res) => {
+  const site = wsFindSite(req, res); if (!site) return;
+  const rows = (crm && crm.isReady() && crm.leadsForSite(site.id, 100)) || [];
+  res.json({
+    ok: true,
+    leads: rows.map((l) => ({
+      id: l.id,
+      email: l.email,
+      name: l.name || '',
+      message: String(l.body || '').replace(/^Lead from [^:]*: /, '').replace(/^Lead from [^(]*\(no message\)$/, ''),
+      page: (l.meta || {}).page || null,
+      at: l.created_at,
+    })),
+  });
+});
+
 // GET /api/okf/export.zip — the platform's own knowledge as an Open Knowledge Format (OKF v0.1)
 // bundle: the agent registry (from .claude/agents frontmatter) + the docs map. Deterministic,
 // zero-token, admin-only. Consumable by any OKF-aware agent/tool without translation.

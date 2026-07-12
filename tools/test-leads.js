@@ -32,4 +32,20 @@ assert(html.includes(`action="${endpoint}"`), 'renderPage threads plan.leadEndpo
 const evil = renderSection(contact, { leadEndpoint: 'https://x.example/a"><script>alert(1)</script>' });
 assert(!evil.includes('<script>alert(1)</script>'), 'lead endpoint is escaped in the action attribute');
 
+// --- per-site leads inbox query (Manage tab backend): filters by meta.siteId via json_extract
+const fs = require('fs');
+const path = require('path');
+const os = require('os');
+const crmDb = require('../lib/crm/db.js');
+const repo = require('../lib/crm/repo.js');
+crmDb.openDb(path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'leads-inbox-')), 'crm.sqlite'));
+const cid = repo.contacts.upsertByEmail({ email: 'buyer@example.com', name: 'Buyer One', is_lead: 1, source: 'site-lead' });
+repo.activities.add({ contactId: cid, type: 'site_lead', body: 'Lead from Acme: need a quote', meta: { siteId: 'site-a', page: '/contact' }, author: 'site-form' });
+repo.activities.add({ contactId: cid, type: 'site_lead', body: 'Lead from Other: hello', meta: { siteId: 'site-b' }, author: 'site-form' });
+repo.activities.add({ contactId: cid, type: 'note', body: 'operator note', meta: { siteId: 'site-a' }, author: 'admin' });
+const inbox = repo.activities.leadsForSite('site-a');
+assert(inbox.length === 1, `leadsForSite returns only site-a leads, got ${inbox.length}`);
+assert(inbox[0].email === 'buyer@example.com' && inbox[0].body.includes('need a quote') && inbox[0].meta.page === '/contact', 'lead row carries contact email, message and page');
+assert(repo.activities.leadsForSite('site-c').length === 0, 'unknown site → empty inbox (no cross-site leak)');
+
 done();

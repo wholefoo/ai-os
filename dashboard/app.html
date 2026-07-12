@@ -1339,12 +1339,14 @@
                 <div class="ws-tabbar">
                   <button class="btn ws-tab-active" id="wsTabContent">Content</button>
                   <button class="btn" id="wsTabCode">Code</button>
+                  <button class="btn" id="wsTabManage">Manage</button>
                   <span style="flex:1"></span>
                   <button class="btn btn-primary" id="wsSaveContentBtn">Save &amp; rebuild</button>
                   <span class="ws-hint" id="wsCurrentFile" style="display:none;"></span>
                 </div>
                 <div class="ws-content-pane" id="wsContentPane"></div>
                 <div class="ws-monaco" id="wsMonaco" style="display:none;"></div>
+                <div class="ws-content-pane" id="wsManagePane" style="display:none;"></div>
               </section>
               <section class="panel">
                 <h3 class="panel-title">Preview <button class="btn" id="wsRefreshPreview" style="float:right;padding:2px 10px;">&#8635;</button></h3>
@@ -2640,7 +2642,7 @@
 
   <script src="js/app.js?v=49"></script>
   <script src="https://cdn.jsdelivr.net/npm/monaco-editor@0.52.2/min/vs/loader.js"></script>
-  <script src="js/web-studio.js?v=15"></script>
+  <script src="js/web-studio.js?v=16"></script>
   <script src="js/crm.js?v=4"></script>
   <script src="js/analytics.js?v=2"></script>
   <script src="js/security.js?v=1"></script>

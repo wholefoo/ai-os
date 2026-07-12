@@ -49,6 +49,7 @@ function loadWebStudio() {
     on('wsFileList', 'change', (e) => wsLoadFile(e.target.value));
     on('wsTabContent', 'click', () => wsSwitchTab('content'));
     on('wsTabCode', 'click', () => wsSwitchTab('code'));
+    on('wsTabManage', 'click', () => wsSwitchTab('manage'));
     on('wsSaveContentBtn', 'click', wsSaveContent);
     on('wsDnsCheckBtn', 'click', wsDnsCheck);
     on('wsSetupHostingBtn', 'click', wsSetupHosting);
@@ -169,6 +170,50 @@ function wsRenderSites(data) {
         <button class="btn" onclick="wsDelete('${s.id}')">Delete</button>
       </div>
     </div>`).join('');
+}
+
+// ---------- Manage tab: the site's business dashboard (owner-scoped server-side) ----------
+async function wsLoadManage() {
+  const pane = document.getElementById('wsManagePane');
+  if (!pane || !wsState.currentId) return;
+  pane.innerHTML = '<div class="empty-state">Loading site overview…</div>';
+  const [an, leadsR] = await Promise.all([
+    fetchJSON(`/api/web-studio/sites/${wsState.currentId}/analytics?days=30`),
+    fetchJSON(`/api/web-studio/sites/${wsState.currentId}/leads`),
+  ]);
+  const s = wsState.currentSite || {};
+  const leads = (leadsR && leadsR.leads) || [];
+  const liveUrl = s.domain ? `https://${s.domain}` : '';
+  const stat = (v, label) => `<div class="an-stat"><div class="an-stat-value">${escapeHtml(String(v))}</div><div class="an-stat-label">${escapeHtml(label)}</div></div>`;
+  const aiHits = (an && an.ok) ? an.botHits : '—';
+  const views = (an && an.ok) ? an.pageviews : '—';
+  const aiRefs = (an && an.ok) ? (an.aiReferrers || []).reduce((a, r) => a + r.count, 0) : '—';
+  const leadRows = leads.length ? leads.slice(0, 25).map((l) => `
+    <div class="an-feed-row">
+      <strong>${escapeHtml(l.name || l.email)}</strong>
+      <a href="mailto:${escapeHtml(l.email)}" class="an-path">${escapeHtml(l.email)}</a>
+      <span class="an-path" title="${escapeHtml(l.message || '')}">${escapeHtml((l.message || '').slice(0, 90))}</span>
+      <span class="an-time">${timeAgo(l.at)}</span>
+    </div>`).join('') : '<div class="an-empty">No leads yet. The contact form on your site feeds this inbox automatically.</div>';
+  pane.innerHTML = `
+    <div class="an-stats" style="margin-top:10px;">
+      ${stat(s.status || '—', 'Status')}${stat(s.domain || 'not set', 'Domain')}${stat(views, 'Pageviews (30d)')}${stat(aiHits, 'AI crawler hits')}${stat(aiRefs, 'AI-referred visits')}${stat(leads.length, 'Leads')}
+    </div>
+    <div class="an-card">
+      <h3>&#128229; Lead inbox</h3>
+      <div class="an-sub">Everyone who submitted your site&rsquo;s contact form — newest first (also in the operator CRM)</div>
+      <div class="an-feed" style="max-height:32vh;">${leadRows}</div>
+    </div>
+    <div class="an-card">
+      <h3>&#128736;&#65039; Quick actions</h3>
+      <div class="ws-row" style="flex-wrap:wrap;gap:8px;margin-top:8px;">
+        ${liveUrl ? `<a class="btn" href="${escapeHtml(liveUrl)}" target="_blank" rel="noopener">View live site</a>` : ''}
+        <a class="btn" href="/api/web-studio/sites/${encodeURIComponent(wsState.currentId)}/export.zip">Download ZIP</a>
+        <button class="btn" onclick="wsSwitchTab('content')">Edit content</button>
+        <button class="btn" onclick="switchView('analytics')">Full analytics</button>
+        <button class="btn" onclick="switchView('seo-agency')">Run SEO / AEO audit</button>
+      </div>
+    </div>`;
 }
 
 // ---------- Guided brief (Assist mode) ----------
@@ -694,17 +739,23 @@ function onWebStudioEvent(msg) {
 function wsSwitchTab(tab) {
   wsState.tab = tab;
   const isContent = tab === 'content';
+  const isCode = tab === 'code';
+  const isManage = tab === 'manage';
   const pane = document.getElementById('wsContentPane');
   const mon = document.getElementById('wsMonaco');
+  const mgr = document.getElementById('wsManagePane');
   const saveBtn = document.getElementById('wsSaveContentBtn');
   const cur = document.getElementById('wsCurrentFile');
   if (pane) pane.style.display = isContent ? '' : 'none';
-  if (mon) mon.style.display = isContent ? 'none' : '';
+  if (mon) mon.style.display = isCode ? '' : 'none';
+  if (mgr) mgr.style.display = isManage ? '' : 'none';
   if (saveBtn) saveBtn.style.display = isContent ? '' : 'none';
-  if (cur) cur.style.display = isContent ? 'none' : '';
+  if (cur) cur.style.display = isCode ? '' : 'none';
   const tc = document.getElementById('wsTabContent'); if (tc) tc.classList.toggle('ws-tab-active', isContent);
-  const tk = document.getElementById('wsTabCode'); if (tk) tk.classList.toggle('ws-tab-active', !isContent);
-  if (!isContent) {
+  const tk = document.getElementById('wsTabCode'); if (tk) tk.classList.toggle('ws-tab-active', isCode);
+  const tm = document.getElementById('wsTabManage'); if (tm) tm.classList.toggle('ws-tab-active', isManage);
+  if (isManage) { wsLoadManage(); return; }
+  if (isCode) {
     // Code tab: open a file if none is loaded, then force Monaco to remeasure now that its
     // container is visible (creating Monaco in a hidden/zero-height box leaves it blank).
     if (!wsState.currentFile) { const sel = document.getElementById('wsFileList'); if (sel && sel.value) wsLoadFile(sel.value); }
