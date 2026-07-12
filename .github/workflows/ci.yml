@@ -40,6 +40,11 @@ jobs:
       - name: Security lint (seclint)
         run: node tools/seclint.js --ci
 
+      # Every tools/test-*.js regression suite (analytics ingest, OKF, lead forms, section
+      # renderers, funnel/dynamic pages). New suites are picked up by filename convention.
+      - name: Regression suites
+        run: node tools/test-all.js
+
       - name: Verify commercial fallback (Community core)
         run: |
           node -e "

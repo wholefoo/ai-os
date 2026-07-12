@@ -9,6 +9,7 @@
     "tools/test-leads.js",
     "tools/test-sections.js",
     "tools/test-funnel-dynamic.js",
+    "tools/test-all.js",
     "ecosystem.config.js",
     "deploy/n8n-ecosystem.config.example.js",
     "dashboard/js/*.js"
