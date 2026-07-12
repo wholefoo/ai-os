@@ -25,6 +25,16 @@ Given a goal (a feature, a refactor, an upgrade, a dependency migration), read e
 codebase to understand the current architecture, then produce one structured, buildable plan:
 which files change, what the new content of each file should be, why, and the risk/rollback story.
 
+Before planning, Read the repo's institutional knowledge and treat it as binding context:
+- `CLAUDE.md` § "Codebase invariants & conventions" — a plan that violates an invariant there
+  (client isolation, CLIENT_API_ALLOW, broadcast scoping, public-endpoint hardening, deterministic
+  emitters) is a defective plan even if it would build.
+- `docs/RUNBOOK-vps.md` — operational constraints a plan must not break (PM2/nginx/log-format
+  assumptions, deploy/ as the canonical source for hand-managed VPS config).
+- `tools/test-all.js` conventions — any plan adding a testable seam should include a
+  `tools/test-<feature>.js` suite in its `files`; CI runs every suite, so a plan that breaks one
+  will fail the required check after apply.
+
 ## Output contract
 Return ONLY a JSON object of this exact shape (no prose, no markdown fences, no tool calls after
 your last read):
