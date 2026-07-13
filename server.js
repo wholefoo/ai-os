@@ -870,23 +870,34 @@ function classifyAvatarTokenError(status, bodyText) {
 // HEYGEN_API_KEY only for back-compat (a HeyGen key will NOT authenticate to LiveAvatar).
 function liveAvatarKey() { return settings.ai.liveavatar_api_key || settings.ai.heygen_api_key || ''; }
 
-// A LiveAvatar session is created for a specific avatar_id. If the operator hasn't pinned one,
-// auto-pick the first ACTIVE public avatar from the account catalog and cache it (the catalog is
-// stable, so one lookup per process is enough — avoids adding latency to every token request).
+// A LiveAvatar session is created for a specific avatar_id (LiveAvatar streams a HeyGen-hosted
+// avatar — it cannot render an uploaded photo in real time). Resolution order:
+//   1. LIVEAVATAR_AVATAR_ID, if the operator pinned one (their custom likeness), else
+//   2. the first ACTIVE avatar the account OWNS (a Photo/Instant Avatar they created) — so a
+//      custom avatar is used automatically once created, else
+//   3. the first ACTIVE public stock avatar (generic face) as a last resort.
+// Cached per-process (the catalog is stable) to avoid a lookup on every token request.
 let _liveAvatarDefaultId = null;
+async function fetchAvatarList(apiKey, path) {
+  const r = await fetch(`https://api.liveavatar.com${path}`, { headers: { 'X-API-KEY': apiKey } });
+  if (!r.ok) throw new Error(`avatar lookup failed (HTTP ${r.status})`);
+  const j = await r.json().catch(() => ({}));
+  return j?.data?.results || [];
+}
+function pickActiveVideoAvatar(list) {
+  return list.find((a) => a.status === 'ACTIVE' && a.type === 'VIDEO') || list.find((a) => a.status === 'ACTIVE') || list[0];
+}
 async function resolveAvatarId(apiKey) {
   if (settings.ai.liveavatar_avatar_id) return settings.ai.liveavatar_avatar_id;
   if (_liveAvatarDefaultId) return _liveAvatarDefaultId;
-  const r = await fetch('https://api.liveavatar.com/v1/avatars/public?page_size=20', {
-    headers: { 'X-API-KEY': apiKey },
-  });
-  if (!r.ok) throw new Error(`avatar catalog lookup failed (HTTP ${r.status})`);
-  const j = await r.json().catch(() => ({}));
-  const list = j?.data?.results || [];
-  const pick = list.find((a) => a.status === 'ACTIVE' && a.type === 'VIDEO') || list[0];
-  if (!pick?.id) throw new Error('no public avatar available on this LiveAvatar account');
+  // Prefer an avatar this account owns (the operator's own likeness) over the stock catalog.
+  const owned = await fetchAvatarList(apiKey, '/v1/avatars?page_size=20').catch(() => []);
+  let pick = pickActiveVideoAvatar(owned);
+  let source = 'account';
+  if (!pick?.id) { pick = pickActiveVideoAvatar(await fetchAvatarList(apiKey, '/v1/avatars/public?page_size=20')); source = 'public stock'; }
+  if (!pick?.id) throw new Error('no avatar available on this LiveAvatar account — create one at liveavatar.com');
   _liveAvatarDefaultId = pick.id;
-  appendLog(`[avatar] auto-selected LiveAvatar avatar "${pick.name || pick.id}" (${pick.id})`);
+  appendLog(`[avatar] auto-selected ${source} LiveAvatar avatar "${pick.name || pick.id}" (${pick.id})`);
   return _liveAvatarDefaultId;
 }
 
@@ -933,10 +944,29 @@ app.get('/api/heygen/status', requireAdmin, (req, res) => {
   res.json({
     configured,
     provider: 'liveavatar',
+    pinnedAvatarId: settings.ai.liveavatar_avatar_id || null,
     message: configured
       ? 'Video-avatar key set. Uses HeyGen LiveAvatar (api.liveavatar.com) — the legacy Streaming Avatar API was retired Mar 2026. Requires a LiveAvatar account/plan; click Start to connect.'
       : 'Video avatar not configured — set LIVEAVATAR_API_KEY (a key from liveavatar.com) in .env and restart.',
   });
+});
+
+// List the LiveAvatar avatars this account can stream — the ones it OWNS (custom Photo/Instant
+// Avatars = your likeness) first, then the public stock catalog. Lets the operator find an
+// avatar_id to pin (Settings → LiveAvatar Avatar ID). Fetching also clears the cached auto-pick so
+// a freshly-created custom avatar is used on the next Start without a server restart.
+app.get('/api/heygen/avatars', requireAdmin, async (req, res) => {
+  const apiKey = liveAvatarKey();
+  if (!apiKey) return res.json({ ok: false, error: 'LiveAvatar key not configured.' });
+  try {
+    const shape = (a) => ({ id: a.id, name: a.name || a.id, status: a.status, type: a.type, previewUrl: a.preview_url || null });
+    const owned = (await fetchAvatarList(apiKey, '/v1/avatars?page_size=50').catch(() => [])).map(shape);
+    const publicStock = (await fetchAvatarList(apiKey, '/v1/avatars/public?page_size=50').catch(() => [])).map(shape);
+    if (owned.some((a) => a.status === 'ACTIVE')) _liveAvatarDefaultId = null; // let a new custom avatar win
+    res.json({ ok: true, owned, public: publicStock, pinnedAvatarId: settings.ai.liveavatar_avatar_id || null });
+  } catch (e) {
+    res.json({ ok: false, error: `Could not list LiveAvatar avatars: ${e.message}` });
+  }
 });
 
 // --- D-ID Talking Avatar API ---
@@ -7271,6 +7301,7 @@ app.get('/api/settings', requireAdmin, (req, res) => {
       cartesia_api_key: { value: maskKey(settings.ai.cartesia_api_key), configured: !!settings.ai.cartesia_api_key },
       heygen_api_key: { value: maskKey(settings.ai.heygen_api_key), configured: !!settings.ai.heygen_api_key },
       liveavatar_api_key: { value: maskKey(settings.ai.liveavatar_api_key), configured: !!settings.ai.liveavatar_api_key },
+      liveavatar_avatar_id: settings.ai.liveavatar_avatar_id || '', // not a secret — an avatar id to pin
       did_api_key: { value: maskKey(settings.ai.did_api_key), configured: !!settings.ai.did_api_key },
       youtube_api_key: { value: maskKey(settings.ai.youtube_api_key), configured: !!settings.ai.youtube_api_key },
     },

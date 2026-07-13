@@ -5650,7 +5650,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
 // Map of section → field → input ID
 const settingsFieldMap = {
-  ai: ['reasoning_mode', 'anthropic_api_key', 'openai_api_key', 'deepseek_api_key', 'zai_api_key', 'xai_api_key', 'gemini_api_key', 'perplexity_api_key', 'firecrawl_api_key', 'tavily_api_key', 'apify_api_token', 'manus_api_key', 'heygen_api_key', 'liveavatar_api_key', 'did_api_key', 'youtube_api_key', 'livekit_api_key', 'livekit_api_secret', 'livekit_url', 'deepgram_api_key', 'cartesia_api_key'],
+  ai: ['reasoning_mode', 'anthropic_api_key', 'openai_api_key', 'deepseek_api_key', 'zai_api_key', 'xai_api_key', 'gemini_api_key', 'perplexity_api_key', 'firecrawl_api_key', 'tavily_api_key', 'apify_api_token', 'manus_api_key', 'heygen_api_key', 'liveavatar_api_key', 'liveavatar_avatar_id', 'did_api_key', 'youtube_api_key', 'livekit_api_key', 'livekit_api_secret', 'livekit_url', 'deepgram_api_key', 'cartesia_api_key'],
   mcp: ['hermes_url', 'hermes_enabled'],
   self_improve: ['github_pat', 'distribution_repo'],
   notifications: ['telegram_bot_token', 'telegram_chat_id', 'slack_webhook_url'],

@@ -2251,6 +2251,12 @@
                   </div>
                 </div>
                 <div class="settings-field">
+                  <label class="settings-label">LiveAvatar Avatar ID <span class="settings-tier">Optional — pin a custom avatar (your likeness); blank = auto-pick your first avatar</span></label>
+                  <div class="settings-input-row">
+                    <input type="text" class="settings-input" id="set-liveavatar_avatar_id" placeholder="e.g. 513fd1b7-... (from your LiveAvatar account)" autocomplete="off" spellcheck="false">
+                  </div>
+                </div>
+                <div class="settings-field">
                   <label class="settings-label">HeyGen API Key <span class="settings-tier">Legacy — Streaming Avatar API retired Mar 2026; use LiveAvatar above</span></label>
                   <div class="settings-input-row">
                     <input type="text" class="settings-input settings-secret" id="set-heygen_api_key" placeholder="heygen-..." autocomplete="new-password" data-lpignore="true" data-1p-ignore spellcheck="false">
@@ -2657,7 +2663,7 @@
     </div>
   </div>
 
-  <script src="js/app.js?v=51"></script>
+  <script src="js/app.js?v=52"></script>
   <script src="https://cdn.jsdelivr.net/npm/monaco-editor@0.52.2/min/vs/loader.js"></script>
   <script src="js/web-studio.js?v=16"></script>
   <script src="js/crm.js?v=4"></script>
