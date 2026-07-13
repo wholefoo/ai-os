@@ -6853,17 +6853,21 @@ let avatarState = {
 // OpenAI voices: alloy (neutral), echo (warm male), fable (British), onyx (deep male), nova (bright female), shimmer (soft female)
 // D-ID Microsoft voices: en-US-GuyNeural (male), en-US-JennyNeural (female), en-US-AriaNeural (F), en-US-DavisNeural (M), en-GB-RyanNeural (M-British)
 // photo: path to imported headshot image (set via upload or manual placement in assets/avatars/)
+// Each avatar has a UNIQUE OpenAI TTS voice (11 base voices available on gpt-4o-mini-tts, 10 used —
+// zero collisions) plus a `persona`: a short steering instruction sent to the model so delivery
+// matches the character, not just the timbre. `didVoice` (Azure/D-ID) + fallbackPitch/Rate (browser
+// SpeechSynthesis) remain as the graceful-degradation layers when those pipelines are active.
 const AVATAR_PROFILES = {
-  atlas:   { agent: 'orchestrator',    voice: 'onyx',    didVoice: 'en-US-DavisNeural',  fallbackPitch: 0.9,  fallbackRate: 1.0,  gender: 'M', title: 'CEO & Orchestrator',      gradient: 'linear-gradient(135deg, #1e3a5f, #3b52cc)', initials: 'AT', photo: '' },
-  nova:    { agent: 'architect',       voice: 'nova',    didVoice: 'en-US-AriaNeural',   fallbackPitch: 1.15, fallbackRate: 1.05, gender: 'F', title: 'CTO & Architect',          gradient: 'linear-gradient(135deg, #0c4a6e, #06b6d4)', initials: 'NV', photo: '' },
-  justice: { agent: 'general-counsel', voice: 'fable',   didVoice: 'en-GB-RyanNeural',   fallbackPitch: 0.75, fallbackRate: 0.95, gender: 'M', title: 'General Counsel',          gradient: 'linear-gradient(135deg, #44403c, #78716c)', initials: 'JC', photo: '' },
-  muse:    { agent: 'media-producer',  voice: 'shimmer', didVoice: 'en-US-JennyNeural',  fallbackPitch: 1.2,  fallbackRate: 1.1,  gender: 'F', title: 'Creative Director',        gradient: 'linear-gradient(135deg, #9d174d, #ec4899)', initials: 'MS', photo: '' },
-  forge:   { agent: 'coder',          voice: 'echo',    didVoice: 'en-US-GuyNeural',    fallbackPitch: 0.85, fallbackRate: 1.0,  gender: 'M', title: 'Engineering Lead',         gradient: 'linear-gradient(135deg, #92400e, #f59e0b)', initials: 'FG', photo: '' },
-  echo:    { agent: 'marketing-hub',   voice: 'nova',    didVoice: 'en-US-AriaNeural',   fallbackPitch: 1.1,  fallbackRate: 1.05, gender: 'F', title: 'Marketing Director',       gradient: 'linear-gradient(135deg, #065f46, #10b981)', initials: 'EC', photo: '' },
-  hermes:  { agent: 'hermes-delegate', voice: 'alloy',   didVoice: 'en-US-DavisNeural',  fallbackPitch: 1.0,  fallbackRate: 1.15, gender: 'M', title: 'Operations Director',      gradient: 'linear-gradient(135deg, #5b21b6, #a78bfa)', initials: 'HM', photo: '' },
-  harbor:  { agent: 'cs-lead',        voice: 'shimmer', didVoice: 'en-US-JennyNeural',  fallbackPitch: 1.05, fallbackRate: 1.0,  gender: 'F', title: 'Support Lead',             gradient: 'linear-gradient(135deg, #78350f, #fbbf24)', initials: 'HB', photo: '' },
-  hawkeye: { agent: 'grok-realtime',   voice: 'onyx',    didVoice: 'en-US-GuyNeural',    fallbackPitch: 0.8,  fallbackRate: 0.9,  gender: 'M', title: 'Intelligence Analyst',     gradient: 'linear-gradient(135deg, #7f1d1d, #ef4444)', initials: 'HK', photo: '' },
-  ledger:  { agent: 'cost-analyst',    voice: 'fable',   didVoice: 'en-GB-RyanNeural',   fallbackPitch: 0.95, fallbackRate: 0.95, gender: 'M', title: 'Chief Financial Officer',  gradient: 'linear-gradient(135deg, #14532d, #22c55e)', initials: 'LG', photo: '' },
+  atlas:   { agent: 'orchestrator',    voice: 'onyx',    persona: 'A confident, decisive CEO. Deep and calm, measured and unhurried, with quiet authority.',                 didVoice: 'en-US-DavisNeural',  fallbackPitch: 0.9,  fallbackRate: 1.0,  gender: 'M', title: 'CEO & Orchestrator',      gradient: 'linear-gradient(135deg, #1e3a5f, #3b52cc)', initials: 'AT', photo: '' },
+  nova:    { agent: 'architect',       voice: 'nova',    persona: 'A sharp, precise CTO. Bright and articulate, technically confident, crisp pacing.',                       didVoice: 'en-US-AriaNeural',   fallbackPitch: 1.15, fallbackRate: 1.05, gender: 'F', title: 'CTO & Architect',          gradient: 'linear-gradient(135deg, #0c4a6e, #06b6d4)', initials: 'NV', photo: '' },
+  justice: { agent: 'general-counsel', voice: 'fable',   persona: 'A grave, deliberate British legal counsel. Precise diction, careful and formal, unhurried.',              didVoice: 'en-GB-RyanNeural',   fallbackPitch: 0.75, fallbackRate: 0.95, gender: 'M', title: 'General Counsel',          gradient: 'linear-gradient(135deg, #44403c, #78716c)', initials: 'JC', photo: '' },
+  muse:    { agent: 'media-producer',  voice: 'shimmer', persona: 'A warm, expressive creative director. Enthusiastic and imaginative, lively and inviting.',                didVoice: 'en-US-JennyNeural',  fallbackPitch: 1.2,  fallbackRate: 1.1,  gender: 'F', title: 'Creative Director',        gradient: 'linear-gradient(135deg, #9d174d, #ec4899)', initials: 'MS', photo: '' },
+  forge:   { agent: 'coder',          voice: 'echo',    persona: 'A steady, grounded engineering lead. Pragmatic and plain-spoken, calm and matter-of-fact.',              didVoice: 'en-US-GuyNeural',    fallbackPitch: 0.85, fallbackRate: 1.0,  gender: 'M', title: 'Engineering Lead',         gradient: 'linear-gradient(135deg, #92400e, #f59e0b)', initials: 'FG', photo: '' },
+  echo:    { agent: 'marketing-hub',   voice: 'coral',   persona: 'An energetic, upbeat marketing director. Persuasive and warm, quick and punchy.',                        didVoice: 'en-US-AriaNeural',   fallbackPitch: 1.1,  fallbackRate: 1.05, gender: 'F', title: 'Marketing Director',       gradient: 'linear-gradient(135deg, #065f46, #10b981)', initials: 'EC', photo: '' },
+  hermes:  { agent: 'hermes-delegate', voice: 'ash',     persona: 'A brisk, efficient operations director. Focused and reliable, no wasted words.',                         didVoice: 'en-US-DavisNeural',  fallbackPitch: 1.0,  fallbackRate: 1.15, gender: 'M', title: 'Operations Director',      gradient: 'linear-gradient(135deg, #5b21b6, #a78bfa)', initials: 'HM', photo: '' },
+  harbor:  { agent: 'cs-lead',        voice: 'sage',    persona: 'A warm, reassuring support lead. Patient and friendly, calm and helpful.',                              didVoice: 'en-US-JennyNeural',  fallbackPitch: 1.05, fallbackRate: 1.0,  gender: 'F', title: 'Support Lead',             gradient: 'linear-gradient(135deg, #78350f, #fbbf24)', initials: 'HB', photo: '' },
+  hawkeye: { agent: 'grok-realtime',   voice: 'ballad',  persona: 'A low, deliberate intelligence analyst. Watchful and understated, cool and precise.',                    didVoice: 'en-US-GuyNeural',    fallbackPitch: 0.8,  fallbackRate: 0.9,  gender: 'M', title: 'Intelligence Analyst',     gradient: 'linear-gradient(135deg, #7f1d1d, #ef4444)', initials: 'HK', photo: '' },
+  ledger:  { agent: 'cost-analyst',    voice: 'verse',   persona: 'A measured, careful CFO. Financially precise, understated and trustworthy.',                             didVoice: 'en-GB-RyanNeural',   fallbackPitch: 0.95, fallbackRate: 0.95, gender: 'M', title: 'Chief Financial Officer',  gradient: 'linear-gradient(135deg, #14532d, #22c55e)', initials: 'LG', photo: '' },
 };
 
 const AVATAR_AGENTS = Object.fromEntries(Object.entries(AVATAR_PROFILES).map(([k, v]) => [k, v.agent]));
@@ -7834,7 +7838,7 @@ async function speakText(text) {
       method: 'POST',
       credentials: 'same-origin',
       headers: { 'Content-Type': 'application/json', ...(token ? { 'Authorization': `Bearer ${token}` } : {}) },
-      body: JSON.stringify({ text: text.substring(0, 2000), voice: profile.voice || 'onyx' }),
+      body: JSON.stringify({ text: text.substring(0, 2000), voice: profile.voice || 'onyx', instructions: profile.persona || '' }),
     });
     const data = await res.json();
 

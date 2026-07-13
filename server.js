@@ -1085,26 +1085,33 @@ app.get('/api/livekit/status', requireAdmin, (req, res) => {
   });
 });
 
-// OpenAI TTS endpoint — natural human voices for avatar speech (fallback when LiveKit not configured)
-// Voices: alloy (neutral), echo (warm male), fable (British), onyx (deep male), nova (bright female), shimmer (soft female)
+// OpenAI TTS endpoint — natural human voices for avatar speech (fallback when LiveKit not configured).
+// Model: gpt-4o-mini-tts (steerable — accepts `instructions` to shape tone/character, so each agent
+// gets a distinct DELIVERY on top of a distinct base voice). 11 base voices are available and each
+// avatar is assigned a unique one (see AVATAR_PROFILES in app.js) — no more shared voices.
+// Voices (all verified on gpt-4o-mini-tts): alloy, ash, ballad, coral, echo, fable, onyx, nova, sage, shimmer, verse.
+const TTS_VOICES = new Set(['alloy', 'ash', 'ballad', 'coral', 'echo', 'fable', 'onyx', 'nova', 'sage', 'shimmer', 'verse']);
 app.post('/api/tts', requireAdmin, async (req, res) => {
-  const { text, voice } = req.body;
+  const { text, voice, instructions } = req.body;
   if (!text) return res.status(400).json({ error: 'Text is required' });
+  const useVoice = TTS_VOICES.has(voice) ? voice : 'onyx'; // reject unknown ids rather than 400 at OpenAI
 
   const apiKey = settings.ai.openai_api_key;
   if (!apiKey) return res.json({ ok: false, error: 'OpenAI API key not configured', fallback: true });
 
   try {
+    const body = {
+      model: 'gpt-4o-mini-tts',
+      input: text.substring(0, 4096),
+      voice: useVoice,
+      response_format: 'mp3',
+    };
+    // Per-agent character steering — only sent when provided (kept short + safe).
+    if (instructions && typeof instructions === 'string') body.instructions = instructions.slice(0, 500);
     const ttsRes = await fetch('https://api.openai.com/v1/audio/speech', {
       method: 'POST',
       headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        model: 'tts-1-hd',
-        input: text.substring(0, 4096),
-        voice: voice || 'onyx',
-        response_format: 'mp3',
-        speed: 1.0,
-      }),
+      body: JSON.stringify(body),
     });
 
     if (!ttsRes.ok) {
@@ -1115,7 +1122,7 @@ app.post('/api/tts', requireAdmin, async (req, res) => {
     // OpenAI returns raw audio bytes, convert to base64
     const buffer = await ttsRes.arrayBuffer();
     const base64 = Buffer.from(buffer).toString('base64');
-    res.json({ ok: true, audioContent: base64, voice: voice || 'onyx' });
+    res.json({ ok: true, audioContent: base64, voice: useVoice });
   } catch (e) {
     res.json({ ok: false, error: e.message, fallback: true });
   }
