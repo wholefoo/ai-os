@@ -854,42 +854,53 @@ app.get('/api/onboarding/status', requireAdmin, (req, res) => {
 
 // --- HeyGen LiveAvatar Session ---
 
+// Classify a failed avatar-provider token response into an ACTIONABLE message, so the UI stops
+// collapsing "no key", "dead endpoint", "wrong plan", and "bad key" into one opaque "Unauthorized".
+// HeyGen retired the legacy Streaming Avatar API (/v1/streaming.*) at end of March 2026 → LiveAvatar
+// (api.liveavatar.com, its own account/key at liveavatar.com) is the successor.
+function classifyAvatarTokenError(status, bodyText) {
+  const b = String(bodyText || '').toLowerCase();
+  if (/deprecat|sunset|migrat/.test(b)) return 'HeyGen retired the legacy Streaming Avatar API (Mar 2026). Migrate to LiveAvatar — create an account + API key at liveavatar.com (avatars are not cross-compatible).';
+  if (status === 401 || status === 403 || /unauthorized|invalid.*key|forbidden/.test(b)) return 'Key rejected by the avatar provider (401/403). Regenerate the key, and confirm your plan includes the LiveAvatar / streaming-avatar API (it is a separate paid tier).';
+  if (status === 402 || /quota|credit|insufficient|entitle|plan/.test(b)) return 'Authenticated, but the account lacks streaming-avatar entitlement/credits (402). Upgrade to a LiveAvatar-enabled plan.';
+  return `Avatar token request failed (HTTP ${status}).`;
+}
+
 app.post('/api/heygen/token', requireAdmin, async (req, res) => {
   const apiKey = settings.ai.heygen_api_key;
-  if (!apiKey) return res.json({ ok: false, error: 'HeyGen API key not configured — add it in Settings' });
+  if (!apiKey) return res.json({ ok: false, error: 'Video-avatar (HeyGen/LiveAvatar) key not configured — set HEYGEN_API_KEY in .env and restart with --update-env.' });
 
   try {
-    // Try LiveAvatar API first (new), fall back to legacy streaming API
-    let tokenRes = await fetch('https://api.liveavatar.com/v1/sessions/token', {
+    // LiveAvatar only — the legacy HeyGen streaming endpoint was sunset (Mar 2026) and now 401s any
+    // key, so calling it as a fallback just produced a misleading "Unauthorized".
+    const tokenRes = await fetch('https://api.liveavatar.com/v1/sessions/token', {
       method: 'POST',
       headers: { 'X-API-KEY': apiKey, 'Content-Type': 'application/json' },
     });
 
-    // Fallback to legacy HeyGen endpoint
     if (!tokenRes.ok) {
-      tokenRes = await fetch('https://api.heygen.com/v1/streaming.create_token', {
-        method: 'POST',
-        headers: { 'x-api-key': apiKey, 'Content-Type': 'application/json' },
-      });
-    }
-
-    if (!tokenRes.ok) {
-      const err = await tokenRes.json().catch(() => ({}));
-      return res.json({ ok: false, error: err.message || err.error || `HeyGen HTTP ${tokenRes.status}` });
+      const bodyText = await tokenRes.text().catch(() => '');
+      appendLog(`[avatar] LiveAvatar token failed: HTTP ${tokenRes.status} ${bodyText.slice(0, 200)}`);
+      return res.json({ ok: false, status: tokenRes.status, error: classifyAvatarTokenError(tokenRes.status, bodyText) });
     }
 
     const data = await tokenRes.json();
     const token = data.data?.token || data.token || data.access_token;
+    if (!token) return res.json({ ok: false, error: 'LiveAvatar returned no session token — check the account has an active avatar.' });
     res.json({ ok: true, token, apiKey });
   } catch (e) {
-    res.json({ ok: false, error: e.message });
+    res.json({ ok: false, error: `Could not reach the LiveAvatar API: ${e.message}` });
   }
 });
 
 app.get('/api/heygen/status', requireAdmin, (req, res) => {
+  const configured = !!settings.ai.heygen_api_key;
   res.json({
-    configured: !!settings.ai.heygen_api_key,
-    message: settings.ai.heygen_api_key ? 'HeyGen API key configured — photorealistic avatars ready' : 'HeyGen not configured — add API key in Settings',
+    configured,
+    provider: 'liveavatar',
+    message: configured
+      ? 'Video-avatar key set. Uses HeyGen LiveAvatar (api.liveavatar.com) — the legacy Streaming Avatar API was retired Mar 2026. Requires a LiveAvatar account/plan; click Start to connect.'
+      : 'Video avatar not configured — set HEYGEN_API_KEY (a LiveAvatar key from liveavatar.com) in .env and restart.',
   });
 });
 
