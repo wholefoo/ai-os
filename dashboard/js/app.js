@@ -8212,7 +8212,7 @@ async function sendAvatarMessage() {
     const agentName = AVATAR_AGENTS[avatarState.employee] || 'orchestrator';
     const result = await fetchJSON('/api/agent/execute', {
       method: 'POST',
-      body: { agent: agentName, task: text, context: `Conversation history: ${avatarState.history.slice(-6).map(h => `${h.role}: ${h.content}`).join('\n')}` },
+      body: { agent: agentName, task: text, context: `RESPONSE STYLE: You are speaking out loud in a live voice conversation. Reply briefly and conversationally — usually 1-3 short sentences. Use plain spoken prose: no markdown, headings, bullet lists, or numbered steps. Answer directly and stop; only go longer if the user explicitly asks for detail or a step-by-step walkthrough.\n\nConversation history:\n${avatarState.history.slice(-6).map(h => `${h.role}: ${h.content}`).join('\n')}` },
     });
 
     const reply = result.content || result.error || 'I could not process that request.';
