@@ -948,3 +948,8 @@ a:hover { color: #60a5fa; }
   .footer-links { flex-direction: column; gap: 32px; }
   .trust-container { flex-direction: column; gap: 16px; }
 }
+
+/* Corporate Mandate footer mission (first paragraph of /corporate-mandate + more-link) */
+.footer-mission { font-size: 12.5px; color: var(--text-muted); margin-top: 12px; max-width: 340px; line-height: 1.65; }
+.footer-mission a { color: var(--text-secondary); text-decoration: underline; white-space: nowrap; }
+.footer-mission a:hover { color: var(--text-primary); }

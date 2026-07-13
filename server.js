@@ -780,6 +780,7 @@ app.get('/sitemap.xml', (req, res) => {
   const pages = [
     { url: '/', priority: '1.0', freq: 'weekly' },
     { url: '/about', priority: '0.8', freq: 'monthly' },
+    { url: '/corporate-mandate', priority: '0.6', freq: 'yearly' },
     { url: '/contact', priority: '0.7', freq: 'monthly' },
     { url: '/trust', priority: '0.7', freq: 'monthly' },
     { url: '/free-audit', priority: '0.9', freq: 'monthly' },
@@ -1172,6 +1173,7 @@ app.get('/login', (req, res) => {
 
 // Legal pages
 app.get('/trust', (req, res) => res.sendFile(path.join(BASE, 'dashboard', 'trust.html')));
+app.get('/corporate-mandate', (req, res) => res.sendFile(path.join(BASE, 'dashboard', 'corporate-mandate.html')));
 app.get('/terms', (req, res) => res.sendFile(path.join(BASE, 'dashboard', 'terms.html')));
 app.get('/privacy', (req, res) => res.sendFile(path.join(BASE, 'dashboard', 'privacy.html')));
 
