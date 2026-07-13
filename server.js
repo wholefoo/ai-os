@@ -922,7 +922,7 @@ app.post('/api/heygen/token', requireAdmin, async (req, res) => {
       method: 'POST',
       headers: { 'X-API-KEY': apiKey, 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        mode: 'FULL',
+        mode: settings.ai.liveavatar_session_mode || 'LITE',
         avatar_id: avatarId,
         avatar_persona: {
           voice_id: settings.ai.liveavatar_voice_id || undefined, // omit → avatar's default voice
@@ -7110,6 +7110,9 @@ const settings = loadState('settings', {
     // Per-agent face map { <agentKey>: <avatarId> } — each avatar chat employee can stream a
     // different LiveAvatar avatar. Seedable via LIVEAVATAR_AGENT_AVATARS (JSON); edited in the UI.
     liveavatar_agent_avatars: (() => { try { return JSON.parse(process.env.LIVEAVATAR_AGENT_AVATARS || '{}'); } catch { return {}; } })(),
+    // Session mode: LITE (default) = we generate replies and drive the avatar via repeat(); FULL =
+    // LiveAvatar runs its own realtime LLM+voice agent (much more expensive, and unused here).
+    liveavatar_session_mode: (process.env.LIVEAVATAR_SESSION_MODE || 'LITE').toUpperCase() === 'FULL' ? 'FULL' : 'LITE',
     did_api_key: process.env.DID_API_KEY || '',
     youtube_api_key: process.env.YOUTUBE_API_KEY || '',
   },

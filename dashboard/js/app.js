@@ -7151,7 +7151,10 @@ async function startHeyGenSession() {
     btn.textContent = '🎬 Start Video Avatar';
     btn.disabled = false;
     document.getElementById('avatarStatus').textContent = 'Connection failed';
-    addAvatarBotMessage(`Video avatar failed to connect: ${e.message}. You can still use text chat below.`);
+    const hint = /credit|insufficient|quota|balance/i.test(e.message || '')
+      ? ' Your LiveAvatar account is out of streaming credits — top up or upgrade the plan at liveavatar.com, then try again.'
+      : '';
+    addAvatarBotMessage(`Video avatar failed to connect: ${e.message}.${hint} You can still use text chat below.`);
   }
 }
 
