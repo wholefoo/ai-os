@@ -5650,7 +5650,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
 // Map of section → field → input ID
 const settingsFieldMap = {
-  ai: ['reasoning_mode', 'anthropic_api_key', 'openai_api_key', 'deepseek_api_key', 'zai_api_key', 'xai_api_key', 'gemini_api_key', 'perplexity_api_key', 'firecrawl_api_key', 'tavily_api_key', 'apify_api_token', 'manus_api_key', 'heygen_api_key', 'did_api_key', 'youtube_api_key', 'livekit_api_key', 'livekit_api_secret', 'livekit_url', 'deepgram_api_key', 'cartesia_api_key'],
+  ai: ['reasoning_mode', 'anthropic_api_key', 'openai_api_key', 'deepseek_api_key', 'zai_api_key', 'xai_api_key', 'gemini_api_key', 'perplexity_api_key', 'firecrawl_api_key', 'tavily_api_key', 'apify_api_token', 'manus_api_key', 'heygen_api_key', 'liveavatar_api_key', 'did_api_key', 'youtube_api_key', 'livekit_api_key', 'livekit_api_secret', 'livekit_url', 'deepgram_api_key', 'cartesia_api_key'],
   mcp: ['hermes_url', 'hermes_enabled'],
   self_improve: ['github_pat', 'distribution_repo'],
   notifications: ['telegram_bot_token', 'telegram_chat_id', 'slack_webhook_url'],
@@ -7040,61 +7040,51 @@ async function startHeyGenSession() {
     const tokenData = await fetchJSON('/api/heygen/token', { method: 'POST', body: {} });
     if (!tokenData.ok) throw new Error(tokenData.error || 'Token request failed');
 
-    // Try multiple SDK export paths
-    const SDK = window.StreamingAvatar || window.HeyGenStreaming || window.default;
-    if (!SDK) throw new Error('HeyGen SDK not loaded — check browser console for CSP errors');
+    // LiveAvatar SDK is vendored + loaded as an ES module, exposed on window.LiveAvatarSDK.
+    const SDK = window.LiveAvatarSDK;
+    if (!SDK || !SDK.LiveAvatarSession) throw new Error('LiveAvatar SDK not loaded yet — reload the page and try again.');
 
-    // Create avatar instance
-    heygenAvatar = new SDK({ token: tokenData.token });
-
-    // Listen for stream ready event
+    const { LiveAvatarSession, SessionEvent, AgentEventsEnum } = SDK;
     const videoEl = document.getElementById('avatarVideo');
 
-    heygenAvatar.on('stream_ready', (event) => {
-      if (event.detail) {
-        videoEl.srcObject = event.detail;
-      } else if (event instanceof MediaStream) {
-        videoEl.srcObject = event;
-      }
+    // The server returns a short-lived session token scoped to an avatar; the SDK opens the
+    // WebRTC stream from it (the API key never reaches the browser).
+    const session = new LiveAvatarSession(tokenData.token);
+    heygenAvatar = session;
+
+    session.on(SessionEvent.SESSION_STREAM_READY, () => {
+      try { session.attach(videoEl); } catch (err) { console.error('[LiveAvatar] attach failed', err); }
       videoEl.style.display = 'block';
-      document.getElementById('avatarPortraitFallback').style.display = 'none';
+      videoEl.play?.().catch(() => {}); // within the Start-button user gesture, so audio autoplay is allowed
+      const fb = document.getElementById('avatarPortraitFallback');
+      if (fb) fb.style.display = 'none';
+      document.getElementById('avatarStatus').textContent = 'Video avatar active — speak or type';
     });
 
-    // Start session with an avatar
-    const sessionData = await heygenAvatar.createStartAvatar({
-      quality: 'medium',
-      avatarName: 'default',
-      voice: { voiceId: '' },
-      language: 'en',
-    });
+    session.on(SessionEvent.SESSION_DISCONNECTED, () => { if (heygenSessionActive) stopHeyGenSession(); });
 
-    // If stream returned directly
-    if (sessionData && sessionData.stream) {
-      videoEl.srcObject = sessionData.stream;
-      videoEl.style.display = 'block';
-      document.getElementById('avatarPortraitFallback').style.display = 'none';
+    if (AgentEventsEnum) {
+      session.on(AgentEventsEnum.AVATAR_SPEAK_STARTED, () => {
+        avatarState.speaking = true;
+        document.getElementById('avatarStatus').textContent = 'Speaking...';
+      });
+      session.on(AgentEventsEnum.AVATAR_SPEAK_ENDED, () => {
+        avatarState.speaking = false;
+        document.getElementById('avatarStatus').textContent = 'Listening...';
+      });
     }
+
+    await session.start();
 
     heygenSessionActive = true;
     btn.style.display = 'none';
     stopBtn.style.display = 'inline-block';
-    document.getElementById('avatarStatus').textContent = 'Video avatar active — speak or type';
-
-    // Listen for avatar events
-    heygenAvatar.on('avatar_start_talking', () => {
-      avatarState.speaking = true;
-      document.getElementById('avatarStatus').textContent = 'Speaking...';
-    });
-
-    heygenAvatar.on('avatar_stop_talking', () => {
-      avatarState.speaking = false;
-      document.getElementById('avatarStatus').textContent = 'Listening...';
-    });
 
     addAvatarBotMessage(`Video avatar connected! I'm ${AVATAR_PROFILES[avatarState.employee]?.title || 'Atlas'}. Speak naturally or type below.`);
 
   } catch (e) {
-    console.error('[HEYGEN] Session failed:', e);
+    console.error('[LiveAvatar] Session failed:', e);
+    if (heygenAvatar) { try { await heygenAvatar.stop(); } catch {} heygenAvatar = null; }
     btn.textContent = '🎬 Start Video Avatar';
     btn.disabled = false;
     document.getElementById('avatarStatus').textContent = 'Connection failed';
@@ -7104,7 +7094,7 @@ async function startHeyGenSession() {
 
 async function stopHeyGenSession() {
   if (heygenAvatar) {
-    try { await heygenAvatar.stopAvatar(); } catch {}
+    try { await heygenAvatar.stop(); } catch {}
     heygenAvatar = null;
   }
   heygenSessionActive = false;
@@ -7123,14 +7113,15 @@ async function stopHeyGenSession() {
   addAvatarBotMessage('Video session ended. Click Start to reconnect, or keep using text chat.');
 }
 
-// Send text to HeyGen avatar to speak
-async function sendToHeyGen(text) {
+// Make the streaming avatar speak the given text in its own voice (lip-synced over WebRTC).
+// LiveAvatarSession.repeat() speaks literal text and returns a task id synchronously.
+function sendToHeyGen(text) {
   if (!heygenAvatar || !heygenSessionActive) return false;
   try {
-    await heygenAvatar.speak({ text, taskType: 'talk' });
+    heygenAvatar.repeat(text);
     return true;
   } catch (e) {
-    console.error('[HEYGEN] Speak failed:', e);
+    console.error('[LiveAvatar] Speak failed:', e);
     return false;
   }
 }
@@ -8155,16 +8146,12 @@ async function sendAvatarMessage() {
     const reply = result.content || result.error || 'I could not process that request.';
     avatarState.history.push({ role: 'assistant', content: reply });
 
-    // Priority: D-ID talking video > HeyGen streaming > OpenAI TTS > browser TTS
+    // Priority: D-ID talking video > LiveAvatar streaming > OpenAI TTS > browser TTS
     const didTriggered = await triggerDIDTalk(reply);
+    const videoSpoke = !didTriggered && heygenSessionActive && sendToHeyGen(reply);
 
-    if (!didTriggered && heygenSessionActive) {
-      sendToHeyGen(reply);
-    }
-
-    // addAvatarBotMessage handles text display + TTS fallback
-    // If D-ID is handling video, skip TTS to avoid double audio
-    if (didTriggered) {
+    // If D-ID or the LiveAvatar stream is voicing the reply, skip TTS to avoid double audio.
+    if (didTriggered || videoSpoke) {
       addAvatarBotMessageNoSpeak(reply);
     } else {
       addAvatarBotMessage(reply);

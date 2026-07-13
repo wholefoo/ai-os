@@ -20,6 +20,7 @@
     "docs-export/**",
     "node_modules/**",
     "dashboard/css/**",
+    "dashboard/vendor/**",
     "auto-research/**"
   ],
   "ignoreUnresolvedImports": [

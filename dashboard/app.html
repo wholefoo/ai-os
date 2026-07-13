@@ -14,7 +14,16 @@
     body.client-mode .seo-post-actions { display: none !important; }
   </style>
   <script src="https://cdn.jsdelivr.net/npm/livekit-client@2/dist/livekit-client.umd.js" defer></script>
-  <script src="https://cdn.jsdelivr.net/npm/@heygen/streaming-avatar/dist/index.umd.js" defer></script>
+  <!-- Video avatar: HeyGen retired the legacy Streaming Avatar API (Mar 2026). We use the LiveAvatar
+       SDK, vendored (pinned 0.0.18, no runtime CDN) as a native ES module. Its one bare `events`
+       import resolves through the import map to a vendored Node EventEmitter shim; livekit is bundled
+       inside the SDK. Exposed on window for the classic-script app.js. -->
+  <script type="importmap">{ "imports": { "events": "/vendor/events.esm.js" } }</script>
+  <script type="module">
+    import * as LiveAvatarSDK from '/vendor/liveavatar-sdk.esm.js';
+    window.LiveAvatarSDK = LiveAvatarSDK;
+    window.dispatchEvent(new Event('liveavatar-sdk-ready'));
+  </script>
 </head>
 <body>
   <div class="app">
@@ -2234,7 +2243,15 @@
                   </div>
                 </div>
                 <div class="settings-field">
-                  <label class="settings-label">HeyGen API Key <span class="settings-tier">Photorealistic avatar — LiveAvatar</span></label>
+                  <label class="settings-label">LiveAvatar API Key <span class="settings-tier">Real-time video avatar — from liveavatar.com</span></label>
+                  <div class="settings-input-row">
+                    <input type="text" class="settings-input settings-secret" id="set-liveavatar_api_key" placeholder="liveavatar key..." autocomplete="new-password" data-lpignore="true" data-1p-ignore spellcheck="false">
+                    <button type="button" class="btn btn-sm settings-eye" onclick="toggleKeyVisibility(this)" title="Show/hide">&#128065;</button>
+                    <span class="settings-status" id="status-liveavatar_api_key"></span>
+                  </div>
+                </div>
+                <div class="settings-field">
+                  <label class="settings-label">HeyGen API Key <span class="settings-tier">Legacy — Streaming Avatar API retired Mar 2026; use LiveAvatar above</span></label>
                   <div class="settings-input-row">
                     <input type="text" class="settings-input settings-secret" id="set-heygen_api_key" placeholder="heygen-..." autocomplete="new-password" data-lpignore="true" data-1p-ignore spellcheck="false">
                     <button type="button" class="btn btn-sm settings-eye" onclick="toggleKeyVisibility(this)" title="Show/hide">&#128065;</button>
@@ -2640,7 +2657,7 @@
     </div>
   </div>
 
-  <script src="js/app.js?v=50"></script>
+  <script src="js/app.js?v=51"></script>
   <script src="https://cdn.jsdelivr.net/npm/monaco-editor@0.52.2/min/vs/loader.js"></script>
   <script src="js/web-studio.js?v=16"></script>
   <script src="js/crm.js?v=4"></script>

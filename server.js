@@ -861,21 +861,56 @@ app.get('/api/onboarding/status', requireAdmin, (req, res) => {
 function classifyAvatarTokenError(status, bodyText) {
   const b = String(bodyText || '').toLowerCase();
   if (/deprecat|sunset|migrat/.test(b)) return 'HeyGen retired the legacy Streaming Avatar API (Mar 2026). Migrate to LiveAvatar — create an account + API key at liveavatar.com (avatars are not cross-compatible).';
-  if (status === 401 || status === 403 || /unauthorized|invalid.*key|forbidden/.test(b)) return 'Key rejected by the avatar provider (401/403). Regenerate the key, and confirm your plan includes the LiveAvatar / streaming-avatar API (it is a separate paid tier).';
-  if (status === 402 || /quota|credit|insufficient|entitle|plan/.test(b)) return 'Authenticated, but the account lacks streaming-avatar entitlement/credits (402). Upgrade to a LiveAvatar-enabled plan.';
+  if (status === 401 || status === 403 || /unauthorized|invalid.*key|forbidden/.test(b)) return 'Key rejected by LiveAvatar (401/403). Regenerate the key at liveavatar.com and confirm your plan includes the LiveAvatar API.';
+  if (status === 402 || /quota|credit|insufficient|entitle|plan/.test(b)) return 'Authenticated, but the LiveAvatar account lacks streaming entitlement/credits (402). Upgrade to a LiveAvatar-enabled plan.';
   return `Avatar token request failed (HTTP ${status}).`;
 }
 
+// Resolve the video-avatar API key: prefer the dedicated LiveAvatar key, fall back to the old
+// HEYGEN_API_KEY only for back-compat (a HeyGen key will NOT authenticate to LiveAvatar).
+function liveAvatarKey() { return settings.ai.liveavatar_api_key || settings.ai.heygen_api_key || ''; }
+
+// A LiveAvatar session is created for a specific avatar_id. If the operator hasn't pinned one,
+// auto-pick the first ACTIVE public avatar from the account catalog and cache it (the catalog is
+// stable, so one lookup per process is enough — avoids adding latency to every token request).
+let _liveAvatarDefaultId = null;
+async function resolveAvatarId(apiKey) {
+  if (settings.ai.liveavatar_avatar_id) return settings.ai.liveavatar_avatar_id;
+  if (_liveAvatarDefaultId) return _liveAvatarDefaultId;
+  const r = await fetch('https://api.liveavatar.com/v1/avatars/public?page_size=20', {
+    headers: { 'X-API-KEY': apiKey },
+  });
+  if (!r.ok) throw new Error(`avatar catalog lookup failed (HTTP ${r.status})`);
+  const j = await r.json().catch(() => ({}));
+  const list = j?.data?.results || [];
+  const pick = list.find((a) => a.status === 'ACTIVE' && a.type === 'VIDEO') || list[0];
+  if (!pick?.id) throw new Error('no public avatar available on this LiveAvatar account');
+  _liveAvatarDefaultId = pick.id;
+  appendLog(`[avatar] auto-selected LiveAvatar avatar "${pick.name || pick.id}" (${pick.id})`);
+  return _liveAvatarDefaultId;
+}
+
 app.post('/api/heygen/token', requireAdmin, async (req, res) => {
-  const apiKey = settings.ai.heygen_api_key;
-  if (!apiKey) return res.json({ ok: false, error: 'Video-avatar (HeyGen/LiveAvatar) key not configured — set HEYGEN_API_KEY in .env and restart with --update-env.' });
+  const apiKey = liveAvatarKey();
+  if (!apiKey) return res.json({ ok: false, error: 'Video-avatar (LiveAvatar) key not configured — set LIVEAVATAR_API_KEY in .env and restart with --update-env.' });
 
   try {
-    // LiveAvatar only — the legacy HeyGen streaming endpoint was sunset (Mar 2026) and now 401s any
-    // key, so calling it as a fallback just produced a misleading "Unauthorized".
+    const avatarId = await resolveAvatarId(apiKey);
+    // LiveAvatar mints a short-lived session token scoped to one avatar + persona. The browser SDK
+    // only ever sees this token — the API key never leaves the server.
     const tokenRes = await fetch('https://api.liveavatar.com/v1/sessions/token', {
       method: 'POST',
       headers: { 'X-API-KEY': apiKey, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        mode: 'FULL',
+        avatar_id: avatarId,
+        avatar_persona: {
+          voice_id: settings.ai.liveavatar_voice_id || undefined, // omit → avatar's default voice
+          language: 'en',
+        },
+        video_settings: { quality: 'high', encoding: 'H264' },
+        is_sandbox: false,
+      }),
     });
 
     if (!tokenRes.ok) {
@@ -885,22 +920,22 @@ app.post('/api/heygen/token', requireAdmin, async (req, res) => {
     }
 
     const data = await tokenRes.json();
-    const token = data.data?.token || data.token || data.access_token;
+    const token = data.data?.session_token;
     if (!token) return res.json({ ok: false, error: 'LiveAvatar returned no session token — check the account has an active avatar.' });
-    res.json({ ok: true, token, apiKey });
+    res.json({ ok: true, token, sessionId: data.data?.session_id || null, avatarId });
   } catch (e) {
-    res.json({ ok: false, error: `Could not reach the LiveAvatar API: ${e.message}` });
+    res.json({ ok: false, error: `Could not start a LiveAvatar session: ${e.message}` });
   }
 });
 
 app.get('/api/heygen/status', requireAdmin, (req, res) => {
-  const configured = !!settings.ai.heygen_api_key;
+  const configured = !!liveAvatarKey();
   res.json({
     configured,
     provider: 'liveavatar',
     message: configured
       ? 'Video-avatar key set. Uses HeyGen LiveAvatar (api.liveavatar.com) — the legacy Streaming Avatar API was retired Mar 2026. Requires a LiveAvatar account/plan; click Start to connect.'
-      : 'Video avatar not configured — set HEYGEN_API_KEY (a LiveAvatar key from liveavatar.com) in .env and restart.',
+      : 'Video avatar not configured — set LIVEAVATAR_API_KEY (a key from liveavatar.com) in .env and restart.',
   });
 });
 
@@ -7012,6 +7047,11 @@ const settings = loadState('settings', {
     deepgram_api_key: process.env.DEEPGRAM_API_KEY || '',
     cartesia_api_key: process.env.CARTESIA_API_KEY || '',
     heygen_api_key: process.env.HEYGEN_API_KEY || '',
+    // LiveAvatar (api.liveavatar.com) — successor to the retired HeyGen Streaming Avatar API.
+    // Separate account/key from HeyGen; falls back to HEYGEN_API_KEY only for back-compat.
+    liveavatar_api_key: process.env.LIVEAVATAR_API_KEY || '',
+    liveavatar_avatar_id: process.env.LIVEAVATAR_AVATAR_ID || '',
+    liveavatar_voice_id: process.env.LIVEAVATAR_VOICE_ID || '',
     did_api_key: process.env.DID_API_KEY || '',
     youtube_api_key: process.env.YOUTUBE_API_KEY || '',
   },
@@ -7230,6 +7270,7 @@ app.get('/api/settings', requireAdmin, (req, res) => {
       deepgram_api_key: { value: maskKey(settings.ai.deepgram_api_key), configured: !!settings.ai.deepgram_api_key },
       cartesia_api_key: { value: maskKey(settings.ai.cartesia_api_key), configured: !!settings.ai.cartesia_api_key },
       heygen_api_key: { value: maskKey(settings.ai.heygen_api_key), configured: !!settings.ai.heygen_api_key },
+      liveavatar_api_key: { value: maskKey(settings.ai.liveavatar_api_key), configured: !!settings.ai.liveavatar_api_key },
       did_api_key: { value: maskKey(settings.ai.did_api_key), configured: !!settings.ai.did_api_key },
       youtube_api_key: { value: maskKey(settings.ai.youtube_api_key), configured: !!settings.ai.youtube_api_key },
     },
