@@ -906,7 +906,7 @@ async function resolveAvatarId(apiKey) {
 function sanitizeAvatarId(v) { return (typeof v === 'string' && /^[\w-]{1,100}$/.test(v.trim())) ? v.trim() : ''; }
 function sanitizeAgentKey(v) { return (typeof v === 'string') ? v.toLowerCase().replace(/[^a-z0-9_-]/g, '').slice(0, 40) : ''; }
 
-app.post('/api/heygen/token', requireAdmin, async (req, res) => {
+app.post('/api/heygen/token', requireAdmin, requireCommercial('videoAvatar'), async (req, res) => {
   const apiKey = liveAvatarKey();
   if (!apiKey) return res.json({ ok: false, error: 'Video-avatar (LiveAvatar) key not configured — set LIVEAVATAR_API_KEY in .env and restart with --update-env.' });
 
@@ -952,6 +952,7 @@ app.get('/api/heygen/status', requireAdmin, (req, res) => {
   const configured = !!liveAvatarKey();
   res.json({
     configured,
+    entitled: !!COMMERCIAL_FEATURES.videoAvatar, // Enterprise-tier feature (metered per-session cost)
     provider: 'liveavatar',
     pinnedAvatarId: settings.ai.liveavatar_avatar_id || null,
     agentAvatars: settings.ai.liveavatar_agent_avatars || {},
@@ -965,7 +966,7 @@ app.get('/api/heygen/status', requireAdmin, (req, res) => {
 // Avatars = your likeness) first, then the public stock catalog. Lets the operator find an
 // avatar_id to pin (Settings → LiveAvatar Avatar ID). Fetching also clears the cached auto-pick so
 // a freshly-created custom avatar is used on the next Start without a server restart.
-app.get('/api/heygen/avatars', requireAdmin, async (req, res) => {
+app.get('/api/heygen/avatars', requireAdmin, requireCommercial('videoAvatar'), async (req, res) => {
   const apiKey = liveAvatarKey();
   if (!apiKey) return res.json({ ok: false, error: 'LiveAvatar key not configured.' });
   try {
@@ -981,7 +982,7 @@ app.get('/api/heygen/avatars', requireAdmin, async (req, res) => {
 
 // Map one avatar-chat agent to a specific LiveAvatar avatar (its "face"). Empty avatarId clears the
 // mapping (falls back to the account/stock default). The map is persisted in settings.
-app.post('/api/heygen/agent-avatar', requireAdmin, (req, res) => {
+app.post('/api/heygen/agent-avatar', requireAdmin, requireCommercial('videoAvatar'), (req, res) => {
   const agent = sanitizeAgentKey(req.body?.agent);
   if (!agent) return res.status(400).json({ ok: false, error: 'agent is required' });
   const avatarId = sanitizeAvatarId(req.body?.avatarId);

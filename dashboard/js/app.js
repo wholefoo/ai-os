@@ -6900,11 +6900,12 @@ async function loadAvatarChat() {
   ]);
 
   avatarState.didReady = didStatus.configured;
-  avatarState.heygenReady = heygenStatus.configured;
+  // Video avatar is an Enterprise-tier feature (metered per-session provider cost) AND needs a key.
+  avatarState.heygenReady = heygenStatus.configured && !!heygenStatus.entitled;
   avatarState.livekitReady = lkStatus.allReady;
 
-  // Show HeyGen button + per-agent face picker if configured
-  if (heygenStatus.configured) {
+  // Show video-avatar button + per-agent face picker only when entitled and configured.
+  if (avatarState.heygenReady) {
     document.getElementById('heygenStartBtn').style.display = 'inline-block';
     heygenAgentAvatars = heygenStatus.agentAvatars || {};
     populateHeygenFacePicker();
