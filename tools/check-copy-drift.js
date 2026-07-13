@@ -25,6 +25,7 @@ const FEATURES = [
   { name: 'YouTube intelligence',          pattern: /youtube/i },
   { name: 'human-in-the-loop approval',    pattern: /human[- ]in[- ]the[- ]loop|approval gat/i },
   { name: 'LLM provider consultants',      pattern: /LLM [Cc]onsultant|provider consultant/i },
+  { name: 'Communications Director',       pattern: /[Cc]ommunications [Dd]irector/ },
 ];
 
 const SURFACES = ['README.md', 'dashboard/index.html'];

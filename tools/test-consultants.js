@@ -31,11 +31,29 @@ for (const [prov, caller] of [['openai', 'callOpenAI'], ['gemini', 'callGemini']
   assert(new RegExp(`consultantProvider === '${prov}'[\\s\\S]{0,80}${caller}\\(`).test(server), `${prov} consultant routes to ${caller}`);
 }
 
-// --- canonical count guard: the registry is 64 and the auto-research guards agree
+// --- Communications Director exists and disseminates (does not decide)
+const comms = path.join(agentsDir, 'comms-director.md');
+assert(fs.existsSync(comms), 'comms-director.md exists');
+const cd = fs.readFileSync(comms, 'utf8');
+assert(/name:\s*comms-director\b/.test(cd), 'comms-director name frontmatter');
+assert(/dissemination flow/i.test(cd) && /consultant/i.test(cd), 'comms-director documents the consultant→dissemination flow');
+
+// --- collaboration protocol: orchestrator + architect consult the consultants and route via comms-director
+for (const a of ['orchestrator', 'architect']) {
+  const t = fs.readFileSync(path.join(agentsDir, `${a}.md`), 'utf8');
+  assert(/consultant-\w+/.test(t) && /comms-director/.test(t), `${a}.md wires consultants + comms-director`);
+}
+// --- each consultant reciprocally points findings at the comms-director
+for (const slug of CONSULTANTS) {
+  const t = fs.readFileSync(path.join(agentsDir, `consultant-${slug}.md`), 'utf8');
+  assert(/comms-director/.test(t) && /Orchestrator/.test(t), `consultant-${slug} routes findings via comms-director`);
+}
+
+// --- canonical count guard: the registry is 65 and the auto-research guards agree
 const registry = fs.readdirSync(agentsDir).filter((f) => f.endsWith('.md')).length;
-assert(registry === 64, `agent registry is 64 (57 + 7 consultants), got ${registry}`);
+assert(registry === 65, `agent registry is 65 (57 + 7 consultants + comms-director), got ${registry}`);
 const score = fs.readFileSync(path.join(__dirname, '..', 'auto-research', 'score.js'), 'utf8');
-assert(/\/\\b64\\b\//.test(score), 'auto-research score.js FACTS guards 64');
-assert(/\(\?!64\\b\)/.test(score), 'auto-research score.js drift-throw guards 64');
+assert(/\/\\b65\\b\//.test(score), 'auto-research score.js FACTS guards 65');
+assert(/\(\?!65\\b\)/.test(score), 'auto-research score.js drift-throw guards 65');
 
 done();

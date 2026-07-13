@@ -52,7 +52,7 @@ function score() {
   // 'web studio' is a SOFT feature fact (proportional points, no throw): the loop's regenerated
   // copy should keep the flagship feature present without stuffing a meta-description-scale
   // asset with the full feature list — that list is guarded by tools/check-copy-drift.js in CI.
-  const FACTS = [/\b64\b/, /\b10 departments\b/i, /\$1,?997/, /web studio/i];
+  const FACTS = [/\b65\b/, /\b10 departments\b/i, /\$1,?997/, /web studio/i];
   const factHits = FACTS.filter(r => r.test(all)).length;
   details.factsPresent = factHits;
   pts += Math.round((factHits / FACTS.length) * 20);
@@ -75,7 +75,7 @@ function score() {
   pts += maxOverlap < 0.6 ? 10 : (maxOverlap < 0.8 ? 5 : 0);
 
   // Fact-integrity guard: wrong numbers are a broken candidate, not a low score
-  if (/\b(?!64\b)\d{2,}\s+(ai\s+)?agents\b/i.test(all)) throw new Error('agent count drifted from 64');
+  if (/\b(?!65\b)\d{2,}\s+(ai\s+)?agents\b/i.test(all)) throw new Error('agent count drifted from 65');
   if (/guarantee/i.test(all)) throw new Error('hard guarantee language is banned');
 
   return { score: Math.min(100, pts), details };
