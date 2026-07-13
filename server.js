@@ -901,12 +901,21 @@ async function resolveAvatarId(apiKey) {
   return _liveAvatarDefaultId;
 }
 
+// A LiveAvatar avatar/voice id is an opaque token echoed straight into the session-token request
+// body. Accept only a conservative id shape so a client-supplied value can't smuggle anything.
+function sanitizeAvatarId(v) { return (typeof v === 'string' && /^[\w-]{1,100}$/.test(v.trim())) ? v.trim() : ''; }
+function sanitizeAgentKey(v) { return (typeof v === 'string') ? v.toLowerCase().replace(/[^a-z0-9_-]/g, '').slice(0, 40) : ''; }
+
 app.post('/api/heygen/token', requireAdmin, async (req, res) => {
   const apiKey = liveAvatarKey();
   if (!apiKey) return res.json({ ok: false, error: 'Video-avatar (LiveAvatar) key not configured — set LIVEAVATAR_API_KEY in .env and restart with --update-env.' });
 
   try {
-    const avatarId = await resolveAvatarId(apiKey);
+    // Per-agent face: an explicit avatarId in the request wins, else the agent's mapped avatar,
+    // else the account/stock fallback. Same order for the voice.
+    const agent = sanitizeAgentKey(req.body?.agent);
+    const mappedAvatar = agent ? sanitizeAvatarId((settings.ai.liveavatar_agent_avatars || {})[agent]) : '';
+    const avatarId = sanitizeAvatarId(req.body?.avatarId) || mappedAvatar || await resolveAvatarId(apiKey);
     // LiveAvatar mints a short-lived session token scoped to one avatar + persona. The browser SDK
     // only ever sees this token — the API key never leaves the server.
     const tokenRes = await fetch('https://api.liveavatar.com/v1/sessions/token', {
@@ -945,6 +954,7 @@ app.get('/api/heygen/status', requireAdmin, (req, res) => {
     configured,
     provider: 'liveavatar',
     pinnedAvatarId: settings.ai.liveavatar_avatar_id || null,
+    agentAvatars: settings.ai.liveavatar_agent_avatars || {},
     message: configured
       ? 'Video-avatar key set. Uses HeyGen LiveAvatar (api.liveavatar.com) — the legacy Streaming Avatar API was retired Mar 2026. Requires a LiveAvatar account/plan; click Start to connect.'
       : 'Video avatar not configured — set LIVEAVATAR_API_KEY (a key from liveavatar.com) in .env and restart.',
@@ -963,10 +973,25 @@ app.get('/api/heygen/avatars', requireAdmin, async (req, res) => {
     const owned = (await fetchAvatarList(apiKey, '/v1/avatars?page_size=50').catch(() => [])).map(shape);
     const publicStock = (await fetchAvatarList(apiKey, '/v1/avatars/public?page_size=50').catch(() => [])).map(shape);
     if (owned.some((a) => a.status === 'ACTIVE')) _liveAvatarDefaultId = null; // let a new custom avatar win
-    res.json({ ok: true, owned, public: publicStock, pinnedAvatarId: settings.ai.liveavatar_avatar_id || null });
+    res.json({ ok: true, owned, public: publicStock, pinnedAvatarId: settings.ai.liveavatar_avatar_id || null, agentAvatars: settings.ai.liveavatar_agent_avatars || {} });
   } catch (e) {
     res.json({ ok: false, error: `Could not list LiveAvatar avatars: ${e.message}` });
   }
+});
+
+// Map one avatar-chat agent to a specific LiveAvatar avatar (its "face"). Empty avatarId clears the
+// mapping (falls back to the account/stock default). The map is persisted in settings.
+app.post('/api/heygen/agent-avatar', requireAdmin, (req, res) => {
+  const agent = sanitizeAgentKey(req.body?.agent);
+  if (!agent) return res.status(400).json({ ok: false, error: 'agent is required' });
+  const avatarId = sanitizeAvatarId(req.body?.avatarId);
+  if (req.body?.avatarId && !avatarId) return res.status(400).json({ ok: false, error: 'avatarId is not a valid avatar id' });
+  if (!settings.ai.liveavatar_agent_avatars || typeof settings.ai.liveavatar_agent_avatars !== 'object') settings.ai.liveavatar_agent_avatars = {};
+  if (avatarId) settings.ai.liveavatar_agent_avatars[agent] = avatarId;
+  else delete settings.ai.liveavatar_agent_avatars[agent];
+  saveState('settings', settings);
+  logActivity('settings', `Video-avatar face for "${agent}" ${avatarId ? 'set to ' + avatarId : 'cleared'}`, { actor: reqActor(req) });
+  res.json({ ok: true, agent, avatarId: avatarId || null, agentAvatars: settings.ai.liveavatar_agent_avatars });
 });
 
 // --- D-ID Talking Avatar API ---
@@ -7082,6 +7107,9 @@ const settings = loadState('settings', {
     liveavatar_api_key: process.env.LIVEAVATAR_API_KEY || '',
     liveavatar_avatar_id: process.env.LIVEAVATAR_AVATAR_ID || '',
     liveavatar_voice_id: process.env.LIVEAVATAR_VOICE_ID || '',
+    // Per-agent face map { <agentKey>: <avatarId> } — each avatar chat employee can stream a
+    // different LiveAvatar avatar. Seedable via LIVEAVATAR_AGENT_AVATARS (JSON); edited in the UI.
+    liveavatar_agent_avatars: (() => { try { return JSON.parse(process.env.LIVEAVATAR_AGENT_AVATARS || '{}'); } catch { return {}; } })(),
     did_api_key: process.env.DID_API_KEY || '',
     youtube_api_key: process.env.YOUTUBE_API_KEY || '',
   },

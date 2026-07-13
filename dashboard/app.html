@@ -1937,6 +1937,14 @@
                 <button class="btn btn-sm btn-primary" id="heygenStartBtn" onclick="startHeyGenSession()" style="display:none;">&#127909; Start Video Avatar</button>
                 <button class="btn btn-sm btn-danger" id="heygenStopBtn" onclick="stopHeyGenSession()" style="display:none;">Stop Session</button>
               </div>
+              <div class="avatar-heygen-face" id="heygenFacePicker" style="display:none;margin-top:8px;">
+                <label style="font-size:11px;color:#888;">Video face for <span id="heygenFaceAgent">this agent</span>:</label>
+                <div class="settings-input-row" style="margin-top:4px;gap:6px;">
+                  <select id="heygenFaceSelect" class="settings-input" style="flex:1;font-size:12px;" onchange="saveAgentAvatar()">
+                    <option value="">Auto (account default)</option>
+                  </select>
+                </div>
+              </div>
               <div class="avatar-upload-controls" style="margin-top:8px;">
                 <label class="btn btn-sm btn-outline" id="avatarUploadLabel" style="cursor:pointer;font-size:12px;">
                   &#128247; Upload Photo
@@ -2663,7 +2671,7 @@
     </div>
   </div>
 
-  <script src="js/app.js?v=52"></script>
+  <script src="js/app.js?v=53"></script>
   <script src="https://cdn.jsdelivr.net/npm/monaco-editor@0.52.2/min/vs/loader.js"></script>
   <script src="js/web-studio.js?v=16"></script>
   <script src="js/crm.js?v=4"></script>

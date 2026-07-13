@@ -6875,6 +6875,8 @@ const AVATAR_AGENTS = Object.fromEntries(Object.entries(AVATAR_PROFILES).map(([k
 let livekitRoom = null;
 let heygenAvatar = null;
 let heygenSessionActive = false;
+let heygenAvatarCatalog = null;   // { owned:[], public:[] } from /api/heygen/avatars, fetched once
+let heygenAgentAvatars = {};      // { <agentKey>: <avatarId> } — per-agent face mapping
 let didTalkingActive = false;
 let avatarPhotos = {}; // employee -> local photo path or D-ID URL
 
@@ -6901,9 +6903,11 @@ async function loadAvatarChat() {
   avatarState.heygenReady = heygenStatus.configured;
   avatarState.livekitReady = lkStatus.allReady;
 
-  // Show HeyGen button if configured
+  // Show HeyGen button + per-agent face picker if configured
   if (heygenStatus.configured) {
     document.getElementById('heygenStartBtn').style.display = 'inline-block';
+    heygenAgentAvatars = heygenStatus.agentAvatars || {};
+    populateHeygenFacePicker();
   }
 
   // Initialize the avatar display (photo or portrait fallback)
@@ -7028,6 +7032,65 @@ async function handleAvatarPhotoUpload(event) {
 
 // --- HeyGen LiveAvatar ---
 
+// Per-agent face picker: each avatar-chat employee can stream a different LiveAvatar avatar.
+async function populateHeygenFacePicker() {
+  const select = document.getElementById('heygenFaceSelect');
+  if (!select) return;
+  if (!heygenAvatarCatalog) {
+    try {
+      const data = await fetchJSON('/api/heygen/avatars');
+      if (data.ok) heygenAvatarCatalog = { owned: data.owned || [], public: data.public || [] };
+      if (data.agentAvatars) heygenAgentAvatars = data.agentAvatars;
+    } catch { heygenAvatarCatalog = { owned: [], public: [] }; }
+  }
+  // Rebuild the option list: Auto + your avatars + stock avatars.
+  select.innerHTML = '<option value="">Auto (account default)</option>';
+  const addGroup = (label, items) => {
+    if (!items || !items.length) return;
+    const og = document.createElement('optgroup');
+    og.label = label;
+    for (const a of items) {
+      const o = document.createElement('option');
+      o.value = a.id;
+      o.textContent = `${a.name}${a.status && a.status !== 'ACTIVE' ? ' (' + a.status + ')' : ''}`;
+      og.appendChild(o);
+    }
+    select.appendChild(og);
+  };
+  addGroup('Your avatars', heygenAvatarCatalog?.owned);
+  addGroup('Stock avatars', heygenAvatarCatalog?.public);
+  refreshHeygenFaceSelection();
+}
+
+// Point the picker at the current employee's mapped avatar (called on load + agent switch).
+function refreshHeygenFaceSelection() {
+  const picker = document.getElementById('heygenFacePicker');
+  const select = document.getElementById('heygenFaceSelect');
+  if (!picker || !select || !avatarState.heygenReady) return;
+  picker.style.display = 'block';
+  const label = document.getElementById('heygenFaceAgent');
+  if (label) label.textContent = AVATAR_PROFILES[avatarState.employee]?.title || avatarState.employee;
+  select.value = heygenAgentAvatars[avatarState.employee] || '';
+}
+
+// Persist the chosen face for the current agent; if a session is live, reconnect so it takes effect.
+async function saveAgentAvatar() {
+  const select = document.getElementById('heygenFaceSelect');
+  if (!select) return;
+  const agent = avatarState.employee;
+  const avatarId = select.value;
+  try {
+    const res = await fetchJSON('/api/heygen/agent-avatar', { method: 'POST', body: { agent, avatarId } });
+    if (!res.ok) { addAvatarBotMessage(`Could not save the video face: ${res.error || 'unknown error'}`); return; }
+    heygenAgentAvatars = res.agentAvatars || heygenAgentAvatars;
+    const name = select.options[select.selectedIndex]?.textContent || 'default';
+    addAvatarBotMessage(avatarId ? `Video face for this agent set to “${name}”. Click Start Video Avatar to see it.` : 'Video face reset to the account default.');
+    if (heygenSessionActive) { await stopHeyGenSession(); startHeyGenSession(); }
+  } catch (e) {
+    addAvatarBotMessage(`Could not save the video face: ${e.message}`);
+  }
+}
+
 async function startHeyGenSession() {
   const btn = document.getElementById('heygenStartBtn');
   const stopBtn = document.getElementById('heygenStopBtn');
@@ -7037,7 +7100,7 @@ async function startHeyGenSession() {
 
   try {
     // Get session token from server
-    const tokenData = await fetchJSON('/api/heygen/token', { method: 'POST', body: {} });
+    const tokenData = await fetchJSON('/api/heygen/token', { method: 'POST', body: { agent: avatarState.employee } });
     if (!tokenData.ok) throw new Error(tokenData.error || 'Token request failed');
 
     // LiveAvatar SDK is vendored + loaded as an ES module, exposed on window.LiveAvatarSDK.
@@ -7631,6 +7694,9 @@ function switchAvatarEmployee() {
   // Disconnect LiveKit if active (need new room for new employee)
   if (livekitRoom) disconnectLiveKit();
 
+  // Stop any live video-avatar session — the new employee may have a different face.
+  if (heygenSessionActive) stopHeyGenSession();
+
   // Stop any playing D-ID video
   const talkingVideo = document.getElementById('avatarTalkingVideo');
   if (talkingVideo) { talkingVideo.pause(); talkingVideo.style.display = 'none'; }
@@ -7644,6 +7710,8 @@ function switchAvatarEmployee() {
 
   // Re-initialize avatar display for new employee (photo or portrait)
   initAvatarDisplay();
+  // Point the per-agent face picker at the new employee's mapping.
+  refreshHeygenFaceSelection();
   addAvatarBotMessage(`Switched to ${option.textContent}. How can I help you?`);
 }
 
