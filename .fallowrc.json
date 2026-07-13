@@ -11,6 +11,7 @@
     "tools/test-funnel-dynamic.js",
     "tools/test-all.js",
     "tools/check-copy-drift.js",
+    "tools/test-consultants.js",
     "ecosystem.config.js",
     "deploy/n8n-ecosystem.config.example.js",
     "dashboard/js/*.js"

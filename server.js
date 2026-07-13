@@ -2812,6 +2812,20 @@ const EFFORT_ROUTING = {
   creative: { model: 'gemini-omni', agents: ['media-producer', 'vibe-designer', 'video-creator', 'audio-producer', 'thumbnail-gen'] },
 };
 
+// LLM provider consultants — each answers ON its own provider's model (genuinely "trained on"
+// its own stack) with live web search for fresh releases. Manus has no platform API caller, so
+// its consultant runs on Anthropic with a Manus knowledge pack (an honest limitation, documented
+// in the agent file). Maps the agent name → the caller branch key used in executeAgent.
+const CONSULTANT_PROVIDER = {
+  'consultant-anthropic': 'anthropic',
+  'consultant-openai': 'openai',
+  'consultant-gemini': 'gemini',
+  'consultant-deepseek': 'deepseek',
+  'consultant-grok': 'grok',
+  'consultant-perplexity': 'perplexity',
+  'consultant-manus': 'anthropic', // no Manus API caller — runs on Claude with a Manus knowledge pack
+};
+
 // Resolve agent name to effort level / model tier
 function getAgentEffort(agentName) {
   for (const [tier, config] of Object.entries(EFFORT_ROUTING)) {
@@ -2947,7 +2961,18 @@ async function executeAgent(agentName, task, options = {}) {
 
   await acquireAgentSlot(); // bound concurrent paid provider calls process-wide
   try {
-    if (routing.tier === 'creative') {
+    // Provider consultant — answer on the provider's OWN model when its key is configured; else
+    // fall through to the Anthropic default so the consultant still works. Sets result + model and
+    // lets the shared cost-tracking/return tail below handle the rest, like every other branch.
+    const consultantProvider = CONSULTANT_PROVIDER[agentName];
+    const consultantKey = { openai: 'openai_api_key', gemini: 'gemini_api_key', deepseek: 'deepseek_api_key', grok: 'xai_api_key', perplexity: 'perplexity_api_key' }[consultantProvider];
+    if (consultantKey && settings.ai[consultantKey]) {
+      if (consultantProvider === 'openai') { result = await callOpenAI(fullSystem, fullTask, maxTokens); model = 'gpt-5.6-terra'; }
+      else if (consultantProvider === 'gemini') { result = await callGemini(fullSystem, fullTask, maxTokens); model = 'gemini-3.5-flash'; }
+      else if (consultantProvider === 'deepseek') { result = await callDeepSeek(fullSystem, fullTask, maxTokens); model = 'deepseek-v4'; }
+      else if (consultantProvider === 'grok') { result = await callGrok(fullSystem, fullTask, maxTokens); model = 'grok-4.5'; }
+      else if (consultantProvider === 'perplexity') { result = await callPerplexity(fullSystem, fullTask, maxTokens); model = 'perplexity-sonar'; }
+    } else if (routing.tier === 'creative') {
       // Gemini Omni — route to Google
       result = await callGemini(fullSystem, fullTask, maxTokens);
       model = 'gemini-omni';
@@ -3469,7 +3494,7 @@ app.post('/api/chat', requireAdmin, async (req, res) => {
   messages.push({ role: 'user', content: message });
 
   try {
-    const systemPrompt = `You are Atlas, the CEO and Chief Orchestrator of AI OS Corp — a Virtual Corporate Headquarters with 57 AI agents across 10 departments. You help users navigate the platform, dispatch tasks to the right agents, answer questions about features, and provide strategic guidance. Be concise, helpful, and professional. You know about the full model routing across 6 AI models, the SEO Agency, Creative Studio, YouTube Intelligence, and the full agent fleet.`;
+    const systemPrompt = `You are Atlas, the CEO and Chief Orchestrator of AI OS Corp — a Virtual Corporate Headquarters with 64 AI agents across 10 departments. You help users navigate the platform, dispatch tasks to the right agents, answer questions about features, and provide strategic guidance. Be concise, helpful, and professional. You know about the full model routing across 6 AI models, the SEO Agency, Creative Studio, YouTube Intelligence, and the full agent fleet.`;
 
     // Route chat through the same reasoning-mode resolution as agents (honors the opus/balanced/sonnet
     // toggle instead of always hitting Opus), and record spend — callAnthropic does not ledger, only executeAgent does.
@@ -7578,7 +7603,7 @@ const ORG_CHART = (() => {
     }
   }
 
-  // Headline agent count = the .claude/agents registry (the canonical 57 on licensed tiers); the org
+  // Headline agent count = the .claude/agents registry (the canonical 64 on licensed tiers); the org
   // tree also carries a couple of platform service-roles (Hermes Director, Data Scientist) that aren't
   // file-agents, so don't count raw entries. Community surfaces its placed roster (15).
   const _agentDir = path.join(CLAUDE_DIR, 'agents');
@@ -8370,7 +8395,7 @@ function generateYTVisualAnalysis(frames) {
   const descriptions = [
     { scene: 'Title card / intro animation with channel branding', elements: ['logo', 'title text', 'subscribe button'], onScreenText: 'Building AI Agents in Production' },
     { scene: 'Speaker at desk with monitor showing code editor', elements: ['person', 'monitor', 'code editor', 'terminal'], onScreenText: 'server.js — line 524' },
-    { scene: 'Dashboard view showing agent fleet status panel', elements: ['dashboard UI', 'agent cards', 'status indicators', 'charts'], onScreenText: '57 Active Agents | 6 AI Models' },
+    { scene: 'Dashboard view showing agent fleet status panel', elements: ['dashboard UI', 'agent cards', 'status indicators', 'charts'], onScreenText: '64 Active Agents | 6 AI Models' },
     { scene: 'Terminal showing PM2 process list with running services', elements: ['terminal', 'process table', 'CPU/memory stats'], onScreenText: 'pm2 status — ai-os online' },
     { scene: 'Architecture diagram with model routing flow', elements: ['flowchart', 'arrows', 'model tier boxes'], onScreenText: 'Opus 4.8 xhigh → high → low' },
     { scene: 'SEO audit results showing composite score and findings', elements: ['score badge', 'findings list', 'severity indicators'], onScreenText: 'Composite Score: 67/100' },

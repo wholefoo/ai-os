@@ -24,6 +24,7 @@ const FEATURES = [
   { name: 'CRM',                           pattern: /\bCRM\b/ },
   { name: 'YouTube intelligence',          pattern: /youtube/i },
   { name: 'human-in-the-loop approval',    pattern: /human[- ]in[- ]the[- ]loop|approval gat/i },
+  { name: 'LLM provider consultants',      pattern: /LLM [Cc]onsultant|provider consultant/i },
 ];
 
 const SURFACES = ['README.md', 'dashboard/index.html'];
