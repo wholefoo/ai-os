@@ -1582,13 +1582,36 @@ function getSkillIcon(category) {
 
 // --- Schedules ---
 async function loadSchedules() {
-  const [scheds, history] = await Promise.all([
+  const [scheds, history, briefs] = await Promise.all([
     fetchJSON('/api/schedules'),
     fetchJSON('/api/schedules/history'),
+    fetchJSON('/api/intel-brief/list').catch(() => null),
   ]);
 
   renderScheduleCards(scheds);
   renderScheduleHistory(history);
+  renderIntelBriefs(briefs);
+}
+
+// Daily Intelligence Statements (.docx) — list + download links, newest first.
+function renderIntelBriefs(data) {
+  const container = document.getElementById('intelBriefList');
+  if (!container) return;
+  const briefs = (data && data.briefs) || [];
+  const runningNote = data && data.running ? '<div style="font-size:12px;color:#3b82f6;margin-bottom:10px;">⟳ A brief is being generated right now — it will appear here when done.</div>' : '';
+  if (!briefs.length) {
+    container.innerHTML = runningNote + '<div class="empty-state">No briefs yet — the first one is generated at 8:00 AM, or click Run Now on the intel-brief schedule above.</div>';
+    return;
+  }
+  container.innerHTML = runningNote + briefs.slice(0, 14).map(b => `
+    <div style="display:flex;align-items:center;gap:12px;padding:10px 12px;border:1px solid rgba(255,255,255,.07);border-radius:10px;margin-bottom:8px;">
+      <span style="font-size:20px;">📄</span>
+      <div style="flex:1;min-width:0;">
+        <div style="font-size:13px;font-weight:600;">${escapeHtml(b.date)} — Daily Intelligence Statement${b.consultantsReported != null ? ` <span style="font-weight:400;color:#888;">(${b.consultantsReported}/7 consultants reported)</span>` : ''}</div>
+        ${b.summary ? `<div style="font-size:12px;color:#999;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escapeHtml(b.summary)}</div>` : ''}
+      </div>
+      <a class="btn btn-sm btn-primary" href="/api/intel-brief/download/${encodeURIComponent(b.file)}" download>⬇ Download .docx</a>
+    </div>`).join('');
 }
 
 function renderScheduleCards(scheds) {

@@ -4864,6 +4864,46 @@ async function dispatchSkillRun({ agent, skill, task }) {
   return runEntry;
 }
 
+// Multi-step intel-brief run (consultants → synthesis → orchestrator/architect → comms-director →
+// .docx). Doesn't fit dispatchSkillRun's single-agent shape, but mirrors its history/broadcast
+// contract exactly so the Schedules UI treats both identically.
+const intelBrief = require('./lib/intel-brief');
+const INTEL_BRIEF_DIR = path.join(BASE, 'data', 'intel-briefs');
+let intelBriefRunning = false; // one at a time — a run is ~11 model calls
+async function dispatchIntelBriefRun() {
+  const runEntry = { id: uuidv4(), agent: 'comms-director', skill: 'intel-brief', startedAt: new Date().toISOString(), status: 'running' };
+  scheduleHistory.unshift(runEntry);
+  if (scheduleHistory.length > 100) scheduleHistory.length = 100;
+  if (intelBriefRunning) {
+    runEntry.status = 'failed'; runEntry.error = 'an intel-brief run is already in progress';
+    runEntry.completedAt = new Date().toISOString();
+    return runEntry;
+  }
+  intelBriefRunning = true;
+  broadcast({ event: 'fleet_update', data: { agent: 'comms-director', status: 'running' } });
+  try {
+    const meta = await intelBrief.runIntelBrief(
+      { runAgent: (agent, task, opts) => executeAgent(agent, task, opts), log: appendLog, broadcast },
+      { dir: INTEL_BRIEF_DIR }
+    );
+    runEntry.status = 'completed';
+    runEntry.summary = `Daily intelligence statement written: ${meta.file} (${meta.consultantsReported}/${meta.consultantsTotal} consultants reported)`;
+    const note = `📄 Daily Intelligence Statement ready — ${meta.file}. Download it from the dashboard → Schedules → Intel Briefs.`;
+    sendTelegramMessage(note).catch(() => {});
+    sendSlackMessage(note).catch(() => {});
+  } catch (e) {
+    runEntry.status = 'failed';
+    runEntry.error = e.message;
+    appendLog(`[intel-brief] FAILED: ${e.message}`);
+  } finally {
+    intelBriefRunning = false;
+    runEntry.completedAt = new Date().toISOString();
+    broadcast({ event: 'fleet_update', data: { agent: 'comms-director', status: 'idle' } });
+    logActivity('schedule', `comms-director → intel-brief: ${runEntry.status}`);
+  }
+  return runEntry;
+}
+
 function runScheduledAgent(scheduleId) {
   const sched = schedules.get(scheduleId);
   if (!sched || !sched.enabled) return;
@@ -4874,7 +4914,10 @@ function runScheduledAgent(scheduleId) {
   appendLog(`SCHEDULE_RUN: ${sched.agent} (${sched.skill}) [${scheduleId}]`);
   broadcast({ event: 'schedule_update', data: { ...sched, _job: undefined } });
 
-  dispatchSkillRun({ agent: sched.agent, skill: sched.skill, task: buildScheduleTask(sched.skill) }).then((runEntry) => {
+  const dispatch = sched.skill === 'intel-brief'
+    ? dispatchIntelBriefRun()
+    : dispatchSkillRun({ agent: sched.agent, skill: sched.skill, task: buildScheduleTask(sched.skill) });
+  dispatch.then((runEntry) => {
     sched.status = 'idle';
     sched.nextRun = getNextRun(sched.cron);
     broadcast({ event: 'schedule_update', data: { ...sched, _job: undefined } });
@@ -4884,6 +4927,7 @@ function runScheduledAgent(scheduleId) {
       'tech-radar': 'Daily intelligence sweep completed — review new findings in Tech Radar',
       'research-brief': 'Daily research brief completed — new insights available in Artifacts',
       'uptime-check': 'Scheduled uptime check completed — see Schedules history for the report',
+      'intel-brief': 'Daily Intelligence Statement ready — download the .docx from Schedules → Intel Briefs',
     };
     broadcast({
       event: 'activity',
@@ -4959,6 +5003,26 @@ createSchedule('sched-sysadmin-uptime', {
   skill: 'uptime-check',
   cron: '*/30 * * * *',  // every 30 minutes
   description: 'VPS and service health monitor — reviews a real health snapshot and flags anything degraded',
+});
+
+createSchedule('sched-intel-brief-daily', {
+  agent: 'comms-director',
+  skill: 'intel-brief',
+  cron: '0 8 * * *',  // 8:00 AM daily — after the 6/7 AM sweeps, so consultants see the freshest landscape
+  description: 'Daily Intelligence Statement — 7 LLM consultants report to the Orchestrator, Architect & Communications Director; the statement is published as a downloadable .docx',
+});
+
+// --- Intel Brief API (list + download the daily .docx statements) ---
+app.get('/api/intel-brief/list', requireAdmin, (req, res) => {
+  res.json({ ok: true, briefs: intelBrief.listBriefs(INTEL_BRIEF_DIR), running: intelBriefRunning });
+});
+app.get('/api/intel-brief/download/:file', requireAdmin, (req, res) => {
+  const name = String(req.params.file || '');
+  // Strict allowlist beats sanitizing: only our own generated filenames are servable.
+  if (!intelBrief.FILE_RE.test(name)) return res.status(400).json({ error: 'invalid brief filename' });
+  const full = path.join(INTEL_BRIEF_DIR, name);
+  if (!fs.existsSync(full)) return res.status(404).json({ error: 'brief not found' });
+  res.download(full, name);
 });
 
 // --- Schedule API ---
@@ -6819,6 +6883,7 @@ const HERMES_REAL_SKILLS = [
   { name: 'dev-project', description: 'Plan + gated-apply platform upgrades via Grok Build (dev-architect-grok)', real: true },
   { name: 'news-brief', description: 'AI/tech intelligence sweep via the scout agent (also runs on its own daily schedule)', real: true },
   { name: 'uptime-check', description: 'Real health-snapshot review via the sysadmin agent (also runs every 30 min on its own schedule)', real: true },
+  { name: 'intel-brief', description: 'Daily Intelligence Statement — 7 LLM consultants → Orchestrator/Architect review → Communications Director .docx (also runs daily at 8 AM)', real: true },
 ];
 
 // Simulate Hermes connection check (except HERMES_REAL_SKILLS, which are real)
@@ -6857,7 +6922,7 @@ app.get('/api/hermes/status', (req, res) => {
 app.post('/api/hermes/delegate', requireAdmin, (req, res) => {
   const errors = validateBody(req.body, {
     task: { type: 'string', required: true, maxLength: 2000 },
-    mode: { type: 'string' }, // 'background' | 'walkaway' | 'cron' | 'dev-project' | 'news-brief' | 'uptime-check'
+    mode: { type: 'string' }, // 'background' | 'walkaway' | 'cron' | 'dev-project' | 'news-brief' | 'uptime-check' | 'intel-brief'
   });
   if (errors) return res.status(400).json({ error: errors.join(', ') });
 
@@ -6935,6 +7000,27 @@ app.post('/api/hermes/delegate', requireAdmin, (req, res) => {
         delegated.progress = 100;
         delegated.completedAt = new Date().toISOString();
         delegated.log.push('Run completed — see result below');
+        delegated.result = runEntry.summary;
+      } else {
+        delegated.status = 'failed';
+        delegated.log.push(`Run failed: ${runEntry.error}`);
+      }
+      broadcast({ event: 'hermes_complete', data: delegated });
+    });
+  } else if (mode === 'intel-brief') {
+    // REAL dispatch (see HERMES_REAL_SKILLS) — same multi-step run the 8 AM schedule fires
+    // (consultants → synthesis → orchestrator/architect → comms-director → .docx), on demand.
+    delegated.status = 'running';
+    delegated.progress = 20;
+    delegated.log.push('Handed off to the consultant → comms-director pipeline for real execution');
+    broadcast({ event: 'hermes_progress', data: delegated });
+
+    dispatchIntelBriefRun().then((runEntry) => {
+      if (runEntry.status === 'completed') {
+        delegated.status = 'complete';
+        delegated.progress = 100;
+        delegated.completedAt = new Date().toISOString();
+        delegated.log.push('Statement written — download the .docx from Schedules → Intel Briefs');
         delegated.result = runEntry.summary;
       } else {
         delegated.status = 'failed';
