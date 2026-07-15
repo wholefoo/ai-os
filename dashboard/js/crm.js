@@ -36,6 +36,108 @@ function crmFetchAndRender() {
   crmLoadStats();
   crmLoadList();
   crmLoadUnassigned();
+  loadSequencesPanel();
+}
+
+// ---------- Email Sequences panel ----------
+
+async function loadSequencesPanel() {
+  const list = document.getElementById('seqList');
+  if (!list) return;
+  if (!document.querySelector('#seqSteps .seq-step-row')) addSeqStepRow(); // always at least one editable step
+  let data;
+  try { data = await fetchJSON('/api/email/sequences'); } catch { return; }
+  const note = document.getElementById('seqStatusNote');
+  if (note) {
+    note.innerHTML = data.configured
+      ? `<span style="color:#22c55e;">&#9679; Sender configured</span>${data.suppressed ? ` <span style="color:#888;">&middot; ${data.suppressed} unsubscribed</span>` : ''}`
+      : '<span style="color:#f59e0b;">&#9679; No sender configured — sequences can be drafted but not enabled. Set it up in Settings &rarr; Email Sending.</span>';
+  }
+  const seqs = data.sequences || [];
+  if (!seqs.length) { list.innerHTML = '<div class="empty-state">No sequences yet — draft one below (or let the marketing agent write it).</div>'; return; }
+  list.innerHTML = seqs.map((s) => `
+    <div style="display:flex;align-items:center;gap:12px;padding:10px 12px;border:1px solid rgba(255,255,255,.07);border-radius:10px;margin-bottom:8px;">
+      <div class="schedule-toggle ${s.enabled ? 'active' : ''}" onclick="toggleSequence('${s.id}', ${s.enabled ? 'false' : 'true'})" title="${s.enabled ? 'Click to pause' : 'Click to enable'}"></div>
+      <div style="flex:1;min-width:0;">
+        <div style="font-size:13px;font-weight:600;">${escapeHtml(s.name)} <span style="font-weight:400;color:#888;">(${s.steps} step${s.steps === 1 ? '' : 's'} &middot; ${escapeHtml(s.trigger)})</span></div>
+        <div style="font-size:12px;color:#999;">${s.enrolled} enrolled &middot; ${s.active} active &middot; ${s.completed} completed &middot; ${s.sent} emails sent</div>
+      </div>
+      <button class="btn btn-sm" onclick="testSequence('${s.id}')" title="Send step 1 to your own email">Test</button>
+      <button class="btn btn-sm btn-danger" onclick="deleteSequence('${s.id}')" title="Delete (stops active enrollments)">&#128465;</button>
+    </div>`).join('');
+}
+
+function addSeqStepRow(step = {}) {
+  const wrap = document.getElementById('seqSteps');
+  if (!wrap) return;
+  const row = document.createElement('div');
+  row.className = 'seq-step-row';
+  row.style.cssText = 'border:1px solid rgba(255,255,255,.06);border-radius:8px;padding:8px;margin-bottom:6px;';
+  row.innerHTML = `
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:6px;">
+      <input type="number" min="0" max="2160" class="settings-input seq-delay" value="${Number(step.delayHours) || 0}" title="Delay (hours) after the previous step" style="width:90px;">
+      <span style="font-size:11px;color:#888;align-self:center;">hours delay</span>
+      <input type="text" class="settings-input seq-subject" placeholder="Subject — {{first_name}} and {{site}} work" value="${(step.subject || '').replace(/"/g, '&quot;')}" style="flex:1;min-width:200px;">
+      <button class="btn btn-sm" onclick="this.closest('.seq-step-row').remove()" title="Remove step">&times;</button>
+    </div>
+    <textarea class="settings-input seq-body" rows="4" placeholder="Plain-text email body. An unsubscribe footer is added automatically.">${escapeHtml(step.body || '')}</textarea>`;
+  wrap.appendChild(row);
+}
+
+function readSeqSteps() {
+  return Array.from(document.querySelectorAll('#seqSteps .seq-step-row')).map((row) => ({
+    delayHours: Number(row.querySelector('.seq-delay')?.value) || 0,
+    subject: row.querySelector('.seq-subject')?.value || '',
+    body: row.querySelector('.seq-body')?.value || '',
+  })).filter((s) => s.subject.trim() || s.body.trim());
+}
+
+async function draftSequenceAI() {
+  const goal = crmVal('seqGoal').trim();
+  if (!goal) { alert('Describe the goal first — e.g. "convert dental-site leads into consult bookings".'); return; }
+  const btn = document.getElementById('seqDraftBtn');
+  btn.disabled = true; btn.textContent = 'Drafting…';
+  try {
+    const r = await fetchJSON('/api/email/sequences/draft', { method: 'POST', body: { goal } });
+    if (!r.ok) { alert(r.error || 'Draft failed'); return; }
+    document.getElementById('seqName').value = r.draft.name || goal;
+    document.getElementById('seqSteps').innerHTML = '';
+    (r.draft.steps || []).forEach((s) => addSeqStepRow(s));
+  } catch (e) { alert(`Draft failed: ${e.message}`); }
+  finally { btn.disabled = false; btn.textContent = '✨ AI Draft'; }
+}
+
+async function createSequence() {
+  const steps = readSeqSteps();
+  const name = crmVal('seqName').trim();
+  if (!name || !steps.length) { alert('A name and at least one step (subject + body) are required.'); return; }
+  const r = await fetchJSON('/api/email/sequences', { method: 'POST', body: { name, trigger: crmVal('seqTrigger') || 'all-leads', steps } });
+  if (r && r.error) { alert(r.error); return; }
+  document.getElementById('seqName').value = '';
+  document.getElementById('seqGoal').value = '';
+  document.getElementById('seqSteps').innerHTML = '';
+  addSeqStepRow();
+  loadSequencesPanel();
+}
+
+async function toggleSequence(id, enable) {
+  const r = await fetchJSON(`/api/email/sequences/${id}`, { method: 'PUT', body: { enabled: enable === true || enable === 'true' } });
+  if (r && r.error) alert(r.error);
+  loadSequencesPanel();
+}
+
+async function deleteSequence(id) {
+  if (!confirm('Delete this sequence? Active enrollments will be stopped.')) return;
+  const r = await fetchJSON(`/api/email/sequences/${id}`, { method: 'DELETE' });
+  if (r && r.error) alert(r.error);
+  loadSequencesPanel();
+}
+
+async function testSequence(id) {
+  const to = prompt('Send a test of step 1 to which email address?');
+  if (!to) return;
+  const r = await fetchJSON(`/api/email/sequences/${id}/test`, { method: 'POST', body: { to } });
+  alert(r.ok ? `Test sent via ${r.provider}. Check the inbox (and spam folder).` : `Test failed: ${r.error}`);
 }
 
 async function crmLoadStats() {

@@ -201,6 +201,7 @@ function authMiddleware(req, res, next) {
   // Public lead capture from generated sites' contact forms (anonymous visitors on client domains).
   // Abuse is bounded by siteLeadLimiter + honeypot + validation in the handler; no paid calls inside.
   if (url.startsWith('/api/public/site-lead/')) return next();
+  if (url.startsWith('/api/public/email/unsubscribe')) return next(); // one-click unsubscribe from nurture emails
   // A2A message endpoint authenticates itself (admin OR a scoped A2A key) at the route level via a2aAuth —
   // let it past the global gate so scoped-key callers reach it. /api/a2a/keys* stays admin-gated (requireAdmin).
   if (url === '/api/a2a') return next();
@@ -1965,6 +1966,205 @@ const wsChatLimiter = rateLimit({ windowMs: 60 * 1000, max: 10, message: { error
 // never stored — don't tip the bot), field length caps, email format check. The post-submit
 // redirect only ever targets the SITE's own registered domain or this platform's host (Referer is
 // attacker-controlled — never open-redirect to it blindly).
+// ---------- Email sequences (lead nurture) ----------
+// New leads enroll into operator-authored sequences; a 60s engine tick sends due steps through
+// gateAction ('email.sequence-send', medium risk — auto in supervised/auto, approval in manual).
+// Every send carries an HMAC-tokened unsubscribe link + List-Unsubscribe header (lib/email.js
+// appends them by construction). Suppression is permanent and wins over everything.
+const emailLib = require('./lib/email');
+const sequencesLib = require('./lib/sequences');
+const emailSequences = loadState('email_sequences', []);
+const emailEnrollments = loadState('email_enrollments', []);
+const emailSuppression = loadState('email_suppression', []);
+// Per-install unsubscribe secret — generated once, persisted, never sent to the browser.
+const emailSecrets = loadState('email_secrets', {});
+if (!emailSecrets.unsubscribe) { emailSecrets.unsubscribe = require('crypto').randomBytes(32).toString('hex'); saveState('email_secrets', emailSecrets); }
+const PUBLIC_BASE_URL = (process.env.PUBLIC_BASE_URL || 'https://aiosorchestrationlab.com').replace(/\/$/, '');
+const persistSequences = () => { saveState('email_sequences', emailSequences); };
+const persistEnrollments = () => { saveState('email_enrollments', emailEnrollments); };
+
+function unsubscribeUrlFor(email) {
+  const e = sequencesLib.normEmail(email);
+  return `${PUBLIC_BASE_URL}/api/public/email/unsubscribe?e=${encodeURIComponent(Buffer.from(e).toString('base64url'))}&t=${emailLib.unsubscribeToken(e, emailSecrets.unsubscribe)}`;
+}
+
+// Enroll a fresh lead into matching sequences (called from the lead-capture endpoints).
+function enrollLead({ email, name, siteId, source }) {
+  try {
+    const created = sequencesLib.enroll({ email, name, siteId, source }, { sequences: emailSequences, enrollments: emailEnrollments, suppression: emailSuppression });
+    if (created.length) {
+      // Carry the site name into templates ({{site}}) without the engine knowing about webStudioSites.
+      const site = siteId && webStudioSites.find((s) => s.id === siteId);
+      for (const en of created) en.siteName = (site && site.name) || '';
+      persistEnrollments();
+      appendLog(`[sequences] enrolled ${email} into ${created.length} sequence(s)`);
+    }
+  } catch (e) { appendLog(`[sequences] enroll failed: ${e.message}`); }
+}
+
+// The engine's send path: everything funnels through gateAction so Auto-Mode governs it. The
+// approve-later path replays the same executor (see ACTION_EXECUTORS['email.sequence-send']).
+async function sequencesDispatchSend({ enrollment, sequence, stepIndex, subject, body }) {
+  const g = await gateAction({
+    type: 'email.sequence-send',
+    summary: `Sequence "${sequence.name}" step ${stepIndex + 1} → ${enrollment.email}`,
+    target: enrollment.email,
+    params: { enrollmentId: enrollment.id, subject, body },
+  });
+  if (g.pending) return { pending: true };
+  if (g.executed && g.result && g.result.ok) return { sent: true };
+  return { sent: false, error: (g.result && g.result.error) || 'send failed' };
+}
+
+let sequencesTicking = false;
+async function sequencesTick() {
+  if (sequencesTicking || !emailLib.isConfigured(settings.email)) return;
+  sequencesTicking = true;
+  try {
+    const r = await sequencesLib.tick(
+      { sequences: emailSequences, enrollments: emailEnrollments, suppression: emailSuppression },
+      { dispatchSend: sequencesDispatchSend, log: appendLog }
+    );
+    if (r.sent || r.gated || r.completed || r.failed || r.stopped) {
+      persistEnrollments();
+      appendLog(`[sequences] tick: sent=${r.sent} gated=${r.gated} completed=${r.completed} failed=${r.failed} stopped=${r.stopped}`);
+    }
+  } catch (e) { appendLog(`[sequences] tick error: ${e.message}`); }
+  finally { sequencesTicking = false; }
+}
+setInterval(sequencesTick, 60 * 1000);
+
+// Public one-click unsubscribe (linked from every sequence email; HMAC token prevents forging
+// unsubscribes for other addresses). GET because it must work from any mail client.
+app.get('/api/public/email/unsubscribe', (req, res) => {
+  const page = (msg) => `<!doctype html><meta charset="utf-8"><title>Unsubscribe</title><p style="font-family:system-ui;margin:3rem auto;max-width:30rem;text-align:center">${msg}</p>`;
+  try {
+    const email = Buffer.from(String(req.query.e || ''), 'base64url').toString('utf8');
+    if (!email || !emailLib.verifyUnsubscribeToken(sequencesLib.normEmail(email), String(req.query.t || ''), emailSecrets.unsubscribe)) {
+      return res.status(400).send(page('This unsubscribe link is invalid or expired.'));
+    }
+    sequencesLib.suppress(email, { enrollments: emailEnrollments, suppression: emailSuppression });
+    saveState('email_suppression', emailSuppression);
+    persistEnrollments();
+    appendLog(`[sequences] unsubscribed: ${sequencesLib.normEmail(email)}`);
+    return res.send(page('You have been unsubscribed. You will not receive further emails from us.'));
+  } catch {
+    return res.status(400).send(page('This unsubscribe link is invalid.'));
+  }
+});
+
+// --- Email sequences API (admin) ---
+app.get('/api/email/sequences', requireAdmin, (req, res) => {
+  res.json({
+    ok: true,
+    configured: emailLib.isConfigured(settings.email),
+    sequences: sequencesLib.stats(emailSequences, emailEnrollments),
+    suppressed: emailSuppression.length,
+  });
+});
+app.get('/api/email/sequences/:id', requireAdmin, (req, res) => {
+  const seq = emailSequences.find((s) => s.id === req.params.id);
+  if (!seq) return res.status(404).json({ error: 'sequence not found' });
+  res.json({ ok: true, sequence: seq });
+});
+app.post('/api/email/sequences', requireAdmin, (req, res) => {
+  const { name, trigger = 'all-leads', siteId = null, steps = [] } = req.body || {};
+  const seq = {
+    id: uuidv4(), name: String(name || '').trim().slice(0, 120), trigger, siteId: siteId || null,
+    enabled: false, // never live on creation — the operator flips it on deliberately
+    steps: (Array.isArray(steps) ? steps : []).slice(0, 10).map((s) => ({
+      delayHours: Number(s.delayHours) || 0,
+      subject: String(s.subject || '').slice(0, 200),
+      body: String(s.body || '').slice(0, 8000),
+    })),
+    createdAt: new Date().toISOString(),
+  };
+  const errs = sequencesLib.validateSequence(seq);
+  if (errs.length) return res.status(400).json({ error: errs.join('; ') });
+  emailSequences.push(seq);
+  persistSequences();
+  logActivity('email', `Sequence created: ${seq.name} (${seq.steps.length} steps)`, { actor: reqActor(req) });
+  res.json({ ok: true, sequence: seq });
+});
+app.put('/api/email/sequences/:id', requireAdmin, (req, res) => {
+  const seq = emailSequences.find((s) => s.id === req.params.id);
+  if (!seq) return res.status(404).json({ error: 'sequence not found' });
+  const b = req.body || {};
+  const draft = {
+    ...seq,
+    name: 'name' in b ? String(b.name || '').trim().slice(0, 120) : seq.name,
+    trigger: 'trigger' in b ? b.trigger : seq.trigger,
+    siteId: 'siteId' in b ? (b.siteId || null) : seq.siteId,
+    enabled: 'enabled' in b ? !!b.enabled : seq.enabled,
+    steps: 'steps' in b
+      ? (Array.isArray(b.steps) ? b.steps : []).slice(0, 10).map((s) => ({
+          delayHours: Number(s.delayHours) || 0,
+          subject: String(s.subject || '').slice(0, 200),
+          body: String(s.body || '').slice(0, 8000),
+        }))
+      : seq.steps,
+  };
+  const errs = sequencesLib.validateSequence(draft);
+  if (errs.length) return res.status(400).json({ error: errs.join('; ') });
+  if (draft.enabled && !emailLib.isConfigured(settings.email)) return res.status(400).json({ error: 'Configure email first (Settings → Email) — a sender and From address are required before enabling.' });
+  Object.assign(seq, draft);
+  persistSequences();
+  logActivity('email', `Sequence ${seq.enabled ? 'enabled' : 'updated'}: ${seq.name}`, { actor: reqActor(req) });
+  res.json({ ok: true, sequence: seq });
+});
+app.delete('/api/email/sequences/:id', requireAdmin, (req, res) => {
+  const idx = emailSequences.findIndex((s) => s.id === req.params.id);
+  if (idx < 0) return res.status(404).json({ error: 'sequence not found' });
+  const [seq] = emailSequences.splice(idx, 1);
+  for (const en of emailEnrollments) {
+    if (en.sequenceId === seq.id && (en.status === 'active' || en.status === 'gated')) en.status = 'stopped';
+  }
+  persistSequences(); persistEnrollments();
+  logActivity('email', `Sequence deleted: ${seq.name}`, { actor: reqActor(req) });
+  res.json({ ok: true, deleted: seq.id });
+});
+// Send step 1 to the operator's own address — verify provider + template rendering end-to-end
+// without touching a lead. Direct send, deliberately not gate-queued (it's mail to yourself).
+app.post('/api/email/sequences/:id/test', requireAdmin, async (req, res) => {
+  const seq = emailSequences.find((s) => s.id === req.params.id);
+  if (!seq) return res.status(404).json({ error: 'sequence not found' });
+  const to = String(req.body?.to || req.session?.email || '').trim();
+  if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(to)) return res.status(400).json({ error: 'a destination email is required' });
+  const step = seq.steps[0];
+  const ctx = { name: 'Test Recipient', email: to, site: 'Example Site' };
+  const r = await emailLib.send({
+    cfg: settings.email, to,
+    subject: `[TEST] ${sequencesLib.renderStepTemplate(step.subject, ctx)}`,
+    text: sequencesLib.renderStepTemplate(step.body, ctx),
+    unsubscribeUrl: unsubscribeUrlFor(to),
+  });
+  res.json(r.ok ? { ok: true, provider: r.provider } : { ok: false, error: r.error });
+});
+// AI-drafted sequence: the marketing agent proposes steps as JSON; nothing is saved or enabled
+// here — the draft comes back to the UI for the operator to review, edit, and create.
+app.post('/api/email/sequences/draft', requireAdmin, heavyLimiter, async (req, res) => {
+  const goal = String(req.body?.goal || '').trim().slice(0, 500);
+  if (!goal) return res.status(400).json({ error: 'a goal is required' });
+  const task = [
+    'Draft an email nurture sequence for new leads. Reply with ONLY a JSON object, no prose:',
+    '{"name": "...", "steps": [{"delayHours": <number>, "subject": "...", "body": "..."}]}',
+    '3-5 steps. delayHours: first step 0-1, then spaced over 1-2 weeks. Bodies are SHORT plain-text',
+    'emails (60-140 words), personal in tone, one clear call to action each, no markdown, no HTML.',
+    'You may use {{first_name}} and {{site}} placeholders.',
+    `Goal/audience: ${goal}`,
+  ].join('\n');
+  const r = await executeAgent('echo', task, { maxTokens: 2500, skill: 'email:sequence-draft' });
+  if (!r.ok) return res.json({ ok: false, error: r.error });
+  try {
+    const m = String(r.content).match(/\{[\s\S]*\}/);
+    const draft = JSON.parse(m ? m[0] : r.content);
+    if (!Array.isArray(draft.steps) || !draft.steps.length) throw new Error('no steps in draft');
+    res.json({ ok: true, draft: { name: String(draft.name || goal).slice(0, 120), steps: draft.steps.slice(0, 10) } });
+  } catch (e) {
+    res.json({ ok: false, error: `The agent's draft was not valid JSON (${e.message}) — try again or write the steps manually.` });
+  }
+});
+
 const siteLeadLimiter = rateLimit({ windowMs: 60 * 1000, max: 5, message: 'Too many submissions — please try again in a minute.' });
 app.post('/api/public/site-lead/:siteId', siteLeadLimiter, express.urlencoded({ extended: false, limit: '16kb' }), (req, res) => {
   const site = webStudioSites.find((s) => s.id === req.params.siteId);
@@ -2006,6 +2206,7 @@ app.post('/api/public/site-lead/:siteId', siteLeadLimiter, express.urlencoded({ 
   }
   appendLog(`[site-lead] ${site.name}: ${email}${message ? ' — ' + message.slice(0, 80) : ''}`);
   broadcast({ event: 'crm_update', data: { kind: 'site_lead', siteId: site.id, siteName: site.name, email } });
+  enrollLead({ email, name, siteId: site.id, source: 'site-lead' }); // nurture: enroll into matching email sequences
   return finish();
 });
 
@@ -2265,6 +2466,27 @@ const ACTION_EXECUTORS = {
     saveState('web_studio_sites', webStudioSites);
     crm?.unlinkSite(site.id); // CRM: prune any contact link to the deleted site
     return { deleted: true, id: siteId };
+  },
+  // One nurture-sequence email. Reused verbatim by the immediate path (sequencesTick → gateAction)
+  // and the approve-later path (manual mode) — both send AND advance the enrollment identically.
+  // Suppression is re-checked here: an unsubscribe that lands while an approval sits in the queue wins.
+  'email.sequence-send': async ({ enrollmentId, subject, body }) => {
+    const en = emailEnrollments.find((x) => x.id === enrollmentId);
+    if (!en) throw new Error('enrollment not found');
+    if (en.status === 'completed' || en.status === 'stopped') throw new Error(`enrollment is ${en.status}`);
+    if (emailSuppression.includes(en.email)) { en.status = 'stopped'; persistEnrollments(); throw new Error('recipient unsubscribed'); }
+    const seq = emailSequences.find((s) => s.id === en.sequenceId);
+    if (!seq) throw new Error('sequence no longer exists');
+    const r = await emailLib.send({ cfg: settings.email, to: en.email, subject, text: body, unsubscribeUrl: unsubscribeUrlFor(en.email) });
+    if (!r.ok) {
+      // Gated sends that fail return to 'active' so the engine's retry/attempt cap applies.
+      if (en.status === 'gated') { en.status = 'active'; persistEnrollments(); }
+      return r;
+    }
+    sequencesLib.advance(en, seq);
+    persistEnrollments();
+    logActivity('email', `Sequence "${seq.name}" step sent to ${en.email}`, { sequenceId: seq.id });
+    return r;
   },
   // An agent invoking a connected MCP tool. Looks the integration up by id (the token stays in the
   // registry, never in the persisted approval); reused verbatim by the immediate and approve-later paths.
@@ -7223,6 +7445,19 @@ const settings = loadState('settings', {
     hermes_url: process.env.HERMES_MCP_URL || 'http://127.0.0.1:8420',
     hermes_enabled: false,
   },
+  email: {
+    // Outbound email for lead-nurture sequences (lib/email.js). Provider auto-detects from which
+    // credential is set ('' = auto), or pin with EMAIL_PROVIDER=resend|smtp.
+    provider: process.env.EMAIL_PROVIDER || '',
+    from_email: process.env.EMAIL_FROM || '',
+    from_name: process.env.EMAIL_FROM_NAME || '',
+    resend_api_key: process.env.RESEND_API_KEY || '',
+    smtp_host: process.env.SMTP_HOST || '',
+    smtp_port: process.env.SMTP_PORT || '',
+    smtp_user: process.env.SMTP_USER || '',
+    smtp_pass: process.env.SMTP_PASS || '',
+    footer_address: process.env.EMAIL_FOOTER_ADDRESS || '', // physical address for the CAN-SPAM footer
+  },
   self_improve: {
     // GitHub PAT used ONLY to open draft PRs proposing distribution upgrades (repo scope) — never
     // used for anything else, never sent anywhere but the Authorization header of a GitHub API call.
@@ -7442,6 +7677,17 @@ app.get('/api/settings', requireAdmin, (req, res) => {
     mcp: {
       hermes_url: settings.mcp.hermes_url,
       hermes_enabled: settings.mcp.hermes_enabled,
+    },
+    email: {
+      provider: settings.email.provider || '',
+      from_email: settings.email.from_email || '',
+      from_name: settings.email.from_name || '',
+      resend_api_key: { value: maskKey(settings.email.resend_api_key), configured: !!settings.email.resend_api_key },
+      smtp_host: settings.email.smtp_host || '',
+      smtp_port: settings.email.smtp_port || '',
+      smtp_user: settings.email.smtp_user || '',
+      smtp_pass: { value: maskKey(settings.email.smtp_pass), configured: !!settings.email.smtp_pass },
+      footer_address: settings.email.footer_address || '',
     },
     self_improve: {
       github_pat: { value: maskKey(settings.self_improve.github_pat), configured: !!settings.self_improve.github_pat },
@@ -9109,6 +9355,7 @@ app.post('/api/seo/free-audit', heavyLimiter, async (req, res) => {
   saveState('free_audit_log', freeAuditLog);
   logActivity('leads', `Free audit lead captured: ${email} — ${domain}`, { email, domain });
   crm?.ingestLead({ email, name, domain, source: 'free-audit' }); // CRM: live lead capture
+  enrollLead({ email, name, siteId: null, source: 'free-audit' }); // nurture: enroll into matching email sequences
   if (crm) broadcast({ event: 'crm_update', data: { email } });
 
   // Run the audit (same pipeline as authenticated)

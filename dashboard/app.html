@@ -1600,6 +1600,33 @@
             <h3 class="panel-title">Unassigned sites <span class="crm-muted" id="crmUnassignedCount"></span></h3>
             <div id="crmUnassigned" class="crm-muted">&mdash;</div>
           </section>
+
+          <section class="panel" style="margin-top:12px;">
+            <h3 class="panel-title">Email Sequences</h3>
+            <p style="font-size:12px;color:#888;margin:4px 0 12px;">Automated nurture: new leads (site forms, free audits) enroll into a sequence and receive its steps on schedule. Every email carries a one-click unsubscribe. Sends respect Auto-Mode (approval-gated in manual mode). Configure the sender in Settings &rarr; Email Sending.</p>
+            <div id="seqStatusNote" style="font-size:12px;margin-bottom:10px;"></div>
+            <div id="seqList" style="margin-bottom:14px;"></div>
+            <div style="border:1px solid rgba(255,255,255,.08);border-radius:10px;padding:12px;">
+              <h4 style="margin:0 0 10px;font-size:13px;">New sequence</h4>
+              <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px;">
+                <input type="text" class="settings-input" id="seqName" placeholder="Sequence name" style="flex:2;min-width:180px;">
+                <select id="seqTrigger" class="settings-input" style="flex:1;min-width:140px;">
+                  <option value="all-leads">All new leads</option>
+                  <option value="site-lead">Site form leads</option>
+                  <option value="free-audit">Free-audit leads</option>
+                </select>
+              </div>
+              <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px;">
+                <input type="text" class="settings-input" id="seqGoal" placeholder="Or describe the goal and let the marketing agent draft it (e.g. 'convert dental-site leads into consult bookings')" style="flex:1;min-width:260px;">
+                <button class="btn btn-sm" onclick="draftSequenceAI()" id="seqDraftBtn">&#10024; AI Draft</button>
+              </div>
+              <div id="seqSteps"></div>
+              <div style="display:flex;gap:8px;margin-top:8px;">
+                <button class="btn btn-sm" onclick="addSeqStepRow()">+ Add step</button>
+                <button class="btn btn-sm btn-primary" onclick="createSequence()">Create sequence</button>
+              </div>
+            </div>
+          </section>
         </div>
 
         <!-- 3D Studio View -->
@@ -2417,6 +2444,67 @@
               <div id="a2aKeysList" style="margin-top:16px;"></div>
             </section>
 
+            <!-- Email Sending (nurture sequences) -->
+            <section class="panel settings-section">
+              <h3 class="panel-title settings-section-title">
+                <span class="settings-section-icon">&#9993;</span> Email Sending
+              </h3>
+              <p class="settings-desc">Outbound sender for lead-nurture Email Sequences (CRM view). Set EITHER a Resend API key (HTTPS — works even if the VPS blocks SMTP ports) OR SMTP credentials, plus a From address. Every email automatically gets an unsubscribe link.</p>
+              <div class="settings-fields">
+                <div class="settings-field">
+                  <label class="settings-label">Provider <span class="settings-tier">blank = auto (Resend if key set, else SMTP)</span></label>
+                  <div class="settings-input-row">
+                    <select class="settings-input" id="set-provider">
+                      <option value="">Auto</option>
+                      <option value="resend">Resend</option>
+                      <option value="smtp">SMTP</option>
+                    </select>
+                  </div>
+                </div>
+                <div class="settings-field">
+                  <label class="settings-label">From Email</label>
+                  <div class="settings-input-row"><input type="text" class="settings-input" id="set-from_email" placeholder="you@yourdomain.com" autocomplete="off" spellcheck="false"></div>
+                </div>
+                <div class="settings-field">
+                  <label class="settings-label">From Name</label>
+                  <div class="settings-input-row"><input type="text" class="settings-input" id="set-from_name" placeholder="Your Company" autocomplete="off"></div>
+                </div>
+                <div class="settings-field">
+                  <label class="settings-label">Resend API Key</label>
+                  <div class="settings-input-row">
+                    <input type="text" class="settings-input settings-secret" id="set-resend_api_key" placeholder="re_..." autocomplete="new-password" data-lpignore="true" data-1p-ignore spellcheck="false">
+                    <button type="button" class="btn btn-sm settings-eye" onclick="toggleKeyVisibility(this)" title="Show/hide">&#128065;</button>
+                    <span class="settings-status" id="status-resend_api_key"></span>
+                  </div>
+                </div>
+                <div class="settings-field">
+                  <label class="settings-label">SMTP Host</label>
+                  <div class="settings-input-row"><input type="text" class="settings-input" id="set-smtp_host" placeholder="smtp.gmail.com" autocomplete="off" spellcheck="false"></div>
+                </div>
+                <div class="settings-field">
+                  <label class="settings-label">SMTP Port</label>
+                  <div class="settings-input-row"><input type="text" class="settings-input" id="set-smtp_port" placeholder="587" autocomplete="off" spellcheck="false"></div>
+                </div>
+                <div class="settings-field">
+                  <label class="settings-label">SMTP User</label>
+                  <div class="settings-input-row"><input type="text" class="settings-input" id="set-smtp_user" placeholder="you@gmail.com" autocomplete="off" spellcheck="false"></div>
+                </div>
+                <div class="settings-field">
+                  <label class="settings-label">SMTP Password <span class="settings-tier">Gmail: use an App Password</span></label>
+                  <div class="settings-input-row">
+                    <input type="text" class="settings-input settings-secret" id="set-smtp_pass" placeholder="app password..." autocomplete="new-password" data-lpignore="true" data-1p-ignore spellcheck="false">
+                    <button type="button" class="btn btn-sm settings-eye" onclick="toggleKeyVisibility(this)" title="Show/hide">&#128065;</button>
+                    <span class="settings-status" id="status-smtp_pass"></span>
+                  </div>
+                </div>
+                <div class="settings-field">
+                  <label class="settings-label">Business Address <span class="settings-tier">shown in the email footer (CAN-SPAM)</span></label>
+                  <div class="settings-input-row"><input type="text" class="settings-input" id="set-footer_address" placeholder="123 Main St, City, State" autocomplete="off"></div>
+                </div>
+              </div>
+              <button class="btn btn-primary settings-save" onclick="saveSettings('email')">Save Email Settings</button>
+            </section>
+
             <!-- Notifications -->
             <section class="panel settings-section">
               <h3 class="panel-title settings-section-title">
@@ -2679,10 +2767,10 @@
     </div>
   </div>
 
-  <script src="js/app.js?v=58"></script>
+  <script src="js/app.js?v=59"></script>
   <script src="https://cdn.jsdelivr.net/npm/monaco-editor@0.52.2/min/vs/loader.js"></script>
   <script src="js/web-studio.js?v=16"></script>
-  <script src="js/crm.js?v=4"></script>
+  <script src="js/crm.js?v=5"></script>
   <script src="js/analytics.js?v=2"></script>
   <script src="js/security.js?v=1"></script>
   <script src="js/brand-kits.js?v=1"></script>
