@@ -4853,6 +4853,15 @@ async function dispatchSkillRun({ agent, skill, task }) {
     } else {
       runEntry.status = 'completed';
       runEntry.summary = String(result.content || '').slice(0, 4000);
+      // The sweep + research brief also publish as downloadable .docx alongside the intel briefs
+      // (full content, not the 4000-char history slice). Non-fatal: a render hiccup never fails
+      // the run itself.
+      if ((skill === 'tech-radar' || skill === 'research-brief') && result.content) {
+        try {
+          const meta = await intelBrief.saveBriefDocx({ dir: INTEL_BRIEF_DIR, kind: skill, statement: String(result.content) });
+          runEntry.docx = meta.file;
+        } catch (e) { appendLog(`[briefs] docx render failed for ${skill}: ${e.message}`); }
+      }
     }
   } catch (e) {
     runEntry.status = 'failed';
@@ -5023,6 +5032,13 @@ app.get('/api/intel-brief/download/:file', requireAdmin, (req, res) => {
   const full = path.join(INTEL_BRIEF_DIR, name);
   if (!fs.existsSync(full)) return res.status(404).json({ error: 'brief not found' });
   res.download(full, name);
+});
+app.delete('/api/intel-brief/:file', requireAdmin, (req, res) => {
+  const name = String(req.params.file || '');
+  if (!intelBrief.FILE_RE.test(name)) return res.status(400).json({ error: 'invalid brief filename' });
+  if (!intelBrief.deleteBrief(INTEL_BRIEF_DIR, name)) return res.status(404).json({ error: 'brief not found' });
+  logActivity('schedule', `Brief deleted: ${name}`, { actor: reqActor(req) });
+  res.json({ ok: true, deleted: name });
 });
 
 // --- Schedule API ---

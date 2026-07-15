@@ -1603,15 +1603,28 @@ function renderIntelBriefs(data) {
     container.innerHTML = runningNote + '<div class="empty-state">No briefs yet — the first one is generated at 8:00 AM, or click Run Now on the intel-brief schedule above.</div>';
     return;
   }
-  container.innerHTML = runningNote + briefs.slice(0, 14).map(b => `
+  container.innerHTML = runningNote + briefs.slice(0, 21).map(b => `
     <div style="display:flex;align-items:center;gap:12px;padding:10px 12px;border:1px solid rgba(255,255,255,.07);border-radius:10px;margin-bottom:8px;">
       <span style="font-size:20px;">📄</span>
       <div style="flex:1;min-width:0;">
-        <div style="font-size:13px;font-weight:600;">${escapeHtml(b.date)} — Daily Intelligence Statement${b.consultantsReported != null ? ` <span style="font-weight:400;color:#888;">(${b.consultantsReported}/7 consultants reported)</span>` : ''}</div>
+        <div style="font-size:13px;font-weight:600;">${escapeHtml(b.date)} — ${escapeHtml(b.kindLabel || 'Daily Intelligence Statement')}${b.consultantsReported != null ? ` <span style="font-weight:400;color:#888;">(${b.consultantsReported}/7 consultants reported)</span>` : ''}</div>
         ${b.summary ? `<div style="font-size:12px;color:#999;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escapeHtml(b.summary)}</div>` : ''}
       </div>
       <a class="btn btn-sm btn-primary" href="/api/intel-brief/download/${encodeURIComponent(b.file)}" download>⬇ Download .docx</a>
+      <button class="btn btn-sm btn-danger" onclick="deleteBriefFile('${encodeURIComponent(b.file)}')" title="Delete this brief">🗑</button>
     </div>`).join('');
+}
+
+async function deleteBriefFile(encodedFile) {
+  const file = decodeURIComponent(encodedFile);
+  if (!confirm(`Delete ${file}? This cannot be undone.`)) return;
+  try {
+    const res = await fetchJSON(`/api/intel-brief/${encodedFile}`, { method: 'DELETE' });
+    if (res && res.ok === false) throw new Error(res.error || 'delete failed');
+  } catch (e) {
+    alert(`Could not delete the brief: ${e.message}`);
+  }
+  loadSchedules();
 }
 
 function renderScheduleCards(scheds) {

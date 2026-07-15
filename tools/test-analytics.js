@@ -12,6 +12,15 @@ const dbPath = path.join(tmp, 'test.sqlite');
 const logPath = path.join(tmp, 'access.log');
 adb.openDb(dbPath);
 
+// The leaderboard queries below use a 7-day window, so the fixture's log date must be "today" —
+// a frozen date turns the suite into a time bomb (it did: hard-coded 08/Jul/2026 started failing
+// the moment the calendar passed it). Lines keep the literal 08/Jul/2026 token for readability and
+// are re-stamped to today (UTC) at write time.
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+const _now = new Date();
+const TODAY = `${String(_now.getUTCDate()).padStart(2, '0')}/${MONTHS[_now.getUTCMonth()]}/${_now.getUTCFullYear()}`;
+const stamp = (line) => line.replace(/08\/Jul\/2026/g, TODAY);
+
 const L = [
   // AI bots (various purposes) — incl. a 404 to a bot (kept) and an llms.txt fetch
   '20.171.207.1 - - [08/Jul/2026:04:00:01 +0000] "GET / HTTP/1.1" 200 5123 "-" "Mozilla/5.0 AppleWebKit/537.36; compatible; GPTBot/1.2; +https://openai.com/gptbot"',
@@ -35,7 +44,7 @@ const L = [
   '172.71.167.92 - - [08/Jul/2026:04:07:50 +0000] "GET /robots.txt HTTP/1.1" 301 162 "-" "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36; compatible; OAI-SearchBot/1.0; +https://openai.com/searchbot"', // AI search bot, 301 kept
   '104.23.243.63 - - [08/Jul/2026:04:07:55 +0000] "HEAD /api/health HTTP/2.0" 200 0 "https://x.com/api/health" "Mozilla/5.0+(compatible; UptimeRobot/2.0; http://www.uptimerobot.com/)"', // health check: NOT a pageview
 ];
-fs.writeFileSync(logPath, L.join('\n') + '\n');
+fs.writeFileSync(logPath, L.map(stamp).join('\n') + '\n');
 
 const { assert, done } = require('./test-util');
 
@@ -50,7 +59,7 @@ const r2 = ingestOnce({ logPath, secret: 'test' });
 assert(r2.events === 0, 'second pass ingests nothing (offset held)');
 
 // --- append + partial line handling
-fs.appendFileSync(logPath, '9.9.9.9 - - [08/Jul/2026:05:00:00 +0000] "GET /new HTTP/1.1" 200 1 "-" "Mozilla/5.0 Chrome/126"\n8.8.8.8 - - [08/Jul/2026:05:00:01 +0000] "GET /partial HTT');
+fs.appendFileSync(logPath, stamp('9.9.9.9 - - [08/Jul/2026:05:00:00 +0000] "GET /new HTTP/1.1" 200 1 "-" "Mozilla/5.0 Chrome/126"\n8.8.8.8 - - [08/Jul/2026:05:00:01 +0000] "GET /partial HTT'));
 const r3 = ingestOnce({ logPath, secret: 'test' });
 assert(r3.events === 1, `appended complete line ingested, partial held back, got ${r3.events}`);
 fs.appendFileSync(logPath, 'P/1.1" 200 1 "-" "Mozilla/5.0 Chrome/126"\n');
@@ -58,7 +67,7 @@ const r4 = ingestOnce({ logPath, secret: 'test' });
 assert(r4.events === 1, `completed partial line ingested on next tick, got ${r4.events}`);
 
 // --- rotation (truncate simulates copytruncate)
-fs.writeFileSync(logPath, '7.7.7.7 - - [08/Jul/2026:06:00:00 +0000] "GET /after-rotate HTTP/1.1" 200 1 "-" "Mozilla/5.0 Chrome/126"\n');
+fs.writeFileSync(logPath, stamp('7.7.7.7 - - [08/Jul/2026:06:00:00 +0000] "GET /after-rotate HTTP/1.1" 200 1 "-" "Mozilla/5.0 Chrome/126"\n'));
 const r5 = ingestOnce({ logPath, secret: 'test' });
 assert(r5.events === 1, `post-rotation line ingested from offset 0, got ${r5.events}`);
 
@@ -102,7 +111,7 @@ fs.appendFileSync(logPath, [
   'unknown-host.example 5.6.7.8 - - [08/Jul/2026:07:00:20 +0000] "GET / HTTP/1.1" 200 9000 "-" "Mozilla/5.0 (compatible; ClaudeBot/1.0)"',
   // old combined format still parses (no host) → platform bucket
   '9.9.9.9 - - [08/Jul/2026:07:00:30 +0000] "GET /legacy HTTP/1.1" 200 1 "-" "Mozilla/5.0 (compatible; PerplexityBot/1.0)"',
-].join('\n') + '\n');
+].map(stamp).join('\n') + '\n');
 const r6 = ingestOnce({ logPath, secret: 'test', resolveSite });
 assert(r6.events === 4, `vhost pass ingested 4 events, got ${r6.events}`);
 const acmeBots = adb.botLeaderboard('site-acme', 7);

@@ -5,7 +5,7 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const { assert, done } = require('./test-util');
-const { runIntelBrief, listBriefs, FILE_RE, CONSULTANTS } = require('../lib/intel-brief');
+const { runIntelBrief, saveBriefDocx, deleteBrief, listBriefs, FILE_RE, CONSULTANTS } = require('../lib/intel-brief');
 
 const STATEMENT = [
   '# Daily Intelligence Statement — Test Day',
@@ -69,11 +69,32 @@ function mockRunner({ failAgents = [] } = {}) {
   assert(threw, 'comms-director failure aborts the run');
   assert(fs.readdirSync(dir).length === before, 'aborted run writes no files');
 
-  // --- download allowlist: traversal / foreign names rejected
-  for (const bad of ['../../etc/passwd', 'intel-brief-2026-07-13.docx.exe', 'evil.docx', 'intel-brief-20260713.docx']) {
+  // --- tech-radar / research-brief docx: same renderer, own kind label
+  const radar = await saveBriefDocx({ dir, kind: 'tech-radar', statement: '# Sweep\n- finding one\n- finding two' });
+  const research = await saveBriefDocx({ dir, kind: 'research-brief', statement: '# Brief\nSome **cited** research.' });
+  assert(/^tech-radar-\d{4}-\d{2}-\d{2}\.docx$/.test(radar.file) && /^research-brief-/.test(research.file), 'sweep + research brief files written with their own prefixes');
+  const all = listBriefs(dir);
+  assert(all.length === 5, `all kinds listed together (got ${all.length})`);
+  const kinds = new Set(all.map((b) => b.kindLabel));
+  assert(kinds.has('Daily Intelligence Sweep') && kinds.has('Daily Research Brief') && kinds.has('Daily Intelligence Statement'), 'listing carries human kind labels');
+  let badKind = false;
+  try { await saveBriefDocx({ dir, kind: 'evil', statement: 'x' }); } catch { badKind = true; }
+  assert(badKind, 'unknown kind is rejected');
+
+  // --- delete: removes docx + sidecar, refuses foreign names and missing files
+  assert(deleteBrief(dir, radar.file) === true, 'deleteBrief removes an existing brief');
+  assert(!fs.existsSync(path.join(dir, radar.file)) && !fs.existsSync(path.join(dir, radar.file.replace(/\.docx$/, '.json'))), 'docx AND sidecar are gone');
+  assert(listBriefs(dir).length === 4, 'deleted brief no longer listed');
+  assert(deleteBrief(dir, radar.file) === false, 'deleting a missing brief returns false');
+  assert(deleteBrief(dir, '../../etc/passwd') === false, 'deleteBrief refuses non-allowlisted names');
+
+  // --- download/delete allowlist: traversal / foreign names rejected
+  for (const bad of ['../../etc/passwd', 'intel-brief-2026-07-13.docx.exe', 'evil.docx', 'intel-brief-20260713.docx', 'uptime-check-2026-07-13.docx']) {
     assert(!FILE_RE.test(bad), `allowlist rejects "${bad}"`);
   }
-  assert(FILE_RE.test('intel-brief-2026-07-13.docx') && FILE_RE.test('intel-brief-2026-07-13-2.docx'), 'allowlist accepts our own names');
+  for (const good of ['intel-brief-2026-07-13.docx', 'intel-brief-2026-07-13-2.docx', 'tech-radar-2026-07-13.docx', 'research-brief-2026-07-13.docx']) {
+    assert(FILE_RE.test(good), `allowlist accepts "${good}"`);
+  }
 
   fs.rmSync(dir, { recursive: true, force: true });
   done();
