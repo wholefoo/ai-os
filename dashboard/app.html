@@ -1587,6 +1587,15 @@
             </select>
           </div>
 
+          <section class="panel" style="margin-bottom:12px;">
+            <h3 class="panel-title" style="display:flex;align-items:center;justify-content:space-between;">
+              Pipeline
+              <button class="btn btn-sm" id="crmPipelineToggle" onclick="togglePipeline()">Hide</button>
+            </h3>
+            <p style="font-size:12px;color:#888;margin:4px 0 10px;">Drag a contact card to move it through the funnel (lead &rarr; audited &rarr; onboarding &rarr; customer; churned is manual). Every move is logged on the contact&rsquo;s timeline.</p>
+            <div id="crmPipeline" style="display:grid;grid-template-columns:repeat(5,minmax(160px,1fr));gap:10px;overflow-x:auto;"></div>
+          </section>
+
           <div class="crm-grid">
             <section class="panel">
               <div class="crm-list" id="crmList"><div class="empty-state">Loading&hellip;</div></div>
@@ -2808,7 +2817,7 @@
   <script src="js/app.js?v=60"></script>
   <script src="https://cdn.jsdelivr.net/npm/monaco-editor@0.52.2/min/vs/loader.js"></script>
   <script src="js/web-studio.js?v=16"></script>
-  <script src="js/crm.js?v=6"></script>
+  <script src="js/crm.js?v=7"></script>
   <script src="js/analytics.js?v=2"></script>
   <script src="js/security.js?v=1"></script>
   <script src="js/brand-kits.js?v=1"></script>

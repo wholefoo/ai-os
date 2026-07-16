@@ -36,8 +36,80 @@ function crmFetchAndRender() {
   crmLoadStats();
   crmLoadList();
   crmLoadUnassigned();
+  loadPipelinePanel();
   loadSequencesPanel();
   loadBookingsPanel();
+}
+
+// ---------- Pipeline (kanban) panel ----------
+
+const STAGE_LABELS = { lead: 'Lead', audited: 'Audited', onboarding: 'Onboarding', customer: 'Customer', churned: 'Churned' };
+const STAGE_COLORS = { lead: '#3b82f6', audited: '#8b5cf6', onboarding: '#f59e0b', customer: '#22c55e', churned: '#6b7280' };
+
+function togglePipeline() {
+  const board = document.getElementById('crmPipeline');
+  const btn = document.getElementById('crmPipelineToggle');
+  const hidden = board.style.display === 'none';
+  board.style.display = hidden ? 'grid' : 'none';
+  btn.textContent = hidden ? 'Hide' : 'Show';
+  try { localStorage.setItem('crm-pipeline-hidden', hidden ? '' : '1'); } catch {}
+}
+
+async function loadPipelinePanel() {
+  const board = document.getElementById('crmPipeline');
+  if (!board) return;
+  try { if (localStorage.getItem('crm-pipeline-hidden')) { board.style.display = 'none'; const b = document.getElementById('crmPipelineToggle'); if (b) b.textContent = 'Show'; } } catch {}
+  let data;
+  try { data = await fetchJSON('/api/crm/pipeline'); } catch { return; }
+  if (!data || !data.stages) return;
+
+  board.innerHTML = data.stages.map((stage) => {
+    const rows = data.columns[stage] || [];
+    const total = (data.byStage && data.byStage[stage]) || 0;
+    const cards = rows.map((c) => `
+      <div class="crm-kanban-card" draggable="true" data-contact="${c.id}" data-stage="${stage}"
+           onclick="crmOpenContact('${c.id}')"
+           style="border:1px solid rgba(255,255,255,.09);border-radius:8px;padding:8px 10px;margin-bottom:6px;cursor:grab;background:rgba(255,255,255,.02);">
+        <div style="font-size:12px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escapeHtml(c.name || c.email)}</div>
+        <div style="font-size:11px;color:#888;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escapeHtml(c.company || c.primary_domain || c.email)}</div>
+      </div>`).join('');
+    return `
+      <div class="crm-kanban-col" data-stage="${stage}" style="min-width:160px;border:1px solid rgba(255,255,255,.06);border-radius:10px;padding:8px;min-height:120px;">
+        <div style="display:flex;align-items:center;gap:6px;margin-bottom:8px;">
+          <span style="width:8px;height:8px;border-radius:50%;background:${STAGE_COLORS[stage] || '#888'};"></span>
+          <span style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;">${STAGE_LABELS[stage] || stage}</span>
+          <span style="font-size:11px;color:#888;margin-left:auto;">${total}</span>
+        </div>
+        ${cards || '<div style="font-size:11px;color:#666;text-align:center;padding:12px 0;">—</div>'}
+        ${total > rows.length ? `<div style="font-size:11px;color:#666;text-align:center;">+${total - rows.length} more (use the stage filter)</div>` : ''}
+      </div>`;
+  }).join('');
+
+  // HTML5 drag & drop: cards are sources, columns are targets. A drop PATCHes the stage —
+  // the server validates against the canonical set and logs a stage_change activity.
+  board.querySelectorAll('.crm-kanban-card').forEach((card) => {
+    card.addEventListener('dragstart', (e) => {
+      e.dataTransfer.setData('text/plain', JSON.stringify({ id: card.dataset.contact, from: card.dataset.stage }));
+      e.dataTransfer.effectAllowed = 'move';
+    });
+  });
+  board.querySelectorAll('.crm-kanban-col').forEach((col) => {
+    col.addEventListener('dragover', (e) => { e.preventDefault(); col.style.borderColor = 'rgba(79,70,229,.6)'; });
+    col.addEventListener('dragleave', () => { col.style.borderColor = 'rgba(255,255,255,.06)'; });
+    col.addEventListener('drop', async (e) => {
+      e.preventDefault();
+      col.style.borderColor = 'rgba(255,255,255,.06)';
+      let payload;
+      try { payload = JSON.parse(e.dataTransfer.getData('text/plain')); } catch { return; }
+      const to = col.dataset.stage;
+      if (!payload || !payload.id || payload.from === to) return;
+      const r = await fetchJSON(`/api/crm/contacts/${payload.id}`, { method: 'PATCH', body: { stage: to } });
+      if (r && r.error) alert(r.error);
+      loadPipelinePanel();
+      crmLoadStats();
+      crmLoadList();
+    });
+  });
 }
 
 // ---------- Appointments panel ----------
