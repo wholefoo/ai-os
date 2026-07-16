@@ -1602,6 +1602,12 @@
           </section>
 
           <section class="panel" style="margin-top:12px;">
+            <h3 class="panel-title">Appointments</h3>
+            <p style="font-size:12px;color:#888;margin:4px 0 12px;">Bookings from the booking section on your generated sites. Visitors get an email confirmation with a calendar invite; cancelling here notifies them automatically. Availability window: Settings &rarr; Booking.</p>
+            <div id="bookingList"></div>
+          </section>
+
+          <section class="panel" style="margin-top:12px;">
             <h3 class="panel-title">Email Sequences</h3>
             <p style="font-size:12px;color:#888;margin:4px 0 12px;">Automated nurture: new leads (site forms, free audits) enroll into a sequence and receive its steps on schedule. Every email carries a one-click unsubscribe. Sends respect Auto-Mode (approval-gated in manual mode). Configure the sender in Settings &rarr; Email Sending.</p>
             <div id="seqStatusNote" style="font-size:12px;margin-bottom:10px;"></div>
@@ -1614,6 +1620,7 @@
                   <option value="all-leads">All new leads</option>
                   <option value="site-lead">Site form leads</option>
                   <option value="free-audit">Free-audit leads</option>
+                  <option value="booking">Appointment bookings</option>
                 </select>
               </div>
               <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px;">
@@ -2505,6 +2512,37 @@
               <button class="btn btn-primary settings-save" onclick="saveSettings('email')">Save Email Settings</button>
             </section>
 
+            <!-- Booking availability -->
+            <section class="panel settings-section">
+              <h3 class="panel-title settings-section-title">
+                <span class="settings-section-icon">&#128197;</span> Booking
+              </h3>
+              <p class="settings-desc">Availability window for the appointment form on generated sites (booking section). Times are the business&rsquo;s local wall-clock. Changed hours apply to new bookings immediately; rebuild a site to refresh the times shown in its form.</p>
+              <div class="settings-fields">
+                <div class="settings-field">
+                  <label class="settings-label">Slot Length <span class="settings-tier">minutes: 15, 20, 30, 45, 60, 90 or 120</span></label>
+                  <div class="settings-input-row"><input type="number" class="settings-input" id="set-slot_minutes" placeholder="30" min="15" max="120"></div>
+                </div>
+                <div class="settings-field">
+                  <label class="settings-label">Days Ahead <span class="settings-tier">how far out visitors can book (1&ndash;90)</span></label>
+                  <div class="settings-input-row"><input type="number" class="settings-input" id="set-days_ahead" placeholder="14" min="1" max="90"></div>
+                </div>
+                <div class="settings-field">
+                  <label class="settings-label">Open Hour <span class="settings-tier">0&ndash;23</span></label>
+                  <div class="settings-input-row"><input type="number" class="settings-input" id="set-open_hour" placeholder="9" min="0" max="23"></div>
+                </div>
+                <div class="settings-field">
+                  <label class="settings-label">Close Hour <span class="settings-tier">1&ndash;24</span></label>
+                  <div class="settings-input-row"><input type="number" class="settings-input" id="set-close_hour" placeholder="17" min="1" max="24"></div>
+                </div>
+                <div class="settings-field">
+                  <label class="settings-label">Open Days <span class="settings-tier">ISO weekdays, Mon=1 &hellip; Sun=7 (e.g. 1,2,3,4,5)</span></label>
+                  <div class="settings-input-row"><input type="text" class="settings-input" id="set-open_days" placeholder="1,2,3,4,5" spellcheck="false"></div>
+                </div>
+              </div>
+              <button class="btn btn-primary settings-save" onclick="saveSettings('booking')">Save Booking Settings</button>
+            </section>
+
             <!-- Notifications -->
             <section class="panel settings-section">
               <h3 class="panel-title settings-section-title">
@@ -2767,10 +2805,10 @@
     </div>
   </div>
 
-  <script src="js/app.js?v=59"></script>
+  <script src="js/app.js?v=60"></script>
   <script src="https://cdn.jsdelivr.net/npm/monaco-editor@0.52.2/min/vs/loader.js"></script>
   <script src="js/web-studio.js?v=16"></script>
-  <script src="js/crm.js?v=5"></script>
+  <script src="js/crm.js?v=6"></script>
   <script src="js/analytics.js?v=2"></script>
   <script src="js/security.js?v=1"></script>
   <script src="js/brand-kits.js?v=1"></script>

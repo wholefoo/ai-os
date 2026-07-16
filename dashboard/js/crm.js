@@ -37,6 +37,37 @@ function crmFetchAndRender() {
   crmLoadList();
   crmLoadUnassigned();
   loadSequencesPanel();
+  loadBookingsPanel();
+}
+
+// ---------- Appointments panel ----------
+
+async function loadBookingsPanel() {
+  const list = document.getElementById('bookingList');
+  if (!list) return;
+  let data;
+  try { data = await fetchJSON('/api/bookings'); } catch { return; }
+  const ups = (data && data.upcoming) || [];
+  if (!ups.length) {
+    list.innerHTML = '<div class="empty-state">No upcoming appointments. Add a booking section to a site (rebuild it) and bookings appear here.</div>';
+    return;
+  }
+  list.innerHTML = ups.slice(0, 30).map((b) => `
+    <div style="display:flex;align-items:center;gap:12px;padding:10px 12px;border:1px solid rgba(255,255,255,.07);border-radius:10px;margin-bottom:8px;">
+      <span style="font-size:20px;">📅</span>
+      <div style="flex:1;min-width:0;">
+        <div style="font-size:13px;font-weight:600;">${escapeHtml(b.date)} at ${escapeHtml(b.time)} — ${escapeHtml(b.name || b.email)}</div>
+        <div style="font-size:12px;color:#999;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escapeHtml(b.email)}${b.note ? ' · ' + escapeHtml(b.note) : ''}</div>
+      </div>
+      <button class="btn btn-sm btn-danger" onclick="cancelBooking('${b.id}')" title="Cancel (emails the visitor)">Cancel</button>
+    </div>`).join('');
+}
+
+async function cancelBooking(id) {
+  if (!confirm('Cancel this appointment? The visitor will be notified by email.')) return;
+  const r = await fetchJSON(`/api/bookings/${id}/cancel`, { method: 'PUT' });
+  if (r && r.error) alert(r.error);
+  loadBookingsPanel();
 }
 
 // ---------- Email Sequences panel ----------

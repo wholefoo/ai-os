@@ -202,6 +202,7 @@ function authMiddleware(req, res, next) {
   // Abuse is bounded by siteLeadLimiter + honeypot + validation in the handler; no paid calls inside.
   if (url.startsWith('/api/public/site-lead/')) return next();
   if (url.startsWith('/api/public/email/unsubscribe')) return next(); // one-click unsubscribe from nurture emails
+  if (url.startsWith('/api/public/booking/')) return next(); // generated-site appointment forms POST here
   // A2A message endpoint authenticates itself (admin OR a scoped A2A key) at the route level via a2aAuth —
   // let it past the global gate so scoped-key callers reach it. /api/a2a/keys* stays admin-gated (requireAdmin).
   if (url === '/api/a2a') return next();
@@ -1926,7 +1927,7 @@ app.post('/api/web-studio/sites', requireClientOrAdmin, heavyLimiter, async (req
     if (cleanCheckoutUrl) site.checkoutUrl = cleanCheckoutUrl;
     const platformBaseUrl = process.env.AIOS_PUBLIC_URL || `${req.protocol}://${req.get('host')}`;
     const result = await webStudioPipeline.createSiteFromBrief(
-      { siteId: id, workspaceDir: wsWorkspaceDir(id), brief: wsBriefWithType(site), domain: site.domain, siteName: site.name, design, scraped, research, affiliateUrl: cleanAffiliateUrl, checkoutUrl: cleanCheckoutUrl, features: cleanFeatures, platformBaseUrl, modelOverride, templatePlan: template ? template.plan : null },
+      { siteId: id, workspaceDir: wsWorkspaceDir(id), brief: wsBriefWithType(site), domain: site.domain, siteName: site.name, design, scraped, research, affiliateUrl: cleanAffiliateUrl, checkoutUrl: cleanCheckoutUrl, features: cleanFeatures, platformBaseUrl, modelOverride, templatePlan: template ? template.plan : null, bookingConfig: bookingCfg() },
       { executeAgent, broadcast, log: appendLog, signProvenance }
     );
     site.status = result.ok ? result.status : 'failed';
@@ -2163,6 +2164,102 @@ app.post('/api/email/sequences/draft', requireAdmin, heavyLimiter, async (req, r
   } catch (e) {
     res.json({ ok: false, error: `The agent's draft was not valid JSON (${e.message}) — try again or write the steps manually.` });
   }
+});
+
+// ---------- Appointment booking (generated-site booking sections) ----------
+// The booking form on hosted sites POSTs here (plain HTML, no JS — same philosophy and anti-abuse
+// as the lead form). lib/booking.js is the availability source of truth: a taken/closed slot gets
+// a friendly page re-offering that day's free times. Confirmed bookings land in the CRM (source
+// 'booking'), enroll in matching sequences, notify the operator, and email the visitor a
+// confirmation with a calendar (.ics) attachment via the same lib/email seam.
+const bookingLib = require('./lib/booking');
+const bookings = loadState('bookings', []);
+const persistBookings = () => { saveState('bookings', bookings); };
+function bookingCfg() {
+  const b = settings.booking || {};
+  return bookingLib.normConfig({
+    slotMinutes: b.slot_minutes, daysAhead: b.days_ahead,
+    openHour: b.open_hour, closeHour: b.close_hour,
+    openDays: String(b.open_days || '').split(',').map((x) => Number(x.trim())).filter(Boolean),
+  });
+}
+
+const bookingLimiter = rateLimit({ windowMs: 60 * 1000, max: 5, message: 'Too many booking attempts — please try again in a minute.' });
+app.post('/api/public/booking/:siteId', bookingLimiter, express.urlencoded({ extended: false, limit: '16kb' }), async (req, res) => {
+  const site = webStudioSites.find((s) => s.id === req.params.siteId);
+  const page = (title, msg) => `<!doctype html><meta charset="utf-8"><title>${title}</title><div style="font-family:system-ui;margin:3rem auto;max-width:32rem;text-align:center">${msg}</div>`;
+  if (!site) return res.status(404).send(page('Booking', '<p>This booking form is no longer active.</p>'));
+
+  const body = req.body || {};
+  if (String(body.website || '').trim()) return res.status(200).send(page('Booked', '<p>Thanks — your appointment request is in.</p>')); // honeypot
+  const email = String(body.email || '').trim().toLowerCase().slice(0, 200);
+  const name = String(body.name || '').trim().slice(0, 120);
+  if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return res.status(400).send(page('Booking', '<p>Please go back and enter a valid email address.</p>'));
+
+  const r = bookingLib.reserve({
+    cfg: bookingCfg(), siteId: site.id,
+    date: String(body.date || ''), time: String(body.time || ''),
+    name, email, note: String(body.note || ''), bookings,
+  });
+
+  if (!r.ok) {
+    const alts = (r.alternatives || []).slice(0, 12);
+    const altHtml = alts.length
+      ? `<p>These times are still free on that day:</p><p style="font-size:1.1rem;letter-spacing:.05em">${alts.map((t) => `<b>${t}</b>`).join(' &nbsp; ')}</p><p>Please go back, keep the date, and pick one of them.</p>`
+      : `<p>That day has no remaining availability — please go back and choose another date.</p>`;
+    return res.status(409).send(page('Time not available', `<h2>That time isn&rsquo;t available</h2>${r.error === 'you already have a booking that day' ? '<p>You already have an appointment booked that day — reply to your confirmation email if you need to change it.</p>' : altHtml}`));
+  }
+
+  persistBookings();
+  const b = r.booking;
+  crm?.ingestLead({ email, name, domain: site.domain, source: 'booking' });
+  if (crm?.isReady()) {
+    try {
+      const contact = crm.repo.contacts.findByEmail(email);
+      if (contact) crm.repo.activities.add({ contactId: contact.id, type: 'booking', author: 'site-form', body: `Appointment booked via ${site.name}: ${b.date} ${b.time}${b.note ? ' — ' + b.note : ''}`, meta: { siteId: site.id, bookingId: b.id } });
+    } catch (e) { appendLog(`[booking] activity failed: ${e.message}`); }
+  }
+  enrollLead({ email, name, siteId: site.id, source: 'booking' });
+
+  // Confirmation email (best-effort — the booking stands even if mail fails) + operator ping.
+  if (emailLib.isConfigured(settings.email)) {
+    emailLib.send({
+      cfg: settings.email, to: email,
+      subject: `Appointment confirmed — ${b.date} at ${b.time}`,
+      text: `Hi ${name || 'there'},\n\nYour appointment with ${site.name} is confirmed for ${b.date} at ${b.time}.\n\n${b.note ? `Your note: ${b.note}\n\n` : ''}Need to change it? Just reply to this email.`,
+      unsubscribeUrl: unsubscribeUrlFor(email),
+      attachments: [{ filename: 'appointment.ics', content: bookingLib.toIcs(b, { businessName: site.name, durationMinutes: bookingCfg().slotMinutes }) }],
+    }).then((sr) => { if (!sr.ok) appendLog(`[booking] confirmation email failed: ${sr.error}`); }).catch(() => {});
+  }
+  const note = `📅 New appointment: ${b.date} ${b.time} — ${name || email} (${site.name})`;
+  sendTelegramMessage(note).catch(() => {});
+  sendSlackMessage(note).catch(() => {});
+  logActivity('booking', `Appointment booked: ${b.date} ${b.time} — ${email} via ${site.name}`, { siteId: site.id, bookingId: b.id });
+  broadcast({ event: 'crm_update', data: { kind: 'booking', siteId: site.id, siteName: site.name, email, date: b.date, time: b.time } });
+
+  return res.status(200).send(page('Booked', `<h2>You&rsquo;re booked!</h2><p>${b.date} at <b>${b.time}</b> with ${site.name}.</p><p>A confirmation email${emailLib.isConfigured(settings.email) ? ' with a calendar invite' : ''} is on its way to ${email}.</p>`));
+});
+
+// --- Bookings API (admin) ---
+app.get('/api/bookings', requireAdmin, (req, res) => {
+  res.json({ ok: true, upcoming: bookingLib.upcoming(bookings, { siteId: req.query.siteId || null }), total: bookings.length, config: bookingCfg() });
+});
+app.put('/api/bookings/:id/cancel', requireAdmin, (req, res) => {
+  const b = bookingLib.cancel(bookings, req.params.id);
+  if (!b) return res.status(404).json({ error: 'booking not found or already cancelled' });
+  persistBookings();
+  logActivity('booking', `Appointment cancelled by operator: ${b.date} ${b.time} — ${b.email}`, { bookingId: b.id, actor: reqActor(req) });
+  // Tell the visitor (best-effort) so a cancellation never goes silent.
+  if (emailLib.isConfigured(settings.email)) {
+    const site = webStudioSites.find((s) => s.id === b.siteId);
+    emailLib.send({
+      cfg: settings.email, to: b.email,
+      subject: `Appointment cancelled — ${b.date} at ${b.time}`,
+      text: `Hi ${b.name || 'there'},\n\nYour ${b.date} ${b.time} appointment${site ? ` with ${site.name}` : ''} has been cancelled. If this is unexpected, just reply to this email and we'll find a new time.`,
+      unsubscribeUrl: unsubscribeUrlFor(b.email),
+    }).catch(() => {});
+  }
+  res.json({ ok: true, booking: b });
 });
 
 const siteLeadLimiter = rateLimit({ windowMs: 60 * 1000, max: 5, message: 'Too many submissions — please try again in a minute.' });
@@ -7458,6 +7555,15 @@ const settings = loadState('settings', {
     smtp_pass: process.env.SMTP_PASS || '',
     footer_address: process.env.EMAIL_FOOTER_ADDRESS || '', // physical address for the CAN-SPAM footer
   },
+  booking: {
+    // Availability window for generated-site appointment forms (lib/booking.js normalizes/validates).
+    // Global defaults for all sites; times are the business's local wall-clock (no tz math — see lib/booking.js).
+    slot_minutes: Number(process.env.BOOKING_SLOT_MINUTES) || 30,
+    days_ahead: Number(process.env.BOOKING_DAYS_AHEAD) || 14,
+    open_hour: Number(process.env.BOOKING_OPEN_HOUR) || 9,
+    close_hour: Number(process.env.BOOKING_CLOSE_HOUR) || 17,
+    open_days: process.env.BOOKING_OPEN_DAYS || '1,2,3,4,5', // ISO weekdays, Mon=1..Sun=7
+  },
   self_improve: {
     // GitHub PAT used ONLY to open draft PRs proposing distribution upgrades (repo scope) — never
     // used for anything else, never sent anywhere but the Authorization header of a GitHub API call.
@@ -7688,6 +7794,13 @@ app.get('/api/settings', requireAdmin, (req, res) => {
       smtp_user: settings.email.smtp_user || '',
       smtp_pass: { value: maskKey(settings.email.smtp_pass), configured: !!settings.email.smtp_pass },
       footer_address: settings.email.footer_address || '',
+    },
+    booking: {
+      slot_minutes: settings.booking.slot_minutes,
+      days_ahead: settings.booking.days_ahead,
+      open_hour: settings.booking.open_hour,
+      close_hour: settings.booking.close_hour,
+      open_days: settings.booking.open_days,
     },
     self_improve: {
       github_pat: { value: maskKey(settings.self_improve.github_pat), configured: !!settings.self_improve.github_pat },
