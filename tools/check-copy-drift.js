@@ -26,6 +26,9 @@ const FEATURES = [
   { name: 'human-in-the-loop approval',    pattern: /human[- ]in[- ]the[- ]loop|approval gat/i },
   { name: 'LLM provider consultants',      pattern: /LLM [Cc]onsultant|provider consultant/i },
   { name: 'Communications Director',       pattern: /[Cc]ommunications [Dd]irector/ },
+  { name: 'email nurture sequences',       pattern: /email sequence|nurture sequence|lead nurtur/i },
+  { name: 'appointment booking',           pattern: /appointment/i },
+  { name: 'CRM pipeline kanban',           pattern: /kanban|pipeline board/i },
 ];
 
 const SURFACES = ['README.md', 'dashboard/index.html'];

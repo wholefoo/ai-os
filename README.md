@@ -90,6 +90,9 @@ Each virtual employee maps to an AI agent with a specific model tier, can receiv
 - **Client-Account Management** — Operators manage client accounts from the dashboard
 - **Scoped Client Workspace** — Each client gets a scoped workspace dashboard: their sites, their SEO/AEO audits, their site analytics, and their lead inbox — isolated server-side from every other tenant
 - **Lead Pipeline** — Hosted-site contact forms feed the CRM live (contact + activity per submission, with site/page attribution)
+- **Pipeline Kanban** — Drag-and-drop pipeline board across the funnel stages (lead → audited → onboarding → customer); every move is validated server-side and logged as a stage-change activity on the contact's timeline
+- **Email Nurture Sequences** — New leads auto-enroll in operator-authored (or AI-drafted, human-reviewed) email sequences with per-step delays. Sends go through the Auto-Mode approval gate, retry safely, and every email carries a one-click unsubscribe + List-Unsubscribe header by construction. Bring a Resend API key or any SMTP server
+- **Appointment Booking** — Generated sites can include a real booking section (no JavaScript required): the platform is the availability source of truth (business hours, horizon, conflicts), confirmed bookings land in the CRM, enroll in matching sequences, and the visitor gets a confirmation email with a calendar (.ics) invite. Cancelling from the dashboard notifies the visitor automatically
 
 ### First-Party Analytics (AI-Signal-First)
 - **The traffic Google Analytics can't see** — AI crawlers don't execute JavaScript; AI OS reads the origin server's own logs, so GPTBot, ClaudeBot, PerplexityBot, Bytespider & co. are first-class citizens: live activity feed, engine leaderboard (training vs search-index vs live user-triggered fetches), and per-page crawl heat

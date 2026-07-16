@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Client Engine: Sequences, Booking &amp; Pipeline — AI OS Docs</title>
+  <meta name="description" content="AI OS's client engine: email nurture sequences with built-in unsubscribe compliance, real appointment booking on generated sites with calendar invites, and a drag-and-drop CRM pipeline kanban.">
+  <link rel="canonical" href="https://aiosorchestrationlab.com/docs/client-engine">
+  <meta property="og:title" content="Client Engine: Sequences, Booking &amp; Pipeline — AI OS Docs">
+  <meta property="og:description" content="AI OS's client engine: email nurture sequences with built-in unsubscribe compliance, real appointment booking on generated sites with calendar invites, and a drag-and-drop CRM pipeline kanban.">
+  <meta name="twitter:card" content="summary">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/css/landing.css">
+  <link rel="stylesheet" href="/css/docs.css">
+  <script async src="https://www.googletagmanager.com/gtag/js?id=G-SMHYRX8D4P"></script>
+  <script>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}gtag('js',new Date());gtag('config','G-SMHYRX8D4P');</script>
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "TechArticle",
+    "headline": "Client Engine: Sequences, Booking & Pipeline — AI OS Docs",
+    "description": "AI OS's client engine: email nurture sequences with built-in unsubscribe compliance, real appointment booking on generated sites with calendar invites, and a drag-and-drop CRM pipeline kanban.",
+    "url": "https://aiosorchestrationlab.com/docs/client-engine",
+    "author": { "@type": "Organization", "name": "AI OS Orchestration Lab" },
+    "publisher": { "@type": "Organization", "name": "AI OS Orchestration Lab", "url": "https://aiosorchestrationlab.com" }
+  }
+  </script>
+  <script type="application/ld+json">{"@context":"https://schema.org","@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Home","item":"https://aiosorchestrationlab.com/"},{"@type":"ListItem","position":2,"name":"Documentation","item":"https://aiosorchestrationlab.com/docs/"},{"@type":"ListItem","position":3,"name":"Client Engine"}]}</script>
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "FAQPage",
+    "mainEntity": [
+      {
+        "@type": "Question",
+        "name": "Does AI OS write the nurture emails itself?",
+        "acceptedAnswer": { "@type": "Answer", "text": "It drafts them — you approve them. Describe the goal (for example, converting dental-site leads into consultation bookings) and the marketing agent proposes a 3–5 step sequence with delays, subjects, and bodies. Nothing sends until you review the draft, create the sequence, and deliberately enable it. Each individual send is also governed by the platform's Auto-Mode approval policy." }
+      },
+      {
+        "@type": "Question",
+        "name": "How does AI OS handle email unsubscribes and compliance?",
+        "acceptedAnswer": { "@type": "Answer", "text": "Compliance is built into the sender itself, not left to the author: every marketing email gets a one-click unsubscribe link (HMAC-tokened so it cannot be forged for another address), a List-Unsubscribe header, and your business address in the footer, by construction. An unsubscribe instantly stops all active sequences for that address and permanently suppresses it — suppressed addresses can never be re-enrolled." }
+      },
+      {
+        "@type": "Question",
+        "name": "Does the booking form on generated sites require JavaScript?",
+        "acceptedAnswer": { "@type": "Answer", "text": "No. The booking section is a plain HTML form — the same no-JavaScript philosophy as the lead-capture form — so it works for script-blocking visitors and stays fully crawlable. The platform validates availability at submission time; if the chosen slot was just taken, the visitor gets a friendly page re-offering that day's remaining free times instead of an error." }
+      },
+      {
+        "@type": "Question",
+        "name": "What email provider do I need for sequences and booking confirmations?",
+        "acceptedAnswer": { "@type": "Answer", "text": "Either a Resend API key (an HTTPS API, which also works on VPS hosts that block SMTP ports) or any standard SMTP server, such as Gmail with an App Password. Set the credential plus a From address on your verified domain in Settings → Email Sending, and one test send from the dashboard verifies deliverability end to end." }
+      },
+      {
+        "@type": "Question",
+        "name": "What stages does the CRM pipeline kanban use?",
+        "acceptedAnswer": { "@type": "Answer", "text": "Five canonical stages: lead, audited, onboarding, customer, and churned (a terminal, manual-only stage). The set is enforced server-side, and stages auto-advance from real platform events — a free audit moves a contact to audited, a purchase to customer — while drag-and-drop handles the manual moves. Every change is logged as a stage-change activity on the contact's timeline." }
+      }
+    ]
+  }
+  </script>
+</head>
+<body>
+  <nav class="landing-nav">
+    <div class="nav-container">
+      <a href="/" class="nav-brand">
+        <span class="nav-logo">&#9678;</span>
+        <span class="nav-name">AI OS</span>
+      </a>
+      <div class="nav-links">
+        <a href="/">Home</a>
+        <a href="/docs" class="active">Docs</a>
+        <a href="/blog">Blog</a>
+        <a href="/about">About</a>
+        <a href="/corporate-mandate">Corporate Mandate</a>
+        <a href="/contact">Contact</a>
+      </div>
+      <div class="nav-cta">
+        <a href="/login" class="btn-nav-login">Log In</a>
+      </div>
+    </div>
+  </nav>
+
+  <main class="docs-page">
+    <div class="docs-container">
+      <div class="docs-layout">
+        <div class="docs-content">
+          <div class="docs-breadcrumb">
+            <a href="/docs">Docs</a> <span>/</span> Client Engine
+          </div>
+
+          <h1>Client Engine: Sequences, Booking &amp; Pipeline</h1>
+          <p class="docs-lead">The client engine is the part of AI OS that turns a captured lead into a booked, nurtured, tracked customer. It is three connected features: <strong>email nurture sequences</strong> that follow up with every new lead automatically, <strong>appointment booking</strong> built into your generated sites, and a <strong>drag-and-drop pipeline kanban</strong> in the CRM. Together they close the loop that starts when a visitor submits a form on any site AI OS built and hosts for you.</p>
+
+          <h2 id="sequences">Email nurture sequences</h2>
+          <p>A sequence is an ordered set of email steps with per-step delays — for example: instantly on signup, again at 24 hours, again at 4 days. New leads enroll automatically the moment they arrive, from whichever capture points you target.</p>
+
+          <h3 id="sequence-triggers">Triggers and targeting</h3>
+          <table class="docs-table">
+            <thead><tr><th>Trigger</th><th>Enrolls</th></tr></thead>
+            <tbody>
+              <tr><td><code>all-leads</code></td><td>Every new lead from any capture point</td></tr>
+              <tr><td><code>site-lead</code></td><td>Contact-form submissions on hosted sites (optionally scoped to one site)</td></tr>
+              <tr><td><code>free-audit</code></td><td>Free SEO/AEO audit requests on the public site</td></tr>
+              <tr><td><code>booking</code></td><td>Visitors who book an appointment — ideal for reminder and follow-up sequences</td></tr>
+            </tbody>
+          </table>
+
+          <h3 id="sequence-authoring">AI-drafted, human-approved</h3>
+          <p>Describe the goal ("convert dental-site leads into consultation bookings") and the marketing agent drafts the whole sequence — step count, delays, subjects, and short plain-spoken bodies with <code>{{first_name}}</code> and <code>{{site}}</code> personalization. The draft lands in the editor for your review; sequences are always created disabled and only send after you deliberately switch them on. A test button sends step one to your own inbox first.</p>
+
+          <h3 id="sequence-safety">Sending discipline</h3>
+          <ul>
+            <li><strong>Auto-Mode governed</strong> — each send passes the platform's approval gate: automatic in supervised/auto mode, one approval per send in manual mode</li>
+            <li><strong>Compliance by construction</strong> — every email carries a one-click unsubscribe link (HMAC-tokened, unforgeable), a <code>List-Unsubscribe</code> header, and your business address; unsubscribing stops everything for that address instantly and permanently</li>
+            <li><strong>Failure-safe</strong> — failed sends retry with a hard cap and never skip a step; one active enrollment per contact per sequence; paused sequences hold in place</li>
+            <li><strong>Bring your own sender</strong> — a Resend API key (HTTPS, immune to blocked SMTP ports) or any SMTP server, configured in Settings &rarr; Email Sending</li>
+          </ul>
+
+          <h2 id="booking">Appointment booking on generated sites</h2>
+          <p>Appointment-based businesses — clinics, salons, trades, consultants — can include a <code>booking</code> section on any site AI OS builds. It renders a plain HTML form (date picker plus your standard time slots) with no JavaScript dependency, the same philosophy as the lead-capture form.</p>
+          <p>The platform is the availability source of truth. It knows your business hours, open days, booking horizon, and existing appointments — so a slot that was just taken never produces a dead error; the visitor gets a friendly page re-offering that day's remaining free times. Availability is configured in Settings &rarr; Booking (slot length, hours, open days, how far ahead visitors can book).</p>
+          <h3 id="booking-flow">What a confirmed booking does</h3>
+          <ol>
+            <li>Creates the appointment and blocks the slot (double-booking is impossible, and the same visitor can't book the same day twice)</li>
+            <li>Lands the contact in the CRM with a booking activity on their timeline</li>
+            <li>Enrolls them in any matching <code>booking</code>-trigger email sequence</li>
+            <li>Emails the visitor a confirmation with a calendar (<code>.ics</code>) invite attached</li>
+            <li>Pings you on Telegram/Slack, and lists the appointment in the dashboard's CRM view</li>
+          </ol>
+          <p>Cancelling an appointment from the dashboard automatically emails the visitor — a cancellation is never silent.</p>
+
+          <h2 id="pipeline">CRM pipeline kanban</h2>
+          <p>The CRM view opens with a five-column pipeline board: <strong>lead &rarr; audited &rarr; onboarding &rarr; customer</strong>, plus <strong>churned</strong> as a terminal, manual-only column. Drag a contact card to move it; every move is validated server-side against the canonical stage set and logged as a stage-change activity on the contact's timeline — an audit trail, not just a board.</p>
+          <p>Stages also advance themselves from real platform events: a free audit promotes a contact to <em>audited</em>, a purchase to <em>customer</em>. Automatic advancement only ever moves contacts forward, so a manual placement is never silently undone.</p>
+
+          <h2 id="setup">Setup</h2>
+          <table class="docs-table">
+            <thead><tr><th>Step</th><th>Detail</th></tr></thead>
+            <tbody>
+              <tr><td>Email sender</td><td>Settings &rarr; Email Sending: a Resend API key <em>or</em> SMTP credentials, plus a From address on your verified domain (verify the domain with your provider for inbox placement)</td></tr>
+              <tr><td>First sequence</td><td>CRM &rarr; Email Sequences: describe a goal and click AI Draft, review the steps, Test to your own inbox, then enable</td></tr>
+              <tr><td>Booking availability</td><td>Settings &rarr; Booking: slot length, business hours, open days, booking horizon — then add a booking section to a site and rebuild it</td></tr>
+              <tr><td>Pipeline</td><td>Nothing to configure — the board reads the stages your contacts already have</td></tr>
+            </tbody>
+          </table>
+
+          <h2 id="faq">Frequently asked questions</h2>
+          <div class="docs-callout info">
+            <strong>Does AI OS write the nurture emails itself?</strong>
+            <p>It drafts them; you approve them. Sequences are created disabled, and nothing sends until you review, enable, and (in manual mode) approve each send.</p>
+          </div>
+          <div class="docs-callout info">
+            <strong>How are unsubscribes handled?</strong>
+            <p>Every email carries a one-click unsubscribe link and List-Unsubscribe header by construction. Unsubscribing stops all sequences for that address instantly and suppresses it permanently.</p>
+          </div>
+          <div class="docs-callout info">
+            <strong>Does the booking form need JavaScript?</strong>
+            <p>No — it's a plain HTML form, validated server-side at submit. A just-taken slot gets a friendly page re-offering that day's free times.</p>
+          </div>
+          <div class="docs-callout info">
+            <strong>Which email provider do I need?</strong>
+            <p>A Resend API key (HTTPS — works even where SMTP ports are blocked) or any SMTP server such as Gmail with an App Password.</p>
+          </div>
+          <div class="docs-callout info">
+            <strong>What stages does the pipeline use?</strong>
+            <p>lead, audited, onboarding, customer, and churned (terminal, manual-only) — enforced server-side, with every change logged on the contact's timeline.</p>
+          </div>
+
+          <div class="docs-page-nav">
+            <a href="/docs/web-studio-business">&larr; Web Studio Business Tools</a>
+            <a href="/docs/analytics">Analytics &rarr;</a>
+          </div>
+        </div>
+
+        <aside class="docs-toc">
+          <div class="docs-toc-title">On this page</div>
+          <a href="#sequences">Email Sequences</a>
+          <a href="#booking">Appointment Booking</a>
+          <a href="#pipeline">Pipeline Kanban</a>
+          <a href="#setup">Setup</a>
+          <a href="#faq">FAQ</a>
+        </aside>
+      </div>
+    </div>
+  </main>
+
+  <footer class="site-footer">
+    <div class="footer-container">
+      <div class="footer-brand">
+        <span class="nav-logo">&#9678;</span>
+        <span class="nav-name">AI OS</span>
+        <p class="footer-tagline">The Agentic Operating System</p>
+        <p class="footer-mission">I fully recognize that in my God-led business, there is no separation between my spiritual life and my professional life. My enterprise is a direct reflection of my covenant with God. <a href="/corporate-mandate">more&nbsp;.&nbsp;.&nbsp;.</a></p>
+      </div>
+      <div class="footer-links">
+        <div class="footer-col">
+          <h4>Product</h4>
+          <a href="/#features">Features</a>
+          <a href="/#pricing">Pricing</a>
+          <a href="/docs">Documentation</a>
+        </div>
+        <div class="footer-col">
+          <h4>Resources</h4>
+          <a href="/blog">Blog</a>
+          <a href="/about">About</a>
+          <a href="/corporate-mandate">Corporate Mandate</a>
+          <a href="/contact">Contact</a>
+        </div>
+        <div class="footer-col">
+          <h4>Legal</h4>
+          <a href="/trust">Trust &amp; Security</a>
+          <a href="/terms">Terms of Service</a>
+          <a href="/privacy">Privacy Policy</a>
+        </div>
+      </div>
+    </div>
+    <div class="footer-bottom">
+      <p>&copy; 2026 AI OS Orchestration Lab. All rights reserved.</p>
+    </div>
+  </footer>
+</body>
+</html>
