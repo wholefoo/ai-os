@@ -1643,6 +1643,20 @@
               </div>
             </div>
           </section>
+
+          <section class="panel" style="margin-top:12px;">
+            <h3 class="panel-title">Local Prospecting <span style="font-weight:400;font-size:11px;color:#888;">Google Maps / Business Profile</span></h3>
+            <p style="font-size:12px;color:#888;margin:4px 0 12px;">Find local businesses in a niche and score them for managed-website fit — businesses with <b>no website</b> (or a Facebook page standing in for one) are your hottest prospects. API-based (DataForSEO or Google Places), never scraped. Email-bearing prospects can be added to the CRM; the rest are call-first leads. Nothing is ever auto-emailed.</p>
+            <div id="prospectStatusNote" style="font-size:12px;margin-bottom:10px;"></div>
+            <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px;">
+              <input type="text" class="settings-input" id="prospectKeyword" placeholder="Niche — e.g. dentist, plumber, med spa" style="flex:2;min-width:180px;">
+              <input type="text" class="settings-input" id="prospectLocation" placeholder="Area — e.g. Austin, TX" style="flex:2;min-width:160px;">
+              <input type="number" class="settings-input" id="prospectLimit" value="20" min="1" max="50" title="Max results" style="width:80px;">
+              <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:#aaa;"><input type="checkbox" id="prospectEnrich" checked> find emails</label>
+              <button class="btn btn-sm btn-primary" id="prospectSearchBtn" onclick="runProspectSearch()">&#128269; Search</button>
+            </div>
+            <div id="prospectResults"></div>
+          </section>
         </div>
 
         <!-- 3D Studio View -->
@@ -2701,6 +2715,14 @@
                   </div>
                 </div>
                 <div class="settings-field">
+                  <label class="settings-label">Google Places API Key <span class="settings-tier">Local prospecting fallback — only needed if DataForSEO is not set</span></label>
+                  <div class="settings-input-row">
+                    <input type="text" class="settings-input settings-secret" id="set-google_places_api_key" placeholder="AIza..." autocomplete="new-password" data-lpignore="true" data-1p-ignore spellcheck="false">
+                    <button type="button" class="btn btn-sm settings-eye" onclick="toggleKeyVisibility(this)" title="Show/hide">&#128065;</button>
+                    <span class="settings-status" id="status-google_places_api_key"></span>
+                  </div>
+                </div>
+                <div class="settings-field">
                   <label class="settings-label">Default Location</label>
                   <div class="settings-input-row">
                     <input type="text" class="settings-input" id="set-default_location" placeholder="United States" autocomplete="off">
@@ -2814,10 +2836,10 @@
     </div>
   </div>
 
-  <script src="js/app.js?v=60"></script>
+  <script src="js/app.js?v=61"></script>
   <script src="https://cdn.jsdelivr.net/npm/monaco-editor@0.52.2/min/vs/loader.js"></script>
   <script src="js/web-studio.js?v=16"></script>
-  <script src="js/crm.js?v=7"></script>
+  <script src="js/crm.js?v=8"></script>
   <script src="js/analytics.js?v=2"></script>
   <script src="js/security.js?v=1"></script>
   <script src="js/brand-kits.js?v=1"></script>

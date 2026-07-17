@@ -5694,7 +5694,7 @@ const settingsFieldMap = {
   notifications: ['telegram_bot_token', 'telegram_chat_id', 'slack_webhook_url'],
   automation: ['mode', 'n8n_webhook_base', 'n8n_api_key', 'team_webhook_url'],
   stripe: ['secret_key', 'webhook_secret', 'business_price_id', 'enterprise_price_id', 'enterprise_renewal_price_id'],
-  seo: ['dataforseo_login', 'dataforseo_password', 'default_location', 'default_language'],
+  seo: ['dataforseo_login', 'dataforseo_password', 'google_places_api_key', 'default_location', 'default_language'],
   general: ['demo_mode', 'cors_origin', 'api_token'],
 };
 

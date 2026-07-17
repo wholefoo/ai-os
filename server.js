@@ -2263,6 +2263,101 @@ app.put('/api/bookings/:id/cancel', requireAdmin, (req, res) => {
   res.json({ ok: true, booking: b });
 });
 
+// ---------- Local prospecting (Google Maps / Business Profile) ----------
+// Finds local businesses for a niche + area and scores them for managed-website fit — API-based
+// (DataForSEO Maps SERP or Google Places), never scraping Google itself. Business-tier feature
+// (leadGen flag). Ingest is deliberate: prospects go to the CRM tagged as cold outreach targets
+// and are NEVER auto-enrolled in email sequences — sequences are for inbound leads; cold email
+// to scraped addresses is an operator decision, made per-contact.
+const prospectsLib = require('./lib/leads/prospects');
+const { safeFetch } = require('./lib/net/safe-fetch');
+const prospectRuns = loadState('prospect_runs', []);
+
+function prospectingCfg() {
+  return {
+    dataforseo_login: settings.seo.dataforseo_login,
+    dataforseo_password: settings.seo.dataforseo_password,
+    google_places_api_key: settings.seo.google_places_api_key,
+  };
+}
+
+app.post('/api/prospects/search', requireAdmin, requireCommercial('leadGen'), heavyLimiter, async (req, res) => {
+  const { keyword, location, limit = 20, enrich = true } = req.body || {};
+  const errs = prospectsLib.validateQuery({ keyword, location, limit });
+  if (errs.length) return res.status(400).json({ error: errs.join('; ') });
+  if (!prospectsLib.pickProspectProvider(prospectingCfg())) {
+    return res.status(400).json({ error: 'No prospecting provider configured — add DataForSEO credentials or a Google Places API key in Settings → SEO Agency.' });
+  }
+  try {
+    const run = await prospectsLib.prospect({
+      keyword, location, limit, enrich: enrich !== false,
+      cfg: prospectingCfg(),
+      deps: { safeFetch },
+    });
+    const entry = {
+      id: uuidv4(), keyword: String(keyword).slice(0, 120), location: String(location).slice(0, 160),
+      provider: run.provider, count: run.prospects.length,
+      noWebsite: run.prospects.filter((p) => !p.website).length,
+      withEmail: run.prospects.filter((p) => p.email).length,
+      at: new Date().toISOString(), prospects: run.prospects,
+    };
+    prospectRuns.unshift(entry);
+    if (prospectRuns.length > 10) prospectRuns.length = 10; // keep the last 10 runs reviewable
+    saveState('prospect_runs', prospectRuns);
+    logActivity('leads', `Prospect search: "${entry.keyword}" in ${entry.location} — ${entry.count} found (${entry.noWebsite} without websites) via ${run.provider}`, { actor: reqActor(req) });
+    res.json({ ok: true, run: entry });
+  } catch (e) {
+    appendLog(`[prospects] search failed: ${e.message}`);
+    res.status(502).json({ error: e.message });
+  }
+});
+
+app.get('/api/prospects/runs', requireAdmin, requireCommercial('leadGen'), (req, res) => {
+  // List without the heavy prospect arrays; fetch one run for detail.
+  res.json({
+    ok: true,
+    configured: !!prospectsLib.pickProspectProvider(prospectingCfg()),
+    provider: prospectsLib.pickProspectProvider(prospectingCfg()),
+    runs: prospectRuns.map(({ prospects, ...meta }) => meta),
+  });
+});
+app.get('/api/prospects/runs/:id', requireAdmin, requireCommercial('leadGen'), (req, res) => {
+  const run = prospectRuns.find((r) => r.id === req.params.id);
+  if (!run) return res.status(404).json({ error: 'run not found' });
+  res.json({ ok: true, run });
+});
+
+// Ingest selected prospects into the CRM. Email-bearing prospects become contacts (source
+// 'gmaps-prospect'); the rest can't (the CRM keys on email) — they stay in the run list with
+// phone/address for call-first outreach, and we tell the caller exactly what happened.
+app.post('/api/prospects/ingest', requireAdmin, requireCommercial('leadGen'), (req, res) => {
+  const { runId, placeIds } = req.body || {};
+  const run = prospectRuns.find((r) => r.id === runId);
+  if (!run) return res.status(404).json({ error: 'run not found' });
+  const wanted = Array.isArray(placeIds) && placeIds.length ? new Set(placeIds.map(String)) : null;
+  const picked = run.prospects.filter((p) => !wanted || wanted.has(p.placeId));
+  let added = 0, skippedNoEmail = 0;
+  for (const p of picked) {
+    if (!p.email) { skippedNoEmail++; continue; }
+    const contactId = crm?.ingestLead({ email: p.email, name: p.name, domain: (p.website.match(/^https?:\/\/(?:www\.)?([^/]+)/i) || [])[1] || '', source: 'gmaps-prospect' });
+    if (contactId && crm?.isReady()) {
+      try {
+        crm.repo.contacts.upsertByEmail({ email: p.email, company: p.name, tags: ['gmaps-prospect'] });
+        crm.repo.activities.add({
+          contactId, type: 'note', author: 'prospecting',
+          body: `Google Maps prospect (${run.keyword} · ${run.location}): score ${p.score}/100 — ${(p.reasons || []).join('; ')}. ${p.phone ? 'Phone ' + p.phone + '. ' : ''}${p.address || ''}`,
+          meta: { placeId: p.placeId, mapsUrl: p.mapsUrl || null },
+        });
+      } catch (e) { appendLog(`[prospects] activity failed: ${e.message}`); }
+      p.ingested = true;
+      added++;
+    }
+  }
+  saveState('prospect_runs', prospectRuns);
+  logActivity('leads', `Prospects ingested to CRM: ${added} added, ${skippedNoEmail} kept as call-first (no email)`, { actor: reqActor(req) });
+  res.json({ ok: true, added, skippedNoEmail, note: skippedNoEmail ? 'Prospects without a public email stay in the run list — they are call-first leads (the CRM keys contacts on email).' : undefined });
+});
+
 const siteLeadLimiter = rateLimit({ windowMs: 60 * 1000, max: 5, message: 'Too many submissions — please try again in a minute.' });
 app.post('/api/public/site-lead/:siteId', siteLeadLimiter, express.urlencoded({ extended: false, limit: '16kb' }), (req, res) => {
   const site = webStudioSites.find((s) => s.id === req.params.siteId);
@@ -7614,6 +7709,9 @@ const settings = loadState('settings', {
   seo: {
     dataforseo_login: process.env.DATAFORSEO_LOGIN || '',
     dataforseo_password: process.env.DATAFORSEO_PASSWORD || '',
+    // Local prospecting (Google Maps / Business Profile). Provider auto-picks: DataForSEO creds
+    // above if set, else this Places API key. See lib/leads/prospects.js.
+    google_places_api_key: process.env.GOOGLE_PLACES_API_KEY || '',
     default_location: 'United States',
     default_language: 'en',
     free_audit_daily_max: parseInt(process.env.FREE_AUDIT_DAILY_MAX, 10) || 50,     // global hard cap/day — bounds public free-audit cost regardless of email/IP rotation
@@ -7847,6 +7945,7 @@ app.get('/api/settings', requireAdmin, (req, res) => {
     seo: {
       dataforseo_login: settings.seo.dataforseo_login || '',
       dataforseo_password: { value: maskKey(settings.seo.dataforseo_password), configured: !!settings.seo.dataforseo_password },
+      google_places_api_key: { value: maskKey(settings.seo.google_places_api_key), configured: !!settings.seo.google_places_api_key },
       default_location: settings.seo.default_location || 'United States',
       default_language: settings.seo.default_language || 'en',
       free_audit_daily_max: settings.seo.free_audit_daily_max,

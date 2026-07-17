@@ -39,6 +39,94 @@ function crmFetchAndRender() {
   loadPipelinePanel();
   loadSequencesPanel();
   loadBookingsPanel();
+  loadProspectingPanel();
+}
+
+// ---------- Local Prospecting panel (Google Maps / Business Profile) ----------
+
+let prospectLastRun = null;
+
+async function loadProspectingPanel() {
+  const note = document.getElementById('prospectStatusNote');
+  if (!note) return;
+  let data;
+  try { data = await fetchJSON('/api/prospects/runs'); } catch { return; }
+  if (!data || data.error) { note.innerHTML = `<span style="color:#f59e0b;">&#9679; ${escapeHtml((data && data.error) || 'Prospecting requires a Business or Enterprise license.')}</span>`; return; }
+  note.innerHTML = data.configured
+    ? `<span style="color:#22c55e;">&#9679; Provider: ${escapeHtml(data.provider)}</span>${data.runs.length ? ` <span style="color:#888;">&middot; last: &ldquo;${escapeHtml(data.runs[0].keyword)}&rdquo; in ${escapeHtml(data.runs[0].location)} (${data.runs[0].count} found)</span> <a href="#" onclick="showProspectRun('${data.runs[0].id}');return false;" style="font-size:12px;">show</a>` : ''}`
+    : '<span style="color:#f59e0b;">&#9679; No provider configured — add DataForSEO credentials or a Google Places API key in Settings &rarr; SEO Agency.</span>';
+}
+
+async function runProspectSearch() {
+  const btn = document.getElementById('prospectSearchBtn');
+  const keyword = crmVal('prospectKeyword').trim();
+  const location = crmVal('prospectLocation').trim();
+  if (!keyword || !location) { alert('Enter a niche keyword and a location.'); return; }
+  btn.disabled = true; btn.textContent = 'Searching…';
+  document.getElementById('prospectResults').innerHTML = '<div class="empty-state">Searching Google Business listings' + (document.getElementById('prospectEnrich').checked ? ' and checking websites for emails (can take ~30s)' : '') + '…</div>';
+  try {
+    const r = await fetchJSON('/api/prospects/search', {
+      method: 'POST',
+      body: { keyword, location, limit: Number(crmVal('prospectLimit')) || 20, enrich: document.getElementById('prospectEnrich').checked },
+    });
+    if (!r.ok) throw new Error(r.error || 'search failed');
+    prospectLastRun = r.run;
+    renderProspects(r.run);
+    loadProspectingPanel();
+  } catch (e) {
+    document.getElementById('prospectResults').innerHTML = `<div class="empty-state" style="color:#ef4444;">Search failed: ${escapeHtml(e.message)}</div>`;
+  } finally { btn.disabled = false; btn.textContent = '🔍 Search'; }
+}
+
+async function showProspectRun(id) {
+  try {
+    const r = await fetchJSON(`/api/prospects/runs/${id}`);
+    if (r.ok) { prospectLastRun = r.run; renderProspects(r.run); }
+  } catch {}
+}
+
+function renderProspects(run) {
+  const box = document.getElementById('prospectResults');
+  if (!box) return;
+  if (!run.prospects.length) { box.innerHTML = '<div class="empty-state">No businesses found — try a broader keyword or area.</div>'; return; }
+  const rows = run.prospects.map((p) => {
+    const siteCell = !p.website
+      ? '<span style="color:#22c55e;font-weight:700;">NO WEBSITE</span>'
+      : (/facebook|instagram|linktr/i.test(p.website)
+        ? `<span style="color:#f59e0b;font-weight:600;">social only</span>`
+        : `<a href="${escapeHtml(p.website)}" target="_blank" rel="noopener" style="color:#3b82f6;">${escapeHtml(p.website.replace(/^https?:\/\/(www\.)?/, '').slice(0, 30))}</a>`);
+    return `
+    <tr style="border-bottom:1px solid rgba(255,255,255,.05);">
+      <td style="padding:6px;"><input type="checkbox" class="prospect-pick" value="${escapeHtml(p.placeId)}" ${p.email ? 'checked' : ''} ${p.ingested ? 'disabled' : ''}></td>
+      <td style="padding:6px;font-weight:600;">${p.mapsUrl ? `<a href="${escapeHtml(p.mapsUrl)}" target="_blank" rel="noopener" style="color:inherit;">${escapeHtml(p.name)}</a>` : escapeHtml(p.name)}${p.ingested ? ' <span style="color:#22c55e;font-size:11px;">✓ in CRM</span>' : ''}<div style="font-size:11px;color:#888;font-weight:400;">${escapeHtml(p.category || '')}</div></td>
+      <td style="padding:6px;font-size:12px;">${p.rating != null ? `${p.rating}★ <span style="color:#888;">(${p.reviews})</span>` : '<span style="color:#666;">—</span>'}</td>
+      <td style="padding:6px;font-size:12px;">${siteCell}</td>
+      <td style="padding:6px;font-size:12px;">${escapeHtml(p.phone || '—')}</td>
+      <td style="padding:6px;font-size:12px;">${p.email ? escapeHtml(p.email) : '<span style="color:#666;">call-first</span>'}</td>
+      <td style="padding:6px;"><span title="${escapeHtml((p.reasons || []).join(' · '))}" style="font-weight:700;color:${p.score >= 70 ? '#22c55e' : p.score >= 45 ? '#f59e0b' : '#888'};">${p.score}</span></td>
+    </tr>`;
+  }).join('');
+  box.innerHTML = `
+    <div style="font-size:12px;color:#888;margin-bottom:8px;">${run.count} found &middot; <b style="color:#22c55e;">${run.noWebsite} without websites</b> &middot; ${run.withEmail} with emails &middot; via ${escapeHtml(run.provider)}. Score = managed-website fit (hover for reasons).</div>
+    <div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;font-size:13px;">
+      <thead><tr style="text-align:left;color:#888;font-size:11px;text-transform:uppercase;"><th style="padding:6px;"></th><th style="padding:6px;">Business</th><th style="padding:6px;">Rating</th><th style="padding:6px;">Website</th><th style="padding:6px;">Phone</th><th style="padding:6px;">Email</th><th style="padding:6px;">Fit</th></tr></thead>
+      <tbody>${rows}</tbody>
+    </table></div>
+    <div style="display:flex;gap:8px;margin-top:10px;align-items:center;">
+      <button class="btn btn-sm btn-primary" onclick="ingestProspects()">Add selected to CRM</button>
+      <span style="font-size:11px;color:#888;">Only prospects with an email become contacts; the rest stay here as call-first leads. Nothing is auto-emailed.</span>
+    </div>`;
+}
+
+async function ingestProspects() {
+  if (!prospectLastRun) return;
+  const picked = Array.from(document.querySelectorAll('.prospect-pick:checked:not(:disabled)')).map((c) => c.value);
+  if (!picked.length) { alert('Select at least one prospect.'); return; }
+  const r = await fetchJSON('/api/prospects/ingest', { method: 'POST', body: { runId: prospectLastRun.id, placeIds: picked } });
+  if (r && r.error) { alert(r.error); return; }
+  alert(`${r.added} added to CRM${r.skippedNoEmail ? ` — ${r.skippedNoEmail} had no public email and stay here as call-first leads` : ''}.`);
+  showProspectRun(prospectLastRun.id);
+  crmLoadStats(); crmLoadList(); loadPipelinePanel();
 }
 
 // ---------- Pipeline (kanban) panel ----------

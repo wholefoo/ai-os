@@ -15,6 +15,7 @@
     "tools/test-intel-brief.js",
     "tools/test-sequences.js",
     "tools/test-booking.js",
+    "tools/test-prospects.js",
     "ecosystem.config.js",
     "deploy/n8n-ecosystem.config.example.js",
     "dashboard/js/*.js"
