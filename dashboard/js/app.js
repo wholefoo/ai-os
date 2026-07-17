@@ -8764,11 +8764,25 @@ function renderSeoAgency() {
         <div class="seo-audit-actions">
           <button class="btn btn-sm btn-primary" onclick="viewSeoAudit('${a.id}')" ${a.status !== 'complete' ? 'disabled' : ''}>View Report</button>
           <button class="btn btn-sm" onclick="generateSeoReport('${a.id}')" ${a.status !== 'complete' ? 'disabled' : ''}>Export PDF</button>
+          <button class="btn btn-sm" onclick="emailAuditToLead('${a.id}', '${(a.email || '').replace(/'/g, '')}')" ${a.status !== 'complete' ? 'disabled' : ''} title="Send the headline findings to the lead as an outreach email">&#9993; Email to Lead</button>
           <button class="btn btn-sm btn-danger" onclick="deleteSeoAudit('${a.id}')">Delete</button>
         </div>
       </div>
     `;
   }).join('');
+}
+
+// Send a completed audit's findings to a lead (deterministic template, unsubscribe footer
+// added server-side; the address is checked against the unsubscribe suppression list).
+async function emailAuditToLead(auditId, prefillEmail) {
+  const to = prompt('Send this audit report to which email address?', prefillEmail || '');
+  if (!to) return;
+  const name = prompt('Recipient name (optional — personalizes the greeting):', '') || '';
+  try {
+    const r = await fetchJSON(`/api/seo/audit/${auditId}/email-lead`, { method: 'POST', body: { to: to.trim(), name: name.trim() } });
+    if (r && r.ok) showSettingsToast(`Audit report sent to ${r.to} via ${r.provider}`);
+    else alert(r.error || 'Send failed');
+  } catch (e) { alert(`Send failed: ${e.message}`); }
 }
 
 // --- Client "Site Security" deliverable: report-only per-site scan results (Phase 4). Reads the

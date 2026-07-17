@@ -9818,6 +9818,43 @@ app.get('/api/aeo/share-of-model', requireAdmin, (req, res) => {
 
 // SEO Unlimited routes extracted to commercial/modules/seo-unlimited/index.js
 
+// POST /api/seo/audit/:id/email-lead — send a completed audit to a lead as the outreach
+// door-opener. Operator-clicked per-send (that click IS the human approval), deterministic
+// template (lib/leads/audit-email.js — zero LLM tokens), suppression-checked, and the
+// unsubscribe footer comes from lib/email by construction.
+const auditEmail = require('./lib/leads/audit-email');
+app.post('/api/seo/audit/:id/email-lead', requireAdmin, async (req, res) => {
+  const audit = seoAudits.find((a) => a.id === req.params.id);
+  const errs = auditEmail.validateAuditForEmail(audit);
+  if (errs.length) return res.status(400).json({ error: errs.join('; ') });
+
+  const to = String(req.body?.to || audit.email || '').trim().toLowerCase();
+  if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(to)) return res.status(400).json({ error: 'a valid recipient email is required (this audit has none on record)' });
+  if (!emailLib.isConfigured(settings.email)) return res.status(400).json({ error: 'email sending is not configured — Settings → Email Sending' });
+  if (emailSuppression.includes(to)) return res.status(400).json({ error: 'this address has unsubscribed — it cannot be emailed' });
+
+  const rendered = auditEmail.renderAuditLeadEmail(audit, {
+    toName: String(req.body?.name || ''),
+    businessName: settings.email.from_name || 'the team',
+  });
+  const r = await emailLib.send({
+    cfg: settings.email, to,
+    subject: rendered.subject, text: rendered.text, html: rendered.html,
+    unsubscribeUrl: unsubscribeUrlFor(to),
+  });
+  if (!r.ok) return res.status(502).json({ error: r.error });
+
+  audit.emailedTo = [...(audit.emailedTo || []), { to, at: new Date().toISOString() }];
+  saveState('seo_audits', seoAudits);
+  // CRM: make sure the recipient exists as a contact and carries the touchpoint.
+  const contactId = crm?.ingestLead({ email: to, name: String(req.body?.name || ''), domain: audit.domain, source: 'audit-outreach' });
+  if (contactId && crm?.isReady()) {
+    try { crm.repo.activities.add({ contactId, type: 'note', author: 'audit-outreach', body: `Audit report emailed: ${audit.domain} scored ${audit.compositeScore}/100`, meta: { auditId: audit.id } }); } catch {}
+  }
+  logActivity('leads', `Audit report emailed to ${to} (${audit.domain}, ${audit.compositeScore}/100)`, { auditId: audit.id, actor: reqActor(req) });
+  res.json({ ok: true, to, provider: r.provider });
+});
+
 // DELETE /api/seo/audit/:id — delete an audit
 app.delete('/api/seo/audit/:id', requireClientOrAdmin, (req, res) => {
   const audit = seoAudits.find(a => a.id === req.params.id);

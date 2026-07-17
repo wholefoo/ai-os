@@ -16,6 +16,7 @@
     "tools/test-sequences.js",
     "tools/test-booking.js",
     "tools/test-prospects.js",
+    "tools/test-audit-email.js",
     "ecosystem.config.js",
     "deploy/n8n-ecosystem.config.example.js",
     "dashboard/js/*.js"
