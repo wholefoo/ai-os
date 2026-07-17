@@ -29,6 +29,7 @@ const FEATURES = [
   { name: 'email nurture sequences',       pattern: /email sequence|nurture sequence|lead nurtur/i },
   { name: 'appointment booking',           pattern: /appointment/i },
   { name: 'CRM pipeline kanban',           pattern: /kanban|pipeline board/i },
+  { name: 'Google Maps prospecting',       pattern: /local prospecting|maps prospect|business.profile prospect|prospecting/i },
 ];
 
 const SURFACES = ['README.md', 'dashboard/index.html'];

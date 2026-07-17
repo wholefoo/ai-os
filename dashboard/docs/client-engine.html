@@ -34,6 +34,11 @@
     "mainEntity": [
       {
         "@type": "Question",
+        "name": "Does AI OS scrape Google Maps for leads?",
+        "acceptedAnswer": { "@type": "Answer", "text": "No. Local prospecting uses licensed data APIs — DataForSEO's Google Maps results or the Google Places API — never scraping Google Maps itself, which violates Google's terms and breaks constantly. Email discovery only fetches the business's own public website (homepage and contact page) looking for a published contact address, and cold prospects are never auto-emailed." }
+      },
+      {
+        "@type": "Question",
         "name": "Does AI OS write the nurture emails itself?",
         "acceptedAnswer": { "@type": "Answer", "text": "It drafts them — you approve them. Describe the goal (for example, converting dental-site leads into consultation bookings) and the marketing agent proposes a 3–5 step sequence with delays, subjects, and bodies. Nothing sends until you review the draft, create the sequence, and deliberately enable it. Each individual send is also governed by the platform's Auto-Mode approval policy." }
       },
@@ -91,7 +96,14 @@
           </div>
 
           <h1>Client Engine: Sequences, Booking &amp; Pipeline</h1>
-          <p class="docs-lead">The client engine is the part of AI OS that turns a captured lead into a booked, nurtured, tracked customer. It is three connected features: <strong>email nurture sequences</strong> that follow up with every new lead automatically, <strong>appointment booking</strong> built into your generated sites, and a <strong>drag-and-drop pipeline kanban</strong> in the CRM. Together they close the loop that starts when a visitor submits a form on any site AI OS built and hosts for you.</p>
+          <p class="docs-lead">The client engine is the part of AI OS that turns a captured lead into a booked, nurtured, tracked customer. It is four connected features: <strong>Google Maps local prospecting</strong> that finds businesses worth pitching, <strong>email nurture sequences</strong> that follow up with every new lead automatically, <strong>appointment booking</strong> built into your generated sites, and a <strong>drag-and-drop pipeline kanban</strong> in the CRM. Together they cover the loop from finding a prospect to tracking a customer.</p>
+
+          <h2 id="prospecting">Google Maps local prospecting</h2>
+          <p>Enter a niche and an area — "dentist" in "Austin, TX" — and AI OS pulls real Google Business Profile listings and scores each business 0–100 for <strong>website-upgrade fit</strong>. The scoring is deliberately biased toward the platform's own managed-website offer: a business with <em>no website at all</em> scores highest, a Facebook page standing in for a website close behind, then sites without HTTPS. Phone numbers, review counts, and ratings add signal (an established, well-reviewed business with no website is the perfect prospect).</p>
+          <h3 id="prospecting-compliance">API-based, never scraped</h3>
+          <p>Prospecting uses licensed data APIs — DataForSEO's Maps results (the same account that powers the SEO agency) or the Google Places API — never scraping Google Maps itself. Email discovery only ever fetches the business's <em>own public website</em> (homepage and contact page, two pages maximum) looking for a published contact address.</p>
+          <h3 id="prospecting-ingest">Into the CRM, deliberately</h3>
+          <p>Selected prospects with a public email become CRM contacts (tagged, with the fit score and reasons on their timeline); businesses without one stay in the run list as <strong>call-first leads</strong> with their phone number. Cold prospects are never auto-enrolled in email sequences and nothing is ever auto-emailed — cold outreach is an operator decision, made per contact.</p>
 
           <h2 id="sequences">Email nurture sequences</h2>
           <p>A sequence is an ordered set of email steps with per-step delays — for example: instantly on signup, again at 24 hours, again at 4 days. New leads enroll automatically the moment they arrive, from whichever capture points you target.</p>
@@ -139,6 +151,7 @@
           <table class="docs-table">
             <thead><tr><th>Step</th><th>Detail</th></tr></thead>
             <tbody>
+              <tr><td>Prospecting provider</td><td>Settings &rarr; SEO Agency: DataForSEO credentials (shared with the SEO agency) <em>or</em> a Google Places API key — then CRM &rarr; Local Prospecting</td></tr>
               <tr><td>Email sender</td><td>Settings &rarr; Email Sending: a Resend API key <em>or</em> SMTP credentials, plus a From address on your verified domain (verify the domain with your provider for inbox placement)</td></tr>
               <tr><td>First sequence</td><td>CRM &rarr; Email Sequences: describe a goal and click AI Draft, review the steps, Test to your own inbox, then enable</td></tr>
               <tr><td>Booking availability</td><td>Settings &rarr; Booking: slot length, business hours, open days, booking horizon — then add a booking section to a site and rebuild it</td></tr>
@@ -147,6 +160,10 @@
           </table>
 
           <h2 id="faq">Frequently asked questions</h2>
+          <div class="docs-callout info">
+            <strong>Does AI OS scrape Google Maps for leads?</strong>
+            <p>No — prospecting uses licensed APIs (DataForSEO or Google Places), never scraping Google itself. Email discovery only reads the business's own public website, and cold prospects are never auto-emailed.</p>
+          </div>
           <div class="docs-callout info">
             <strong>Does AI OS write the nurture emails itself?</strong>
             <p>It drafts them; you approve them. Sequences are created disabled, and nothing sends until you review, enable, and (in manual mode) approve each send.</p>
@@ -176,6 +193,7 @@
 
         <aside class="docs-toc">
           <div class="docs-toc-title">On this page</div>
+          <a href="#prospecting">Local Prospecting</a>
           <a href="#sequences">Email Sequences</a>
           <a href="#booking">Appointment Booking</a>
           <a href="#pipeline">Pipeline Kanban</a>
