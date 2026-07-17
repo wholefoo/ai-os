@@ -2327,6 +2327,46 @@ app.get('/api/prospects/runs/:id', requireAdmin, requireCommercial('leadGen'), (
   res.json({ ok: true, run });
 });
 
+// Launch a full audit ON A PROSPECT's site, carrying its Google Maps data through as the Local SEO
+// dimension's business identity (reliable — exact name/placeId/rating already in hand). The audit
+// then becomes an outreach door-opener via the existing /email-lead route.
+app.post('/api/prospects/audit', requireAdmin, requireCommercial('leadGen'), (req, res) => {
+  const run = prospectRuns.find((r) => r.id === req.body?.runId);
+  const p = run && run.prospects.find((x) => x.placeId === String(req.body?.placeId || ''));
+  if (!p) return res.status(404).json({ error: 'prospect not found in that run' });
+  if (!p.website) return res.status(400).json({ error: 'this prospect has no website to audit — it is a call-first lead' });
+  if (DEMO_MODE || !settings.seo.dataforseo_login || !settings.seo.dataforseo_password) {
+    return res.status(400).json({ error: 'a full prospect audit needs DataForSEO configured (Settings → SEO Agency)' });
+  }
+  const auditId = uuidv4();
+  const audit = {
+    id: auditId,
+    domain: String(p.website).replace(/^https?:\/\//, '').replace(/\/.*$/, ''),
+    status: 'running', startedAt: new Date().toISOString(), completedAt: null, compositeScore: null,
+    email: p.email || null, source: 'prospect',
+    // Carry the Maps data through so the Local SEO agent uses the exact business, not a domain guess.
+    localInput: { businessName: p.name, placeId: p.placeId, category: p.category, address: p.address, phone: p.phone, website: p.website, rating: p.rating, reviews: p.reviews, name: p.name },
+    agents: {
+      keyword:    { status: 'running', score: null, findings: [], startedAt: new Date().toISOString() },
+      technical:  { status: 'running', score: null, findings: [], startedAt: new Date().toISOString() },
+      competitor: { status: 'running', score: null, findings: [], startedAt: new Date().toISOString() },
+      content:    { status: 'running', score: null, findings: [], startedAt: new Date().toISOString() },
+      backlink:   { status: 'running', score: null, findings: [], startedAt: new Date().toISOString() },
+      aeo:        { status: 'running', score: null, findings: [], startedAt: new Date().toISOString() },
+      local:      { status: 'running', score: null, findings: [], startedAt: new Date().toISOString() },
+    },
+    quickWins: [], actionPlan: [], executiveSummary: '',
+  };
+  seoAudits.push(audit);
+  broadcast({ event: 'seo_audit_started', data: { id: auditId, domain: audit.domain, source: 'prospect' } });
+  logActivity('leads', `Prospect audit started: ${p.name} (${audit.domain})`, { auditId, actor: reqActor(req) });
+  runRealSeoAudit(audit, auditId).catch((e) => {
+    appendLog(`[prospect-audit] failed: ${e.message}`);
+    finalizeSeoAudit(audit, auditId, { compositeScore: 0, summary: 'Audit encountered an error. Please try again.' });
+  });
+  res.json({ ok: true, auditId, domain: audit.domain });
+});
+
 // Ingest selected prospects into the CRM. Email-bearing prospects become contacts (source
 // 'gmaps-prospect'); the rest can't (the CRM keys on email) — they stay in the run list with
 // phone/address for call-first outreach, and we tell the caller exactly what happened.
@@ -9590,6 +9630,7 @@ app.post('/api/seo/free-audit', heavyLimiter, async (req, res) => {
       content:    { status: 'running', score: null, findings: [], startedAt: new Date().toISOString() },
       backlink:   { status: 'running', score: null, findings: [], startedAt: new Date().toISOString() },
       aeo:        { status: 'running', score: null, findings: [], startedAt: new Date().toISOString() },
+      local:      { status: 'running', score: null, findings: [], startedAt: new Date().toISOString() },
     },
     quickWins: [],
     actionPlan: [],
@@ -9905,7 +9946,7 @@ async function runRealSeoAudit(audit, auditId) {
   const domain = audit.domain;
   const location = settings.seo.default_location || 'United States';
   const language = settings.seo.default_language || 'en';
-  const agentNames = ['keyword', 'technical', 'competitor', 'content', 'backlink', 'aeo'];
+  const agentNames = ['keyword', 'technical', 'competitor', 'content', 'backlink', 'aeo', 'local'];
 
   // Run all agents in parallel (AEO is zero-token: readability + AI-crawler check)
   const results = await Promise.allSettled([
@@ -9915,13 +9956,15 @@ async function runRealSeoAudit(audit, auditId) {
     runContentAgent(domain),
     runBacklinkAgent(domain),
     runAeoAgent(domain),
+    runLocalAgent(audit, location),
   ]);
 
   // Process results
   results.forEach((result, i) => {
     const name = agentNames[i];
     if (result.status === 'fulfilled' && result.value) {
-      audit.agents[name] = { ...audit.agents[name], ...result.value, status: 'complete', completedAt: new Date().toISOString() };
+      const applicable = result.value.applicable !== false; // local agent may not apply to non-local sites
+      audit.agents[name] = { ...audit.agents[name], ...result.value, status: applicable ? 'complete' : 'skipped', completedAt: new Date().toISOString() };
     } else {
       audit.agents[name].status = 'error';
       audit.agents[name].score = 0;
@@ -9946,6 +9989,31 @@ async function runRealSeoAudit(audit, auditId) {
     compositeScore: validScores.length ? Math.round(validScores.reduce((a, b) => a + b, 0) / validScores.length) : 0,
   });
   logActivity('seo', `SEO audit complete (real): ${audit.domain} — score ${audit.compositeScore}/100`, { auditId });
+}
+
+// --- Local SEO Agent (Google Business Profile + local-pack) — the 7th audit dimension ---
+// Uses DataForSEO Business Data + Maps SERP (no scraping). Business identity is the prospect record
+// carried through from prospecting (audit.localInput) when present — reliable — else a best-effort
+// lookup by a domain-derived brand. Non-local sites with no GBP return applicable:false and are
+// excluded from the composite + lead email. DataForSEO-only (no LLM), so safe on the free path.
+const localSeo = require('./lib/leads/local-seo');
+async function runLocalAgent(audit, location) {
+  if (!settings.seo.dataforseo_login || !settings.seo.dataforseo_password) {
+    return { applicable: false, score: null, findings: [{ severity: 'info', issue: 'Local SEO check needs DataForSEO credentials', recommendation: 'Add DataForSEO in Settings → SEO Agency to include Google Business Profile analysis.' }] };
+  }
+  try {
+    const r = await localSeo.analyzeLocal({
+      domain: audit.domain,
+      keyword: audit.localInput?.category || audit.localInput?.keyword || '',
+      location,
+      prospect: audit.localInput || null,
+      deps: { dfsRequest },
+    });
+    if (r.local) audit.local = r.local; // structured GBP snapshot for the report/email
+    return r;
+  } catch (e) {
+    return { applicable: false, score: null, findings: [{ severity: 'medium', issue: `Local SEO analysis error: ${e.message}`, recommendation: 'Retry the audit.' }] };
+  }
 }
 
 // --- AEO Agent (deterministic, ZERO-token): AI Readiness score + AI-crawler access ---
@@ -10327,6 +10395,11 @@ function generateExecutiveSummary(audit) {
 
 function generateQuickWins(audit) {
   const wins = [];
+  // Local businesses: a weak/absent Google Business Profile is the highest-leverage fix — lead with it.
+  const local = audit.agents.local;
+  if (local && local.applicable !== false && typeof local.score === 'number' && local.score < 60) {
+    wins.push({ priority: 0, action: 'Complete & optimize the Google Business Profile (hours, photos, category, reviews)', time: '30 min', impact: 'high' });
+  }
   if (audit.agents.technical.score < 70) wins.push({ priority: 1, action: 'Fix crawler blocking rules in Cloudflare/server config', time: '15 min', impact: 'high' });
   if (audit.agents.technical.score < 80) wins.push({ priority: 2, action: 'Submit updated XML sitemap to Google Search Console', time: '10 min', impact: 'medium' });
   if (audit.agents.content.score < 60) wins.push({ priority: 3, action: 'Add unique meta descriptions to all service pages', time: '30 min', impact: 'medium' });

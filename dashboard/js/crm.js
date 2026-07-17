@@ -104,18 +104,29 @@ function renderProspects(run) {
       <td style="padding:6px;font-size:12px;">${escapeHtml(p.phone || '—')}</td>
       <td style="padding:6px;font-size:12px;">${p.email ? escapeHtml(p.email) : '<span style="color:#666;">call-first</span>'}</td>
       <td style="padding:6px;"><span title="${escapeHtml((p.reasons || []).join(' · '))}" style="font-weight:700;color:${p.score >= 70 ? '#22c55e' : p.score >= 45 ? '#f59e0b' : '#888'};">${p.score}</span></td>
+      <td style="padding:6px;">${p.website && !/facebook|instagram|linktr/i.test(p.website) ? `<button class="btn btn-sm" onclick="auditProspect('${escapeHtml(p.placeId)}')" title="Run a full SEO + Local audit on this site (includes their Google Business Profile)">Audit</button>` : ''}</td>
     </tr>`;
   }).join('');
   box.innerHTML = `
     <div style="font-size:12px;color:#888;margin-bottom:8px;">${run.count} found &middot; <b style="color:#22c55e;">${run.noWebsite} without websites</b> &middot; ${run.withEmail} with emails &middot; via ${escapeHtml(run.provider)}. Score = managed-website fit (hover for reasons).</div>
     <div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;font-size:13px;">
-      <thead><tr style="text-align:left;color:#888;font-size:11px;text-transform:uppercase;"><th style="padding:6px;"></th><th style="padding:6px;">Business</th><th style="padding:6px;">Rating</th><th style="padding:6px;">Website</th><th style="padding:6px;">Phone</th><th style="padding:6px;">Email</th><th style="padding:6px;">Fit</th></tr></thead>
+      <thead><tr style="text-align:left;color:#888;font-size:11px;text-transform:uppercase;"><th style="padding:6px;"></th><th style="padding:6px;">Business</th><th style="padding:6px;">Rating</th><th style="padding:6px;">Website</th><th style="padding:6px;">Phone</th><th style="padding:6px;">Email</th><th style="padding:6px;">Fit</th><th style="padding:6px;"></th></tr></thead>
       <tbody>${rows}</tbody>
     </table></div>
     <div style="display:flex;gap:8px;margin-top:10px;align-items:center;">
       <button class="btn btn-sm btn-primary" onclick="ingestProspects()">Add selected to CRM</button>
       <span style="font-size:11px;color:#888;">Only prospects with an email become contacts; the rest stay here as call-first leads. Nothing is auto-emailed.</span>
     </div>`;
+}
+
+async function auditProspect(placeId) {
+  if (!prospectLastRun) return;
+  if (!confirm('Run a full SEO + Local audit on this business’s site? It will appear in the SEO view when done, ready to email them.')) return;
+  try {
+    const r = await fetchJSON('/api/prospects/audit', { method: 'POST', body: { runId: prospectLastRun.id, placeId } });
+    if (r && r.ok) alert(`Audit started for ${r.domain}. Watch the SEO Agency view — when it completes, use "Email to Lead" to send them the report.`);
+    else alert(r.error || 'Could not start the audit');
+  } catch (e) { alert(`Could not start the audit: ${e.message}`); }
 }
 
 async function ingestProspects() {
