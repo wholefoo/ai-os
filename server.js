@@ -8651,14 +8651,33 @@ async function applyProposal(proposal) {
       }
 
       case 'model-upgrade': {
-        // Update model ID in the config — only touches the OPUS_MODEL constant
+        // server.js is in BLOCKED_PATHS, and this is its one deliberate, narrow exception (the
+        // OPUS_MODEL constant is a "config section"). content-refresh checks BLOCKED_PATHS before
+        // writing; this case previously didn't check anything at all before overwriting the whole
+        // file. Rather than the blanket BLOCKED_PATHS.some() check (which would block this case
+        // entirely, since its target literally IS server.js), verify the resulting diff is scoped
+        // to exactly that one line before allowing the write — and use a replacer FUNCTION so the
+        // LLM-supplied model id can never be interpreted as a $-replacement pattern.
         if (proposal.diff && proposal.diff.includes('const OPUS_MODEL')) {
           const newModelMatch = proposal.diff.match(/const OPUS_MODEL\s*=\s*'([^']+)'/);
           if (newModelMatch) {
+            const newModel = newModelMatch[1];
+            const modelLineRe = /const OPUS_MODEL\s*=\s*'[^']+'/;
             const serverContent = fs.readFileSync(path.join(BASE, 'server.js'), 'utf-8');
-            const updated = serverContent.replace(/const OPUS_MODEL\s*=\s*'[^']+'/, `const OPUS_MODEL = '${newModelMatch[1]}'`);
+            if (!modelLineRe.test(serverContent)) {
+              results.steps.push({ action: 'model-update', blocked: true, reason: 'OPUS_MODEL constant not found in server.js — refusing to write' });
+              break;
+            }
+            const updated = serverContent.replace(modelLineRe, () => `const OPUS_MODEL = '${newModel}'`);
+            const beforeLines = serverContent.split('\n');
+            const afterLines = updated.split('\n');
+            const changedLines = beforeLines.filter((l, i) => l !== afterLines[i]).length;
+            if (afterLines.length !== beforeLines.length || changedLines !== 1) {
+              results.steps.push({ action: 'model-update', blocked: true, reason: 'Diff would change more than the OPUS_MODEL line — refusing to write to the protected file' });
+              break;
+            }
             fs.writeFileSync(path.join(BASE, 'server.js'), updated);
-            results.steps.push({ action: 'model-update', newModel: newModelMatch[1], success: true });
+            results.steps.push({ action: 'model-update', newModel, success: true });
           }
         } else {
           results.steps.push({ action: 'model-update', warning: 'No model ID found in diff — provide diff with const OPUS_MODEL line' });
