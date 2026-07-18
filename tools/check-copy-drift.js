@@ -30,6 +30,7 @@ const FEATURES = [
   { name: 'appointment booking',           pattern: /appointment/i },
   { name: 'CRM pipeline kanban',           pattern: /kanban|pipeline board/i },
   { name: 'Google Maps prospecting',       pattern: /local prospecting|maps prospect|business.profile prospect|prospecting/i },
+  { name: 'Local SEO / GBP audit',         pattern: /local[- ]pack|GBP audit|google business profile.{0,40}audit|audit.{0,40}google business profile/i },
 ];
 
 const SURFACES = ['README.md', 'dashboard/index.html'];

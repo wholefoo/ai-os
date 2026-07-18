@@ -64,8 +64,9 @@ Each virtual employee maps to an AI agent with a specific model tier, can receiv
 - **Cross-Model Review** — A second-model review seat (OpenAI Codex / GPT-5.6) independently checks code and findings for verification diversity — distinct from the Claude work tiers, never used for production work
 
 ### SEO + AEO Agency
-- **Automated SEO Audits** — 5 parallel sub-agents (Keyword, Technical, Competitor, Content, Backlink)
+- **Automated SEO Audits** — 7 parallel sub-agents (Keyword, Technical, Competitor, Content, Backlink, AEO, Local SEO)
 - **AEO Readiness (Answer-Engine Optimization)** — Optimizes a site to be ready for AI answer engines (ChatGPT, Perplexity, Google AI Overviews) with a deterministic 8-dimension readiness score and multi-model consensus. AEO is readiness/optimization, not a guarantee of citations or rankings.
+- **Local SEO / Google Business Profile Audit** — Scores GBP completeness (hours, photos, description, category, claim status), review signals, and local-pack ranking for the business's niche keyword — the dimension that matters most for local businesses. Runs automatically when auditing a domain sourced from Local Prospecting (using the exact listing already in hand); non-local sites without a GBP are excluded from the composite rather than scored as a misleading zero.
 - **Composite Scoring** — Site health score out of 100 with severity-coded findings
 - **Post-Audit Actions** — Content brief generation, 12-week content calendar, meta tag optimizer
 - **DataForSEO Integration** — Real keyword, backlink, and competitor data
@@ -363,8 +364,8 @@ remains the default for all agent work.
 
 ### SEO Agency Sub-Agents
 
-The 5 SEO sub-agents (Keyword, Technical, Competitor, Content, Backlink) are part of the
-Professional tier above — grouped here for the SEO audit pipeline.
+The 7 SEO sub-agents (Keyword, Technical, Competitor, Content, Backlink, AEO, Local SEO) are part
+of the Professional tier above — grouped here for the SEO audit pipeline.
 
 ## API
 
