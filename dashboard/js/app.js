@@ -2779,6 +2779,16 @@ function renderPipelineRuns(runs) {
     else if (hasCompletedStage) runActions.push(`<button class="btn btn-sm" onclick="exportPipelineRun('${run.id}')">Export Report</button>`);
     const runActionsHtml = runActions.length ? `<div class="pipeline-run-actions">${runActions.join('')}</div>` : '';
 
+    // The gate stage's own output — what a human is actually being asked to approve — was never
+    // shown anywhere; only a bare "Approve Gate" button. Surface it inline so approval isn't blind.
+    const gateStage = stages.find((s) => s.status === 'awaiting_approval');
+    const gateReviewHtml = gateStage ? `
+      <div class="pipeline-gate-review">
+        <div class="pipeline-gate-review-label">Reviewing: ${escapeHtml(gateStage.id)} (${escapeHtml(gateStage.agent)})</div>
+        <pre class="pipeline-gate-review-content">${escapeHtml(gateStage.output || '(no output)')}</pre>
+      </div>
+    ` : '';
+
     return `
       <div class="pipeline-run">
         <div class="pipeline-run-header">
@@ -2791,6 +2801,7 @@ function renderPipelineRuns(runs) {
           ${run.completedAt ? `<span>Completed: ${timeAgo(run.completedAt)}</span>` : ''}
           <span>Stages: ${stages.filter(s => s.status === 'completed').length}/${stages.length}</span>
         </div>
+        ${gateReviewHtml}
         ${runActionsHtml}
       </div>
     `;
