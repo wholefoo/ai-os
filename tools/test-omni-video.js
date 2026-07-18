@@ -47,7 +47,8 @@ const { VEO_TIERS, VIDEO_FILE_RE, priceFor, submitGeneration, pollOperation, dow
   assert(lastReq.url.includes('key=KEY'), 'submitGeneration passes the API key as a query param (matches callGemini convention)');
   const body = JSON.parse(lastReq.opts.body);
   assert(body.instances[0].prompt === 'a cat playing piano', 'request body carries the prompt');
-  assert(body.parameters.resolution === '1080p' && body.parameters.durationSeconds === '6' && body.parameters.aspectRatio === '9:16', `request body carries resolved parameters (${JSON.stringify(body.parameters)})`);
+  // durationSeconds must be a JSON NUMBER — the live API rejects a string (verified 2026-07-18).
+  assert(body.parameters.resolution === '1080p' && body.parameters.durationSeconds === 6 && body.parameters.aspectRatio === '9:16', `request body carries resolved parameters, durationSeconds as a number (${JSON.stringify(body.parameters)})`);
 
   // --- submitGeneration(): non-ok response surfaces the API error message
   global.fetch = async () => ({ ok: false, status: 400, json: async () => ({ error: { message: 'Invalid prompt' } }) });
