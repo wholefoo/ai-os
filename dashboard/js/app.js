@@ -2645,6 +2645,7 @@ function renderSocialFindings(findings) {
     <div class="social-finding">
       <div class="social-finding-header">
         <span class="social-finding-title">${escapeHtml(f.title)}</span>
+        ${f.demo ? '<span class="social-source-tag" style="background:rgba(245,158,11,0.15);color:#f59e0b;border-color:rgba(245,158,11,0.4);" title="Illustrative sample data, not a real post">Sample</span>' : ''}
         <span class="social-source-tag" data-source="${f.source}">${f.source}</span>
       </div>
       <div class="social-finding-author">${escapeHtml(f.author)}</div>
