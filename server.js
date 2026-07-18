@@ -845,7 +845,7 @@ app.get('/api/onboarding/status', requireAdmin, (req, res) => {
     { id: 'hq-visit', label: 'Visit Virtual Corporate HQ', done: true }, // always done once they see this
     { id: 'settings', label: 'Review your Settings page', done: !!(settings.ai.anthropic_api_key) },
     { id: 'grok-key', label: 'Add Grok API key for real-time search', done: !!settings.ai.xai_api_key },
-    { id: 'notifications', label: 'Set up Telegram or Slack notifications', done: !!(settings.notifications.telegram_bot_token || settings.notifications.slack_webhook_url) },
+    { id: 'notifications', label: 'Set up Telegram or Slack notifications', done: !!(telegramCreds().token || settings.notifications.slack_webhook_url) },
   ];
 
   const completed = steps.filter(s => s.done).length;
@@ -8015,8 +8015,8 @@ app.get('/api/settings', requireAdmin, (req, res) => {
       distribution_repo: settings.self_improve.distribution_repo || 'wholefoo/ai-os',
     },
     notifications: {
-      telegram_bot_token: { value: maskKey(settings.notifications.telegram_bot_token), configured: !!settings.notifications.telegram_bot_token },
-      telegram_chat_id: settings.notifications.telegram_chat_id,
+      telegram_bot_token: { value: maskKey(telegramCreds().token), configured: !!telegramCreds().token },
+      telegram_chat_id: telegramCreds().chatId,
       slack_webhook_url: { value: maskKey(settings.notifications.slack_webhook_url), configured: !!settings.notifications.slack_webhook_url },
     },
     automation: {
@@ -8146,9 +8146,10 @@ app.post('/api/settings/test/:service', requireAdmin, async (req, res) => {
       res.json({ ok: false, message: `Connection failed: ${e.message}` });
     }
   } else if (service === 'telegram') {
-    if (!settings.notifications.telegram_bot_token) return res.json({ ok: false, message: 'No bot token configured' });
+    const telegramToken = telegramCreds().token;
+    if (!telegramToken) return res.json({ ok: false, message: 'No bot token configured' });
     try {
-      const url = `https://api.telegram.org/bot${settings.notifications.telegram_bot_token}/getMe`;
+      const url = `https://api.telegram.org/bot${telegramToken}/getMe`;
       const r = await fetch(url);
       const data = await r.json();
       res.json({ ok: data.ok, message: data.ok ? `Bot: @${data.result.username}` : (data.description || 'Invalid token') });
@@ -8791,9 +8792,20 @@ async function applyProposal(proposal) {
 // Self-Improving routes extracted to commercial/modules/self-improving/index.js
 
 // --- Telegram Bot Integration ---
+// loadState() only backfills a settings.json key that's entirely MISSING, never one that already
+// exists as an empty string — so if settings.json was first written before .env had
+// TELEGRAM_BOT_TOKEN/TELEGRAM_CHAT_ID set, the real env values silently never take effect and every
+// call below no-ops forever. Fall back to env whenever the persisted value is empty so a real token
+// works without requiring a manual re-save in Settings.
+function telegramCreds() {
+  return {
+    token: settings.notifications?.telegram_bot_token || process.env.TELEGRAM_BOT_TOKEN || '',
+    chatId: settings.notifications?.telegram_chat_id || process.env.TELEGRAM_CHAT_ID || '',
+  };
+}
+
 async function sendTelegramMessage(text) {
-  const token = settings.notifications?.telegram_bot_token;
-  const chatId = settings.notifications?.telegram_chat_id;
+  const { token, chatId } = telegramCreds();
   if (!token || !chatId) return;
 
   try {
@@ -8808,8 +8820,7 @@ async function sendTelegramMessage(text) {
 }
 
 async function sendTelegramApproval(proposal) {
-  const token = settings.notifications?.telegram_bot_token;
-  const chatId = settings.notifications?.telegram_chat_id;
+  const { token, chatId } = telegramCreds();
   if (!token || !chatId) return;
 
   const riskEmoji = proposal.risk === 'high' ? '🔴' : proposal.risk === 'medium' ? '🟡' : '🟢';
