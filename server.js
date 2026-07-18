@@ -7165,7 +7165,7 @@ app.get('/api/golden-loop/stats', (req, res) => {
     syncing: l.filter(x => x.status === 'syncing').length,
     errors: l.filter(x => x.status === 'error').length,
     totalOutputs: l.reduce((s, x) => s + x.outputs, 0),
-    avgAccuracy: Math.round(l.reduce((s, x) => s + x.accuracy, 0) / l.length),
+    avgAccuracy: l.length ? Math.round(l.reduce((s, x) => s + x.accuracy, 0) / l.length) : 0,
     totalDataSources: l.reduce((s, x) => s + x.dataSources.length, 0),
   });
 });
