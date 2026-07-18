@@ -3644,7 +3644,13 @@ function renderGrokStreamResult(data) {
 
   const confClass = data.confidence >= 0.85 ? 'high' : data.confidence >= 0.7 ? 'medium' : 'low';
 
-  let html = `<div>${escapeHtml(data.response)}</div>`;
+  // A real xAI call was attempted and failed (auth, rate-limit, outage, etc.) — the response below
+  // is the illustrative fallback, not a genuine answer. Without this, it renders identically to a
+  // real result, sources and confidence score included.
+  let html = data.apiFailed
+    ? `<div style="padding:10px 14px;margin-bottom:10px;background:rgba(245,158,11,0.1);border:1px solid rgba(245,158,11,0.35);border-radius:8px;font-size:13px;color:var(--text-secondary,var(--warning));">⚠️ The real Grok API call failed (${escapeHtml(data.apiErrorMessage || 'unknown error')}) — the response below is an illustrative example, not a real answer.</div>`
+    : '';
+  html += `<div>${escapeHtml(data.response)}</div>`;
 
   if (data.sources && data.sources.length > 0) {
     html += `<div class="grok-stream-sources">
