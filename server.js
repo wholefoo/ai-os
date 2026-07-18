@@ -6092,6 +6092,50 @@ app.post('/api/automations/trigger', requireAdmin, (req, res) => {
   res.json(entry);
 });
 
+// Resolve ${ENV_VAR} placeholders against process.env — automation-registry.yaml uses this for
+// base_url, auth_token, and the webhook platform's endpoint, so real secrets never live in the
+// checked-in registry file.
+function resolveAutomationVar(str) {
+  if (typeof str !== 'string') return str;
+  return str.replace(/\$\{([A-Z0-9_]+)\}/g, (_, name) => process.env[name] || '');
+}
+
+// Real dispatch: builds the actual URL from the registry + resolved env vars and makes a real HTTP
+// call. Throws with a clear message (missing config, non-2xx response, timeout) rather than ever
+// fabricating a success.
+async function dispatchAutomation(entry) {
+  const registry = loadAutomationRegistry();
+  const actionDef = (registry.actions || []).find(a => a.id === entry.action);
+  if (!actionDef) throw new Error(`Action "${entry.action}" no longer exists in the registry`);
+  const platform = (registry.platforms || {})[entry.platform] || {};
+
+  const endpoint = resolveAutomationVar(actionDef.endpoint || '');
+  const baseUrl = resolveAutomationVar(platform.base_url || '');
+  // The webhook platform's own "endpoint" field IS the full URL (e.g. ${TEAM_WEBHOOK_URL}); n8n
+  // and zapier compose base_url + endpoint path.
+  const url = /^https?:\/\//.test(endpoint) ? endpoint : `${baseUrl}${endpoint}`;
+  if (!/^https?:\/\//.test(url)) {
+    throw new Error(`No configured URL for platform "${entry.platform}" — set the required env var(s) (e.g. N8N_WEBHOOK_BASE, TEAM_WEBHOOK_URL) and restart`);
+  }
+
+  const headers = { 'Content-Type': 'application/json' };
+  if (platform.auth_type === 'header' && platform.auth_header) {
+    const token = resolveAutomationVar(platform.auth_token || '');
+    if (token) headers[platform.auth_header] = token;
+  }
+
+  const httpRes = await fetchWithTimeout(url, {
+    method: actionDef.method || 'POST',
+    headers,
+    body: JSON.stringify(entry.payload || {}),
+  }, platform.timeout || 15000);
+
+  const text = await httpRes.text();
+  let body; try { body = JSON.parse(text); } catch { body = text.slice(0, 500); }
+  if (!httpRes.ok) throw new Error(`${entry.platform} responded ${httpRes.status}: ${typeof body === 'string' ? body : JSON.stringify(body)}`);
+  return { code: httpRes.status, body };
+}
+
 app.put('/api/automations/:id/approve', requireAdmin, (req, res) => {
   const entry = automationLog.find(a => a.id === req.params.id);
   if (!entry) return res.status(404).json({ error: 'Not found' });
@@ -6101,17 +6145,22 @@ app.put('/api/automations/:id/approve', requireAdmin, (req, res) => {
   broadcast({ event: 'automation_update', data: entry });
   broadcast({ event: 'fleet_update', data: { agent: 'automator', status: 'running' } });
 
-  // Simulate execution
-  setTimeout(() => {
+  dispatchAutomation(entry).then((response) => {
     entry.status = 'completed';
-    entry.response = { code: 200, execution_id: `${entry.platform}-exec-${Date.now()}` };
+    entry.response = response;
     entry.completedAt = new Date().toISOString();
-
     logActivity('automation', `Automation completed: ${entry.action} via ${entry.platform}`);
-    appendLog(`AUTOMATION_COMPLETED: ${entry.action} -> ${entry.response.execution_id}`);
+    appendLog(`AUTOMATION_COMPLETED: ${entry.action} -> HTTP ${response.code}`);
+  }).catch((e) => {
+    entry.status = 'failed';
+    entry.error = e.message;
+    entry.completedAt = new Date().toISOString();
+    logActivity('automation', `Automation failed: ${entry.action} via ${entry.platform} — ${e.message}`);
+    appendLog(`AUTOMATION_FAILED: ${entry.action} -> ${e.message}`);
+  }).finally(() => {
     broadcast({ event: 'fleet_update', data: { agent: 'automator', status: 'idle' } });
     broadcast({ event: 'automation_update', data: entry });
-  }, 2500);
+  });
 
   res.json(entry);
 });

@@ -2559,13 +2559,16 @@ function renderAutomationHistory(history) {
           <button class="btn btn-sm btn-secondary" onclick="rejectAutomation('${h.id}')">Reject</button>
         </div>`
       : '';
+    const terminal = ['completed', 'failed', 'rejected'];
+    const dotClass = h.status === 'completed' ? 'idle' : h.status === 'pending_approval' ? 'waiting' : terminal.includes(h.status) ? 'error' : 'running';
     return `
       <div class="automation-history-item">
         <div class="automation-history-left">
-          <span class="fleet-dot ${h.status === 'completed' ? 'idle' : h.status === 'pending_approval' ? 'waiting' : 'running'}"></span>
+          <span class="fleet-dot ${dotClass}"></span>
           <div>
             <div class="automation-history-action">${escapeHtml(h.action)}</div>
             <div class="automation-history-agent">${h.platform} · triggered by ${h.triggeredBy}</div>
+            ${h.status === 'failed' && h.error ? `<div style="font-size:11px;color:var(--error,#ef4444);margin-top:2px;">${escapeHtml(h.error)}</div>` : ''}
           </div>
         </div>
         <span class="automation-history-status ${h.status}">${h.status.replace(/_/g, ' ')}</span>
