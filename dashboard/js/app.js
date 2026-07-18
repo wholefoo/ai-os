@@ -4039,10 +4039,15 @@ function renderKnowledgeGraph(sources) {
 
 async function knowledgeAutoCategorize() {
   const result = await fetchJSON('/api/knowledge-graph/auto-categorize', { method: 'POST', body: {} });
-  if (result) {
-    addTimelineEvent('knowledge', `Auto-categorized ${result.processed || 0} sources`);
-    loadKnowledge();
+  if (!result) return;
+  // Ingestion runs one real agent call per new source and reports progress over the WebSocket
+  // (case 'knowledge_update' already refreshes this view live) — this POST only confirms the scan.
+  if (result.status === 'complete' && result.processed === 0) {
+    addTimelineEvent('knowledge', result.message || 'No new sources to categorize.');
+  } else {
+    addTimelineEvent('knowledge', `Auto-categorization started — ${result.queued || 0} new source(s) queued`);
   }
+  loadKnowledge();
 }
 
 // Setup knowledge event listeners

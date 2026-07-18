@@ -10661,6 +10661,7 @@ if (commercial.registerRoutes) {
     broadcast, logActivity, appendLog,
     // Persistence & utilities
     saveState, loadState, uuidv4, validateBody, fs, path,
+    extractJson: webStudioPipeline.extractJson,
     // Config & constants
     ACTIVE_TIER, COMMERCIAL_FEATURES, PLAN_LEVELS, DEMO_MODE, BASE,
     COST_RATES, MASTER_TENANT_ID, STATE_DIR, MAGENT_DIR, CLAUDE_DIR,
