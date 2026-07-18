@@ -19,6 +19,7 @@
     "tools/test-audit-email.js",
     "tools/test-local-seo.js",
     "tools/test-pipeline-reports.js",
+    "tools/test-omni-video.js",
     "ecosystem.config.js",
     "deploy/n8n-ecosystem.config.example.js",
     "dashboard/js/*.js"

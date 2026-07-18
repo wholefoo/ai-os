@@ -8713,10 +8713,18 @@ function renderOmniResult(type, result) {
   const typeIcons = { video: '&#127909;', image: '&#128444;', audio: '&#127911;', thumbnail: '&#128247;', 'social-clip': '&#128241;' };
   const icon = typeIcons[type] || '&#10024;';
 
+  // videoUrl is rendered as an actual player below, not as a raw-text detail row.
   const details = Object.entries(result)
-    .filter(([k]) => !['prompt', 'model', 'watermark', 'generatedAt', 'preview'].includes(k))
+    .filter(([k]) => !['prompt', 'model', 'watermark', 'generatedAt', 'preview', 'videoUrl'].includes(k))
     .map(([k, v]) => `<div class="omni-result-detail"><span class="omni-detail-key">${escapeHtml(k.replace(/([A-Z])/g, ' $1').trim())}</span><span class="omni-detail-val">${escapeHtml(v)}</span></div>`)
     .join('');
+
+  // Only the real Veo path sets videoUrl — a genuine generated file, servable/seekable via
+  // /api/media/videos/:file (Range-request support comes from res.sendFile on the backend).
+  const videoHtml = result.videoUrl ? `
+    <video class="omni-result-video" controls preload="metadata" src="${escapeHtml(result.videoUrl)}"></video>
+    <div class="pipeline-run-actions"><a class="btn btn-sm btn-primary" href="${escapeHtml(result.videoUrl)}" download>&#11015; Download Video</a></div>
+  ` : '';
 
   el.innerHTML = `
     <div class="omni-result-card">
@@ -8728,6 +8736,7 @@ function renderOmniResult(type, result) {
         </div>
         <span class="omni-result-badge">${escapeHtml(result.model)}</span>
       </div>
+      ${videoHtml}
       <div class="omni-result-details">${details}</div>
       <div class="omni-result-preview">${escapeHtml(result.preview)}</div>
       <div class="omni-result-meta">

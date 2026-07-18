@@ -6467,6 +6467,11 @@ const pipelineRuns = new Map();
 const pipelineReports = require('./lib/pipeline-reports');
 const PIPELINE_REPORTS_DIR = path.join(BASE, 'data', 'pipeline-reports');
 
+// Real Veo video generation (Gemini Developer API) — used by the Creative Studio commercial
+// module's Omni "video" generation type, which previously only faked results. See lib/omni-video.js.
+const omniVideo = require('./lib/omni-video');
+const MEDIA_VIDEOS_DIR = path.join(BASE, 'data', 'media-videos');
+
 // Shared tail for both ways a run reaches 'completed' (natural end of runPipelineStages, and the
 // approve route finishing the last gated stage) — bookkeeping + the docx export. Fire-and-forget
 // from the caller's perspective (matches the existing fire-and-forget style of pipeline execution
@@ -10592,7 +10597,7 @@ if (commercial.registerRoutes) {
     generateYTVideoInfo, generateYTTranscript, generateYTFrames,
     generateYTVisualAnalysis, generateYTSummary, generateYTInsights, runRealYouTubeAnalysis,
     // Creative helpers
-    generateOmniResult,
+    generateOmniResult, omniVideo, MEDIA_VIDEOS_DIR,
     // Self-improving helpers
     sendTelegramApproval, sendTelegramMessage, sendSlackApproval, sendSlackMessage, applyProposal,
   });

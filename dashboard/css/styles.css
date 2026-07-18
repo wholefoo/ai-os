@@ -6617,6 +6617,14 @@ body {
   font-weight: 600;
   color: var(--text-primary);
 }
+.omni-result-video {
+  display: block;
+  width: 100%;
+  max-height: 480px;
+  border-radius: var(--radius);
+  background: #000;
+  margin-bottom: 10px;
+}
 .omni-result-preview {
   padding: 10px;
   background: var(--bg-secondary);
