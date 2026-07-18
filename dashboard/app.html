@@ -588,6 +588,14 @@
               <div class="empty-state">No pipeline runs yet. Select a pipeline above to execute.</div>
             </div>
           </section>
+
+          <section class="panel" style="margin-top: 20px;">
+            <h3 class="panel-title">Pipeline Reports</h3>
+            <p style="font-size:12px;color:#888;margin:4px 0 12px;">Every completed run is automatically saved here as a Word document — run history itself is not kept across a restart, so this is the durable copy of your results. Download or delete below.</p>
+            <div id="pipelineReports">
+              <div class="empty-state">No reports yet.</div>
+            </div>
+          </section>
         </div>
 
         <!-- Identity View -->
@@ -2836,7 +2844,7 @@
     </div>
   </div>
 
-  <script src="js/app.js?v=62"></script>
+  <script src="js/app.js?v=63"></script>
   <script src="https://cdn.jsdelivr.net/npm/monaco-editor@0.52.2/min/vs/loader.js"></script>
   <script src="js/web-studio.js?v=16"></script>
   <script src="js/crm.js?v=9"></script>

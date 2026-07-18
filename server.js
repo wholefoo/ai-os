@@ -6461,6 +6461,30 @@ app.post('/api/contexts', requireAdmin, (req, res) => {
 
 const PIPELINE_DIR = path.join(CLAUDE_DIR, 'pipelines');
 const pipelineRuns = new Map();
+// Run RESULTS (this Map) are in-memory only and lost on restart — pipeline-reports.js is the
+// durability fix: every completed run is rendered to a real .docx the moment it finishes, so the
+// results survive regardless of what happens to this process afterward. See completePipelineRun.
+const pipelineReports = require('./lib/pipeline-reports');
+const PIPELINE_REPORTS_DIR = path.join(BASE, 'data', 'pipeline-reports');
+
+// Shared tail for both ways a run reaches 'completed' (natural end of runPipelineStages, and the
+// approve route finishing the last gated stage) — bookkeeping + the docx export. Fire-and-forget
+// from the caller's perspective (matches the existing fire-and-forget style of pipeline execution
+// itself); a failed export never fails the pipeline run, it just gets logged.
+async function completePipelineRun(run) {
+  run.status = 'completed';
+  run.completedAt = new Date().toISOString();
+  logActivity('pipeline', `Pipeline completed: ${run.pipeline} ($${run.cost || 0})`, { runId: run.id });
+  appendLog(`PIPELINE_COMPLETE: ${run.pipeline} -> ${run.id} ($${run.cost || 0})`);
+  try {
+    const meta = await pipelineReports.saveRunDocx(run, PIPELINE_REPORTS_DIR);
+    run.reportFile = meta.file;
+    appendLog(`[pipeline-reports] wrote ${meta.file}`);
+  } catch (e) {
+    appendLog(`[pipeline-reports] export failed for ${run.id}: ${e.message}`);
+  }
+  broadcast({ event: 'pipeline_update', data: run });
+}
 
 function loadPipelines() {
   if (!fs.existsSync(PIPELINE_DIR)) return [];
@@ -6582,11 +6606,7 @@ async function runPipelineStages(run, startIdx = 0) {
     }
   }
 
-  run.status = 'completed';
-  run.completedAt = new Date().toISOString();
-  logActivity('pipeline', `Pipeline completed: ${run.pipeline} ($${run.cost || 0})`, { runId: run.id });
-  appendLog(`PIPELINE_COMPLETE: ${run.pipeline} -> ${run.id} ($${run.cost || 0})`);
-  broadcast({ event: 'pipeline_update', data: run });
+  await completePipelineRun(run);
 }
 
 app.get('/api/pipelines', (req, res) => {
@@ -6636,12 +6656,50 @@ app.post('/api/pipelines/runs/:id/approve', requireAdmin, (req, res) => {
       broadcast({ event: 'pipeline_update', data: run });
     });
   } else {
-    run.status = 'completed';
-    run.completedAt = new Date().toISOString();
-    broadcast({ event: 'pipeline_update', data: run });
+    // The approved stage was the last one — fire-and-forget completion (same style as
+    // runPipelineStages' own callers): don't make the HTTP response wait on the docx export.
+    completePipelineRun(run).catch((e) => appendLog(`[pipeline] completion error: ${e.message}`));
   }
 
   res.json(run);
+});
+
+// Manual/on-demand export — refresh a completed run's report, or snapshot an in-progress/failed
+// run's completed-so-far stages (useful when a later stage failed but earlier work is worth
+// keeping). Requires at least one completed stage with output.
+app.post('/api/pipelines/runs/:id/export', requireAdmin, async (req, res) => {
+  const run = pipelineRuns.get(req.params.id);
+  if (!run) return res.status(404).json({ error: 'Run not found' });
+  if (!(run.stages || []).some((s) => s.status === 'completed' && s.output)) {
+    return res.status(400).json({ error: 'This run has no completed stage output yet' });
+  }
+  try {
+    const meta = await pipelineReports.saveRunDocx(run, PIPELINE_REPORTS_DIR);
+    run.reportFile = meta.file;
+    logActivity('pipeline', `Report exported: ${run.pipeline} (${meta.file})`, { runId: run.id, actor: reqActor(req) });
+    res.json({ ok: true, report: meta });
+  } catch (e) {
+    res.status(502).json({ error: e.message });
+  }
+});
+
+// --- Pipeline Reports (durable, downloadable, deletable exports of pipeline runs) ---
+app.get('/api/pipelines/reports', requireAdmin, (req, res) => {
+  res.json({ ok: true, reports: pipelineReports.listRunReports(PIPELINE_REPORTS_DIR) });
+});
+app.get('/api/pipelines/reports/:file/download', requireAdmin, (req, res) => {
+  const name = String(req.params.file || '');
+  if (!pipelineReports.REPORT_FILE_RE.test(name)) return res.status(400).json({ error: 'invalid report filename' });
+  const full = path.join(PIPELINE_REPORTS_DIR, name);
+  if (!fs.existsSync(full)) return res.status(404).json({ error: 'report not found' });
+  res.download(full, name);
+});
+app.delete('/api/pipelines/reports/:file', requireAdmin, (req, res) => {
+  const name = String(req.params.file || '');
+  if (!pipelineReports.REPORT_FILE_RE.test(name)) return res.status(400).json({ error: 'invalid report filename' });
+  if (!pipelineReports.deleteRunReport(PIPELINE_REPORTS_DIR, name)) return res.status(404).json({ error: 'report not found' });
+  logActivity('pipeline', `Report deleted: ${name}`, { actor: reqActor(req) });
+  res.json({ ok: true, deleted: name });
 });
 
 // --- Notification System ---

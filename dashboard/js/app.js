@@ -258,6 +258,7 @@ function handleWsMessage(msg) {
     case 'pipeline_update':
       if (document.getElementById('view-pipelines').classList.contains('active')) {
         loadPipelineRuns();
+        if (msg.data && msg.data.status === 'completed') loadPipelineReports();
       }
       break;
     case 'notification':
@@ -2701,6 +2702,7 @@ async function loadPipelines() {
     fetchJSON('/api/pipelines'),
     fetchJSON('/api/pipelines/runs'),
   ]);
+  loadPipelineReports();
   renderPipelineCards(pipelines);
   renderPipelineRuns(runs);
 }
@@ -2770,11 +2772,12 @@ function renderPipelineRuns(runs) {
       `;
     }).join('');
 
-    const approveBtn = run.status === 'awaiting_approval'
-      ? `<div class="pipeline-run-actions">
-          <button class="btn btn-sm btn-success" onclick="approvePipelineGate('${run.id}')">Approve Gate</button>
-        </div>`
-      : '';
+    const hasCompletedStage = stages.some((s) => s.status === 'completed' && s.output);
+    const runActions = [];
+    if (run.status === 'awaiting_approval') runActions.push(`<button class="btn btn-sm btn-success" onclick="approvePipelineGate('${run.id}')">Approve Gate</button>`);
+    if (run.reportFile) runActions.push(`<a class="btn btn-sm btn-primary" href="/api/pipelines/reports/${encodeURIComponent(run.reportFile)}/download" download>⬇ Download Report</a>`);
+    else if (hasCompletedStage) runActions.push(`<button class="btn btn-sm" onclick="exportPipelineRun('${run.id}')">Export Report</button>`);
+    const runActionsHtml = runActions.length ? `<div class="pipeline-run-actions">${runActions.join('')}</div>` : '';
 
     return `
       <div class="pipeline-run">
@@ -2788,10 +2791,44 @@ function renderPipelineRuns(runs) {
           ${run.completedAt ? `<span>Completed: ${timeAgo(run.completedAt)}</span>` : ''}
           <span>Stages: ${stages.filter(s => s.status === 'completed').length}/${stages.length}</span>
         </div>
-        ${approveBtn}
+        ${runActionsHtml}
       </div>
     `;
   }).join('');
+}
+
+async function exportPipelineRun(runId) {
+  const r = await fetchJSON(`/api/pipelines/runs/${runId}/export`, { method: 'POST' });
+  if (r && r.error) { alert(r.error); return; }
+  loadPipelineRuns();
+  loadPipelineReports();
+}
+
+// --- Pipeline Reports (durable .docx exports — survive a restart even though run history doesn't) ---
+async function loadPipelineReports() {
+  let data;
+  try { data = await fetchJSON('/api/pipelines/reports'); } catch { return; }
+  const container = document.getElementById('pipelineReports');
+  if (!container) return;
+  const reports = (data && data.reports) || [];
+  if (!reports.length) { container.innerHTML = '<div class="empty-state">No reports yet.</div>'; return; }
+  container.innerHTML = reports.map((r) => `
+    <div style="display:flex;align-items:center;gap:12px;padding:10px 12px;border:1px solid rgba(255,255,255,.07);border-radius:10px;margin-bottom:8px;">
+      <span style="font-size:20px;">📄</span>
+      <div style="flex:1;min-width:0;">
+        <div style="font-size:13px;font-weight:600;">${escapeHtml(r.pipeline.replace(/-/g, ' '))} <span style="font-weight:400;color:#888;">(${r.stageCount ?? '?'}/${r.totalStages ?? '?'} stages &middot; ${escapeHtml(r.status)})</span></div>
+        <div style="font-size:12px;color:#999;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${r.summary ? escapeHtml(r.summary) : timeAgo(r.createdAt)}</div>
+      </div>
+      <a class="btn btn-sm btn-primary" href="/api/pipelines/reports/${encodeURIComponent(r.file)}/download" download>⬇ Download</a>
+      <button class="btn btn-sm btn-danger" onclick="deletePipelineReport('${encodeURIComponent(r.file)}')" title="Delete this report">🗑</button>
+    </div>`).join('');
+}
+
+async function deletePipelineReport(encodedFile) {
+  if (!confirm(`Delete ${decodeURIComponent(encodedFile)}? This cannot be undone.`)) return;
+  const r = await fetchJSON(`/api/pipelines/reports/${encodedFile}`, { method: 'DELETE' });
+  if (r && r.error) alert(r.error);
+  loadPipelineReports();
 }
 
 async function launchPipeline(name) {
