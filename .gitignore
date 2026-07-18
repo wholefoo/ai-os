@@ -67,3 +67,8 @@ auto-research/asset/*
 
 # Carousel source art (optimized .webp is committed instead)
 dashboard/assets/carousel/*.png
+
+# Real generated Omni media (Veo video, Gemini image, Gemini TTS audio) — runtime output, never commit
+data/media-videos/
+data/media-images/
+data/media-audio/

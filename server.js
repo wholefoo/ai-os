@@ -3661,6 +3661,21 @@ async function fetchWithTimeout(url, opts = {}, ms = AGENT_FETCH_TIMEOUT_MS) {
 // Override the API base (e.g. a local mock or proxy) via ANTHROPIC_BASE_URL; defaults to the real API.
 const ANTHROPIC_API_BASE = process.env.ANTHROPIC_BASE_URL || 'https://api.anthropic.com';
 
+// Shared by callAnthropic and callAnthropicWithTools — same endpoint, same request/error shape,
+// just a different `body` (single-shot vs a tool-use loop turn).
+async function anthropicMessagesFetch(apiKey, body) {
+  const res = await fetchWithTimeout(`${ANTHROPIC_API_BASE}/v1/messages`, {
+    method: 'POST',
+    headers: { 'x-api-key': apiKey, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error?.message || `Anthropic HTTP ${res.status}`);
+  }
+  return res.json();
+}
+
 async function callAnthropic(systemPrompt, task, effort, maxTokens, model = OPUS_MODEL) {
   const apiKey = settings.ai.anthropic_api_key;
   if (!apiKey) throw new Error('Anthropic API key not configured — add it in Settings');
@@ -3674,18 +3689,7 @@ async function callAnthropic(systemPrompt, task, effort, maxTokens, model = OPUS
   };
   if (effort) body.output_config = { effort };
 
-  const res = await fetchWithTimeout(`${ANTHROPIC_API_BASE}/v1/messages`, {
-    method: 'POST',
-    headers: { 'x-api-key': apiKey, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
-    body: JSON.stringify(body),
-  });
-
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
-    throw new Error(err.error?.message || `Anthropic HTTP ${res.status}`);
-  }
-
-  const data = await res.json();
+  const data = await anthropicMessagesFetch(apiKey, body);
   // Fable 5 (and future models) can decline with HTTP 200 + stop_reason:"refusal" and an empty/partial
   // content array. Surface it as a real error so callers see "why" instead of silently getting an empty
   // result (e.g. a blank generated page). No-op for models that never emit this stop reason.
@@ -3717,16 +3721,7 @@ async function callAnthropicWithTools(systemPrompt, task, effort, maxTokens, too
   for (let iter = 0; iter < maxIters; iter++) {
     const body = { model, max_tokens: maxTokens, system: guardedSystem, messages, tools };
     if (effort) body.output_config = { effort };
-    const res = await fetchWithTimeout(`${ANTHROPIC_API_BASE}/v1/messages`, {
-      method: 'POST',
-      headers: { 'x-api-key': apiKey, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
-      body: JSON.stringify(body),
-    });
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({}));
-      throw new Error(err.error?.message || `Anthropic HTTP ${res.status}`);
-    }
-    const data = await res.json();
+    const data = await anthropicMessagesFetch(apiKey, body);
     inputTokens += data.usage?.input_tokens || 0;
     outputTokens += data.usage?.output_tokens || 0;
     const content = data.content || [];
@@ -4119,6 +4114,11 @@ const COST_RATES = {
   'glm-5.2':           { input: 1.40,  output: 4.40  },   // Z.ai GLM-5.2 (OpenAI-compatible)
   // Gemini Omni — multimodal creative generation (video, image, audio)
   'gemini-omni':       { input: 1.25,  output: 5.00  },   // Omni Flash pricing (text+image input, video output)
+  // Gemini 3.1 Flash Image ("Nano Banana 2") — real Omni image/thumbnail generation, verified
+  // against ai.google.dev/gemini-api/docs/pricing 2026-07-18.
+  'gemini-3.1-flash-image': { input: 0.50, output: 60.00 },
+  // Gemini 3.1 Flash TTS Preview — real Omni audio generation, verified against the same page.
+  'gemini-3.1-flash-tts-preview': { input: 1.00, output: 20.00 },
   // OpenAI
   'openai-gpt4o':      { input: 2.50,  output: 10.00 },
   'openai-o3':         { input: 10.00, output: 40.00 },
@@ -6527,6 +6527,13 @@ const PIPELINE_REPORTS_DIR = path.join(BASE, 'data', 'pipeline-reports');
 // module's Omni "video" generation type, which previously only faked results. See lib/omni-video.js.
 const omniVideo = require('./lib/omni-video');
 const MEDIA_VIDEOS_DIR = path.join(BASE, 'data', 'media-videos');
+
+// Real image + speech generation (Gemini Interactions API) — used by Omni's image/thumbnail/audio
+// types, which previously only produced a text "concept description" instead of a real asset.
+// See lib/omni-media.js.
+const omniMedia = require('./lib/omni-media');
+const MEDIA_IMAGES_DIR = path.join(BASE, 'data', 'media-images');
+const MEDIA_AUDIO_DIR = path.join(BASE, 'data', 'media-audio');
 
 // Shared tail for both ways a run reaches 'completed' (natural end of runPipelineStages, and the
 // approve route finishing the last gated stage) — bookkeeping + the docx export. Fire-and-forget
@@ -9337,11 +9344,13 @@ app.get('/api/omni/capabilities', (req, res) => {
     model: GEMINI_OMNI_MODEL,
     configured: !!settings.ai.gemini_api_key,
     capabilities: [
-      { type: 'video', label: 'Video Generation', desc: 'Text/image/audio → video with physics simulation', maxDuration: '60s', formats: ['mp4', 'webm'] },
-      { type: 'image', label: 'Image Generation & Editing', desc: 'Text/image → edited or generated images', formats: ['png', 'jpg', 'webp'] },
-      { type: 'audio', label: 'Audio & Voiceover', desc: 'Text → natural speech, music, sound effects', formats: ['mp3', 'wav'] },
-      { type: 'thumbnail', label: 'Thumbnail Generation', desc: 'Content context → optimized thumbnail images', formats: ['png', 'jpg'] },
-      { type: 'social-clip', label: 'Social Media Clips', desc: 'Long content → short-form vertical video clips', maxDuration: '30s', formats: ['mp4'] },
+      // maxDuration reflects Veo's real ALLOWED_DURATIONS ceiling (lib/omni-video.js), not a
+      // marketing figure — a prior 60s/30s claim here predated the real Veo integration.
+      { type: 'video', label: 'Video Generation', desc: 'Text → video via Veo', maxDuration: '8s', formats: ['mp4'] },
+      { type: 'image', label: 'Image Generation', desc: 'Text → generated image', formats: ['jpg'] },
+      { type: 'audio', label: 'Audio & Voiceover', desc: 'Text → natural speech (30 prebuilt voices)', formats: ['wav'] },
+      { type: 'thumbnail', label: 'Thumbnail Generation', desc: 'Content context → 16:9 thumbnail image', formats: ['jpg'] },
+      { type: 'social-clip', label: 'Social Media Clips', desc: 'Text → short-form vertical (9:16) video clip via Veo', maxDuration: '8s', formats: ['mp4'] },
     ],
   });
 });
@@ -10689,7 +10698,7 @@ if (commercial.registerRoutes) {
     generateYTVideoInfo, generateYTTranscript, generateYTFrames,
     generateYTVisualAnalysis, generateYTSummary, generateYTInsights, runRealYouTubeAnalysis,
     // Creative helpers
-    generateOmniResult, omniVideo, MEDIA_VIDEOS_DIR,
+    generateOmniResult, omniVideo, MEDIA_VIDEOS_DIR, omniMedia, MEDIA_IMAGES_DIR, MEDIA_AUDIO_DIR,
     // Self-improving helpers
     sendTelegramApproval, sendTelegramMessage, sendSlackApproval, sendSlackMessage, applyProposal,
   });

@@ -8765,17 +8765,25 @@ function renderOmniResult(type, result) {
   const typeIcons = { video: '&#127909;', image: '&#128444;', audio: '&#127911;', thumbnail: '&#128247;', 'social-clip': '&#128241;' };
   const icon = typeIcons[type] || '&#10024;';
 
-  // videoUrl is rendered as an actual player below, not as a raw-text detail row.
+  // videoUrl/imageUrl/audioUrl are rendered as actual media below, not as raw-text detail rows.
   const details = Object.entries(result)
-    .filter(([k]) => !['prompt', 'model', 'watermark', 'generatedAt', 'preview', 'videoUrl'].includes(k))
+    .filter(([k]) => !['prompt', 'model', 'watermark', 'generatedAt', 'preview', 'videoUrl', 'imageUrl', 'audioUrl'].includes(k))
     .map(([k, v]) => `<div class="omni-result-detail"><span class="omni-detail-key">${escapeHtml(k.replace(/([A-Z])/g, ' $1').trim())}</span><span class="omni-detail-val">${escapeHtml(v)}</span></div>`)
     .join('');
 
-  // Only the real Veo path sets videoUrl — a genuine generated file, servable/seekable via
-  // /api/media/videos/:file (Range-request support comes from res.sendFile on the backend).
+  // Only the real generation paths set these URLs — genuine generated files, servable via
+  // /api/media/{videos,images,audio}/:file (requireAdmin-gated on the backend).
   const videoHtml = result.videoUrl ? `
     <video class="omni-result-video" controls preload="metadata" src="${escapeHtml(result.videoUrl)}"></video>
     <div class="pipeline-run-actions"><a class="btn btn-sm btn-primary" href="${escapeHtml(result.videoUrl)}" download>&#11015; Download Video</a></div>
+  ` : '';
+  const imageHtml = result.imageUrl ? `
+    <img class="omni-result-image" src="${escapeHtml(result.imageUrl)}" alt="${escapeHtml(result.prompt.substring(0, 100))}" style="max-width:100%; border-radius:8px; display:block;">
+    <div class="pipeline-run-actions"><a class="btn btn-sm btn-primary" href="${escapeHtml(result.imageUrl)}" download>&#11015; Download Image</a></div>
+  ` : '';
+  const audioHtml = result.audioUrl ? `
+    <audio class="omni-result-audio" controls preload="metadata" src="${escapeHtml(result.audioUrl)}" style="width:100%;"></audio>
+    <div class="pipeline-run-actions"><a class="btn btn-sm btn-primary" href="${escapeHtml(result.audioUrl)}" download>&#11015; Download Audio</a></div>
   ` : '';
 
   el.innerHTML = `
@@ -8788,7 +8796,7 @@ function renderOmniResult(type, result) {
         </div>
         <span class="omni-result-badge">${escapeHtml(result.model)}</span>
       </div>
-      ${videoHtml}
+      ${videoHtml}${imageHtml}${audioHtml}
       <div class="omni-result-details">${details}</div>
       <div class="omni-result-preview">${escapeHtml(result.preview)}</div>
       <div class="omni-result-meta">
