@@ -30,7 +30,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   // Seed demo inbox items and fleet status
   seedInbox();
   seedFleetStatus();
-  seedTimeline();
+  loadTimelineHistory();
   setupRadar();
 });
 
@@ -814,15 +814,17 @@ async function clearResolvedInbox() {
 }
 
 // --- Timeline ---
-function seedTimeline() {
-  state.timeline = [
-    { type: 'system', title: 'AI OS initialized', detail: '10 agents, 6 skills, mission active', timestamp: new Date(Date.now() - 1800000).toISOString() },
-    { type: 'skill', title: 'Research Brief executed', detail: 'Topic: AI OS Market Landscape', timestamp: new Date(Date.now() - 1200000).toISOString() },
-    { type: 'agent', title: 'Researcher assigned', detail: 'Gathering sources from web search', timestamp: new Date(Date.now() - 1100000).toISOString() },
-    { type: 'agent', title: 'Writer compiled report', detail: 'Output: brief-ai-os-market.md', timestamp: new Date(Date.now() - 800000).toISOString() },
-    { type: 'approval', title: 'Reviewer approved output', detail: 'All claims cited, no issues found', timestamp: new Date(Date.now() - 600000).toISOString() },
-    { type: 'skill', title: 'Content Creation queued', detail: 'Blog post on dashboard accessibility', timestamp: new Date(Date.now() - 300000).toISOString() },
-  ];
+// Seeds state.timeline with REAL, server-persisted history on boot (was: 6 hardcoded fake events,
+// shown unconditionally on every page load — not demo-gated — indistinguishable from the ~35 real
+// addTimelineEvent() call sites elsewhere in this file, which keep pushing live events on top of
+// this exactly as before). A page refresh or fresh session no longer loses real history to a
+// canned "Research Brief executed... Topic: AI OS Market Landscape" placeholder.
+async function loadTimelineHistory() {
+  const activity = await fetchJSON('/api/activity?limit=50');
+  state.timeline = Array.isArray(activity)
+    ? activity.map(a => ({ type: a.type, title: a.message, detail: '', timestamp: a.timestamp }))
+    : [];
+  if (document.getElementById('view-timeline')?.classList.contains('active')) loadTimeline();
 }
 
 function addTimelineEvent(type, title, timestamp, detail = '') {
@@ -4298,6 +4300,16 @@ async function exportDesignSystem() {
 
   const result = await fetchJSON(`/api/design-system/export?target=${target}`);
   if (result && result.ok) {
+    // The button is labeled "Generate & Download" — actually trigger the download instead of
+    // only rendering a truncated preview (the backend content was always real; only the download
+    // step was missing).
+    const blob = new Blob([result.content], { type: 'text/markdown' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = result.filename;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 4000);
+
     previewEl.innerHTML = `
       <div class="design-export-preview">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
@@ -6687,7 +6699,8 @@ async function sendMeetingMessage() {
   if (result.ok && result.responses) {
     for (const r of result.responses) {
       addMeetingMessage(r.speaker, r.title || '', r.avatar || '', r.content, false);
-      if (meetingTTSEnabled && typeof speakText === 'function') {
+      if (meetingTTSEnabled) {
+        speakMeetingText(r.content);
         // Brief delay between speakers
         await new Promise(resolve => setTimeout(resolve, 500));
       }
@@ -6698,6 +6711,16 @@ async function sendMeetingMessage() {
 function toggleMeetingTTS() {
   meetingTTSEnabled = !meetingTTSEnabled;
   document.getElementById('meetingTTSBtn').textContent = meetingTTSEnabled ? '🔊' : '🔇';
+}
+
+// Plain browser speech synthesis for meeting readout — deliberately NOT speakText()/
+// speakTextBrowserFallback(), which are tightly coupled to the Avatar Chat page's lip-sync DOM
+// (they unconditionally touch #avatarStatus, which doesn't exist on the Meetings view) and to
+// avatarState.ttsEnabled rather than this feature's own meetingTTSEnabled toggle.
+function speakMeetingText(text) {
+  if (!window.speechSynthesis || !text) return;
+  window.speechSynthesis.cancel();
+  window.speechSynthesis.speak(new SpeechSynthesisUtterance(text));
 }
 
 async function endMeeting() {
