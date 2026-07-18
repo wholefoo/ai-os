@@ -9734,7 +9734,10 @@ app.post('/api/seo/free-audit', heavyLimiter, async (req, res) => {
   } else {
     // Demo mode fallback
     // AEO runs FOR REAL even in demo mode (only needs an HTTP fetch, no API key); the
-    // classic-SEO agents are demo-fabricated when DataForSEO isn't configured.
+    // classic-SEO agents are demo-fabricated when DataForSEO isn't configured. This funnel is
+    // public and captures a real lead's email — the fabricated scores must never look authoritative,
+    // so every audit created on this path is honestly flagged (surfaced in the GET response below).
+    audit.estimated = true;
     const agentNames = ['keyword', 'technical', 'competitor', 'content', 'backlink', 'aeo'];
     const delays = [2000, 3000, 2500, 3500, 4000, 0];
     agentNames.forEach((name, i) => {
@@ -9769,6 +9772,7 @@ app.get('/api/seo/free-audit/:id', (req, res) => {
     id: audit.id,
     domain: audit.domain,
     status: audit.status,
+    estimated: !!audit.estimated,
     compositeScore: audit.compositeScore,
     executiveSummary: audit.executiveSummary,
     quickWins: audit.quickWins,

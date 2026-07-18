@@ -68,6 +68,8 @@
     .score-warn { color: #f59e0b; }
     .score-bad { color: #ef4444; }
     .audit-summary { padding: 16px; background: var(--bg-primary); border-radius: 10px; border-left: 3px solid var(--primary); font-size: 14px; line-height: 1.7; color: var(--text-secondary); margin-bottom: 20px; }
+    .audit-estimate-notice { padding: 12px 16px; background: rgba(245,158,11,0.1); border: 1px solid rgba(245,158,11,0.35); border-radius: 10px; font-size: 13px; line-height: 1.6; color: var(--text-secondary); margin-bottom: 20px; display: flex; gap: 10px; align-items: flex-start; }
+    .audit-estimate-notice svg { flex: none; margin-top: 2px; color: #f59e0b; }
     .audit-agents-result { display: grid; grid-template-columns: repeat(6, 1fr); gap: 8px; margin-bottom: 20px; }
     .audit-agent-result { text-align: center; padding: 14px 6px; background: var(--bg-primary); border: 1px solid var(--border); border-radius: 8px; }
     .audit-agent-result-score { font-size: 22px; font-weight: 800; }
@@ -305,8 +307,15 @@
         `<div class="audit-win"><span class="audit-win-num">${w.priority}</span><span>${w.action}</span><span class="audit-win-impact impact-${w.impact}">${w.impact}</span></div>`
       ).join('');
 
+      const estimateNotice = audit.estimated ? `
+        <div class="audit-estimate-notice">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 9v4M12 17h.01M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/></svg>
+          <span>This is a preliminary, directional estimate — not a live search-data crawl. Scores may shift once the full audit runs against real ranking data.</span>
+        </div>` : '';
+
       const el = document.getElementById('auditResult');
       el.innerHTML = `
+        ${estimateNotice}
         <div class="audit-score">
           <div class="audit-score-num ${scoreClass}">${audit.compositeScore || 0}</div>
           <div class="audit-score-label">Composite SEO Score out of 100</div>
