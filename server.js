@@ -6568,7 +6568,13 @@ async function runPipelineStages(run, startIdx = 0) {
       + (prior ? `\nDeliverables from earlier stages (build on these):\n${prior}\n` : '')
       + '\nProduce this stage\'s deliverable directly and concisely.';
 
-    const r = await executeAgent(stage.agent, task, { maxTokens: 4000 });
+    // useMcpTools: stages like "researcher" need real web-search/fetch access to produce grounded
+    // output instead of correctly refusing to fabricate. maxTokens: 12000 — Opus adaptive thinking
+    // shares max_tokens with the visible answer, and stage agents can run at xhigh effort (reviewer,
+    // architect, orchestrator per the "strategic" routing tier); 4000 let thinking starve the answer
+    // down to a couple of characters (same failure mode the Web Studio plan call hit before its
+    // budget was raised to 16000).
+    const r = await executeAgent(stage.agent, task, { useMcpTools: true, maxTokens: 12000 });
     broadcast({ event: 'fleet_update', data: { agent: stage.agent, status: 'idle' } });
 
     if (!r || !r.ok) {
