@@ -6586,7 +6586,7 @@ async function loadMeetings() {
   try {
     const caps = await fetchJSON('/api/meetings/capabilities');
     if (!caps.videoEnabled) {
-      document.getElementById('meetingLobby').innerHTML += '<div class="empty-state" style="margin-top:12px;color:var(--warning);">Video meetings require a Gemini API key. Add it in Settings.</div>';
+      document.getElementById('meetingLobby').innerHTML += '<div class="empty-state" style="margin-top:12px;color:var(--warning);">Multi-agent meetings require a Gemini API key. Add it in Settings.</div>';
     }
   } catch {}
 

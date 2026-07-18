@@ -7953,7 +7953,8 @@ function saveReportConfig(tenantId, config) {
 // Report routes extracted to commercial/modules/advanced-reporting/index.js
 
 // ========================================================================
-//  VIDEO AVATAR MEETINGS — Gemini Omni real-time video
+//  MULTI-AGENT MEETINGS — real-time text roundtable (no video/camera stream — see
+//  commercial/modules/video-meetings/index.js's header comment)
 // ========================================================================
 
 // Video Meetings routes extracted to commercial/modules/video-meetings/index.js
