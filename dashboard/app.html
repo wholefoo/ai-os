@@ -339,17 +339,17 @@
           </div>
         </div>
 
-        <!-- Inbox View (Human-in-the-Loop) -->
+        <!-- Inbox View (Human-in-the-Loop — the real Auto-Mode action gate; see gateAction/pendingApprovals) -->
         <div class="view" id="view-inbox">
           <div class="inbox-header-bar">
             <div class="inbox-filters">
               <button class="filter-btn active" data-filter="all">All</button>
-              <button class="filter-btn" data-filter="blocking">Blocking</button>
-              <button class="filter-btn" data-filter="advisory">Advisory</button>
+              <button class="filter-btn" data-filter="pending">Pending</button>
+              <button class="filter-btn" data-filter="resolved">Resolved</button>
             </div>
           </div>
           <div class="inbox-list" id="inboxList">
-            <!-- Populated by JS -->
+            <!-- Populated by JS from /api/approvals -->
           </div>
         </div>
 

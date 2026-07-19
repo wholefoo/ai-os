@@ -27,8 +27,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   const role = await applyRoleGating();
   if (role === 'client') return; // managed clients get a scoped Web Studio dashboard (handled above)
   loadDashboard();
-  // Seed demo inbox items and fleet status
-  seedInbox();
+  loadInbox();
   seedFleetStatus();
   loadTimelineHistory();
   setupRadar();
@@ -387,18 +386,17 @@ function handleWsMessage(msg) {
         loadBatch();
       }
       break;
-    case 'inbox_update':
-      seedInbox();
-      break;
-    case 'inbox_deleted':
-      state.inbox = state.inbox.filter(i => i.id !== msg.data.id);
+    case 'approval_pending':
+    case 'approval_update':
+      // Real Auto-Mode gate events (see gateAction/pendingApprovals server-side) — refresh both
+      // the full Inbox view and the compact Settings widget so neither goes stale.
+      { const idx = (state.inbox || []).findIndex(i => i.id === msg.data.id);
+        if (idx >= 0) state.inbox[idx] = msg.data; else (state.inbox = state.inbox || []).unshift(msg.data); }
       updateStats();
-      loadInbox(document.querySelector('.filter-btn.active')?.dataset?.filter || 'all');
-      break;
-    case 'inbox_cleared':
-      state.inbox = state.inbox.filter(i => i.status === 'pending');
-      updateStats();
-      loadInbox(document.querySelector('.filter-btn.active')?.dataset?.filter || 'all');
+      if (document.getElementById('view-inbox').classList.contains('active')) {
+        renderInbox(document.querySelector('.filter-btn.active')?.dataset?.filter || 'all');
+      }
+      if (typeof loadApprovals === 'function') loadApprovals();
       break;
     case 'proposal_update':
       const pIdx = state.proposals.findIndex(p => p.id === msg.data.id);
@@ -705,14 +703,18 @@ function renderContextHealth() {
   `;
 }
 
-// --- Human-in-the-Loop Inbox ---
-async function seedInbox() {
-  // Load from server (persistent)
+// --- Human-in-the-Loop Inbox — the real Auto-Mode action gate (see gateAction/pendingApprovals
+// server-side). Approve/Reject here call the SAME /api/approvals routes and approveAction()/
+// rejectAction() functions as the compact widget in Settings (search "Auto-Mode approvals inbox")
+// — this view is just the primary, full-page surface for that one real queue, not a second one.
+async function loadInbox(filter) {
+  filter = filter || document.querySelector('.filter-btn.active')?.dataset?.filter || 'all';
   try {
-    state.inbox = await fetchJSON('/api/inbox');
+    state.inbox = await fetchJSON('/api/approvals');
   } catch (e) {
     state.inbox = [];
   }
+  renderInbox(filter);
   updateStats();
 }
 
@@ -721,101 +723,59 @@ function setupInboxFilters() {
     btn.addEventListener('click', () => {
       document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
       btn.classList.add('active');
-      loadInbox(btn.dataset.filter);
+      renderInbox(btn.dataset.filter);
     });
   });
 }
 
-function loadInbox(filter = 'all') {
+function renderInbox(filter = 'all') {
   const container = document.getElementById('inboxList');
-  let items = state.inbox;
-  if (filter !== 'all') items = items.filter(i => i.gate === filter);
-
-  const resolvedCount = state.inbox.filter(i => i.status !== 'pending').length;
-  const clearBtn = resolvedCount > 0
-    ? `<div style="text-align:right;margin-bottom:10px;"><button class="btn btn-sm btn-secondary" onclick="clearResolvedInbox()">Clear ${resolvedCount} Resolved</button></div>`
-    : '';
+  if (!container) return;
+  let items = state.inbox || [];
+  if (filter === 'pending') items = items.filter(i => i.status === 'pending');
+  else if (filter === 'resolved') items = items.filter(i => i.status !== 'pending');
 
   if (!items.length) {
-    container.innerHTML = clearBtn + '<div class="empty-state">No pending approvals. All clear.</div>';
+    container.innerHTML = '<div class="empty-state">No pending approvals. All clear.</div>';
     return;
   }
 
-  container.innerHTML = clearBtn + items.map(item => `
-    <div class="inbox-item ${item.gate}">
+  container.innerHTML = items.map(item => {
+    const risk = item.risk || 'medium';
+    const when = item.createdAt ? timeAgo(item.createdAt) : '';
+    const detailParts = [];
+    if (item.target) detailParts.push(`Target: ${item.target}`);
+    if (item.needsSecrets && item.needsSecrets.length) detailParts.push(`Needs: ${item.needsSecrets.join(', ')}`);
+    const body = detailParts.length ? detailParts.join(' · ') : item.type;
+    let outcome = '';
+    if (item.status === 'approved') outcome = `Approved by ${escapeHtml(item.approvedBy || 'operator')}`;
+    else if (item.status === 'rejected') outcome = `Rejected by ${escapeHtml(item.rejectedBy || 'operator')}${item.rejectReason ? ' — ' + escapeHtml(item.rejectReason) : ''}`;
+    else if (item.status === 'failed') outcome = `Failed: ${escapeHtml(item.error || 'unknown error')}`;
+    return `
+    <div class="inbox-item ${risk}">
       <div class="inbox-item-header">
-        <span class="inbox-item-title">${escapeHtml(item.title)}</span>
-        <span class="inbox-item-gate ${item.gate}">${item.gate}</span>
+        <span class="inbox-item-title">${escapeHtml(item.summary || item.type)}</span>
+        <span class="inbox-item-gate ${risk}">${risk}</span>
       </div>
-      <div class="inbox-item-body">${escapeHtml(item.context)}</div>
+      <div class="inbox-item-body">${escapeHtml(body)}</div>
       <div class="inbox-item-meta">
-        <span>Agent: <strong>${item.agent}</strong></span>
-        <span>${timeAgo(item.timestamp)}</span>
+        <span>Type: <strong>${escapeHtml(item.type)}</strong></span>
+        <span>Requested by: ${escapeHtml(item.requestedBy || 'operator')}</span>
+        <span>${when}</span>
         <span>Status: ${item.status}</span>
       </div>
       ${item.status === 'pending' ? `
         <div class="inbox-actions">
-          <button class="btn btn-sm btn-success" onclick="resolveInbox('${item.id}', 'approved')">Approve</button>
-          <button class="btn btn-sm btn-secondary" onclick="resolveInbox('${item.id}', 'rejected')">Reject</button>
-          <button class="btn btn-sm" style="background:var(--danger);color:#fff;" onclick="deleteInboxItem('${item.id}')">Delete</button>
+          <button class="btn btn-sm btn-success" onclick="approveAction('${item.id}','${(item.needsSecrets || []).join(',')}')">Approve</button>
+          <button class="btn btn-sm btn-secondary" onclick="rejectAction('${item.id}')">Reject</button>
         </div>
       ` : `
-        <div class="inbox-actions" style="justify-content:space-between;">
-          <span style="font-size:12px;color:var(--text-muted);">Resolved: ${item.status}</span>
-          <button class="btn btn-sm" style="background:var(--danger);color:#fff;font-size:11px;" onclick="deleteInboxItem('${item.id}')">Delete</button>
+        <div class="inbox-actions">
+          <span style="font-size:12px;color:var(--text-muted);">${outcome}</span>
         </div>
       `}
-    </div>
-  `).join('');
-}
-
-async function resolveInbox(id, verdict) {
-  try {
-    await fetchJSON(`/api/inbox/${id}`, { method: 'PUT', body: JSON.stringify({ status: verdict }) });
-    const item = state.inbox.find(i => i.id === id);
-    if (item) {
-      item.status = verdict;
-      addTimelineEvent('approval', `${verdict === 'approved' ? 'Approved' : 'Rejected'}: ${item.title}`);
-      state.activity.unshift({
-        id: Date.now().toString(),
-        type: verdict === 'approved' ? 'mission' : 'plan',
-        message: `Gate ${verdict}: ${item.title}`,
-        timestamp: new Date().toISOString(),
-      });
-      renderActivityFeed();
-      if (verdict === 'approved' && state.fleetStatus[item.agent] !== undefined) {
-        state.fleetStatus[item.agent] = 'running';
-        renderFleetGrid();
-        setTimeout(() => { state.fleetStatus[item.agent] = 'idle'; renderFleetGrid(); }, 4000);
-      }
-    }
-  } catch (e) {
-    console.error('Failed to resolve inbox item:', e);
-  }
-  updateStats();
-  loadInbox(document.querySelector('.filter-btn.active')?.dataset?.filter || 'all');
-}
-
-async function deleteInboxItem(id) {
-  try {
-    await fetchJSON(`/api/inbox/${id}`, { method: 'DELETE' });
-    state.inbox = state.inbox.filter(i => i.id !== id);
-  } catch (e) {
-    console.error('Failed to delete inbox item:', e);
-  }
-  updateStats();
-  loadInbox(document.querySelector('.filter-btn.active')?.dataset?.filter || 'all');
-}
-
-async function clearResolvedInbox() {
-  try {
-    await fetchJSON('/api/inbox', { method: 'DELETE' });
-    state.inbox = state.inbox.filter(i => i.status === 'pending');
-  } catch (e) {
-    console.error('Failed to clear resolved inbox items:', e);
-  }
-  updateStats();
-  loadInbox(document.querySelector('.filter-btn.active')?.dataset?.filter || 'all');
+    </div>`;
+  }).join('');
 }
 
 // --- Timeline ---
@@ -5887,7 +5847,7 @@ async function approveAction(id, needsCsv) {
   }
   const r = await fetchJSON(`/api/approvals/${id}/approve`, { method: 'POST', body: { secrets } });
   if (r && r.error) { alert('Approval failed: ' + r.error); }
-  await loadApprovals();
+  await Promise.all([loadApprovals(), loadInbox()]);
   if (typeof wsFetchAndRenderSites === 'function') { try { await wsFetchAndRenderSites(); } catch {} }
 }
 
@@ -5895,7 +5855,7 @@ async function rejectAction(id) {
   if (!window.confirm('Reject this action? It will not run.')) return;
   const r = await fetchJSON(`/api/approvals/${id}/reject`, { method: 'POST', body: {} });
   if (r && r.error) { alert('Reject failed: ' + r.error); }
-  await loadApprovals();
+  await Promise.all([loadApprovals(), loadInbox()]);
 }
 
 // ---------- A2A external keys (scoped agent-to-agent credentials) ----------
