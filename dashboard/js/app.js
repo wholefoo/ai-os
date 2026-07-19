@@ -4650,10 +4650,15 @@ function renderProductsList(products) {
         <span class="product-platform ${p.platform}">${p.platform}</span>
         <span class="product-status ${p.status}">${p.status}</span>
       </div>
+      ${p.status === 'generating' ? '<div class="product-meta"><span>Generating a real file via the product-factory agent...</span></div>' : ''}
+      ${p.status === 'failed' ? `<div class="product-meta" style="color:var(--danger);"><span>Generation failed: ${escapeHtml(p.error || 'unknown error')}</span></div>` : ''}
+      ${p.listingDescription ? `<div class="product-meta" style="display:block;">${escapeHtml(p.listingDescription)}</div>` : ''}
       <div class="product-meta">
         <span>Sales: ${p.sales}</span>
         <span>Revenue: $${p.revenue.toFixed(2)}</span>
         ${p.rating ? `<span>Rating: ${p.rating}&#9733;</span>` : ''}
+        ${p.sizeBytes ? `<span>${(p.sizeBytes / 1024).toFixed(0)} KB</span>` : ''}
+        ${p.priceAssumption ? '<span title="The agent flagged this price as an assumption, not verified marketplace research.">Price: [assumption]</span>' : ''}
         <span>${timeAgo(p.createdAt)}</span>
       </div>
       ${p.features && p.features.length ? `
@@ -4661,6 +4666,12 @@ function renderProductsList(products) {
           ${p.features.map(f => `<span class="product-feature-tag">${escapeHtml(f)}</span>`).join('')}
         </div>
       ` : ''}
+      ${p.tags && p.tags.length ? `
+        <div class="product-features">
+          ${p.tags.map(t => `<span class="product-feature-tag">${escapeHtml(t)}</span>`).join('')}
+        </div>
+      ` : ''}
+      ${p.file ? `<div class="pipeline-run-actions"><a class="btn btn-sm btn-primary" href="/api/products/${p.id}/download">&#11015; Download</a></div>` : ''}
     </div>
   `).join('');
 }

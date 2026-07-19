@@ -5,7 +5,7 @@
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
-const { assert, done } = require('./test-util');
+const { assert, cleanupAndFinish } = require('./test-util');
 const omniMedia = require('../lib/omni-media');
 const {
   IMAGE_MODEL, TTS_MODEL, VOICES, DEFAULT_VOICE, IMAGE_FILE_RE, AUDIO_FILE_RE,
@@ -143,6 +143,5 @@ const {
   }
 
   global.fetch = realFetch;
-  fs.rmSync(dir, { recursive: true, force: true });
-  done();
-})().catch((e) => { console.error('FAIL: suite crashed —', e.message); process.exitCode = 1; done(); });
+  cleanupAndFinish(dir);
+})().catch((e) => { console.error('FAIL: suite crashed —', e.message); process.exitCode = 1; cleanupAndFinish(); });

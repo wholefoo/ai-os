@@ -6550,6 +6550,13 @@ const MEDIA_AUDIO_DIR = path.join(BASE, 'data', 'media-audio');
 // Predictive Analytics, which previously had no write path onto predictiveAnalytics at all.
 const predictive = require('./lib/predictive');
 
+// Real digital product file generation (styled .xlsx via exceljs, Notion-importable CSV, toolkit
+// ZIP bundles) — used by Product Factory, which previously only flipped a status flag after a
+// setTimeout with no file ever produced. Output dir matches the product-factory agent persona's
+// own instruction ("Output to .magent/artifacts/products/").
+const productFactoryLib = require('./lib/product-factory');
+const PRODUCTS_DIR = path.join(MAGENT_DIR, 'artifacts', 'products');
+
 // Shared tail for both ways a run reaches 'completed' (natural end of runPipelineStages, and the
 // approve route finishing the last gated stage) — bookkeeping + the docx export. Fire-and-forget
 // from the caller's perspective (matches the existing fire-and-forget style of pipeline execution
@@ -10660,6 +10667,8 @@ if (commercial.registerRoutes) {
     generateOmniResult, omniVideo, MEDIA_VIDEOS_DIR, omniMedia, MEDIA_IMAGES_DIR, MEDIA_AUDIO_DIR,
     // Predictive Analytics helpers — real historical data + the deterministic forecasting lib
     predictive, activityLog, analyticsDb,
+    // Product Factory helpers — real file generation
+    productFactoryLib, PRODUCTS_DIR,
     // Self-improving helpers
     sendTelegramApproval, sendTelegramMessage, sendSlackApproval, sendSlackMessage, applyProposal,
   });
