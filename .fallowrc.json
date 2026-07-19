@@ -21,6 +21,7 @@
     "tools/test-pipeline-reports.js",
     "tools/test-omni-video.js",
     "tools/test-omni-media.js",
+    "tools/test-predictive.js",
     "ecosystem.config.js",
     "deploy/n8n-ecosystem.config.example.js",
     "dashboard/js/*.js"

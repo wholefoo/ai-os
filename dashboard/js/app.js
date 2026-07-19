@@ -332,6 +332,11 @@ function handleWsMessage(msg) {
         loadKnowledge();
       }
       break;
+    case 'predictions_update':
+      if (document.getElementById('view-predictions').classList.contains('active')) {
+        loadPredictions();
+      }
+      break;
     case 'design_update':
       if (document.getElementById('view-design').classList.contains('active')) {
         loadDesignSystem();
@@ -1019,7 +1024,7 @@ async function processCommand(text) {
     return `3D Production Studio active. Text-to-3D via Blender MCP — generates environments, product renders, abstract visualizations. Supports multiple lighting presets and resolutions up to 4K.`;
   }
   if (lower.includes('predict') || lower.includes('forecast') || lower.includes('analytics') || lower.includes('churn')) {
-    return `Predictive Analytics active. AI-estimated forecasts for revenue, engagement, costs, and churn. Multiple trained models with confidence scores and contributing factor analysis.`;
+    return `Predictive Analytics active. Statistical trend forecasts (linear regression over real historical data — AI spend, site traffic, revenue, and cancellations) with backtested accuracy scores and confidence ratings.`;
   }
   if (lower.includes('batch') || lower.includes('mass') || lower.includes('bulk') || lower.includes('generation queue')) {
     return `Batch Generation Queue active. Mass-produce content (images, text, variations) using economy-tier agents. Rate-limit tripping to build massive A/B testing libraries.`;
@@ -5277,6 +5282,20 @@ async function loadPredictions() {
   renderPredictModels(models);
 }
 
+async function recomputePredictions() {
+  const btn = document.getElementById('predictRecomputeBtn');
+  if (btn) { btn.disabled = true; btn.textContent = 'Recomputing...'; }
+  const result = await fetchJSON('/api/predictions/generate', { method: 'POST', body: {} });
+  if (result) addTimelineEvent('predictions', `Forecast recomputed — ${result.predictions} prediction(s), ${result.models} model(s)`);
+  await loadPredictions();
+  if (btn) { btn.disabled = false; btn.innerHTML = '&#128202; Recompute Forecasts'; }
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  const btn = document.getElementById('predictRecomputeBtn');
+  if (btn) btn.addEventListener('click', recomputePredictions);
+});
+
 function renderPredictStats(stats) {
   const container = document.getElementById('predictStats');
   if (!container) return;
@@ -5287,6 +5306,17 @@ function renderPredictStats(stats) {
     <div class="predict-stat"><div class="predict-stat-value" style="color:var(--danger);">${stats.trendsDown || 0}</div><div class="predict-stat-label">Trends Down</div></div>
     <div class="predict-stat"><div class="predict-stat-value">${stats.avgModelAccuracy || 0}%</div><div class="predict-stat-label">Model Accuracy</div></div>
   `;
+}
+
+// Formats by the backend's explicit `unit` field ('usd' | 'count' | 'percent') when present —
+// real predictions always set it. Falls back to the old magnitude/name-substring guess only for
+// any caller that doesn't (belt-and-suspenders, not the primary path).
+function formatPredictValue(v, metric, unit) {
+  if (typeof v !== 'number') return v;
+  if (unit === 'usd') return '$' + v.toLocaleString();
+  if (unit === 'percent') return v + '%';
+  if (unit === 'count') return v.toLocaleString();
+  return v > 100 ? '$' + v.toLocaleString() : v + (/Rate|Engagement|Risk/.test(metric || '') ? '%' : '');
 }
 
 function renderPredictList(predictions) {
@@ -5303,8 +5333,8 @@ function renderPredictList(predictions) {
         <span class="predict-trend ${p.trend}">&#${p.trend === 'up' ? '9650' : '9660'}; ${p.trend}</span>
       </div>
       <div class="predict-values">
-        <span class="predict-current">Current: ${typeof p.current === 'number' && p.current > 100 ? '$' + p.current.toLocaleString() : p.current + (p.metric.includes('Rate') || p.metric.includes('Engagement') || p.metric.includes('Risk') ? '%' : '')}</span>
-        <span class="predict-predicted">Predicted: ${typeof p.predicted === 'number' && p.predicted > 100 ? '$' + p.predicted.toLocaleString() : p.predicted + (p.metric.includes('Rate') || p.metric.includes('Engagement') || p.metric.includes('Risk') ? '%' : '')}</span>
+        <span class="predict-current">Current: ${formatPredictValue(p.current, p.metric, p.unit)}</span>
+        <span class="predict-predicted">Predicted: ${formatPredictValue(p.predicted, p.metric, p.unit)}</span>
       </div>
       <div class="predict-confidence">${Math.round(p.confidence * 100)}% confidence &middot; ${p.period}</div>
       <div class="predict-factors">

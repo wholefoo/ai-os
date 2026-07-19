@@ -538,7 +538,13 @@ function fulfillCheckoutSession(stripeSession, source) {
     sendNotification('Fulfillment not persisted', `Paid session ${stripeSession.id} for ${email} fulfilled in memory but the users.json write FAILED — recover before the next restart.`, 'critical');
   }
   crm?.syncUser(user, { sessionId: stripeSession.id }); // CRM: mirror license/plan + log purchase (idempotent)
-  logActivity('billing', `Checkout fulfilled (${source}): ${email} → ${plan}`, { sessionId: stripeSession.id });
+  // amount_total is Stripe's own real charged amount (cents) — covers every checkout flow this
+  // function fulfills (license purchases, upgrades, renewals, managed-client setup), unlike trying
+  // to re-derive a dollar figure from `plan` against STRIPE_PLANS (which doesn't even cover the
+  // managed-client flow's pricing). Real Predictive Analytics revenue forecasting reads this.
+  logActivity('billing', `Checkout fulfilled (${source}): ${email} → ${plan}`, {
+    sessionId: stripeSession.id, event: 'checkout_fulfilled', plan, amountTotal: stripeSession.amount_total || 0,
+  });
   return user;
 }
 
@@ -617,7 +623,10 @@ app.post('/api/stripe/webhook', express.raw({ type: 'application/json' }), (req,
         client.managedPurchases = client.managedPurchases.filter(p => p && p.subscriptionId !== sub.id);
         if (client.managedPurchases.length === 0) client.plan = 'free'; // no sites left → revoke access
         saveState('users', users);
-        logActivity('billing', `Managed subscription cancelled for ${client.email} (${client.managedPurchases.length} site(s) remain)`);
+        // event:'subscription_cancelled' — real Predictive Analytics churn forecasting reads this.
+        logActivity('billing', `Managed subscription cancelled for ${client.email} (${client.managedPurchases.length} site(s) remain)`, {
+          event: 'subscription_cancelled', email: client.email,
+        });
         break;
       }
       // Otherwise a license subscription (e.g. enterprise-renewal) — downgrade by customer. SKIP
@@ -628,7 +637,9 @@ app.post('/api/stripe/webhook', express.raw({ type: 'application/json' }), (req,
       if (user && user.role !== 'client') {
         user.plan = 'free';
         saveState('users', users);
-        logActivity('billing', `Subscription cancelled for ${user.email}`);
+        logActivity('billing', `Subscription cancelled for ${user.email}`, {
+          event: 'subscription_cancelled', email: user.email,
+        });
       } else if (user && user.role === 'client') {
         logActivity('billing', `Subscription ${sub.id} cancelled for client ${user.email} but not matched to a managed purchase — review (no auto-downgrade)`, { sessionId: sub.id, alert: true });
       }
@@ -6535,6 +6546,10 @@ const omniMedia = require('./lib/omni-media');
 const MEDIA_IMAGES_DIR = path.join(BASE, 'data', 'media-images');
 const MEDIA_AUDIO_DIR = path.join(BASE, 'data', 'media-audio');
 
+// Real deterministic forecasting (linear regression over real historical data) — used by
+// Predictive Analytics, which previously had no write path onto predictiveAnalytics at all.
+const predictive = require('./lib/predictive');
+
 // Shared tail for both ways a run reaches 'completed' (natural end of runPipelineStages, and the
 // approve route finishing the last gated stage) — bookkeeping + the docx export. Fire-and-forget
 // from the caller's perspective (matches the existing fire-and-forget style of pipeline execution
@@ -10699,6 +10714,8 @@ if (commercial.registerRoutes) {
     generateYTVisualAnalysis, generateYTSummary, generateYTInsights, runRealYouTubeAnalysis,
     // Creative helpers
     generateOmniResult, omniVideo, MEDIA_VIDEOS_DIR, omniMedia, MEDIA_IMAGES_DIR, MEDIA_AUDIO_DIR,
+    // Predictive Analytics helpers — real historical data + the deterministic forecasting lib
+    predictive, activityLog, analyticsDb,
     // Self-improving helpers
     sendTelegramApproval, sendTelegramMessage, sendSlackApproval, sendSlackMessage, applyProposal,
   });
