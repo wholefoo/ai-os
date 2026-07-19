@@ -6114,12 +6114,12 @@ function renderPlatformPending(proposals) {
     const riskClass = p.risk === 'high' ? 'critical' : p.risk === 'medium' ? 'warning' : 'info';
     return `
       <div class="platform-proposal">
-        <div class="platform-proposal-icon">${p.icon}</div>
+        <div class="platform-proposal-icon">${escapeHtml(p.icon)}</div>
         <div class="platform-proposal-content">
           <div class="platform-proposal-title">${escapeHtml(p.title)}</div>
           <div class="platform-proposal-meta">
             <span class="seo-finding-severity seo-finding-${riskClass}" style="display:inline-block;">${p.risk} risk</span>
-            <span>${p.typeLabel}</span>
+            <span>${escapeHtml(p.typeLabel)}</span>
             <span>${new Date(p.createdAt).toLocaleString()}</span>
             ${p.autoApply ? '<span style="color:var(--primary);">Auto-apply on approve</span>' : ''}
           </div>
@@ -6147,12 +6147,13 @@ function renderPlatformHistory(proposals) {
     const appliedInfo = p.applyResult ? `<span class="platform-history-steps" title="${(p.applyResult.steps || []).map(s => s.action).join(' → ')}">${p.applyResult.steps?.length || 0} steps</span>` : '';
     return `
       <div class="platform-history-item">
-        <span>${statusIcon} ${p.icon}</span>
+        <span>${statusIcon} ${escapeHtml(p.icon)}</span>
         <span class="platform-history-title">${escapeHtml(p.title)}</span>
         <span class="platform-history-status">${p.status}${via}</span>
         ${appliedInfo}
         ${applyBtn}
         <span class="platform-history-date">${p.respondedAt ? new Date(p.respondedAt).toLocaleDateString() : ''}</span>
+        <button class="btn btn-sm btn-danger" onclick="deletePlatformProposal('${p.id}')" title="Delete from history">&times;</button>
       </div>
     `;
   }).join('');
@@ -6166,6 +6167,17 @@ async function manualApplyProposal(id) {
     loadPlatform();
   } else {
     showSettingsToast(result.error || 'Apply failed', true);
+  }
+}
+
+async function deletePlatformProposal(id) {
+  if (!window.confirm('Delete this proposal from history? This cannot be undone.')) return;
+  const result = await fetchJSON(`/api/platform/proposals/${id}`, { method: 'DELETE' });
+  if (result.ok) {
+    showSettingsToast('Proposal deleted');
+    loadPlatform();
+  } else {
+    showSettingsToast(result.error || 'Delete failed', true);
   }
 }
 
