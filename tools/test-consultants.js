@@ -1,5 +1,5 @@
 // LLM provider consultants: frontmatter integrity, provider-routing completeness, and the
-// canonical count guard (registry must stay at 64 so the auto-research drift guard matches).
+// canonical count guard (registry must stay at 66 so the auto-research drift guard matches).
 const fs = require('fs');
 const path = require('path');
 const { assert, done } = require('./test-util');
@@ -49,11 +49,11 @@ for (const slug of CONSULTANTS) {
   assert(/comms-director/.test(t) && /Orchestrator/.test(t), `consultant-${slug} routes findings via comms-director`);
 }
 
-// --- canonical count guard: the registry is 65 and the auto-research guards agree
+// --- canonical count guard: the registry is 66 and the auto-research guards agree
 const registry = fs.readdirSync(agentsDir).filter((f) => f.endsWith('.md')).length;
-assert(registry === 65, `agent registry is 65 (57 + 7 consultants + comms-director), got ${registry}`);
+assert(registry === 66, `agent registry is 66 (58 + 7 consultants + comms-director), got ${registry}`);
 const score = fs.readFileSync(path.join(__dirname, '..', 'auto-research', 'score.js'), 'utf8');
-assert(/\/\\b65\\b\//.test(score), 'auto-research score.js FACTS guards 65');
-assert(/\(\?!65\\b\)/.test(score), 'auto-research score.js drift-throw guards 65');
+assert(/\/\\b66\\b\//.test(score), 'auto-research score.js FACTS guards 66');
+assert(/\(\?!66\\b\)/.test(score), 'auto-research score.js drift-throw guards 66');
 
 done();

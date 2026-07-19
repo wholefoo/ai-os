@@ -8567,7 +8567,7 @@ function renderHQStats(stats) {
             <div style="font-size:14px;font-weight:700;color:#3b82f6;margin-bottom:8px;">&#128188; Business License</div>
             <div style="font-size:22px;font-weight:800;color:var(--text,#f1f5f9);margin-bottom:8px;">$1,997 <span style="font-size:12px;font-weight:400;color:var(--text-muted,#94a3b8);">one-time</span></div>
             <ul style="list-style:none;padding:0;margin:0 0 16px;font-size:12px;color:var(--text-muted,#94a3b8);line-height:1.9;">
-              <li>&#9989; All 57 agents &amp; 10 departments</li>
+              <li>&#9989; All 66 agents &amp; 10 departments</li>
               <li>&#9989; Unlimited SEO audits</li>
               <li>&#9989; Brand your own instance</li>
               <li>&#9989; Self-hosted, single customer</li>
