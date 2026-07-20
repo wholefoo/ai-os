@@ -4423,12 +4423,22 @@ function renderMediaTemplates(templates) {
   const container = document.getElementById('mediaTemplates');
   if (!container) return;
 
+  // Not a real template (no promptTemplate to look up) — just opens the same blank modal
+  // "+New Production" does, surfaced here too since users browsing this list may not otherwise
+  // notice that option exists above it.
+  const customCard = `
+    <div class="media-template-card" onclick="showNewMediaModal()">
+      <div class="media-template-name">+ Custom</div>
+      <div class="media-template-desc">Write your own title and script from scratch</div>
+    </div>
+  `;
+
   if (!templates || !templates.length) {
-    container.innerHTML = '<div class="empty-state">No templates available.</div>';
+    container.innerHTML = customCard + '<div class="empty-state">No other templates available.</div>';
     return;
   }
 
-  container.innerHTML = templates.map(t => `
+  container.innerHTML = customCard + templates.map(t => `
     <div class="media-template-card${t.available === false ? ' media-template-unavailable' : ''}" onclick="useMediaTemplate('${t.id}')">
       <div class="media-template-name">${escapeHtml(t.name)}</div>
       <div class="media-template-desc">${escapeHtml(t.type || '')} &middot; ${escapeHtml(t.duration || '')}${t.available === false ? ' &middot; not available on this deployment' : ''}</div>
