@@ -4332,6 +4332,8 @@ document.addEventListener('DOMContentLoaded', () => {
 // =============================
 // MEDIA PRODUCTION PIPELINE
 // =============================
+let mediaTemplatesCache = []; // populated by loadMedia(), read by useMediaTemplate() for pre-fill
+
 async function loadMedia() {
   const [prodData, templData, stats] = await Promise.all([
     fetchJSON('/api/media/productions'),
@@ -4340,6 +4342,7 @@ async function loadMedia() {
   ]);
   const productions = prodData.value || prodData || [];
   const templates = templData.value || templData || [];
+  mediaTemplatesCache = templates;
   renderMediaStats(stats);
   renderMediaProductions(productions);
   renderMediaTemplates(templates);
@@ -4413,19 +4416,15 @@ function renderMediaTemplates(templates) {
   }
 
   container.innerHTML = templates.map(t => `
-    <div class="media-template-card" onclick="useMediaTemplate('${t.id}')">
+    <div class="media-template-card${t.available === false ? ' media-template-unavailable' : ''}" onclick="useMediaTemplate('${t.id}')">
       <div class="media-template-name">${escapeHtml(t.name)}</div>
-      <div class="media-template-desc">${escapeHtml(t.engine || '')} &middot; ${escapeHtml(t.duration || '')}</div>
-      ${t.params ? `
-        <div class="media-template-tags">
-          ${t.params.split(' ').map(p => `<span class="media-template-tag">${escapeHtml(p)}</span>`).join('')}
-        </div>
-      ` : ''}
+      <div class="media-template-desc">${escapeHtml(t.type || '')} &middot; ${escapeHtml(t.duration || '')}${t.available === false ? ' &middot; not available on this deployment' : ''}</div>
     </div>
   `).join('');
 }
 
-async function showNewMediaModal() {
+// prefill: optional {title, type, prompt} from a template (see useMediaTemplate below)
+async function showNewMediaModal(prefill = {}) {
   showModal('New Media Production', `
     <div style="display:flex;flex-direction:column;gap:14px;">
       <div>
@@ -4449,6 +4448,11 @@ async function showNewMediaModal() {
       <button class="btn btn-primary" id="mediaSubmitBtn" onclick="submitNewMedia()">&#127916; Start Production</button>
     </div>
   `);
+  // Set via .value (not interpolated into the HTML above) so template prompt text never needs
+  // manual escaping and can't collide with the modal markup.
+  if (prefill.title) document.getElementById('mediaTitle').value = prefill.title;
+  if (prefill.type) document.getElementById('mediaType').value = prefill.type;
+  if (prefill.prompt) document.getElementById('mediaPrompt').value = prefill.prompt;
 }
 
 async function submitNewMedia() {
@@ -4474,14 +4478,22 @@ async function submitNewMedia() {
 }
 
 function useMediaTemplate(templateId) {
-  // Pre-fill from template
-  showNewMediaModal();
+  const tmpl = mediaTemplatesCache.find(t => t.id === templateId);
+  if (!tmpl) return;
+  if (tmpl.available === false) {
+    showSettingsToast(`${tmpl.name} isn't available on this deployment yet.`, true);
+    return;
+  }
+  showNewMediaModal({ title: tmpl.name, type: tmpl.type, prompt: tmpl.promptTemplate });
 }
 
 // Setup media event listeners
 document.addEventListener('DOMContentLoaded', () => {
   const produceBtn = document.getElementById('mediaProduceBtn');
-  if (produceBtn) produceBtn.addEventListener('click', showNewMediaModal);
+  // Wrapped in an arrow fn — addEventListener would otherwise pass the click Event itself as
+  // showNewMediaModal's `prefill` arg (Event objects have a real .type property, "click", which
+  // would silently mis-set the Type dropdown).
+  if (produceBtn) produceBtn.addEventListener('click', () => showNewMediaModal());
 });
 
 // =============================
