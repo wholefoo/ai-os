@@ -4475,7 +4475,7 @@ async function showNewMediaModal(prefill = {}) {
           <span class="settings-toggle-slider"></span>
           <span class="settings-toggle-label">Multi-scene (stitch 2-6 clips into one longer video)</span>
         </label>
-        <div id="mediaMultiSceneHint" style="display:none;font-size:11px;color:var(--text-muted);margin-top:4px;">Separate each scene with a blank line in Prompt/Script above. The first scene is an 8s clip; each additional scene extends it by ~7s with real visual continuity (Veo's native extend, not a hard cut). Generated one at a time, so more scenes take longer. Every scene is a real, separately billed generation.</div>
+        <div id="mediaMultiSceneHint" style="display:none;font-size:11px;color:var(--text-muted);margin-top:4px;">Separate each scene with a blank line in Prompt/Script above — each becomes its own 8s clip, stitched together with a cut between scenes (not a seamless continuous shot). Generated a couple at a time. Every scene is a real, separately billed generation — if one fails, you'll still get the ones that succeeded stitched together.</div>
       </div>
       <div id="mediaProduceError" style="font-size:12px;color:var(--error);"></div>
       <button class="btn btn-primary" id="mediaSubmitBtn" onclick="submitNewMedia()">&#127916; Start Production</button>
