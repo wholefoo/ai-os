@@ -4435,17 +4435,18 @@ async function showNewMediaModal() {
       <div>
         <label style="font-size:12px;color:var(--text-muted);display:block;margin-bottom:4px;">Type</label>
         <select id="mediaType" class="grok-type-select" style="width:100%;">
-          <option value="video">Video (Remotion)</option>
-          <option value="image">Image</option>
-          <option value="audio">Audio</option>
-          <option value="three-d">3D (Blender)</option>
+          <option value="video">Video (Gemini Omni / Veo)</option>
+          <option value="image">Image (Gemini Omni)</option>
+          <option value="audio">Audio (Gemini Omni TTS)</option>
+          <option value="three-d" disabled>3D (Blender) — not available on this deployment</option>
         </select>
       </div>
       <div>
-        <label style="font-size:12px;color:var(--text-muted);display:block;margin-bottom:4px;">Prompt / Description</label>
+        <label style="font-size:12px;color:var(--text-muted);display:block;margin-bottom:4px;">Prompt / Script</label>
         <textarea id="mediaPrompt" class="grok-input" placeholder="Describe what to produce..." style="width:100%;min-height:80px;resize:vertical;"></textarea>
       </div>
-      <button class="btn btn-primary" onclick="submitNewMedia()">&#127916; Start Production</button>
+      <div id="mediaProduceError" style="font-size:12px;color:var(--error);"></div>
+      <button class="btn btn-primary" id="mediaSubmitBtn" onclick="submitNewMedia()">&#127916; Start Production</button>
     </div>
   `);
 }
@@ -4454,9 +4455,19 @@ async function submitNewMedia() {
   const title = document.getElementById('mediaTitle').value.trim();
   const type = document.getElementById('mediaType').value;
   const prompt = document.getElementById('mediaPrompt').value.trim();
-  if (!title || !prompt) return;
+  const errEl = document.getElementById('mediaProduceError');
+  const btn = document.getElementById('mediaSubmitBtn');
+  errEl.textContent = '';
+  if (!title || !prompt) { errEl.textContent = 'Title and prompt are required.'; return; }
 
-  await fetchJSON('/api/media/produce', { method: 'POST', body: { title, type, prompt } });
+  btn.disabled = true;
+  btn.textContent = 'Starting...';
+  const result = await fetchJSON('/api/media/produce', { method: 'POST', body: { title, type, prompt } });
+  btn.disabled = false;
+  btn.innerHTML = '&#127916; Start Production';
+
+  if (result.error) { errEl.textContent = result.error; return; }
+
   closeModal();
   loadMedia();
   addTimelineEvent('media', `New ${type} production started: ${title}`);
