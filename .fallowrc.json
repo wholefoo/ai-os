@@ -58,7 +58,8 @@
     { "file": "lib/web-studio/pipeline.js", "exports": ["extractJson", "renderBase", "renderPage", "renderSection", "buildSiteKnowledge"] },
     { "file": "lib/web-studio/publish.js", "exports": ["KEEP_RELEASES", "pruneReleases", "rollback"] },
     { "file": "lib/web-studio/scaffold.js", "exports": ["tokensCss"] },
-    { "file": "lib/self-improve/plan-store.js", "exports": ["DENIED_PATH_PREFIXES", "isPathAllowed"] }
+    { "file": "lib/self-improve/plan-store.js", "exports": ["DENIED_PATH_PREFIXES", "isPathAllowed"] },
+    { "file": "lib/omni-video.js", "exports": ["concatVideos"] }
   ],
   "duplicates": {
     "minOccurrences": 3
