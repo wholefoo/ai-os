@@ -4410,6 +4410,7 @@ function renderMediaProductions(productions) {
       <div class="media-production-meta">
         <span>Engine: ${escapeHtml(p.engine || 'gemini-omni')}</span>
         <span>Status: ${escapeHtml(p.status)}</span>
+        ${p.sceneCount ? `<span>${p.sceneCount} scenes</span>` : ''}
         ${p.duration ? `<span>Duration: ${escapeHtml(p.duration)}</span>` : ''}
         ${p.cost ? `<span>Cost: $${p.cost.toFixed(4)}</span>` : ''}
         <span>${timeAgo(p.createdAt)}</span>
@@ -4456,7 +4457,7 @@ async function showNewMediaModal(prefill = {}) {
       </div>
       <div>
         <label style="font-size:12px;color:var(--text-muted);display:block;margin-bottom:4px;">Type</label>
-        <select id="mediaType" class="grok-type-select" style="width:100%;">
+        <select id="mediaType" class="grok-type-select" style="width:100%;" onchange="document.getElementById('mediaMultiSceneRow').style.display = this.value === 'video' ? 'block' : 'none'; if (this.value !== 'video') { document.getElementById('mediaMultiScene').checked = false; document.getElementById('mediaMultiSceneHint').style.display = 'none'; }">
           <option value="video">Video (Gemini Omni / Veo)</option>
           <option value="image">Image (Gemini Omni)</option>
           <option value="audio">Audio (Gemini Omni TTS)</option>
@@ -4467,6 +4468,14 @@ async function showNewMediaModal(prefill = {}) {
         <label style="font-size:12px;color:var(--text-muted);display:block;margin-bottom:4px;">Prompt / Script</label>
         <textarea id="mediaPrompt" class="grok-input" placeholder="Describe what to produce..." style="width:100%;min-height:80px;resize:vertical;"></textarea>
       </div>
+      <div id="mediaMultiSceneRow">
+        <label class="settings-toggle">
+          <input type="checkbox" id="mediaMultiScene" onchange="document.getElementById('mediaMultiSceneHint').style.display = this.checked ? 'block' : 'none';">
+          <span class="settings-toggle-slider"></span>
+          <span class="settings-toggle-label">Multi-scene (stitch 2-6 clips into one longer video)</span>
+        </label>
+        <div id="mediaMultiSceneHint" style="display:none;font-size:11px;color:var(--text-muted);margin-top:4px;">Separate each scene with a blank line in Prompt/Script above — each becomes its own ~8s clip. Every scene is a real, separately billed generation.</div>
+      </div>
       <div id="mediaProduceError" style="font-size:12px;color:var(--error);"></div>
       <button class="btn btn-primary" id="mediaSubmitBtn" onclick="submitNewMedia()">&#127916; Start Production</button>
     </div>
@@ -4476,12 +4485,16 @@ async function showNewMediaModal(prefill = {}) {
   if (prefill.title) document.getElementById('mediaTitle').value = prefill.title;
   if (prefill.type) document.getElementById('mediaType').value = prefill.type;
   if (prefill.prompt) document.getElementById('mediaPrompt').value = prefill.prompt;
+  // Setting .value above doesn't fire the select's onchange, so re-sync the multi-scene row
+  // visibility explicitly rather than relying on that handler alone.
+  document.getElementById('mediaMultiSceneRow').style.display = document.getElementById('mediaType').value === 'video' ? 'block' : 'none';
 }
 
 async function submitNewMedia() {
   const title = document.getElementById('mediaTitle').value.trim();
   const type = document.getElementById('mediaType').value;
   const prompt = document.getElementById('mediaPrompt').value.trim();
+  const multiScene = document.getElementById('mediaMultiScene').checked;
   const errEl = document.getElementById('mediaProduceError');
   const btn = document.getElementById('mediaSubmitBtn');
   errEl.textContent = '';
@@ -4489,7 +4502,7 @@ async function submitNewMedia() {
 
   btn.disabled = true;
   btn.textContent = 'Starting...';
-  const result = await fetchJSON('/api/media/produce', { method: 'POST', body: { title, type, prompt } });
+  const result = await fetchJSON('/api/media/produce', { method: 'POST', body: { title, type, prompt, multiScene } });
   btn.disabled = false;
   btn.innerHTML = '&#127916; Start Production';
 
