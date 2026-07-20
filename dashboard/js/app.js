@@ -4406,11 +4406,12 @@ function renderMediaProductions(productions) {
         </div>
       ` : ''}
       ${p.status === 'error' ? `<div style="font-size:12px;color:var(--error);margin-top:4px;">${escapeHtml(p.error || 'Generation failed')}</div>` : ''}
+      ${p.partial ? `<div style="font-size:12px;color:var(--warning);margin-top:4px;">${escapeHtml(p.warning || 'Stopped early')}</div>` : ''}
       ${outputHtml}
       <div class="media-production-meta">
         <span>Engine: ${escapeHtml(p.engine || 'gemini-omni')}</span>
         <span>Status: ${escapeHtml(p.status)}</span>
-        ${p.sceneCount ? `<span>${p.sceneCount} scenes</span>` : ''}
+        ${p.sceneCount ? `<span>${p.scenesCompleted != null && p.scenesCompleted !== p.sceneCount ? `${p.scenesCompleted}/${p.sceneCount}` : p.sceneCount} scenes</span>` : ''}
         ${p.duration ? `<span>Duration: ${escapeHtml(p.duration)}</span>` : ''}
         ${p.cost ? `<span>Cost: $${p.cost.toFixed(4)}</span>` : ''}
         <span>${timeAgo(p.createdAt)}</span>
@@ -4474,7 +4475,7 @@ async function showNewMediaModal(prefill = {}) {
           <span class="settings-toggle-slider"></span>
           <span class="settings-toggle-label">Multi-scene (stitch 2-6 clips into one longer video)</span>
         </label>
-        <div id="mediaMultiSceneHint" style="display:none;font-size:11px;color:var(--text-muted);margin-top:4px;">Separate each scene with a blank line in Prompt/Script above — each becomes its own ~8s clip. Every scene is a real, separately billed generation.</div>
+        <div id="mediaMultiSceneHint" style="display:none;font-size:11px;color:var(--text-muted);margin-top:4px;">Separate each scene with a blank line in Prompt/Script above. The first scene is an 8s clip; each additional scene extends it by ~7s with real visual continuity (Veo's native extend, not a hard cut). Generated one at a time, so more scenes take longer. Every scene is a real, separately billed generation.</div>
       </div>
       <div id="mediaProduceError" style="font-size:12px;color:var(--error);"></div>
       <button class="btn btn-primary" id="mediaSubmitBtn" onclick="submitNewMedia()">&#127916; Start Production</button>
