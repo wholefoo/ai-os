@@ -4384,26 +4384,39 @@ function renderMediaProductions(productions) {
     return;
   }
 
-  container.innerHTML = productions.map(p => `
+  container.innerHTML = productions.map(p => {
+    let outputHtml = '';
+    if (p.status === 'completed' && p.output) {
+      const src = escapeHtml(p.output);
+      if (p.type === 'video') outputHtml = `<video controls style="width:100%;max-height:220px;border-radius:6px;margin-top:8px;background:#000;" src="${src}"></video>`;
+      else if (p.type === 'image') outputHtml = `<img src="${src}" style="max-width:100%;border-radius:6px;margin-top:8px;" alt="${escapeHtml(p.title)}">`;
+      else if (p.type === 'audio') outputHtml = `<audio controls style="width:100%;margin-top:8px;" src="${src}"></audio>`;
+      outputHtml += `<div style="margin-top:6px;"><a href="${src}" target="_blank" rel="noopener noreferrer" class="btn btn-sm">Open in new tab</a></div>`;
+    }
+    return `
     <div class="media-production-card">
       <div class="media-production-header">
         <span class="media-production-title">${escapeHtml(p.title)}</span>
         <span class="media-production-type ${p.type}">${p.type}</span>
       </div>
       <div style="font-size:12px;color:var(--text-secondary);">${escapeHtml(p.description || '')}</div>
-      ${p.progress !== undefined ? `
+      ${p.progress !== undefined && p.status !== 'completed' && p.status !== 'error' ? `
         <div class="media-production-progress">
           <div class="media-production-progress-fill" style="width:${p.progress}%;"></div>
         </div>
       ` : ''}
+      ${p.status === 'error' ? `<div style="font-size:12px;color:var(--error);margin-top:4px;">${escapeHtml(p.error || 'Generation failed')}</div>` : ''}
+      ${outputHtml}
       <div class="media-production-meta">
-        <span>Engine: ${p.engine || 'remotion'}</span>
-        <span>Status: ${p.status}</span>
-        ${p.duration ? `<span>Duration: ${p.duration}</span>` : ''}
+        <span>Engine: ${escapeHtml(p.engine || 'gemini-omni')}</span>
+        <span>Status: ${escapeHtml(p.status)}</span>
+        ${p.duration ? `<span>Duration: ${escapeHtml(p.duration)}</span>` : ''}
+        ${p.cost ? `<span>Cost: $${p.cost.toFixed(4)}</span>` : ''}
         <span>${timeAgo(p.createdAt)}</span>
       </div>
     </div>
-  `).join('');
+  `;
+  }).join('');
 }
 
 function renderMediaTemplates(templates) {
