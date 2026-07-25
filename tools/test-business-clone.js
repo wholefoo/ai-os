@@ -115,6 +115,20 @@ assert(store.getClone(emailClones, 'other@example.com', 'clone-e') === null, 'a 
 assert(store.listClones(emailClones, 'not an email at all!').length === 0, 'a malformed clientId matches nothing');
 assert(store.createClone({ id: 'clone-f', clientId: 'operator' }).clientId === 'operator', 'the non-email fallback id is still accepted');
 
+// --- entitlement: reachable is not the same as permitted
+// /api/clones stays on the client-API allowlist so a licensee's EMPLOYEES can reach it. Whether a
+// given person may use it is decided per user, and it fails closed — which is exactly the shape of
+// the records the Stripe purchase path creates for managed-website customers.
+assert(store.hasCloneAccess({ role: 'admin' }, null) === true, 'admin always has clone access — they pay for the instance');
+assert(store.hasCloneAccess({ role: 'admin', email: 'a@b.com' }, { email: 'a@b.com' }) === true, 'admin does not need the flag');
+assert(store.hasCloneAccess({ role: 'client' }, null) === false, 'a client with no user record gets nothing');
+assert(store.hasCloneAccess({ role: 'client' }, {}) === false, 'a user record with no cloneAccess field FAILS CLOSED — this is the Stripe-created managed client');
+assert(store.hasCloneAccess({ role: 'client' }, { cloneAccess: false }) === false, 'explicitly false is false');
+assert(store.hasCloneAccess({ role: 'client' }, { cloneAccess: true }) === true, 'an entitled client (an invited employee) has access');
+assert(store.hasCloneAccess({ role: 'client' }, { cloneAccess: 'yes' }) === false, 'only a real boolean true grants it — no truthy strings');
+assert(store.hasCloneAccess(null, { cloneAccess: true }) === false, 'no session means no access regardless of the record');
+assert(store.hasCloneAccess({ role: 'user' }, { cloneAccess: true }) === true, 'the flag governs any non-admin role, not just client');
+
 // --- persona versioning + status transitions
 assert(a.personaVersion === 0 && a.status === 'interviewing', 'new clone starts unversioned and interviewing');
 store.setPersona(a, full);

@@ -10672,6 +10672,23 @@ function wsClientCanReceive(ws, data) {
 // ============================================================
 const businessClones = loadState('business_clones', []);
 
+/**
+ * Auth for every clone route: authenticated AND entitled.
+ *
+ * Composed into one middleware rather than remembered at each route, because there are a dozen of
+ * them and the failure mode of forgetting one is an unentitled user reaching a paid surface. New
+ * clone routes get this instead of requireClientOrAdmin — that is the whole point of it existing.
+ */
+function requireCloneAccess(req, res, next) {
+  requireClientOrAdmin(req, res, () => {
+    const user = req.session && req.session.email ? findUserByEmail(req.session.email) : null;
+    if (!cloneStore.hasCloneAccess(req.session, user)) {
+      return res.status(403).json({ error: 'Clones are not enabled on this account.' });
+    }
+    next();
+  });
+}
+
 /** The clientId for a session — its email, or the fallback bucket for the API-token service user. */
 function cloneClientOf(session) {
   const email = session && session.email ? String(session.email).trim().toLowerCase() : '';
@@ -10689,7 +10706,7 @@ function cloneOr404(req, res) {
   return clone;
 }
 
-app.get('/api/clones', requireClientOrAdmin, (req, res) => {
+app.get('/api/clones', requireCloneAccess, (req, res) => {
   const clones = cloneStore.listClones(businessClones, cloneClientOf(req.session));
   res.json({ clones: clones.map(cloneStore.summarize), limit: cloneLimit(), tier: ACTIVE_TIER });
 });
@@ -10700,7 +10717,7 @@ function cloneLimit() {
   return (n === undefined || n === null) ? 1 : n;
 }
 
-app.post('/api/clones', requireClientOrAdmin, (req, res) => {
+app.post('/api/clones', requireCloneAccess, (req, res) => {
   const clientId = cloneClientOf(req.session);
 
   // Two ceilings, and they are not redundant. The structural cap in the store protects the
@@ -10733,7 +10750,7 @@ app.post('/api/clones', requireClientOrAdmin, (req, res) => {
 
 // MUST stay above GET /api/clones/:id — Express matches in registration order, and moving these
 // below would make ":id" swallow the literal paths "templates" and "onboarding".
-app.get('/api/clones/templates', requireClientOrAdmin, (req, res) => {
+app.get('/api/clones/templates', requireCloneAccess, (req, res) => {
   res.json({ templates: cloneInterview.templateList(), default: cloneInterview.DEFAULT_TEMPLATE });
 });
 
@@ -10753,7 +10770,7 @@ function onboardingFor(session) {
   return { rec, clientId };
 }
 
-app.get('/api/clones/onboarding', requireClientOrAdmin, (req, res) => {
+app.get('/api/clones/onboarding', requireCloneAccess, (req, res) => {
   const { rec, clientId } = onboardingFor(req.session);
   saveCloneOnboarding();
   res.json({
@@ -10762,7 +10779,7 @@ app.get('/api/clones/onboarding', requireClientOrAdmin, (req, res) => {
   });
 });
 
-app.post('/api/clones/onboarding/accept', requireClientOrAdmin, (req, res) => {
+app.post('/api/clones/onboarding/accept', requireCloneAccess, (req, res) => {
   const { rec, clientId } = onboardingFor(req.session);
   cloneOnb.acceptDisclosure(rec);
   saveCloneOnboarding();
@@ -10770,21 +10787,21 @@ app.post('/api/clones/onboarding/accept', requireClientOrAdmin, (req, res) => {
   res.json({ ok: true, ...cloneOnb.overview(rec, cloneStore.listClones(businessClones, clientId)), disclosure: cloneOnb.DISCLOSURE });
 });
 
-app.post('/api/clones/onboarding/dismiss', requireClientOrAdmin, (req, res) => {
+app.post('/api/clones/onboarding/dismiss', requireCloneAccess, (req, res) => {
   const { rec, clientId } = onboardingFor(req.session);
   cloneOnb.dismiss(rec);
   saveCloneOnboarding();
   res.json({ ok: true, ...cloneOnb.overview(rec, cloneStore.listClones(businessClones, clientId)), disclosure: cloneOnb.DISCLOSURE });
 });
 
-app.post('/api/clones/onboarding/resume', requireClientOrAdmin, (req, res) => {
+app.post('/api/clones/onboarding/resume', requireCloneAccess, (req, res) => {
   const { rec, clientId } = onboardingFor(req.session);
   cloneOnb.resume(rec);
   saveCloneOnboarding();
   res.json({ ok: true, ...cloneOnb.overview(rec, cloneStore.listClones(businessClones, clientId)), disclosure: cloneOnb.DISCLOSURE });
 });
 
-app.get('/api/clones/:id', requireClientOrAdmin, (req, res) => {
+app.get('/api/clones/:id', requireCloneAccess, (req, res) => {
   const clone = cloneOr404(req, res);
   if (!clone) return;
   res.json({
@@ -10798,7 +10815,7 @@ app.get('/api/clones/:id', requireClientOrAdmin, (req, res) => {
 });
 
 /** The compiled system prompt, so an owner can read exactly what their clone believes about them. */
-app.get('/api/clones/:id/prompt', requireClientOrAdmin, (req, res) => {
+app.get('/api/clones/:id/prompt', requireCloneAccess, (req, res) => {
   const clone = cloneOr404(req, res);
   if (!clone) return;
   res.json({ prompt: cloneCompile.compile(clone.persona), fingerprint: cloneCompile.fingerprint(clone.persona) });
@@ -10818,7 +10835,7 @@ app.get('/api/clones/:id/prompt', requireClientOrAdmin, (req, res) => {
  * validation, the version bump and the status recalculation all apply exactly as they do to
  * interview output — there is no path into a persona that skips normalisation.
  */
-app.put('/api/clones/:id/persona', requireClientOrAdmin, (req, res) => {
+app.put('/api/clones/:id/persona', requireCloneAccess, (req, res) => {
   const clone = cloneOr404(req, res);
   if (!clone) return;
   const incoming = (req.body || {}).persona;
@@ -10837,7 +10854,7 @@ app.put('/api/clones/:id/persona', requireClientOrAdmin, (req, res) => {
   });
 });
 
-app.delete('/api/clones/:id', requireClientOrAdmin, (req, res) => {
+app.delete('/api/clones/:id', requireCloneAccess, (req, res) => {
   const clone = cloneOr404(req, res);
   if (!clone) return;
   businessClones.splice(businessClones.indexOf(clone), 1);
@@ -10859,7 +10876,7 @@ app.delete('/api/clones/:id', requireClientOrAdmin, (req, res) => {
   res.json({ ok: true, purged });
 });
 
-app.post('/api/clones/:id/status', requireClientOrAdmin, (req, res) => {
+app.post('/api/clones/:id/status', requireCloneAccess, (req, res) => {
   const clone = cloneOr404(req, res);
   if (!clone) return;
   try {
@@ -10874,7 +10891,7 @@ app.post('/api/clones/:id/status', requireClientOrAdmin, (req, res) => {
 // --- Interview -------------------------------------------------------------
 // Next question. Falls back to the deterministic seed question whenever the model call fails, so
 // a provider outage degrades the interview to a fixed questionnaire instead of stopping it dead.
-app.post('/api/clones/:id/interview/next', requireClientOrAdmin, heavyLimiter, async (req, res) => {
+app.post('/api/clones/:id/interview/next', requireCloneAccess, heavyLimiter, async (req, res) => {
   const clone = cloneOr404(req, res);
   if (!clone) return;
 
@@ -10911,7 +10928,7 @@ app.post('/api/clones/:id/interview/next', requireClientOrAdmin, heavyLimiter, a
 // Answer -> extraction -> additive merge. An extraction failure records the answer and moves on
 // rather than erroring: the owner's words are kept in the transcript either way, so a failed
 // extraction costs a question, not their time.
-app.post('/api/clones/:id/interview/answer', requireClientOrAdmin, heavyLimiter, async (req, res) => {
+app.post('/api/clones/:id/interview/answer', requireCloneAccess, heavyLimiter, async (req, res) => {
   const clone = cloneOr404(req, res);
   if (!clone) return;
 
@@ -10960,7 +10977,7 @@ app.post('/api/clones/:id/interview/answer', requireClientOrAdmin, heavyLimiter,
 // it and sees whether it sounds like them. Red lines are checked against the output here exactly
 // as they will be in P3 — if the test surface were more permissive than the real one, it would be
 // validating something the owner never actually gets.
-app.post('/api/clones/:id/chat', requireClientOrAdmin, heavyLimiter, async (req, res) => {
+app.post('/api/clones/:id/chat', requireCloneAccess, heavyLimiter, async (req, res) => {
   const clone = cloneOr404(req, res);
   if (!clone) return;
 
@@ -11005,13 +11022,13 @@ app.post('/api/clones/:id/chat', requireClientOrAdmin, heavyLimiter, async (req,
 const cloneDrafts = loadState('clone_drafts', []);
 const saveCloneDrafts = () => saveState('clone_drafts', cloneDrafts);
 
-app.get('/api/clones/:id/drafts', requireClientOrAdmin, (req, res) => {
+app.get('/api/clones/:id/drafts', requireCloneAccess, (req, res) => {
   const clone = cloneOr404(req, res);
   if (!clone) return;
   res.json({ drafts: cloneDraftsLib.listDrafts(cloneDrafts, cloneClientOf(req.session), clone.id) });
 });
 
-app.post('/api/clones/:id/drafts', requireClientOrAdmin, heavyLimiter, async (req, res) => {
+app.post('/api/clones/:id/drafts', requireCloneAccess, heavyLimiter, async (req, res) => {
   const clone = cloneOr404(req, res);
   if (!clone) return;
 
@@ -11101,7 +11118,7 @@ app.post('/api/clones/:id/drafts', requireClientOrAdmin, heavyLimiter, async (re
 // The owner's verdict. This is where the feature learns: an EDIT records both what the clone wrote
 // and what the owner actually sends, and that diff is the most direct evidence of where the persona
 // is wrong. P4 turns it into proposed persona changes.
-app.post('/api/clones/:id/drafts/:draftId/review', requireClientOrAdmin, (req, res) => {
+app.post('/api/clones/:id/drafts/:draftId/review', requireCloneAccess, (req, res) => {
   const clone = cloneOr404(req, res);
   if (!clone) return;
 
@@ -11128,7 +11145,7 @@ app.post('/api/clones/:id/drafts/:draftId/review', requireClientOrAdmin, (req, r
 const clonePersonaProposals = loadState('clone_persona_proposals', []);
 const saveCloneProposals = () => saveState('clone_persona_proposals', clonePersonaProposals);
 
-app.get('/api/clones/:id/proposals', requireClientOrAdmin, (req, res) => {
+app.get('/api/clones/:id/proposals', requireCloneAccess, (req, res) => {
   const clone = cloneOr404(req, res);
   if (!clone) return;
   const evidence = cloneEvolve.gatherEvidence(clone, cloneDrafts);
@@ -11138,7 +11155,7 @@ app.get('/api/clones/:id/proposals', requireClientOrAdmin, (req, res) => {
   });
 });
 
-app.post('/api/clones/:id/evolve', requireClientOrAdmin, heavyLimiter, async (req, res) => {
+app.post('/api/clones/:id/evolve', requireCloneAccess, heavyLimiter, async (req, res) => {
   const clone = cloneOr404(req, res);
   if (!clone) return;
 
@@ -11193,7 +11210,7 @@ app.post('/api/clones/:id/evolve', requireClientOrAdmin, heavyLimiter, async (re
   res.json({ ok: true, proposal });
 });
 
-app.post('/api/clones/:id/proposals/:pid/decide', requireClientOrAdmin, (req, res) => {
+app.post('/api/clones/:id/proposals/:pid/decide', requireCloneAccess, (req, res) => {
   const clone = cloneOr404(req, res);
   if (!clone) return;
 
