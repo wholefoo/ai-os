@@ -23,6 +23,7 @@
     "tools/test-omni-media.js",
     "tools/test-predictive.js",
     "tools/test-product-factory.js",
+    "tools/test-business-clone.js",
     "ecosystem.config.js",
     "deploy/n8n-ecosystem.config.example.js",
     "dashboard/js/*.js"
@@ -59,7 +60,10 @@
     { "file": "lib/web-studio/publish.js", "exports": ["KEEP_RELEASES", "pruneReleases", "rollback"] },
     { "file": "lib/web-studio/scaffold.js", "exports": ["tokensCss"] },
     { "file": "lib/self-improve/plan-store.js", "exports": ["DENIED_PATH_PREFIXES", "isPathAllowed"] },
-    { "file": "lib/omni-video.js", "exports": ["concatVideos"] }
+    { "file": "lib/omni-video.js", "exports": ["concatVideos"] },
+
+    { "file": "lib/business-clone/persona.js", "exports": ["COMPLETENESS_WEIGHTS", "HUMOR_STYLES", "SENTENCE_LENGTHS", "RISK_POSTURES", "PRICING_DISCLOSURE", "MIN_USABLE_COMPLETENESS"] },
+    { "file": "lib/business-clone/store.js", "exports": ["OPERATOR_CLIENT_ID", "STATUSES", "MAX_CLONES_PER_CLIENT", "MAX_INTERVIEW_TURNS", "canCreate", "addInterviewTurn"] }
   ],
   "duplicates": {
     "minOccurrences": 3
