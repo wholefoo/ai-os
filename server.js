@@ -10749,6 +10749,39 @@ app.get('/api/clones/:id/prompt', requireClientOrAdmin, (req, res) => {
   res.json({ prompt: cloneCompile.compile(clone.persona), fingerprint: cloneCompile.fingerprint(clone.persona) });
 });
 
+/**
+ * Correct the persona directly.
+ *
+ * The interview is how a persona is BUILT; this is how it is FIXED. A persona the owner can read
+ * but not correct is half a feature — and extraction, however well constrained, will occasionally
+ * record something subtly wrong that no amount of further interviewing will dislodge.
+ *
+ * WHOLESALE REPLACE, not a patch: the owner is editing the object they were just shown, and they
+ * must be able to REMOVE a phrase the clone should never have learned. Merge semantics can add and
+ * overwrite but can never delete, which is the wrong tool for a correction. Callers therefore send
+ * the full persona back. Everything still goes through cloneStore.setPersona, so caps, enum
+ * validation, the version bump and the status recalculation all apply exactly as they do to
+ * interview output — there is no path into a persona that skips normalisation.
+ */
+app.put('/api/clones/:id/persona', requireClientOrAdmin, (req, res) => {
+  const clone = cloneOr404(req, res);
+  if (!clone) return;
+  const incoming = (req.body || {}).persona;
+  if (!incoming || typeof incoming !== 'object' || Array.isArray(incoming)) {
+    return res.status(400).json({ error: 'a persona object is required' });
+  }
+  cloneStore.setPersona(clone, incoming);
+  saveClones();
+  logActivity('clone', `Persona corrected by hand: ${clone.name} (v${clone.personaVersion})`, { cloneId: clone.id });
+  res.json({
+    ok: true,
+    persona: clone.persona,
+    personaVersion: clone.personaVersion,
+    progress: cloneInterview.progress(clone.persona),
+    promptFingerprint: cloneCompile.fingerprint(clone.persona),
+  });
+});
+
 app.delete('/api/clones/:id', requireClientOrAdmin, (req, res) => {
   const clone = cloneOr404(req, res);
   if (!clone) return;
