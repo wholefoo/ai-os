@@ -1510,6 +1510,7 @@ const cloneStore = require('./lib/business-clone/store');
 const cloneInterview = require('./lib/business-clone/interview');
 const cloneCompile = require('./lib/business-clone/compile');
 const cloneDraftsLib = require('./lib/business-clone/drafts');
+const cloneEvolve = require('./lib/business-clone/evolve');
 
 // Server-wide Ed25519 provenance signing key (lazy-generated under .magent/provenance, or supplied
 // via AIOS_PROVENANCE_PRIVATE_KEY). The issuer origin = the control-plane public URL so a sidecar's
@@ -10787,8 +10788,21 @@ app.delete('/api/clones/:id', requireClientOrAdmin, (req, res) => {
   if (!clone) return;
   businessClones.splice(businessClones.indexOf(clone), 1);
   saveClones();
-  logActivity('clone', `Business clone deleted: ${clone.name}`, { cloneId: clone.id });
-  res.json({ ok: true });
+
+  // Take the clone's drafts and proposals with it. They contain the customer messages it was given
+  // and the text it wrote in the owner's voice — leaving them behind after someone deletes their
+  // clone keeps a record of how that person speaks, which is precisely what they asked to remove.
+  let purged = 0;
+  for (let i = cloneDrafts.length - 1; i >= 0; i--) {
+    if (cloneDrafts[i] && cloneDrafts[i].cloneId === clone.id) { cloneDrafts.splice(i, 1); purged++; }
+  }
+  for (let i = clonePersonaProposals.length - 1; i >= 0; i--) {
+    if (clonePersonaProposals[i] && clonePersonaProposals[i].cloneId === clone.id) { clonePersonaProposals.splice(i, 1); purged++; }
+  }
+  if (purged) { saveCloneDrafts(); saveCloneProposals(); }
+
+  logActivity('clone', `Business clone deleted: ${clone.name} (${purged} draft/proposal records purged)`, { cloneId: clone.id });
+  res.json({ ok: true, purged });
 });
 
 app.post('/api/clones/:id/status', requireClientOrAdmin, (req, res) => {
@@ -11040,6 +11054,127 @@ app.post('/api/clones/:id/drafts/:draftId/review', requireClientOrAdmin, (req, r
   saveCloneDrafts();
   saveClones();
   res.json({ ok: true, draft, metrics: clone.metrics });
+});
+
+// --- Evolution: the clone proposes, the owner disposes ----------------------
+// A clone never rewrites itself. This produces a DIFF for a human to read; applying it is the
+// separate, explicit act below. A system that silently adjusts how it speaks in someone's name,
+// on evidence it gathered and judged alone, is one bad inference from drifting a person's voice.
+const clonePersonaProposals = loadState('clone_persona_proposals', []);
+const saveCloneProposals = () => saveState('clone_persona_proposals', clonePersonaProposals);
+
+app.get('/api/clones/:id/proposals', requireClientOrAdmin, (req, res) => {
+  const clone = cloneOr404(req, res);
+  if (!clone) return;
+  const evidence = cloneEvolve.gatherEvidence(clone, cloneDrafts);
+  res.json({
+    proposals: cloneEvolve.listProposals(clonePersonaProposals, cloneClientOf(req.session), clone.id),
+    evidence: { count: evidence.count, enough: evidence.enough, edits: evidence.edits, rejections: evidence.rejections, needed: cloneEvolve.MIN_EVIDENCE },
+  });
+});
+
+app.post('/api/clones/:id/evolve', requireClientOrAdmin, heavyLimiter, async (req, res) => {
+  const clone = cloneOr404(req, res);
+  if (!clone) return;
+
+  if (cloneEvolve.hasPending(clonePersonaProposals, clone.id)) {
+    return res.status(409).json({ error: 'There is already a proposal waiting for your decision.' });
+  }
+
+  const evidence = cloneEvolve.gatherEvidence(clone, cloneDrafts);
+  if (!evidence.enough) {
+    return res.status(400).json({
+      error: `Not enough to go on yet — ${evidence.count} reviewed draft${evidence.count === 1 ? '' : 's'} since the last change, ${cloneEvolve.MIN_EVIDENCE} needed. One edit is a mood; three is a pattern.`,
+      evidence: { count: evidence.count, needed: cloneEvolve.MIN_EVIDENCE },
+    });
+  }
+
+  const built = cloneEvolve.buildProposalPrompt(clone);
+  const result = await executeAgent('business-clone', built.task, {
+    systemOverride: built.system,
+    untrusted: cloneEvolve.evidenceBlocks(evidence),
+    maxTokens: 2000,
+  });
+  if (!result.ok) return res.status(502).json({ error: result.error || 'could not analyse the edits' });
+
+  const suggestion = webStudioPipeline.extractJson(result.content);
+  if (!suggestion) return res.status(502).json({ error: 'the analysis came back unreadable — try again' });
+
+  const { proposed, refused } = cloneEvolve.computeProposed(clone.persona, suggestion);
+  const changes = cloneEvolve.diffPersona(clone.persona, proposed);
+
+  costLedger.push({
+    id: uuidv4(), agent: 'business-clone', model: result.model, skill: 'clone-evolve',
+    inputTokens: result.inputTokens || 0, outputTokens: result.outputTokens || 0,
+    cost: result.cost || 0, timestamp: new Date().toISOString(),
+  });
+
+  // "No clear pattern" is a real answer, not a failure. Recording a no-change proposal would give
+  // the owner something to approve that does nothing, so say it and stop.
+  if (!changes.length) {
+    logActivity('clone', `${clone.name}: reviewed ${evidence.count} edits, nothing clear enough to propose`, { cloneId: clone.id });
+    return res.json({ ok: true, noChanges: true, rationale: String(suggestion.rationale || ''), evidenceCount: evidence.count, refused, cost: result.cost });
+  }
+
+  const proposal = cloneEvolve.createProposal({
+    id: uuidv4(), cloneId: clone.id, clientId: cloneClientOf(req.session),
+    basedOnVersion: clone.personaVersion, rationale: suggestion.rationale,
+    suggestion, proposed, changes, refused, evidenceCount: evidence.count, cost: result.cost || 0,
+  });
+  clonePersonaProposals.push(proposal);
+  saveCloneProposals();
+
+  logActivity('clone', `${clone.name} proposes ${changes.length} persona change${changes.length === 1 ? '' : 's'} — awaiting your decision`, { cloneId: clone.id, proposalId: proposal.id });
+  res.json({ ok: true, proposal });
+});
+
+app.post('/api/clones/:id/proposals/:pid/decide', requireClientOrAdmin, (req, res) => {
+  const clone = cloneOr404(req, res);
+  if (!clone) return;
+
+  const proposal = cloneEvolve.getProposal(clonePersonaProposals, cloneClientOf(req.session), req.params.pid);
+  if (!proposal || proposal.cloneId !== clone.id) return res.status(404).json({ error: 'Proposal not found' });
+  if (proposal.status !== 'pending') return res.status(400).json({ error: `already ${proposal.status}` });
+
+  const decision = String((req.body || {}).decision || '');
+  if (!['accept', 'reject'].includes(decision)) return res.status(400).json({ error: 'decision must be accept or reject' });
+
+  if (decision === 'accept') {
+    // Refuse to apply a proposal built against a persona that has since moved — the diff the owner
+    // reviewed is no longer the diff they would be applying.
+    if (proposal.basedOnVersion !== clone.personaVersion) {
+      return res.status(409).json({ error: 'The persona changed since this was proposed. Discard it and run the analysis again.' });
+    }
+
+    // Re-run the policy against the stored suggestion before applying, the way plan-store
+    // re-validates a plan at apply time. A proposal can outlive the rules it was computed under —
+    // this one is a live example: proposals created before the boundary guard covered scalar fields
+    // carry a persona that would blank the owner's pricing policy. If the recomputed result differs
+    // from what the owner actually reviewed, apply NOTHING and make them look again. Applying a diff
+    // they did not see is the failure this whole gate exists to prevent.
+    const recomputed = cloneEvolve.computeProposed(clone.persona, proposal.suggestion);
+    if (JSON.stringify(recomputed.proposed) !== JSON.stringify(proposal.proposed)) {
+      proposal.status = 'rejected';
+      proposal.decidedAt = new Date().toISOString();
+      proposal.staleReason = 'the safety rules changed after this was proposed';
+      saveCloneProposals();
+      logActivity('clone', `Persona proposal discarded as stale for ${clone.name} — policy changed since it was written`, { cloneId: clone.id, proposalId: proposal.id });
+      return res.status(409).json({
+        error: 'This proposal was written under older safety rules and is no longer what you reviewed. It has been discarded — run the analysis again.',
+        discarded: true,
+      });
+    }
+
+    cloneStore.setPersona(clone, proposal.proposed);
+    saveClones();
+  }
+
+  proposal.status = decision === 'accept' ? 'accepted' : 'rejected';
+  proposal.decidedAt = new Date().toISOString();
+  saveCloneProposals();
+
+  logActivity('clone', `Persona proposal ${proposal.status} for ${clone.name}`, { cloneId: clone.id, proposalId: proposal.id });
+  res.json({ ok: true, proposal, clone: cloneStore.summarize(clone) });
 });
 
 // --- Commercial Module Routes (registered last so all globals are available) ---

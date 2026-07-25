@@ -10,7 +10,7 @@
 //  See lib/business-clone/README.md.
 // ============================================================
 
-const clState = { wired: false, list: [], selectedId: null, tab: 'interview', detail: null, drafts: [], limit: 1, tier: '', busy: false, editing: false };
+const clState = { wired: false, list: [], selectedId: null, tab: 'interview', detail: null, drafts: [], proposals: [], evidence: null, limit: 1, tier: '', busy: false, editing: false };
 
 // The editable shape of a persona, mirroring lib/business-clone/persona.js. Enum options must match
 // that module's constants — a value it does not recognise is silently dropped on save, which would
@@ -167,8 +167,9 @@ function clRenderDetail() {
     ? `<div class="cl-esc"><strong>Not ready to work yet.</strong><br>${(c.blockers || []).map(escapeHtml).join('<br>')}</div>`
     : '';
 
-  const tabs = ['interview', 'persona', 'prompt', 'drafts']
-    .map((t) => `<span class="cl-tab ${clState.tab === t ? 'on' : ''}" onclick="clTab('${t}')">${t === 'prompt' ? 'What it was told' : capitalize(t)}</span>`)
+  const TAB_LABELS = { prompt: 'What it was told', evolve: 'What it learned' };
+  const tabs = ['interview', 'persona', 'prompt', 'drafts', 'evolve']
+    .map((t) => `<span class="cl-tab ${clState.tab === t ? 'on' : ''}" onclick="clTab('${t}')">${TAB_LABELS[t] || capitalize(t)}</span>`)
     .join('');
 
   d.innerHTML = `
@@ -193,6 +194,7 @@ function clRenderDetail() {
   if (clState.tab === 'interview') body.innerHTML = clInterviewHtml(c);
   else if (clState.tab === 'persona') body.innerHTML = clState.editing ? clPersonaFormHtml(c.persona || {}) : clPersonaHtml(c.persona || {});
   else if (clState.tab === 'prompt') { body.innerHTML = '<div class="cl-muted">Loading…</div>'; clLoadPrompt(); }
+  else if (clState.tab === 'evolve') { body.innerHTML = '<div class="cl-muted">Loading…</div>'; clLoadEvolve(); }
   else body.innerHTML = clDraftsHtml();
 }
 
@@ -378,6 +380,95 @@ function clDraftsHtml() {
       ${actions}
     </div>`;
   }).join('');
+}
+
+// --- evolution --------------------------------------------------------------
+
+async function clLoadEvolve() {
+  const res = await fetchJSON(`/api/clones/${clState.selectedId}/proposals`);
+  const body = document.getElementById('clTabBody');
+  if (!body) return;
+  if (!res || res.error) { body.innerHTML = '<div class="cl-empty">Could not load this.</div>'; return; }
+  clState.proposals = res.proposals || [];
+  clState.evidence = res.evidence || { count: 0, needed: 3, enough: false };
+  body.innerHTML = clEvolveHtml();
+}
+
+function clChangeHtml(c) {
+  const where = `${escapeHtml(c.dimension)} · ${escapeHtml(c.field)}`;
+  if (c.kind === 'value') {
+    return `<div class="cl-detail-row" style="display:block;padding:8px 0;border-bottom:1px dashed var(--border,#2a2a3a);">
+      <div class="cl-muted" style="font-size:11px;">${where}</div>
+      <div><span style="text-decoration:line-through;opacity:.6;">${escapeHtml(c.from || '(nothing)')}</span> → <strong>${escapeHtml(c.to || '(nothing)')}</strong></div>
+    </div>`;
+  }
+  const add = (c.added || []).map((x) => `<span class="cl-tag" style="color:#22c55e;border-color:#22c55e;margin:3px 4px 0 0;display:inline-block;">+ ${escapeHtml(x)}</span>`).join('');
+  const rem = (c.removed || []).map((x) => `<span class="cl-tag" style="color:#ef4444;border-color:#ef4444;margin:3px 4px 0 0;display:inline-block;">− ${escapeHtml(x)}</span>`).join('');
+  return `<div class="cl-detail-row" style="display:block;padding:8px 0;border-bottom:1px dashed var(--border,#2a2a3a);">
+    <div class="cl-muted" style="font-size:11px;">${where}</div><div>${add}${rem}</div></div>`;
+}
+
+function clEvolveHtml() {
+  const ev = clState.evidence || {};
+  const pending = (clState.proposals || []).find((p) => p.status === 'pending');
+  const decided = (clState.proposals || []).filter((p) => p.status !== 'pending');
+
+  const intro = `<div class="cl-muted" style="margin-bottom:10px;">When you edit a draft, the gap between what your clone wrote and what you actually sent shows where it has you wrong. It reads those edits and proposes changes — it never changes itself.</div>`;
+
+  const evidenceLine = `<div class="cl-muted" style="margin-bottom:12px;">${Number(ev.count) || 0} reviewed draft${ev.count === 1 ? '' : 's'} since the last change${ev.enough ? '' : ` · ${ev.needed} needed`}</div>`;
+
+  const action = pending ? '' : (ev.enough
+    ? `<button class="btn btn-primary" onclick="clRunEvolve()">Analyse my edits</button>`
+    : `<button class="btn" disabled title="Edit or reject a few more drafts first">Analyse my edits</button>`);
+
+  const pendingHtml = pending ? `
+    <div class="cl-draft" style="border-color:var(--brand,#4f46e5);">
+      <div class="cl-muted">${timeAgo(pending.createdAt)} · from ${pending.evidenceCount} of your edits</div>
+      <p style="margin:8px 0;">${escapeHtml(pending.rationale || '')}</p>
+      <h4 style="margin:12px 0 4px;">What would change</h4>
+      ${(pending.changes || []).map(clChangeHtml).join('')}
+      ${(pending.refused || []).length ? `<div class="cl-warn"><strong>Declined automatically:</strong><br>${pending.refused.map((r) => escapeHtml(`${r.field}: ${r.reason}`)).join('<br>')}</div>` : ''}
+      <div style="display:flex;gap:8px;margin-top:12px;">
+        <button class="btn btn-primary" onclick="clDecide('${escapeHtml(pending.id)}','accept')">Apply these</button>
+        <button class="btn" onclick="clDecide('${escapeHtml(pending.id)}','reject')">Discard</button>
+      </div>
+    </div>` : '';
+
+  const history = decided.length ? `<h4 style="margin:18px 0 6px;">Earlier</h4>` + decided.map((p) => `
+    <div class="cl-draft">
+      <div class="cl-muted">${timeAgo(p.decidedAt || p.createdAt)} · <strong>${escapeHtml(p.status)}</strong> · ${(p.changes || []).length} change${(p.changes || []).length === 1 ? '' : 's'}</div>
+      <div style="margin-top:4px;">${escapeHtml(p.rationale || '')}</div>
+    </div>`).join('') : '';
+
+  return intro + evidenceLine + action + pendingHtml + history;
+}
+
+async function clRunEvolve() {
+  if (clState.busy) return;
+  clState.busy = true;
+  showSettingsToast('Reading your edits…');
+  const res = await fetchJSON(`/api/clones/${clState.selectedId}/evolve`, { method: 'POST', body: {} });
+  clState.busy = false;
+  if (res && res.error) return showSettingsToast(res.error, true);
+  if (res && res.noChanges) {
+    showSettingsToast('Nothing clear enough to propose yet');
+    await clLoadEvolve();
+    // The rationale explains WHY nothing was proposed, which is more useful than an empty panel.
+    const body = document.getElementById('clTabBody');
+    if (body && res.rationale) body.insertAdjacentHTML('afterbegin', `<div class="cl-esc">${escapeHtml(res.rationale)}</div>`);
+    return;
+  }
+  await clLoadEvolve();
+}
+
+async function clDecide(pid, decision) {
+  const res = await fetchJSON(`/api/clones/${clState.selectedId}/proposals/${pid}/decide`, { method: 'POST', body: { decision } });
+  if (res && res.error) return showSettingsToast(res.error, true);
+  await clOpen(clState.selectedId);
+  await clFetchList();
+  clState.tab = 'evolve';
+  await clLoadEvolve();
+  showSettingsToast(decision === 'accept' ? 'Applied — your clone updated' : 'Discarded');
 }
 
 // --- actions ---------------------------------------------------------------
