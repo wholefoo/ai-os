@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AI Business Clone — AI OS Docs</title>
+  <meta name="description" content="Build a digital replica of a business owner's voice, expertise, and decision-making. The clone drafts customer replies and content in their name; the owner reviews everything before it is sent.">
+  <link rel="canonical" href="https://aiosorchestrationlab.com/docs/business-clone">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/css/landing.css">
+  <link rel="stylesheet" href="/css/docs.css">
+  <script async src="https://www.googletagmanager.com/gtag/js?id=G-SMHYRX8D4P"></script>
+  <script>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}gtag('js',new Date());gtag('config','G-SMHYRX8D4P');</script>
+  <script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "TechArticle",
+  "headline": "AI Business Clone — AI OS Docs",
+  "description": "Build a digital replica of a business owner's voice, expertise, and decision-making. The clone drafts customer replies and content in their name; the owner reviews everything before it is sent.",
+  "url": "https://aiosorchestrationlab.com/docs/business-clone",
+  "author": {
+    "@type": "Organization",
+    "name": "AI OS Orchestration Lab"
+  },
+  "publisher": {
+    "@type": "Organization",
+    "name": "AI OS Orchestration Lab",
+    "url": "https://aiosorchestrationlab.com"
+  }
+}
+  </script>
+  <script type="application/ld+json">{"@context": "https://schema.org", "@type": "BreadcrumbList", "itemListElement": [{"@type": "ListItem", "position": 1, "name": "Home", "item": "https://aiosorchestrationlab.com/"}, {"@type": "ListItem", "position": 2, "name": "Documentation", "item": "https://aiosorchestrationlab.com/docs/"}, {"@type": "ListItem", "position": 3, "name": "AI Business Clone"}]}</script>
+  <script type="application/ld+json">{"@context": "https://schema.org", "@type": "FAQPage", "mainEntity": [{"@type": "Question", "name": "How is an AI business clone different from an AI agent?", "acceptedAnswer": {"@type": "Answer", "text": "An agent is function-first: it exists to perform a job, and its personality is applied so its output reads well. A clone is person-first: what it knows, what it refuses to say, and how it weighs a trade-off are the product itself. The tasks it performs are interchangeable; the person it represents is not."}}, {"@type": "Question", "name": "Does the AI clone send messages on my behalf?", "acceptedAnswer": {"@type": "Answer", "text": "No. The clone is draft-only. It produces text and you review it; you send it yourself. Nothing in the system sends a message to a customer without a human doing it."}}, {"@type": "Question", "name": "How do you build the clone's persona?", "acceptedAnswer": {"@type": "Answer", "text": "Through an interview, not a form. The system asks adaptive questions across five dimensions - identity, voice, expertise, decision style, and boundaries - and stops when it knows enough to be useful. Answers are extracted into structured fields you can read and correct."}}, {"@type": "Question", "name": "Can I stop the clone from discussing certain topics?", "acceptedAnswer": {"@type": "Answer", "text": "Yes. Boundaries are a first-class part of the persona: phrases it must never say, things it must never promise, topics that always come to you personally, and confidential subjects. Boundaries are enforced twice - written into the prompt and checked against the generated text in code."}}, {"@type": "Question", "name": "Does the clone change over time?", "acceptedAnswer": {"@type": "Answer", "text": "It learns from your edits, but it never rewrites itself silently. When you edit or reject a draft, that is recorded. Proposed changes to the persona are shown to you as a diff and applied only if you approve them."}}, {"@type": "Question", "name": "How many AI clones can I create?", "acceptedAnswer": {"@type": "Answer", "text": "The Community tier includes one clone - your own. Creating clones for clients, each with their own separate persona and isolated data, requires a Business licence."}}]}</script>
+</head>
+<body>
+  <nav class="landing-nav">
+    <div class="nav-container">
+      <a href="/" class="nav-brand">
+        <span class="nav-logo">&#9678;</span>
+        <span class="nav-name">AI OS</span>
+      </a>
+      <div class="nav-links">
+        <a href="/">Home</a>
+        <a href="/docs" class="active">Docs</a>
+        <a href="/blog">Blog</a>
+        <a href="/about">About</a>
+        <a href="/corporate-mandate">Corporate Mandate</a>
+        <a href="/contact">Contact</a>
+      </div>
+      <div class="nav-cta">
+        <a href="/login" class="btn-nav-login">Log In</a>
+      </div>
+    </div>
+  </nav>
+
+  <main class="docs-page">
+    <div class="docs-container">
+      <div class="docs-layout">
+        <div class="docs-content">
+          <div class="docs-breadcrumb">
+            <a href="/docs">Docs</a> <span>/</span> AI Business Clone
+          </div>
+
+          <h1>AI Business Clone</h1>
+          <p class="docs-lead">A clone is a digital replica of a specific business owner &mdash; their voice, their expertise, and their judgement &mdash; built to draft work in their name. You create one by being interviewed, not by filling in a form, and everything it produces is a draft you review before anything is sent.</p>
+
+          <h2 id="not-an-agent">A Clone Is Not an Agent</h2>
+          <p>This distinction drives the whole design.</p>
+          <p><strong>An agent is function-first.</strong> The technical SEO agent exists because auditing technical SEO is a job. Its personality is applied so the output reads like something a person wrote. Replace the personality and the agent still does the same job.</p>
+          <p><strong>A clone is person-first.</strong> There is no fixed job. What the clone knows, what it refuses to say, and how it weighs a trade-off <em>are</em> the product. The tasks it performs &mdash; a support reply today, a post tomorrow &mdash; are interchangeable. The personality is not a presentation layer over a capability; it is the capability.</p>
+          <p>That is why clones live in their own part of the dashboard rather than inside Agents, and why the interface talks about interviewing a clone and setting its limits, not about configuring its capabilities.</p>
+
+          <h2 id="five-dimensions">The Five Dimensions</h2>
+          <p>A persona is structured data, not a block of prose, so you can read it field by field, correct it, and see exactly what changes when it evolves.</p>
+          <ul>
+            <li><strong>Identity</strong> &mdash; who the owner is and what the business actually does, in their words rather than marketing copy</li>
+            <li><strong>Voice</strong> &mdash; formality, directness, warmth, humour, the phrases they genuinely use, and the language they would never use</li>
+            <li><strong>Expertise</strong> &mdash; domains, methods, credentials, the questions they answer constantly, and where they disagree with their own industry</li>
+            <li><strong>Decision style</strong> &mdash; what they protect when they cannot have everything, the trade-offs they make routinely, and their risk posture</li>
+            <li><strong>Boundaries</strong> &mdash; what the clone must never say, never promise, never disclose, and which topics always go to a human</li>
+          </ul>
+
+          <h2 id="interview">The Interview</h2>
+          <p>The system asks one question at a time, targets whatever it still does not know, and stops when the persona is good enough to use. It asks for examples and actual wording rather than self-description &mdash; &ldquo;what do you say when a client is late paying?&rdquo; produces far better material than &ldquo;how would you describe your tone?&rdquo;, because people describe themselves inaccurately but quote themselves accurately.</p>
+          <p>Answers are converted into structured fields under strict rules: extract only what was actually said, omit anything not addressed, and never invent detail. Every answer adds to the persona; a later answer can never erase an earlier one.</p>
+
+          <h2 id="drafting">Drafting</h2>
+          <p>Once a clone knows enough, it can draft replies to customer messages in email, chat, public comment, or internal-note register. Two separate checks protect the owner:</p>
+          <ol>
+            <li><strong>Before drafting</strong> &mdash; if the incoming message touches a topic the owner marked as theirs to handle, or a confidential subject, the clone does not draft it at all. It is handed straight to the owner with the reason.</li>
+            <li><strong>After drafting</strong> &mdash; the generated text is checked in code against the owner&rsquo;s red lines. A draft that crosses one is still shown, clearly flagged, because hiding it would hide the evidence that something needs fixing.</li>
+          </ol>
+          <p>Messages from customers are treated as untrusted data throughout. They are never mixed into the clone&rsquo;s instructions, so a crafted message cannot redirect it.</p>
+
+          <h2 id="review">Review and Learning</h2>
+          <p>Every draft ends in one of three verdicts: good as is, edited, or rejected. An edit keeps both what the clone wrote and what the owner actually sent &mdash; that difference is the most direct evidence of where the persona is wrong, and it is what drives improvement over time.</p>
+          <p>The clone never rewrites its own persona silently. Proposed changes are shown as a diff and applied only when the owner accepts them.</p>
+
+          <h2 id="privacy">Privacy and Isolation</h2>
+          <p>Each clone belongs to one owner, and every read is scoped to them. Operators do not get a cross-client view of clones by default: reading someone&rsquo;s clone means reading how they think and what they refuse to say, which is a conversation to have with a customer rather than a default setting.</p>
+
+          <h2 id="tiers">Availability</h2>
+          <p>The Community tier includes one clone &mdash; your own. Creating clones for clients, each with a separate persona and isolated data, requires a Business licence.</p>
+
+          <h2 id="faq">Frequently Asked Questions</h2>
+          <h3>How is an AI business clone different from an AI agent?</h3>
+          <p>An agent is function-first: it exists to perform a job, and its personality is applied so its output reads well. A clone is person-first: what it knows, what it refuses to say, and how it weighs a trade-off are the product itself. The tasks it performs are interchangeable; the person it represents is not.</p>
+          <h3>Does the AI clone send messages on my behalf?</h3>
+          <p>No. The clone is draft-only. It produces text and you review it; you send it yourself. Nothing in the system sends a message to a customer without a human doing it.</p>
+          <h3>How do you build the clone&rsquo;s persona?</h3>
+          <p>Through an interview, not a form. The system asks adaptive questions across five dimensions - identity, voice, expertise, decision style, and boundaries - and stops when it knows enough to be useful. Answers are extracted into structured fields you can read and correct.</p>
+          <h3>Can I stop the clone from discussing certain topics?</h3>
+          <p>Yes. Boundaries are a first-class part of the persona: phrases it must never say, things it must never promise, topics that always come to you personally, and confidential subjects. Boundaries are enforced twice - written into the prompt and checked against the generated text in code.</p>
+          <h3>Does the clone change over time?</h3>
+          <p>It learns from your edits, but it never rewrites itself silently. When you edit or reject a draft, that is recorded. Proposed changes to the persona are shown to you as a diff and applied only if you approve them.</p>
+          <h3>How many AI clones can I create?</h3>
+          <p>The Community tier includes one clone - your own. Creating clones for clients, each with their own separate persona and isolated data, requires a Business licence.</p>
+
+          <div class="docs-page-nav">
+            <a href="/docs/agents">&larr; Agents</a>
+            <a href="/docs/knowledge-graph">Knowledge Graph &rarr;</a>
+          </div>
+        </div>
+
+        <aside class="docs-toc">
+          <div class="docs-toc-title">On this page</div>
+          <a href="#not-an-agent">A Clone Is Not an Agent</a>
+          <a href="#five-dimensions">The Five Dimensions</a>
+          <a href="#interview">The Interview</a>
+          <a href="#drafting">Drafting</a>
+          <a href="#review">Review and Learning</a>
+          <a href="#privacy">Privacy and Isolation</a>
+          <a href="#tiers">Availability</a>
+          <a href="#faq">FAQ</a>
+        </aside>
+      </div>
+    </div>
+  </main>
+
+  <footer class="site-footer">
+    <div class="footer-container">
+      <div class="footer-brand">
+        <span class="nav-logo">&#9678;</span>
+        <span class="nav-name">AI OS</span>
+        <p class="footer-tagline">The Agentic Operating System</p>
+        <p class="footer-mission">I fully recognize that in my God-led business, there is no separation between my spiritual life and my professional life. My enterprise is a direct reflection of my covenant with God. <a href="/corporate-mandate">more&nbsp;.&nbsp;.&nbsp;.</a></p>
+      </div>
+      <div class="footer-links">
+        <div class="footer-col">
+          <h4>Product</h4>
+          <a href="/#features">Features</a>
+          <a href="/#pricing">Pricing</a>
+          <a href="/docs">Documentation</a>
+        </div>
+        <div class="footer-col">
+          <h4>Resources</h4>
+          <a href="/blog">Blog</a>
+          <a href="/about">About</a>
+          <a href="/corporate-mandate">Corporate Mandate</a>
+          <a href="/contact">Contact</a>
+        </div>
+        <div class="footer-col">
+          <h4>Legal</h4>
+          <a href="/trust">Trust &amp; Security</a>
+          <a href="/terms">Terms of Service</a>
+          <a href="/privacy">Privacy Policy</a>
+        </div>
+      </div>
+    </div>
+    <div class="footer-bottom">
+      <p>&copy; 2026 AI OS Orchestration Lab. All rights reserved.</p>
+    </div>
+  </footer>
+</body>
+</html>

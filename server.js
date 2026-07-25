@@ -817,6 +817,7 @@ app.get('/sitemap.xml', (req, res) => {
     { url: '/docs/architecture', priority: '0.7', freq: 'monthly' },
     { url: '/docs/agents', priority: '0.7', freq: 'monthly' },
     { url: '/docs/skills', priority: '0.6', freq: 'monthly' },
+    { url: '/docs/business-clone', priority: '0.7', freq: 'monthly' },
     { url: '/docs/knowledge-graph', priority: '0.6', freq: 'monthly' },
     { url: '/docs/design-system', priority: '0.6', freq: 'monthly' },
     { url: '/docs/media-production', priority: '0.6', freq: 'monthly' },
@@ -1304,7 +1305,7 @@ app.get('/privacy', (req, res) => res.sendFile(path.join(BASE, 'dashboard', 'pri
 
 // Documentation pages
 app.get('/docs', (req, res) => res.sendFile(path.join(BASE, 'dashboard', 'docs', 'index.html')));
-const docPages = ['getting-started','architecture','agents','skills','knowledge-graph','design-system','media-production','monetization','batch-queue','api','deployment','notifications','security','hermes','self-improve','analytics','web-studio-business','agent-ready-sites','client-engine','billing','license-community','license-business','license-enterprise'];
+const docPages = ['getting-started','architecture','agents','skills','business-clone','knowledge-graph','design-system','media-production','monetization','batch-queue','api','deployment','notifications','security','hermes','self-improve','analytics','web-studio-business','agent-ready-sites','client-engine','billing','license-community','license-business','license-enterprise'];
 docPages.forEach(page => {
   app.get(`/docs/${page}`, (req, res) => res.sendFile(path.join(BASE, 'dashboard', 'docs', `${page}.html`)));
 });
@@ -3392,6 +3393,16 @@ const EFFORT_ROUTING = {
   scout: { effort: 'low', agents: ['scout', 'social-intel', 'routine-runner'] },
   // Creative tier — Gemini Omni for multimodal generation (video, image, audio)
   creative: { model: 'gemini-omni', agents: ['media-producer', 'vibe-designer', 'video-creator', 'audio-producer', 'thumbnail-gen'] },
+  // Clone tier — the AI Business Clone subsystem. `business-clone` is NOT an agent and has no file
+  // in .claude/agents: it is a routing key, so the clone picks a model without borrowing some
+  // unrelated agent's name (and, previously, that agent's identity — see executeAgent's
+  // systemOverride). An agent is function-first with a personality applied for readability; a clone
+  // is person-first, where the personality IS the product. Do not add it to the agent registry.
+  //
+  // 'high' means Sonnet 5 under the default 'balanced' reasoning_mode. That is the cheap default
+  // and it is a real trade-off: this text goes out in a named human's voice, so if voice fidelity
+  // disappoints, raising this tier is the first knob to try before touching any prompt.
+  clone: { effort: 'high', agents: ['business-clone'] },
 };
 
 // LLM provider consultants — each answers ON its own provider's model (genuinely "trained on"
@@ -10678,13 +10689,34 @@ function cloneOr404(req, res) {
 
 app.get('/api/clones', requireClientOrAdmin, (req, res) => {
   const clones = cloneStore.listClones(businessClones, cloneClientOf(req.session));
-  res.json({ clones: clones.map(cloneStore.summarize), limit: cloneStore.MAX_CLONES_PER_CLIENT });
+  res.json({ clones: clones.map(cloneStore.summarize), limit: cloneLimit(), tier: ACTIVE_TIER });
 });
+
+/** Per-tier clone allowance. Community gets 1 (the operator's own); selling clones needs a licence. */
+function cloneLimit() {
+  const n = commercial.limits && commercial.limits.businessClones;
+  return (n === undefined || n === null) ? 1 : n;
+}
 
 app.post('/api/clones', requireClientOrAdmin, (req, res) => {
   const clientId = cloneClientOf(req.session);
+
+  // Two ceilings, and they are not redundant. The structural cap in the store protects the
+  // instance from a runaway caller regardless of licensing; this one is the commercial allowance.
+  // Whichever is lower wins.
   const allowed = cloneStore.canCreate(businessClones, clientId);
   if (!allowed.ok) return res.status(429).json({ error: allowed.error });
+
+  const limit = cloneLimit();
+  if (cloneStore.listClones(businessClones, clientId).length >= limit) {
+    return res.status(403).json({
+      error: limit === 1
+        ? 'The Community tier includes one clone — your own. Creating clones for clients requires a Business licence.'
+        : `Clone limit reached for this licence (${limit}).`,
+      limit,
+      tier: ACTIVE_TIER,
+    });
+  }
 
   try {
     const clone = cloneStore.createClone({ id: uuidv4(), clientId, name: (req.body || {}).name });
@@ -10750,7 +10782,7 @@ app.post('/api/clones/:id/interview/next', requireClientOrAdmin, heavyLimiter, a
 
   let question = built.seeds.length ? built.seeds[0].question : null;
   let generated = false;
-  const result = await executeAgent('comms-director', built.task, { systemOverride: built.system, maxTokens: 300 });
+  const result = await executeAgent('business-clone', built.task, { systemOverride: built.system, maxTokens: 300 });
   if (result.ok && result.content) {
     question = String(result.content).trim().replace(/^["']|["']$/g, '').slice(0, 1000);
     generated = true;
@@ -10791,7 +10823,7 @@ app.post('/api/clones/:id/interview/answer', requireClientOrAdmin, heavyLimiter,
   });
 
   let extracted = false;
-  const result = await executeAgent('data-wrangler', built.task, { systemOverride: built.system, maxTokens: 1500 });
+  const result = await executeAgent('business-clone', built.task, { systemOverride: built.system, maxTokens: 1500 });
   if (result.ok && result.content) {
     const patch = webStudioPipeline.extractJson(result.content);
     if (patch) {
@@ -10829,7 +10861,7 @@ app.post('/api/clones/:id/chat', requireClientOrAdmin, heavyLimiter, async (req,
   }
 
   // systemOverride, not context: the persona IS the identity here, not an addendum to Herald's.
-  const result = await executeAgent('comms-director', message, {
+  const result = await executeAgent('business-clone', message, {
     systemOverride: cloneCompile.compile(clone.persona),
     maxTokens: 1500,
   });
@@ -10919,7 +10951,7 @@ app.post('/api/clones/:id/drafts', requireClientOrAdmin, heavyLimiter, async (re
     notes: body.notes,
   });
 
-  const result = await executeAgent('comms-director', built.task, {
+  const result = await executeAgent('business-clone', built.task, {
     systemOverride: built.system,
     untrusted: built.untrusted,
     maxTokens: 2000,

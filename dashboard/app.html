@@ -58,6 +58,9 @@
         <a href="#" class="nav-item" data-view="crm">
           <span class="nav-icon">&#128100;</span> CRM
         </a>
+        <a href="#" class="nav-item" data-view="clones">
+          <span class="nav-icon">&#129485;</span> Clones
+        </a>
         <a href="#" class="nav-item" data-view="analytics">
           <span class="nav-icon">&#128202;</span> Analytics
         </a>
@@ -1544,6 +1547,65 @@
           <div class="an-note">Bot identity is self-reported by user-agent; IP-range verification lands in a later phase. Human pageviews here are log-derived (no beacon yet) &mdash; script-blocking visitors included, assets and non-AI crawlers excluded.</div>
         </div>
 
+        <!-- AI Business Clone. A clone is NOT an agent: agents are function-first with a
+             personality for readability, a clone is person-first where the persona IS the product.
+             That is why this is its own surface and not a tab inside Agents, and why the copy here
+             says "interview" and "expertise/limits" rather than "configure" and "capabilities".
+             See lib/business-clone/README.md before restyling this. -->
+        <div class="view" id="view-clones">
+          <style>
+            .cl-grid{display:grid;grid-template-columns:minmax(280px,1fr) 2fr;gap:12px;}
+            .cl-list{max-height:70vh;overflow:auto;}
+            .cl-card{border:1px solid var(--border,#2a2a3a);border-radius:10px;padding:12px;margin-bottom:8px;cursor:pointer;}
+            .cl-card:hover{border-color:var(--brand,#4f46e5);}
+            .cl-card.active{border-color:var(--brand,#4f46e5);background:rgba(79,70,229,.10);}
+            .cl-name{font-weight:600;display:flex;justify-content:space-between;gap:8px;align-items:center;}
+            .cl-tag{font-size:10px;padding:2px 8px;border-radius:999px;border:1px solid var(--border,#2a2a3a);white-space:nowrap;}
+            .cl-tag.interviewing{color:#eab308;border-color:#eab308;}
+            .cl-tag.ready{color:#38bdf8;border-color:#38bdf8;}
+            .cl-tag.active-s{color:#22c55e;border-color:#22c55e;}
+            .cl-tag.paused{color:#9aa;border-color:#556;}
+            .cl-bar{height:6px;border-radius:999px;background:rgba(255,255,255,.08);margin-top:8px;overflow:hidden;}
+            .cl-bar > i{display:block;height:100%;background:var(--brand,#4f46e5);}
+            .cl-muted{color:var(--text-secondary,#9aa);font-size:12px;}
+            .cl-dims{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:8px;margin:10px 0;}
+            .cl-dim{border:1px solid var(--border,#2a2a3a);border-radius:8px;padding:8px 10px;}
+            .cl-dim-label{font-size:10px;text-transform:uppercase;letter-spacing:.04em;color:var(--text-secondary,#9aa);}
+            .cl-dim-score{font-size:18px;font-weight:700;}
+            .cl-tabs{display:flex;gap:8px;margin:12px 0;flex-wrap:wrap;}
+            .cl-tab{font-size:12px;padding:5px 12px;cursor:pointer;border:1px solid var(--border,#2a2a3a);border-radius:999px;}
+            .cl-tab.on{background:var(--brand,#4f46e5);color:#fff;border-color:var(--brand,#4f46e5);}
+            .cl-q{font-size:15px;line-height:1.5;padding:12px;border-left:3px solid var(--brand,#4f46e5);background:rgba(79,70,229,.07);border-radius:0 8px 8px 0;margin-bottom:10px;}
+            .cl-turn{padding:8px 10px;border-radius:8px;margin-bottom:6px;font-size:13px;}
+            .cl-turn.interviewer{background:rgba(255,255,255,.04);}
+            .cl-turn.owner{background:rgba(79,70,229,.10);}
+            .cl-pre{white-space:pre-wrap;font-size:12px;line-height:1.5;max-height:55vh;overflow:auto;border:1px solid var(--border,#2a2a3a);border-radius:8px;padding:12px;}
+            .cl-draft{border:1px solid var(--border,#2a2a3a);border-radius:10px;padding:12px;margin-bottom:10px;}
+            .cl-warn{border-left:3px solid #ef4444;background:rgba(239,68,68,.08);padding:8px 10px;border-radius:0 8px 8px 0;font-size:12px;margin:8px 0;}
+            .cl-esc{border-left:3px solid #eab308;background:rgba(234,179,8,.08);padding:8px 10px;border-radius:0 8px 8px 0;font-size:12px;margin:8px 0;}
+            .cl-empty{text-align:center;padding:40px 20px;color:var(--text-secondary,#9aa);}
+            @media (max-width:900px){.cl-grid{grid-template-columns:1fr;}.cl-list{max-height:none;}}
+          </style>
+
+          <div class="radar-header">
+            <div>
+              <h2 style="margin:0;">Business Clones</h2>
+              <div class="cl-muted">A clone is a replica of a specific person — their voice, their expertise, their limits. You build one by being interviewed, not by filling in a form. Everything it writes is a draft for you to review; it never sends anything.</div>
+            </div>
+            <div style="display:flex;gap:8px;align-items:center;">
+              <span class="cl-muted" id="clLimit"></span>
+              <button class="btn btn-primary" id="clNewBtn">+ New clone</button>
+            </div>
+          </div>
+
+          <div class="cl-grid">
+            <div>
+              <div class="cl-list" id="clList"></div>
+            </div>
+            <div id="clDetail"><div class="cl-empty">Select a clone, or create one to begin.</div></div>
+          </div>
+        </div>
+
         <div class="view" id="view-crm">
           <style>
             .crm-stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:10px;margin-bottom:12px;}
@@ -2847,12 +2909,13 @@
     </div>
   </div>
 
-  <script src="js/app.js?v=71"></script>
+  <script src="js/app.js?v=72"></script>
   <script src="https://cdn.jsdelivr.net/npm/monaco-editor@0.52.2/min/vs/loader.js"></script>
   <script src="js/web-studio.js?v=16"></script>
   <script src="js/crm.js?v=9"></script>
   <script src="js/analytics.js?v=2"></script>
   <script src="js/security.js?v=1"></script>
   <script src="js/brand-kits.js?v=1"></script>
+  <script src="js/clones.js?v=1"></script>
 </body>
 </html>

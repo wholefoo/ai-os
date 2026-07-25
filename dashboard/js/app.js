@@ -92,6 +92,7 @@ function switchView(view) {
     'web-studio': loadWebStudio,
     'brand-kits': loadBrandKits,
     crm: loadCrm,
+    clones: loadClones,
     analytics: loadAnalytics,
     security: loadSecurity,
     mission: loadMission,

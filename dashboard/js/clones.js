@@ -1,0 +1,322 @@
+// dashboard/js/clones.js
+// ============================================================
+//  AI Business Clone view. Globals from app.js: fetchJSON, escapeHtml, timeAgo, showSettingsToast.
+//  Exposes loadClones(). Inline handlers are global function declarations, matching crm.js.
+//
+//  A clone is NOT an agent, and the copy here has to keep saying so. An agent is function-first
+//  with a personality applied so its output reads well; a clone is person-first, where the persona
+//  IS the product. So this view talks about interviewing, expertise and limits — never about
+//  configuring capabilities — and it lives in its own nav entry rather than inside Agents.
+//  See lib/business-clone/README.md.
+// ============================================================
+
+const clState = { wired: false, list: [], selectedId: null, tab: 'interview', detail: null, drafts: [], limit: 1, tier: '', busy: false };
+
+function loadClones() {
+  if (!clState.wired) {
+    clState.wired = true;
+    const btn = document.getElementById('clNewBtn');
+    if (btn) btn.addEventListener('click', clCreate);
+  }
+  clFetchList();
+}
+
+async function clFetchList() {
+  const data = await fetchJSON('/clones');
+  clState.list = (data && data.clones) || [];
+  clState.limit = (data && data.limit) != null ? data.limit : 1;
+  clState.tier = (data && data.tier) || '';
+  clRenderList();
+  if (clState.selectedId && clState.list.some((c) => c.id === clState.selectedId)) clOpen(clState.selectedId);
+  else if (!clState.list.length) clRenderEmptyDetail();
+}
+
+function clRenderList() {
+  const el = document.getElementById('clList');
+  const lim = document.getElementById('clLimit');
+  if (lim) {
+    const shown = clState.limit === null || clState.limit === undefined ? '' : (clState.limit > 999 ? '∞' : clState.limit);
+    lim.textContent = `${clState.list.length} of ${shown}${clState.tier ? ` · ${clState.tier}` : ''}`;
+  }
+  if (!el) return;
+  if (!clState.list.length) {
+    el.innerHTML = '<div class="cl-empty">No clones yet.<br><span class="cl-muted">Create one, then answer its questions.</span></div>';
+    return;
+  }
+  el.innerHTML = clState.list.map((c) => `
+    <div class="cl-card ${c.id === clState.selectedId ? 'active' : ''}" onclick="clOpen('${escapeHtml(c.id)}')">
+      <div class="cl-name">
+        <span>${escapeHtml(c.name)}</span>
+        <span class="cl-tag ${c.status === 'active' ? 'active-s' : escapeHtml(c.status)}">${escapeHtml(c.status)}</span>
+      </div>
+      <div class="cl-bar"><i style="width:${Math.max(0, Math.min(100, Number(c.completeness) || 0))}%"></i></div>
+      <div class="cl-muted" style="margin-top:6px;">${Number(c.completeness) || 0}% known${c.usable ? '' : ' · not ready yet'}</div>
+    </div>`).join('');
+}
+
+function clRenderEmptyDetail() {
+  const d = document.getElementById('clDetail');
+  if (d) d.innerHTML = '<div class="cl-empty">Select a clone, or create one to begin.</div>';
+}
+
+async function clCreate() {
+  const name = prompt('Whose clone is this? (e.g. "Dana — Whitfield Dental")');
+  if (name === null) return;
+  const res = await fetchJSON('/clones', { method: 'POST', body: { name: name.trim() } });
+  if (res && res.error) return showSettingsToast(res.error, true);
+  clState.selectedId = res.clone.id;
+  clState.tab = 'interview';
+  await clFetchList();
+  showSettingsToast('Clone created — start the interview');
+}
+
+async function clOpen(id) {
+  clState.selectedId = id;
+  clRenderList();
+  const detail = await fetchJSON(`/clones/${id}`);
+  if (!detail || detail.error) return showSettingsToast((detail && detail.error) || 'Could not load that clone', true);
+  clState.detail = detail;
+  if (clState.tab === 'drafts') await clFetchDrafts();
+  clRenderDetail();
+}
+
+function clTab(tab) {
+  clState.tab = tab;
+  if (tab === 'drafts') { clFetchDrafts().then(clRenderDetail); return; }
+  clRenderDetail();
+}
+
+async function clFetchDrafts() {
+  const res = await fetchJSON(`/clones/${clState.selectedId}/drafts`);
+  clState.drafts = (res && res.drafts) || [];
+}
+
+function clRenderDetail() {
+  const d = document.getElementById('clDetail');
+  const c = clState.detail;
+  if (!d || !c) return;
+
+  const dims = c.progress && c.progress.byDimension ? c.progress.byDimension : {};
+  const dimCards = Object.entries(dims).map(([name, v]) => `
+    <div class="cl-dim">
+      <div class="cl-dim-label">${escapeHtml(name.replace(/([A-Z])/g, ' $1'))}</div>
+      <div class="cl-dim-score">${Number(v.score) || 0}%</div>
+    </div>`).join('');
+
+  const blockers = (c.blockers || []).length
+    ? `<div class="cl-esc"><strong>Not ready to work yet.</strong><br>${(c.blockers || []).map(escapeHtml).join('<br>')}</div>`
+    : '';
+
+  const tabs = ['interview', 'persona', 'prompt', 'drafts']
+    .map((t) => `<span class="cl-tab ${clState.tab === t ? 'on' : ''}" onclick="clTab('${t}')">${t === 'prompt' ? 'What it was told' : capitalize(t)}</span>`)
+    .join('');
+
+  d.innerHTML = `
+    <div style="display:flex;justify-content:space-between;gap:12px;align-items:flex-start;">
+      <div>
+        <h3 style="margin:0 0 4px;">${escapeHtml(c.name)}</h3>
+        <div class="cl-muted">${Number(c.completeness) || 0}% known · persona v${Number(c.personaVersion) || 0} · ${Number(c.promptTokens) || 0} tokens per call · updated ${timeAgo(c.updatedAt)}</div>
+      </div>
+      <div style="display:flex;gap:6px;">
+        ${c.usable && c.status !== 'active' ? `<button class="btn btn-primary" onclick="clSetStatus('active')">Put to work</button>` : ''}
+        ${c.status === 'active' ? `<button class="btn" onclick="clSetStatus('paused')">Pause</button>` : ''}
+        ${c.status === 'paused' ? `<button class="btn" onclick="clSetStatus('ready')">Resume</button>` : ''}
+        <button class="btn" onclick="clDelete()">Delete</button>
+      </div>
+    </div>
+    ${blockers}
+    <div class="cl-dims">${dimCards}</div>
+    <div class="cl-tabs">${tabs}</div>
+    <div id="clTabBody"></div>`;
+
+  const body = document.getElementById('clTabBody');
+  if (clState.tab === 'interview') body.innerHTML = clInterviewHtml(c);
+  else if (clState.tab === 'persona') body.innerHTML = clPersonaHtml(c.persona || {});
+  else if (clState.tab === 'prompt') { body.innerHTML = '<div class="cl-muted">Loading…</div>'; clLoadPrompt(); }
+  else body.innerHTML = clDraftsHtml();
+}
+
+function clInterviewHtml(c) {
+  const turns = (c.transcript || []).slice(-12);
+  const lastQ = [...(c.transcript || [])].reverse().find((t) => t.role === 'interviewer');
+  const answered = (c.transcript || []).length && (c.transcript || [])[(c.transcript || []).length - 1].role === 'owner';
+
+  if (c.progress && c.progress.complete) {
+    return `<div class="cl-esc" style="border-left-color:#22c55e;background:rgba(34,197,94,.08);">
+      The interview has covered everything it needs. You can keep answering to sharpen it, or put the clone to work.</div>
+      ${clTranscriptHtml(turns)}`;
+  }
+
+  return `
+    ${lastQ && !answered ? `<div class="cl-q">${escapeHtml(lastQ.text)}</div>
+      <textarea id="clAnswer" rows="5" style="width:100%;" placeholder="Answer in your own words. Quotes and examples are worth more than descriptions."></textarea>
+      <div style="display:flex;gap:8px;margin-top:8px;">
+        <button class="btn btn-primary" onclick="clSubmitAnswer()">Send answer</button>
+        <button class="btn" onclick="clNextQuestion()">Skip this one</button>
+      </div>`
+      : `<div class="cl-muted" style="margin-bottom:10px;">Ready for the next question.</div>
+      <button class="btn btn-primary" onclick="clNextQuestion()">Ask me something</button>`}
+    ${clTranscriptHtml(turns)}`;
+}
+
+function clTranscriptHtml(turns) {
+  if (!turns.length) return '';
+  return `<h4 style="margin:18px 0 8px;">Conversation</h4>` + turns.map((t) => `
+    <div class="cl-turn ${t.role === 'owner' ? 'owner' : 'interviewer'}">
+      <div class="cl-muted" style="margin-bottom:3px;">${t.role === 'owner' ? 'You' : 'Interviewer'}</div>
+      ${escapeHtml(t.text)}
+    </div>`).join('');
+}
+
+/** Render the persona so the owner can audit what their clone believes about them. */
+function clPersonaHtml(p) {
+  const section = (title, rows) => {
+    const real = rows.filter(Boolean);
+    return real.length ? `<h4 style="margin:16px 0 6px;">${title}</h4>${real.join('')}` : '';
+  };
+  const line = (label, v) => (v || v === 0) ? `<div class="cl-detail-row" style="display:flex;justify-content:space-between;gap:12px;padding:6px 0;border-bottom:1px dashed var(--border,#2a2a3a);font-size:13px;"><span class="cl-muted">${label}</span><span style="text-align:right;">${escapeHtml(v)}</span></div>` : '';
+  const list = (label, arr) => (arr && arr.length) ? `<div style="padding:6px 0;"><div class="cl-muted">${label}</div><div>${arr.map((x) => `<span class="cl-tag" style="margin:3px 4px 0 0;display:inline-block;">${escapeHtml(typeof x === 'string' ? x : (x.claim || x.question || x.when || ''))}</span>`).join('')}</div></div>` : '';
+
+  const i = p.identity || {}, v = p.voice || {}, e = p.expertise || {}, ds = p.decisionStyle || {}, b = p.boundaries || {};
+  const scale = (n) => (n ? `${n} / 5` : '');
+
+  const html = [
+    section('Who they are', [line('Name', i.ownerName), line('Role', i.role), line('Business', i.businessName), line('Industry', i.industry), line('Years', i.yearsExperience), line('What the business does', i.whatTheyDo)]),
+    section('How they sound', [line('Formality', scale(v.formality)), line('Directness', scale(v.directness)), line('Warmth', scale(v.warmth)), line('Humour', v.humor), line('Sign-off', v.signoff), list('Phrases they use', v.signaturePhrases), list('Never uses', v.avoidPhrases)]),
+    section('What they know', [list('Expert in', e.domains), list('Methods', e.methodologies), list('Strong opinions', e.strongOpinions), list('Answers on file', e.faq)]),
+    section('How they decide', [list('Protects, in order', ds.priorities), list('Trade-offs', ds.tradeoffRules), line('Risk posture', ds.riskPosture), list('Always escalates', ds.escalationTriggers)]),
+    section('Limits', [list('Never says', b.neverSay), list('Never promises', b.neverPromise), list('Always yours to handle', b.requiresHuman), list('Confidential', b.confidentialTopics), line('Pricing', b.pricingDisclosure)]),
+  ].filter(Boolean).join('');
+
+  return html || '<div class="cl-empty">Nothing learned yet — answer some interview questions.</div>';
+}
+
+async function clLoadPrompt() {
+  const res = await fetchJSON(`/clones/${clState.selectedId}/prompt`);
+  const body = document.getElementById('clTabBody');
+  if (!body) return;
+  if (!res || res.error || !res.prompt) { body.innerHTML = '<div class="cl-empty">Could not load the prompt.</div>'; return; }
+  body.innerHTML = `<div class="cl-muted" style="margin-bottom:8px;">This is exactly what your clone is told before it writes anything. Fingerprint <code>${escapeHtml(res.fingerprint || '')}</code>.</div>
+    <div class="cl-pre">${escapeHtml(res.prompt)}</div>`;
+}
+
+function clDraftsHtml() {
+  const newBox = `
+    <div style="border:1px solid var(--border,#2a2a3a);border-radius:10px;padding:12px;margin-bottom:14px;">
+      <div class="cl-muted" style="margin-bottom:6px;">Paste a customer message and see what your clone would write. It drafts only — nothing is sent.</div>
+      <textarea id="clInbound" rows="3" style="width:100%;" placeholder="Hi — do you install the chairs you sell?"></textarea>
+      <div style="display:flex;gap:8px;margin-top:8px;align-items:center;">
+        <select id="clChannel" style="max-width:160px;">
+          <option value="email">Email reply</option>
+          <option value="chat">Chat reply</option>
+          <option value="comment">Public comment</option>
+          <option value="internal">Internal note</option>
+        </select>
+        <button class="btn btn-primary" onclick="clNewDraft()">Draft it</button>
+      </div>
+    </div>`;
+
+  if (!clState.drafts.length) return newBox + '<div class="cl-empty">No drafts yet.</div>';
+
+  return newBox + clState.drafts.map((d) => {
+    if (d.status === 'escalated') {
+      return `<div class="cl-draft">
+        <div class="cl-muted">${timeAgo(d.createdAt)} · ${escapeHtml(d.channel)}</div>
+        <div style="margin:6px 0;"><em>${escapeHtml(d.inbound)}</em></div>
+        <div class="cl-esc"><strong>Left for you.</strong><br>${(d.escalationReasons || []).map(escapeHtml).join('<br>')}</div>
+      </div>`;
+    }
+    const warn = d.blocked || (d.violations || []).length
+      ? `<div class="cl-warn"><strong>${d.blocked ? 'This crosses a line you set.' : 'Worth a look.'}</strong><br>${(d.violations || []).map((v) => escapeHtml(`${v.kind}: "${v.phrase}"`)).join('<br>')}</div>` : '';
+    const actions = d.status === 'pending'
+      ? `<div style="display:flex;gap:8px;margin-top:8px;">
+          <button class="btn btn-primary" onclick="clReview('${escapeHtml(d.id)}','approved')">Good as is</button>
+          <button class="btn" onclick="clReview('${escapeHtml(d.id)}','edited')">Save my edit</button>
+          <button class="btn" onclick="clReview('${escapeHtml(d.id)}','rejected')">Reject</button>
+        </div>`
+      : `<div class="cl-muted" style="margin-top:8px;">You marked this <strong>${escapeHtml(d.status)}</strong> ${timeAgo(d.reviewedAt)}.</div>`;
+
+    return `<div class="cl-draft">
+      <div class="cl-muted">${timeAgo(d.createdAt)} · ${escapeHtml(d.channel)} · $${(Number(d.cost) || 0).toFixed(4)}</div>
+      <div style="margin:6px 0;"><em>${escapeHtml(d.inbound)}</em></div>
+      ${warn}
+      <textarea id="clDraftText-${escapeHtml(d.id)}" rows="6" style="width:100%;" ${d.status === 'pending' ? '' : 'readonly'}>${escapeHtml(d.finalText || d.text)}</textarea>
+      ${actions}
+    </div>`;
+  }).join('');
+}
+
+// --- actions ---------------------------------------------------------------
+
+async function clNextQuestion() {
+  if (clState.busy) return;
+  clState.busy = true;
+  showSettingsToast('Thinking of a question…');
+  const res = await fetchJSON(`/clones/${clState.selectedId}/interview/next`, { method: 'POST', body: {} });
+  clState.busy = false;
+  if (res && res.error) return showSettingsToast(res.error, true);
+  await clOpen(clState.selectedId);
+}
+
+async function clSubmitAnswer() {
+  const el = document.getElementById('clAnswer');
+  const answer = el ? el.value.trim() : '';
+  if (!answer) return showSettingsToast('Write an answer first', true);
+  if (clState.busy) return;
+  clState.busy = true;
+  showSettingsToast('Listening…');
+  const res = await fetchJSON(`/clones/${clState.selectedId}/interview/answer`, { method: 'POST', body: { answer } });
+  clState.busy = false;
+  if (res && res.error) return showSettingsToast(res.error, true);
+  if (res && res.extracted === false) showSettingsToast('Recorded, but nothing concrete could be pulled from that answer', true);
+  await clOpen(clState.selectedId);
+  await clFetchList();
+  clNextQuestion();
+}
+
+async function clSetStatus(status) {
+  const res = await fetchJSON(`/clones/${clState.selectedId}/status`, { method: 'POST', body: { status } });
+  if (res && res.error) return showSettingsToast(res.error, true);
+  await clFetchList();
+  await clOpen(clState.selectedId);
+}
+
+async function clDelete() {
+  if (!confirm('Delete this clone? Everything it learned about the owner goes with it.')) return;
+  const res = await fetchJSON(`/clones/${clState.selectedId}`, { method: 'DELETE' });
+  if (res && res.error) return showSettingsToast(res.error, true);
+  clState.selectedId = null;
+  clState.detail = null;
+  await clFetchList();
+  clRenderEmptyDetail();
+}
+
+async function clNewDraft() {
+  const el = document.getElementById('clInbound');
+  const inbound = el ? el.value.trim() : '';
+  if (!inbound) return showSettingsToast('Paste a customer message first', true);
+  const channel = (document.getElementById('clChannel') || {}).value || 'email';
+  if (clState.busy) return;
+  clState.busy = true;
+  showSettingsToast('Drafting…');
+  const res = await fetchJSON(`/clones/${clState.selectedId}/drafts`, { method: 'POST', body: { inbound, channel } });
+  clState.busy = false;
+  if (res && res.error) return showSettingsToast(res.error, true);
+  await clFetchDrafts();
+  clRenderDetail();
+}
+
+async function clReview(draftId, verdict) {
+  const box = document.getElementById(`clDraftText-${draftId}`);
+  const finalText = box ? box.value : '';
+  const body = { verdict };
+  if (verdict === 'edited') {
+    if (!finalText.trim()) return showSettingsToast('Edit the text first, then save it', true);
+    body.finalText = finalText;
+  }
+  const res = await fetchJSON(`/clones/${clState.selectedId}/drafts/${draftId}/review`, { method: 'POST', body });
+  if (res && res.error) return showSettingsToast(res.error, true);
+  await clFetchDrafts();
+  clRenderDetail();
+  showSettingsToast(verdict === 'edited' ? 'Saved — your edit is what it learns from' : 'Recorded');
+}
