@@ -10,7 +10,7 @@
 //  See lib/business-clone/README.md.
 // ============================================================
 
-const clState = { wired: false, list: [], selectedId: null, tab: 'interview', detail: null, drafts: [], proposals: [], evidence: null, templates: [], limit: 1, tier: '', busy: false, editing: false };
+const clState = { wired: false, list: [], selectedId: null, tab: 'interview', detail: null, drafts: [], proposals: [], evidence: null, templates: [], onboarding: null, limit: 1, tier: '', busy: false, editing: false };
 
 // The editable shape of a persona, mirroring lib/business-clone/persona.js. Enum options must match
 // that module's constants — a value it does not recognise is silently dropped on save, which would
@@ -80,10 +80,18 @@ function loadClones() {
 }
 
 async function clFetchList() {
-  const data = await fetchJSON('/api/clones');
+  // Templates come along for the ride: the create form can render immediately after this, and a
+  // role picker that renders before its options have arrived is an empty dropdown.
+  const [data, onb, tpl] = await Promise.all([
+    fetchJSON('/api/clones'),
+    fetchJSON('/api/clones/onboarding'),
+    clState.templates.length ? Promise.resolve(null) : fetchJSON('/api/clones/templates'),
+  ]);
   clState.list = (data && data.clones) || [];
   clState.limit = (data && data.limit) != null ? data.limit : 1;
   clState.tier = (data && data.tier) || '';
+  clState.onboarding = (onb && !onb.error) ? onb : null;
+  if (tpl && tpl.templates) clState.templates = tpl.templates;
   clRenderList();
   if (clState.selectedId && clState.list.some((c) => c.id === clState.selectedId)) clOpen(clState.selectedId);
   else if (!clState.list.length) clRenderEmptyDetail();
@@ -112,36 +120,131 @@ function clRenderList() {
     </div>`).join('');
 }
 
+/**
+ * The starting state. Which of three things you see depends on where onboarding actually is:
+ * the disclosure if it has not been accepted (or has changed since it was), the create form once
+ * it has, and a plain prompt if you dismissed it and came back anyway.
+ */
 function clRenderEmptyDetail() {
   const d = document.getElementById('clDetail');
-  if (d) d.innerHTML = '<div class="cl-empty">Select a clone, or create one to begin.</div>';
+  if (!d) return;
+  const o = clState.onboarding;
+
+  if (o && !o.disclosureAccepted) { d.innerHTML = clDisclosureHtml(o); return; }
+  if (o && o.status === 'dismissed') {
+    d.innerHTML = `<div class="cl-empty">You set this aside for later.<br>
+      <button class="btn btn-primary" style="margin-top:12px;" onclick="clResumeOnboarding()">Pick it back up</button></div>`;
+    return;
+  }
+  d.innerHTML = clCreateFormHtml();
 }
 
+/** The disclosure. Shown BEFORE the first question, because that is when it can still inform a choice. */
+function clDisclosureHtml(o) {
+  const disc = (o && o.disclosure) || null;
+  // Refuse to render a consent screen with nothing to consent to. If the disclosure did not arrive,
+  // say so and offer a retry rather than showing an "I understand" button over an empty panel.
+  if (!disc || !(disc.points || []).length) {
+    return `<div class="cl-empty">Could not load what you are agreeing to.<br>
+      <span class="cl-muted">Nothing has started. Reload and try again.</span><br>
+      <button class="btn" style="margin-top:12px;" onclick="clFetchList()">Retry</button></div>`;
+  }
+  const points = (disc.points || []).map((p) => `
+    <div style="margin:14px 0;">
+      <div style="font-weight:600;">${escapeHtml(p.heading)}</div>
+      <div class="cl-muted" style="margin-top:2px;">${escapeHtml(p.body)}</div>
+    </div>`).join('');
+
+  return `<div style="max-width:640px;">
+    <h3 style="margin:0 0 4px;">${escapeHtml(disc.title)}</h3>
+    <div class="cl-muted">Building a clone means telling it how you think. Here is exactly what that involves.</div>
+    ${points}
+    <div style="display:flex;gap:8px;margin-top:18px;">
+      <button class="btn btn-primary" onclick="clAcceptDisclosure()">I understand — start</button>
+      <button class="btn" onclick="clDismissOnboarding()">Not now</button>
+    </div>
+  </div>`;
+}
+
+/** Create form. Replaces the old prompt() chain — a role choice deserves to show what it means. */
+function clCreateFormHtml() {
+  const opts = (clState.templates || []).map((t) =>
+    `<option value="${escapeHtml(t.id)}">${escapeHtml(t.label)} — ${escapeHtml(t.description)}</option>`).join('');
+  return `<div style="max-width:560px;">
+    <h3 style="margin:0 0 4px;">Build a clone</h3>
+    <div class="cl-muted">You will be interviewed. Answer in your own words — quotes and examples are worth far more than descriptions.</div>
+
+    <div class="cl-muted" style="margin:14px 0 3px;">Whose clone is this?</div>
+    <input id="clNewName" type="text" style="width:100%;" placeholder="Dana — Whitfield Dental">
+
+    <div class="cl-muted" style="margin:14px 0 3px;">What is their role?</div>
+    <select id="clNewRole" style="width:100%;">${opts}</select>
+    <div class="cl-muted" style="font-size:11px;margin-top:4px;">This changes which questions get asked, and in what order. It never fills anything in for them.</div>
+
+    <div style="display:flex;gap:8px;margin-top:16px;">
+      <button class="btn btn-primary" onclick="clSubmitCreate()">Start the interview</button>
+      ${clState.list.length ? '' : '<button class="btn" onclick="clDismissOnboarding()">Later</button>'}
+    </div>
+  </div>`;
+}
+
+async function clAcceptDisclosure() {
+  const res = await fetchJSON('/api/clones/onboarding/accept', { method: 'POST', body: {} });
+  if (res && res.error) return showSettingsToast(res.error, true);
+  // MERGE, never replace. A response that omits the disclosure must not blank the one we already
+  // hold — an empty consent screen is worse than no consent screen, because it still has a button.
+  clState.onboarding = { ...(clState.onboarding || {}), ...res };
+  await clEnsureTemplates();
+  clRenderEmptyDetail();
+}
+
+async function clDismissOnboarding() {
+  const res = await fetchJSON('/api/clones/onboarding/dismiss', { method: 'POST', body: {} });
+  if (res && res.error) return showSettingsToast(res.error, true);
+  // MERGE, never replace. A response that omits the disclosure must not blank the one we already
+  // hold — an empty consent screen is worse than no consent screen, because it still has a button.
+  clState.onboarding = { ...(clState.onboarding || {}), ...res };
+  clRenderEmptyDetail();
+  showSettingsToast('Set aside — pick it up whenever');
+}
+
+async function clResumeOnboarding() {
+  const res = await fetchJSON('/api/clones/onboarding/resume', { method: 'POST', body: {} });
+  if (res && res.error) return showSettingsToast(res.error, true);
+  // MERGE, never replace. A response that omits the disclosure must not blank the one we already
+  // hold — an empty consent screen is worse than no consent screen, because it still has a button.
+  clState.onboarding = { ...(clState.onboarding || {}), ...res };
+  await clEnsureTemplates();
+  clRenderEmptyDetail();
+}
+
+async function clEnsureTemplates() {
+  if (clState.templates.length) return;
+  const t = await fetchJSON('/api/clones/templates');
+  clState.templates = (t && t.templates) || [];
+}
+
+/** The "+ New clone" button: show the create form rather than a stack of native prompts. */
 async function clCreate() {
-  const name = prompt('Whose clone is this? (e.g. "Dana — Whitfield Dental")');
-  if (name === null) return;
+  await clEnsureTemplates();
+  clState.selectedId = null;
+  clRenderList();
+  const d = document.getElementById('clDetail');
+  if (d) d.innerHTML = clCreateFormHtml();
+}
 
-  // Role decides which INTERVIEW runs — which questions get asked, in what order. It never fills in
-  // anything about the person; every answer is still theirs.
-  if (!clState.templates.length) {
-    const t = await fetchJSON('/api/clones/templates');
-    clState.templates = (t && t.templates) || [];
-  }
-  let templateId = '';
-  if (clState.templates.length) {
-    const menu = clState.templates.map((t, i) => `${i + 1}. ${t.label} — ${t.description}`).join('\n');
-    const pick = prompt(`What is their role? This changes the questions they get asked, nothing else.\n\n${menu}\n\nEnter a number (or leave blank for Owner):`);
-    if (pick === null) return;
-    const idx = parseInt(pick, 10) - 1;
-    if (clState.templates[idx]) templateId = clState.templates[idx].id;
-  }
+async function clSubmitCreate() {
+  const nameEl = document.getElementById('clNewName');
+  const name = nameEl ? nameEl.value.trim() : '';
+  if (!name) return showSettingsToast('Give the clone a name first', true);
+  const templateId = (document.getElementById('clNewRole') || {}).value || '';
 
-  const res = await fetchJSON('/api/clones', { method: 'POST', body: { name: name.trim(), templateId } });
+  const res = await fetchJSON('/api/clones', { method: 'POST', body: { name, templateId } });
   if (res && res.error) return showSettingsToast(res.error, true);
   clState.selectedId = res.clone.id;
   clState.tab = 'interview';
   await clFetchList();
-  showSettingsToast('Clone created — start the interview');
+  showSettingsToast('Created — the interview starts now');
 }
 
 async function clOpen(id) {

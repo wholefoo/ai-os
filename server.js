@@ -1511,6 +1511,7 @@ const cloneInterview = require('./lib/business-clone/interview');
 const cloneCompile = require('./lib/business-clone/compile');
 const cloneDraftsLib = require('./lib/business-clone/drafts');
 const cloneEvolve = require('./lib/business-clone/evolve');
+const cloneOnb = require('./lib/business-clone/onboarding');
 
 // Server-wide Ed25519 provenance signing key (lazy-generated under .magent/provenance, or supplied
 // via AIOS_PROVENANCE_PRIVATE_KEY). The issuer origin = the control-plane public URL so a sidecar's
@@ -10730,10 +10731,57 @@ app.post('/api/clones', requireClientOrAdmin, (req, res) => {
   }
 });
 
-// MUST stay above GET /api/clones/:id — Express matches in registration order, and moving this
-// below would make ":id" swallow the literal path "templates".
+// MUST stay above GET /api/clones/:id — Express matches in registration order, and moving these
+// below would make ":id" swallow the literal paths "templates" and "onboarding".
 app.get('/api/clones/templates', requireClientOrAdmin, (req, res) => {
   res.json({ templates: cloneInterview.templateList(), default: cloneInterview.DEFAULT_TEMPLATE });
+});
+
+// --- Onboarding -------------------------------------------------------------
+const cloneOnboarding = loadState('clone_onboarding', []);
+const saveCloneOnboarding = () => saveState('clone_onboarding', cloneOnboarding);
+
+/** The caller's onboarding record, created on first sight. Always reconciled against real clones. */
+function onboardingFor(session) {
+  const clientId = cloneClientOf(session);
+  let rec = cloneOnb.getRecord(cloneOnboarding, clientId);
+  if (!rec) {
+    rec = cloneOnb.createRecord(clientId);
+    cloneOnboarding.push(rec);
+  }
+  cloneOnb.reconcile(rec, cloneStore.listClones(businessClones, clientId));
+  return { rec, clientId };
+}
+
+app.get('/api/clones/onboarding', requireClientOrAdmin, (req, res) => {
+  const { rec, clientId } = onboardingFor(req.session);
+  saveCloneOnboarding();
+  res.json({
+    ...cloneOnb.overview(rec, cloneStore.listClones(businessClones, clientId)),
+    disclosure: cloneOnb.DISCLOSURE,
+  });
+});
+
+app.post('/api/clones/onboarding/accept', requireClientOrAdmin, (req, res) => {
+  const { rec, clientId } = onboardingFor(req.session);
+  cloneOnb.acceptDisclosure(rec);
+  saveCloneOnboarding();
+  logActivity('clone', `Clone onboarding disclosure accepted (v${cloneOnb.DISCLOSURE_VERSION})`, { clientId });
+  res.json({ ok: true, ...cloneOnb.overview(rec, cloneStore.listClones(businessClones, clientId)), disclosure: cloneOnb.DISCLOSURE });
+});
+
+app.post('/api/clones/onboarding/dismiss', requireClientOrAdmin, (req, res) => {
+  const { rec, clientId } = onboardingFor(req.session);
+  cloneOnb.dismiss(rec);
+  saveCloneOnboarding();
+  res.json({ ok: true, ...cloneOnb.overview(rec, cloneStore.listClones(businessClones, clientId)), disclosure: cloneOnb.DISCLOSURE });
+});
+
+app.post('/api/clones/onboarding/resume', requireClientOrAdmin, (req, res) => {
+  const { rec, clientId } = onboardingFor(req.session);
+  cloneOnb.resume(rec);
+  saveCloneOnboarding();
+  res.json({ ok: true, ...cloneOnb.overview(rec, cloneStore.listClones(businessClones, clientId)), disclosure: cloneOnb.DISCLOSURE });
 });
 
 app.get('/api/clones/:id', requireClientOrAdmin, (req, res) => {
@@ -10829,6 +10877,17 @@ app.post('/api/clones/:id/status', requireClientOrAdmin, (req, res) => {
 app.post('/api/clones/:id/interview/next', requireClientOrAdmin, heavyLimiter, async (req, res) => {
   const clone = cloneOr404(req, res);
   if (!clone) return;
+
+  // Every question is a paid call. Bounded per clone per rolling 24h — costs a real person nothing
+  // (nobody answers sixty questions in a day) and stops a script running up a bill on the operator's
+  // key. Separate from settings.security.hard_budget, which caps total instance spend.
+  const cap = cloneOnb.withinDailyCap(clone);
+  if (!cap.ok) {
+    return res.status(429).json({
+      error: `That is ${cap.used} questions today — enough for one sitting. Pick this up tomorrow, or correct the persona directly.`,
+      cap: cap.cap, used: cap.used,
+    });
+  }
 
   const built = cloneInterview.buildAskPrompt(clone);
   if (!built) return res.json({ ok: true, complete: true, progress: cloneInterview.progress(clone.persona, clone.templateId) });
