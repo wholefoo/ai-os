@@ -10720,7 +10720,7 @@ app.post('/api/clones', requireClientOrAdmin, (req, res) => {
   }
 
   try {
-    const clone = cloneStore.createClone({ id: uuidv4(), clientId, name: (req.body || {}).name });
+    const clone = cloneStore.createClone({ id: uuidv4(), clientId, name: (req.body || {}).name, templateId: (req.body || {}).templateId });
     businessClones.push(clone);
     saveClones();
     logActivity('clone', `Business clone created: ${clone.name}`, { cloneId: clone.id });
@@ -10730,13 +10730,19 @@ app.post('/api/clones', requireClientOrAdmin, (req, res) => {
   }
 });
 
+// MUST stay above GET /api/clones/:id — Express matches in registration order, and moving this
+// below would make ":id" swallow the literal path "templates".
+app.get('/api/clones/templates', requireClientOrAdmin, (req, res) => {
+  res.json({ templates: cloneInterview.templateList(), default: cloneInterview.DEFAULT_TEMPLATE });
+});
+
 app.get('/api/clones/:id', requireClientOrAdmin, (req, res) => {
   const clone = cloneOr404(req, res);
   if (!clone) return;
   res.json({
     ...cloneStore.summarize(clone),
     persona: clone.persona,
-    progress: cloneInterview.progress(clone.persona),
+    progress: cloneInterview.progress(clone.persona, clone.templateId),
     transcript: clone.interview.turns,
     promptFingerprint: cloneCompile.fingerprint(clone.persona),
     promptTokens: cloneCompile.estimateTokens(clone.persona),
@@ -10778,7 +10784,7 @@ app.put('/api/clones/:id/persona', requireClientOrAdmin, (req, res) => {
     ok: true,
     persona: clone.persona,
     personaVersion: clone.personaVersion,
-    progress: cloneInterview.progress(clone.persona),
+    progress: cloneInterview.progress(clone.persona, clone.templateId),
     promptFingerprint: cloneCompile.fingerprint(clone.persona),
   });
 });
@@ -10825,7 +10831,7 @@ app.post('/api/clones/:id/interview/next', requireClientOrAdmin, heavyLimiter, a
   if (!clone) return;
 
   const built = cloneInterview.buildAskPrompt(clone);
-  if (!built) return res.json({ ok: true, complete: true, progress: cloneInterview.progress(clone.persona) });
+  if (!built) return res.json({ ok: true, complete: true, progress: cloneInterview.progress(clone.persona, clone.templateId) });
 
   let question = built.seeds.length ? built.seeds[0].question : null;
   let generated = false;
@@ -10840,7 +10846,7 @@ app.post('/api/clones/:id/interview/next', requireClientOrAdmin, heavyLimiter, a
   clone.interview.currentDimension = built.dimension;
   saveClones();
 
-  res.json({ ok: true, question, dimension: built.dimension, generated, progress: cloneInterview.progress(clone.persona) });
+  res.json({ ok: true, question, dimension: built.dimension, generated, progress: cloneInterview.progress(clone.persona, clone.templateId) });
 });
 
 // Answer -> extraction -> additive merge. An extraction failure records the answer and moves on
@@ -10879,13 +10885,13 @@ app.post('/api/clones/:id/interview/answer', requireClientOrAdmin, heavyLimiter,
     }
   }
 
-  clone.interview.complete = cloneInterview.isComplete(clone.persona);
+  clone.interview.complete = cloneInterview.isComplete(clone.persona, clone.templateId);
   saveClones();
 
   res.json({
     ok: true,
     extracted,
-    progress: cloneInterview.progress(clone.persona),
+    progress: cloneInterview.progress(clone.persona, clone.templateId),
     persona: clone.persona,
   });
 });

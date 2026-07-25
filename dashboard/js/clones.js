@@ -10,7 +10,7 @@
 //  See lib/business-clone/README.md.
 // ============================================================
 
-const clState = { wired: false, list: [], selectedId: null, tab: 'interview', detail: null, drafts: [], proposals: [], evidence: null, limit: 1, tier: '', busy: false, editing: false };
+const clState = { wired: false, list: [], selectedId: null, tab: 'interview', detail: null, drafts: [], proposals: [], evidence: null, templates: [], limit: 1, tier: '', busy: false, editing: false };
 
 // The editable shape of a persona, mirroring lib/business-clone/persona.js. Enum options must match
 // that module's constants — a value it does not recognise is silently dropped on save, which would
@@ -120,7 +120,23 @@ function clRenderEmptyDetail() {
 async function clCreate() {
   const name = prompt('Whose clone is this? (e.g. "Dana — Whitfield Dental")');
   if (name === null) return;
-  const res = await fetchJSON('/api/clones', { method: 'POST', body: { name: name.trim() } });
+
+  // Role decides which INTERVIEW runs — which questions get asked, in what order. It never fills in
+  // anything about the person; every answer is still theirs.
+  if (!clState.templates.length) {
+    const t = await fetchJSON('/api/clones/templates');
+    clState.templates = (t && t.templates) || [];
+  }
+  let templateId = '';
+  if (clState.templates.length) {
+    const menu = clState.templates.map((t, i) => `${i + 1}. ${t.label} — ${t.description}`).join('\n');
+    const pick = prompt(`What is their role? This changes the questions they get asked, nothing else.\n\n${menu}\n\nEnter a number (or leave blank for Owner):`);
+    if (pick === null) return;
+    const idx = parseInt(pick, 10) - 1;
+    if (clState.templates[idx]) templateId = clState.templates[idx].id;
+  }
+
+  const res = await fetchJSON('/api/clones', { method: 'POST', body: { name: name.trim(), templateId } });
   if (res && res.error) return showSettingsToast(res.error, true);
   clState.selectedId = res.clone.id;
   clState.tab = 'interview';

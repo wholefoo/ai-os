@@ -31,6 +31,77 @@ for (const [dim, bank] of Object.entries(interview.SEED_QUESTIONS)) {
   }
 }
 
+// --- ROLE TEMPLATES ---------------------------------------------------------
+// The same guarantee has to hold for every template, or a role's interview quietly asks questions
+// whose answers land nowhere.
+for (const id of interview.templateIds()) {
+  const t = interview.getTemplate(id);
+  assert(!!t.label && !!t.description, `template "${id}" has a label and description for the picker`);
+  for (const [dim, bank] of Object.entries(t.questions || {})) {
+    assert(persona.DIMENSIONS.includes(dim), `template "${id}" only defines real dimensions (got ${dim})`);
+    for (const field of Object.keys(bank)) {
+      assert(field in empty[dim], `template "${id}" question ${dim}.${field} maps to a real persona field`);
+    }
+  }
+  // Walk order must cover every dimension exactly once — a template that omits one would leave that
+  // part of the persona permanently unasked.
+  const order = interview.dimensionOrder(id);
+  assert(order.length === persona.DIMENSIONS.length, `template "${id}" walk order covers every dimension`);
+  assert(new Set(order).size === order.length, `template "${id}" walk order has no duplicates`);
+  assert(persona.DIMENSIONS.every((d) => order.includes(d)), `template "${id}" walk order omits nothing`);
+}
+
+// GATE: a template shapes the interview, never the persona. Running a template-driven interview
+// with no answers must produce a persona indistinguishable from an untouched one.
+for (const id of interview.templateIds()) {
+  const clone = { persona: persona.emptyPersona(), templateId: id, interview: { turns: [] } };
+  const built = interview.buildAskPrompt(clone);
+  assert(!!built, `template "${id}" produces a first question`);
+  assert(JSON.stringify(clone.persona) === JSON.stringify(persona.emptyPersona()),
+    `template "${id}" wrote nothing into the persona just by being used`);
+  assert(persona.completeness(clone.persona).overall === 0, `template "${id}" leaves completeness at 0`);
+}
+
+// GATE: templates must not move the usability bar. Completeness feeds persona.isUsable, which
+// decides whether a clone may speak at all — a per-role threshold would be a template lowering it.
+const halfPersona = persona.normalize({ identity: { ownerName: 'X', whatTheyDo: 'Y' } });
+const baseline = persona.completeness(halfPersona).overall;
+for (const id of interview.templateIds()) {
+  assert(interview.progress(halfPersona, id).overall === baseline,
+    `template "${id}" does not change the completeness score`);
+  assert(interview.progress(halfPersona, id).usable === persona.isUsable(halfPersona).usable,
+    `template "${id}" does not change the usability verdict`);
+}
+
+// Template wording wins where defined; everything else falls through to the generic bank.
+const salesFaq = interview.seedQuestions('expertise', ['faq'], 'sales')[0];
+assert(/objections/.test(salesFaq.question), `sales overrides the FAQ question, got: ${salesFaq.question}`);
+assert(salesFaq.fromTemplate === true, 'an overridden question is marked as coming from the template');
+
+const salesCreds = interview.seedQuestions('expertise', ['credentials'], 'sales')[0];
+assert(/qualifications, certifications/.test(salesCreds.question), 'a field the template does not define falls through to the generic bank');
+assert(salesCreds.fromTemplate === false, 'a fallen-through question is not marked as template-sourced');
+
+const supportFaq = interview.seedQuestions('expertise', ['faq'], 'support')[0];
+assert(/complaints/.test(supportFaq.question), 'support asks about complaints, not objections');
+assert(supportFaq.question !== salesFaq.question, 'two roles genuinely get different questions');
+
+// An unknown template falls back rather than producing an empty interview.
+const bogus = interview.seedQuestions('expertise', ['faq'], 'astronaut')[0];
+assert(!!bogus && bogus.fromTemplate === false, 'an unknown template id falls back to the generic bank');
+assert(interview.dimensionOrder('astronaut').length === persona.DIMENSIONS.length, 'an unknown template still yields a full walk order');
+
+// Walk order actually changes which dimension is asked first.
+const idDone = persona.normalize({
+  identity: { ownerName: 'Dana', role: 'Owner', businessName: 'W', industry: 'D', whatTheyDo: 'Equipment', yearsExperience: 18 },
+});
+assert(interview.nextDimension(idDone, 'owner').dimension === 'voice', 'owner goes identity -> voice');
+assert(interview.nextDimension(idDone, 'support').dimension === 'boundaries', 'support goes identity -> boundaries, because what it must not say matters before how it sounds');
+assert(interview.nextDimension(idDone, 'operations').dimension === 'expertise', 'operations goes identity -> expertise');
+
+// Default behaviour is unchanged when no template is supplied — the pre-template call signature.
+assert(interview.nextDimension(idDone).dimension === 'voice', 'omitting a template behaves exactly as before');
+
 // --- ask prompt
 const clone = { persona: blank, interview: { turns: [] } };
 const ask = interview.buildAskPrompt(clone);

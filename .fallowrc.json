@@ -69,7 +69,7 @@
 
     { "file": "lib/business-clone/persona.js", "exports": ["COMPLETENESS_WEIGHTS", "HUMOR_STYLES", "SENTENCE_LENGTHS", "RISK_POSTURES", "PRICING_DISCLOSURE", "MIN_USABLE_COMPLETENESS"] },
     { "file": "lib/business-clone/store.js", "exports": ["OPERATOR_CLIENT_ID", "STATUSES", "MAX_CLONES_PER_CLIENT", "MAX_INTERVIEW_TURNS", "canCreate", "addInterviewTurn"] },
-    { "file": "lib/business-clone/interview.js", "exports": ["DIMENSION_SATISFIED_AT"] },
+    { "file": "lib/business-clone/interview.js", "exports": ["DIMENSION_SATISFIED_AT", "TEMPLATES"] },
     { "file": "lib/business-clone/drafts.js", "exports": ["CHANNELS", "DEFAULT_CHANNEL", "DRAFT_STATUSES"] },
     { "file": "lib/business-clone/evolve.js", "exports": ["MAX_EVIDENCE_ITEMS", "isProtectedRemoval", "PROPOSAL_STATUSES"] }
   ],
