@@ -25,6 +25,7 @@
     "tools/test-product-factory.js",
     "tools/test-business-clone.js",
     "tools/test-business-clone-interview.js",
+    "tools/test-business-clone-compile.js",
     "ecosystem.config.js",
     "deploy/n8n-ecosystem.config.example.js",
     "dashboard/js/*.js"

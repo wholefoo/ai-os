@@ -1502,6 +1502,10 @@ const shareOfModel = require('./lib/aeo/share-of-model');
 const approvalPolicy = require('./lib/safety/approval');
 const provenanceLib = require('./lib/provenance');
 const mythos = require('./lib/security/mythos');
+const clonePersona = require('./lib/business-clone/persona');
+const cloneStore = require('./lib/business-clone/store');
+const cloneInterview = require('./lib/business-clone/interview');
+const cloneCompile = require('./lib/business-clone/compile');
 
 // Server-wide Ed25519 provenance signing key (lazy-generated under .magent/provenance, or supplied
 // via AIOS_PROVENANCE_PRIVATE_KEY). The issuer origin = the control-plane public URL so a sidecar's
@@ -3513,8 +3517,20 @@ async function executeAgent(agentName, task, options = {}) {
     if (over) return { ok: false, error: `cost budget exceeded — ${over} spend $${cs[over].cost} ≥ budget $${cs[over].budget}`, model: routing.model, budgetExceeded: true };
   }
 
-  // Load the built-in agent prompt from its .md file
-  const systemPrompt = await loadAgentPrompt(agentName);
+  // Load the built-in agent prompt from its .md file.
+  //
+  // options.systemOverride REPLACES that prompt while keeping everything else this function does
+  // (budget ceiling, model/effort routing, the concurrency slot, untrusted fencing, cost ledger).
+  // It exists for the AI Business Clone, whose whole point is to BE a specific person: appending a
+  // persona to an agent's own prompt produces two competing identities, and every agent here is a
+  // named character (comms-director is "Herald"), so that bleed shows up in customer-facing drafts.
+  // The alternative — a 67th .md file per clone — would corrupt the canonical agent registry that
+  // the platform's own "66 agents" count is derived from.
+  //
+  // agentName still selects the model and effort tier, so a caller picks routing and identity
+  // independently. This is server-constructed only: no route accepts a system prompt from a
+  // request body, and it must stay that way.
+  const systemPrompt = options.systemOverride || await loadAgentPrompt(agentName);
   if (!systemPrompt) {
     return { ok: false, error: `Agent "${agentName}" not found`, model: routing.model };
   }
@@ -10625,6 +10641,216 @@ function wsClientCanReceive(ws, data) {
   if (ev === 'web_analytics_bot') return ownsSiteId(data.data && data.data.siteId);
   return false;
 }
+
+// ============================================================
+//  AI Business Clone — a per-client replica of an owner's voice, expertise, and judgement.
+//
+//  Draft-only by design: the clone produces text, a human reviews it, nothing is sent from here.
+//  The routes below can create a clone, interview it into existence, and talk to it. They cannot
+//  send anything to anyone — that surface (P3) goes through the existing approval queue.
+//
+//  Scoping: a clone belongs to the session's email, the same key wsOwns uses for sites. Admin is
+//  NOT given a cross-client view here. Reading someone's clone means reading a replica of how they
+//  think and what they refuse to say, so "admin can see everything" is a decision to take
+//  deliberately with the customer, not a default inherited from other resources.
+// ============================================================
+const businessClones = loadState('business_clones', []);
+
+/** The clientId for a session — its email, or the fallback bucket for the API-token service user. */
+function cloneClientOf(session) {
+  const email = session && session.email ? String(session.email).trim().toLowerCase() : '';
+  return (email && email.includes('@') && !session.service) ? email : cloneStore.OPERATOR_CLIENT_ID;
+}
+
+function saveClones() {
+  saveState('business_clones', businessClones);
+}
+
+/** Resolve :id for the calling session, or send 404. Never reveals that another client's id exists. */
+function cloneOr404(req, res) {
+  const clone = cloneStore.getClone(businessClones, cloneClientOf(req.session), req.params.id);
+  if (!clone) { res.status(404).json({ error: 'Clone not found' }); return null; }
+  return clone;
+}
+
+app.get('/api/clones', requireClientOrAdmin, (req, res) => {
+  const clones = cloneStore.listClones(businessClones, cloneClientOf(req.session));
+  res.json({ clones: clones.map(cloneStore.summarize), limit: cloneStore.MAX_CLONES_PER_CLIENT });
+});
+
+app.post('/api/clones', requireClientOrAdmin, (req, res) => {
+  const clientId = cloneClientOf(req.session);
+  const allowed = cloneStore.canCreate(businessClones, clientId);
+  if (!allowed.ok) return res.status(429).json({ error: allowed.error });
+
+  try {
+    const clone = cloneStore.createClone({ id: uuidv4(), clientId, name: (req.body || {}).name });
+    businessClones.push(clone);
+    saveClones();
+    logActivity('clone', `Business clone created: ${clone.name}`, { cloneId: clone.id });
+    res.json({ ok: true, clone: cloneStore.summarize(clone) });
+  } catch (e) {
+    res.status(400).json({ error: e.message });
+  }
+});
+
+app.get('/api/clones/:id', requireClientOrAdmin, (req, res) => {
+  const clone = cloneOr404(req, res);
+  if (!clone) return;
+  res.json({
+    ...cloneStore.summarize(clone),
+    persona: clone.persona,
+    progress: cloneInterview.progress(clone.persona),
+    transcript: clone.interview.turns,
+    promptFingerprint: cloneCompile.fingerprint(clone.persona),
+    promptTokens: cloneCompile.estimateTokens(clone.persona),
+  });
+});
+
+/** The compiled system prompt, so an owner can read exactly what their clone believes about them. */
+app.get('/api/clones/:id/prompt', requireClientOrAdmin, (req, res) => {
+  const clone = cloneOr404(req, res);
+  if (!clone) return;
+  res.json({ prompt: cloneCompile.compile(clone.persona), fingerprint: cloneCompile.fingerprint(clone.persona) });
+});
+
+app.delete('/api/clones/:id', requireClientOrAdmin, (req, res) => {
+  const clone = cloneOr404(req, res);
+  if (!clone) return;
+  businessClones.splice(businessClones.indexOf(clone), 1);
+  saveClones();
+  logActivity('clone', `Business clone deleted: ${clone.name}`, { cloneId: clone.id });
+  res.json({ ok: true });
+});
+
+app.post('/api/clones/:id/status', requireClientOrAdmin, (req, res) => {
+  const clone = cloneOr404(req, res);
+  if (!clone) return;
+  try {
+    cloneStore.setStatus(clone, String((req.body || {}).status || ''));
+    saveClones();
+    res.json({ ok: true, clone: cloneStore.summarize(clone) });
+  } catch (e) {
+    res.status(400).json({ error: e.message });
+  }
+});
+
+// --- Interview -------------------------------------------------------------
+// Next question. Falls back to the deterministic seed question whenever the model call fails, so
+// a provider outage degrades the interview to a fixed questionnaire instead of stopping it dead.
+app.post('/api/clones/:id/interview/next', requireClientOrAdmin, heavyLimiter, async (req, res) => {
+  const clone = cloneOr404(req, res);
+  if (!clone) return;
+
+  const built = cloneInterview.buildAskPrompt(clone);
+  if (!built) return res.json({ ok: true, complete: true, progress: cloneInterview.progress(clone.persona) });
+
+  let question = built.seeds.length ? built.seeds[0].question : null;
+  let generated = false;
+  const result = await executeAgent('comms-director', built.task, { systemOverride: built.system, maxTokens: 300 });
+  if (result.ok && result.content) {
+    question = String(result.content).trim().replace(/^["']|["']$/g, '').slice(0, 1000);
+    generated = true;
+  }
+  if (!question) return res.status(500).json({ error: 'could not produce a question' });
+
+  cloneStore.addInterviewTurn(clone, { role: 'interviewer', text: question, dimension: built.dimension });
+  clone.interview.currentDimension = built.dimension;
+  saveClones();
+
+  res.json({ ok: true, question, dimension: built.dimension, generated, progress: cloneInterview.progress(clone.persona) });
+});
+
+// Answer -> extraction -> additive merge. An extraction failure records the answer and moves on
+// rather than erroring: the owner's words are kept in the transcript either way, so a failed
+// extraction costs a question, not their time.
+app.post('/api/clones/:id/interview/answer', requireClientOrAdmin, heavyLimiter, async (req, res) => {
+  const clone = cloneOr404(req, res);
+  if (!clone) return;
+
+  const answer = String((req.body || {}).answer || '').trim();
+  if (!answer) return res.status(400).json({ error: 'an answer is required' });
+
+  const turns = clone.interview.turns;
+  const lastQuestion = [...turns].reverse().find((t) => t.role === 'interviewer');
+  const dimension = (lastQuestion && lastQuestion.dimension) || clone.interview.currentDimension;
+
+  try {
+    cloneStore.addInterviewTurn(clone, { role: 'owner', text: answer, dimension });
+  } catch (e) {
+    return res.status(400).json({ error: e.message });
+  }
+
+  const built = cloneInterview.buildExtractPrompt({
+    dimension,
+    question: lastQuestion ? lastQuestion.text : '(no question recorded)',
+    answer,
+  });
+
+  let extracted = false;
+  const result = await executeAgent('data-wrangler', built.task, { systemOverride: built.system, maxTokens: 1500 });
+  if (result.ok && result.content) {
+    const patch = webStudioPipeline.extractJson(result.content);
+    if (patch) {
+      cloneStore.setPersona(clone, cloneInterview.mergePatch(clone.persona, patch));
+      extracted = true;
+    }
+  }
+
+  clone.interview.complete = cloneInterview.isComplete(clone.persona);
+  saveClones();
+
+  res.json({
+    ok: true,
+    extracted,
+    progress: cloneInterview.progress(clone.persona),
+    persona: clone.persona,
+  });
+});
+
+// --- Talk to your clone ----------------------------------------------------
+// The validation surface: before trusting a clone with customer-facing drafts, the owner talks to
+// it and sees whether it sounds like them. Red lines are checked against the output here exactly
+// as they will be in P3 — if the test surface were more permissive than the real one, it would be
+// validating something the owner never actually gets.
+app.post('/api/clones/:id/chat', requireClientOrAdmin, heavyLimiter, async (req, res) => {
+  const clone = cloneOr404(req, res);
+  if (!clone) return;
+
+  const message = String((req.body || {}).message || '').trim().slice(0, 4000);
+  if (!message) return res.status(400).json({ error: 'a message is required' });
+
+  const usable = clonePersona.isUsable(clone.persona);
+  if (!usable.usable) {
+    return res.status(400).json({ error: 'This clone is not ready yet', blockers: usable.reasons });
+  }
+
+  // systemOverride, not context: the persona IS the identity here, not an addendum to Herald's.
+  const result = await executeAgent('comms-director', message, {
+    systemOverride: cloneCompile.compile(clone.persona),
+    maxTokens: 1500,
+  });
+  if (!result.ok) return res.status(502).json({ error: result.error || 'the clone could not respond' });
+
+  const reply = String(result.content || '');
+  const check = clonePersona.checkRedLines(reply, clone.persona);
+
+  clone.metrics.draftsProduced += 1;
+  saveClones();
+
+  res.json({
+    ok: true,
+    // The draft is returned even when it trips a red line. The owner is the reviewer here; hiding
+    // a violating draft would hide the evidence that their boundaries need work.
+    reply,
+    blocked: check.blocked,
+    needsHuman: check.needsHuman,
+    violations: check.violations,
+    personaVersion: clone.personaVersion,
+    promptFingerprint: cloneCompile.fingerprint(clone.persona),
+    cost: result.cost,
+  });
+});
 
 // --- Commercial Module Routes (registered last so all globals are available) ---
 if (commercial.registerRoutes) {

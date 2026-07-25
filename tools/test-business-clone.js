@@ -101,6 +101,20 @@ let threw = false;
 try { store.createClone({ id: 'x', name: 'no client' }); } catch { threw = true; }
 assert(threw, 'createClone refuses a record with no clientId');
 
+// clientId is the session EMAIL, matching how web-studio scopes sites by ownerEmail. Case must
+// collapse — treating Mike@x.com and mike@x.com as two clients would split one customer's clones
+// into two halves, each invisible from the other.
+const emailClones = [];
+const e1 = store.createClone({ id: 'clone-e', clientId: 'Mike@Example.com', name: 'Email-keyed' });
+emailClones.push(e1);
+assert(e1.clientId === 'mike@example.com', `email clientId is lower-cased, got ${e1.clientId}`);
+assert(store.listClones(emailClones, 'mike@example.com').length === 1, 'retrievable by the lower-case address');
+assert(store.listClones(emailClones, 'MIKE@EXAMPLE.COM').length === 1, 'and by any casing the session presents');
+assert(store.getClone(emailClones, 'mike@example.com', 'clone-e') !== null, 'getClone accepts an email clientId');
+assert(store.getClone(emailClones, 'other@example.com', 'clone-e') === null, 'a different address is still a miss');
+assert(store.listClones(emailClones, 'not an email at all!').length === 0, 'a malformed clientId matches nothing');
+assert(store.createClone({ id: 'clone-f', clientId: 'operator' }).clientId === 'operator', 'the non-email fallback id is still accepted');
+
 // --- persona versioning + status transitions
 assert(a.personaVersion === 0 && a.status === 'interviewing', 'new clone starts unversioned and interviewing');
 store.setPersona(a, full);
