@@ -463,7 +463,14 @@ async function clRunEvolve() {
 
 async function clDecide(pid, decision) {
   const res = await fetchJSON(`/api/clones/${clState.selectedId}/proposals/${pid}/decide`, { method: 'POST', body: { decision } });
-  if (res && res.error) return showSettingsToast(res.error, true);
+  if (res && res.error) {
+    showSettingsToast(res.error, true);
+    // The server may have DECIDED the proposal even while refusing the request — a stale one is
+    // discarded on the spot. Refresh either way, so the panel never keeps offering an Apply button
+    // for something that no longer exists to apply.
+    await clLoadEvolve();
+    return;
+  }
   await clOpen(clState.selectedId);
   await clFetchList();
   clState.tab = 'evolve';
