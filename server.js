@@ -230,6 +230,8 @@ app.use('/api/', authMiddleware);
 const CLIENT_API_ALLOW = ['/api/web-studio', '/api/auth', '/api/provenance', '/api/health',
   '/api/seo/audit', '/api/seo/audits', '/api/seo/report', // audit family is owner-scoped per route
   '/api/commerce', // public offer + checkout (a client may also buy another managed site)
+  '/api/clones', // AI Business Clone — every route is owner-scoped via cloneClientOf + getClone,
+                 // and admin gets no cross-client view (a clone is a replica of how someone thinks)
   '/api/support/contact']; // public AI helpdesk (exact path — keeps any future /api/support/* internal)
 function clientSurfaceGuard(req, res, next) {
   const url = req.originalUrl.split('?')[0];
@@ -1506,6 +1508,7 @@ const clonePersona = require('./lib/business-clone/persona');
 const cloneStore = require('./lib/business-clone/store');
 const cloneInterview = require('./lib/business-clone/interview');
 const cloneCompile = require('./lib/business-clone/compile');
+const cloneDraftsLib = require('./lib/business-clone/drafts');
 
 // Server-wide Ed25519 provenance signing key (lazy-generated under .magent/provenance, or supplied
 // via AIOS_PROVENANCE_PRIVATE_KEY). The issuer origin = the control-plane public URL so a sidecar's
@@ -10850,6 +10853,128 @@ app.post('/api/clones/:id/chat', requireClientOrAdmin, heavyLimiter, async (req,
     promptFingerprint: cloneCompile.fingerprint(clone.persona),
     cost: result.cost,
   });
+});
+
+// --- Clone drafts ----------------------------------------------------------
+// The clone's first real job. DRAFT-ONLY: these routes produce text and record a verdict. None of
+// them sends anything to anyone — the owner sends, from their own client, after reading it.
+const cloneDrafts = loadState('clone_drafts', []);
+const saveCloneDrafts = () => saveState('clone_drafts', cloneDrafts);
+
+app.get('/api/clones/:id/drafts', requireClientOrAdmin, (req, res) => {
+  const clone = cloneOr404(req, res);
+  if (!clone) return;
+  res.json({ drafts: cloneDraftsLib.listDrafts(cloneDrafts, cloneClientOf(req.session), clone.id) });
+});
+
+app.post('/api/clones/:id/drafts', requireClientOrAdmin, heavyLimiter, async (req, res) => {
+  const clone = cloneOr404(req, res);
+  if (!clone) return;
+
+  const body = req.body || {};
+  const clientId = cloneClientOf(req.session);
+
+  // Source the inbound text: either a real contact ticket, or a pasted message.
+  let inbound = String(body.inbound || '').trim();
+  let source = 'manual';
+  let sourceId = null;
+  let threadHistory = [];
+  if (body.ticketId) {
+    const ticket = contactTickets.find((t) => t.id === body.ticketId);
+    if (!ticket) return res.status(404).json({ error: 'Ticket not found' });
+    const lastUser = [...(ticket.messages || [])].reverse().find((m) => m.role === 'user');
+    if (!lastUser) return res.status(400).json({ error: 'That ticket has no customer message to answer' });
+    inbound = lastUser.content;
+    source = 'ticket';
+    sourceId = ticket.id;
+    threadHistory = (ticket.messages || []).map((m) => ({ role: m.role === 'user' ? 'customer' : 'owner', content: m.content }));
+  }
+  if (!inbound) return res.status(400).json({ error: 'an inbound message (or a ticketId) is required' });
+
+  const usable = clonePersona.isUsable(clone.persona);
+  if (!usable.usable) return res.status(400).json({ error: 'This clone is not ready to draft yet', blockers: usable.reasons });
+  if (clone.status === 'paused') return res.status(400).json({ error: 'This clone is paused' });
+
+  const draft = cloneDraftsLib.createDraft({
+    id: uuidv4(), cloneId: clone.id, clientId, channel: body.channel, inbound, source, sourceId,
+  });
+
+  // Inbound screen FIRST — before spending anything. If the owner said they handle this topic
+  // personally, drafting it would be ignoring them, and paying to ignore them at that.
+  const screen = cloneDraftsLib.screenInbound(clone.persona, inbound);
+  if (screen.escalate) {
+    draft.status = 'escalated';
+    draft.escalationReasons = screen.reasons;
+    cloneDrafts.push(draft);
+    saveCloneDrafts();
+    logActivity('clone', `Draft escalated to ${clone.name}'s owner without drafting`, { cloneId: clone.id, draftId: draft.id });
+    return res.json({ ok: true, draft });
+  }
+
+  const built = cloneDraftsLib.buildDraftPrompt({
+    compiledPersona: cloneCompile.compile(clone.persona),
+    inbound,
+    channel: draft.channel,
+    threadHistory,
+    notes: body.notes,
+  });
+
+  const result = await executeAgent('comms-director', built.task, {
+    systemOverride: built.system,
+    untrusted: built.untrusted,
+    maxTokens: 2000,
+  });
+  if (!result.ok) return res.status(502).json({ error: result.error || 'the clone could not produce a draft' });
+
+  const text = String(result.content || '');
+  const check = clonePersona.checkRedLines(text, clone.persona);
+
+  draft.text = text;
+  draft.violations = check.violations;
+  draft.blocked = check.blocked;
+  draft.personaVersion = clone.personaVersion;
+  draft.promptFingerprint = cloneCompile.fingerprint(clone.persona);
+  draft.cost = result.cost || 0;
+  // A draft that trips a red line stays PENDING and is shown to the owner flagged, rather than
+  // being hidden or auto-rejected. The owner is the reviewer; suppressing the evidence would hide
+  // that their boundaries — or their clone — need work.
+  cloneDrafts.push(draft);
+
+  clone.metrics.draftsProduced += 1;
+  saveCloneDrafts();
+  saveClones();
+
+  costLedger.push({
+    id: uuidv4(), agent: 'business-clone', model: result.model, skill: 'clone-draft',
+    inputTokens: result.inputTokens || 0, outputTokens: result.outputTokens || 0,
+    cost: result.cost || 0, timestamp: new Date().toISOString(),
+  });
+
+  logActivity('clone', `${clone.name} drafted a ${draft.channel} reply${check.blocked ? ' (RED LINE tripped)' : ''}`, { cloneId: clone.id, draftId: draft.id });
+  res.json({ ok: true, draft });
+});
+
+// The owner's verdict. This is where the feature learns: an EDIT records both what the clone wrote
+// and what the owner actually sends, and that diff is the most direct evidence of where the persona
+// is wrong. P4 turns it into proposed persona changes.
+app.post('/api/clones/:id/drafts/:draftId/review', requireClientOrAdmin, (req, res) => {
+  const clone = cloneOr404(req, res);
+  if (!clone) return;
+
+  const draft = cloneDraftsLib.getDraft(cloneDrafts, cloneClientOf(req.session), req.params.draftId);
+  if (!draft || draft.cloneId !== clone.id) return res.status(404).json({ error: 'Draft not found' });
+
+  const body = req.body || {};
+  try {
+    cloneDraftsLib.reviewDraft(draft, { verdict: body.verdict, finalText: body.finalText, note: body.note });
+    cloneStore.recordFeedback(clone, { draftId: draft.id, verdict: draft.status, note: draft.note });
+  } catch (e) {
+    return res.status(400).json({ error: e.message });
+  }
+
+  saveCloneDrafts();
+  saveClones();
+  res.json({ ok: true, draft, metrics: clone.metrics });
 });
 
 // --- Commercial Module Routes (registered last so all globals are available) ---

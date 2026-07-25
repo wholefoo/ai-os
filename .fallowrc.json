@@ -26,6 +26,7 @@
     "tools/test-business-clone.js",
     "tools/test-business-clone-interview.js",
     "tools/test-business-clone-compile.js",
+    "tools/test-business-clone-drafts.js",
     "ecosystem.config.js",
     "deploy/n8n-ecosystem.config.example.js",
     "dashboard/js/*.js"
@@ -66,7 +67,8 @@
 
     { "file": "lib/business-clone/persona.js", "exports": ["COMPLETENESS_WEIGHTS", "HUMOR_STYLES", "SENTENCE_LENGTHS", "RISK_POSTURES", "PRICING_DISCLOSURE", "MIN_USABLE_COMPLETENESS"] },
     { "file": "lib/business-clone/store.js", "exports": ["OPERATOR_CLIENT_ID", "STATUSES", "MAX_CLONES_PER_CLIENT", "MAX_INTERVIEW_TURNS", "canCreate", "addInterviewTurn"] },
-    { "file": "lib/business-clone/interview.js", "exports": ["DIMENSION_SATISFIED_AT"] }
+    { "file": "lib/business-clone/interview.js", "exports": ["DIMENSION_SATISFIED_AT"] },
+    { "file": "lib/business-clone/drafts.js", "exports": ["CHANNELS", "DEFAULT_CHANNEL", "DRAFT_STATUSES"] }
   ],
   "duplicates": {
     "minOccurrences": 3
