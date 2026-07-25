@@ -10,7 +10,65 @@
 //  See lib/business-clone/README.md.
 // ============================================================
 
-const clState = { wired: false, list: [], selectedId: null, tab: 'interview', detail: null, drafts: [], limit: 1, tier: '', busy: false };
+const clState = { wired: false, list: [], selectedId: null, tab: 'interview', detail: null, drafts: [], limit: 1, tier: '', busy: false, editing: false };
+
+// The editable shape of a persona, mirroring lib/business-clone/persona.js. Enum options must match
+// that module's constants — a value it does not recognise is silently dropped on save, which would
+// look to the owner like the field simply refused to stick.
+//
+// Object lists (FAQ, opinions, trade-offs) are edited as one line per entry with pipe-separated
+// parts. Not elegant, but it round-trips exactly and an owner can see the whole set at once, which
+// matters more here than input polish: this screen exists so someone can audit what their clone
+// believes about them and correct it in one pass.
+const CL_SCALE = [['', '—'], ['1', '1'], ['2', '2'], ['3', '3'], ['4', '4'], ['5', '5']];
+const CL_FIELDS = {
+  identity: [
+    { k: 'ownerName', label: 'Name', type: 'text' },
+    { k: 'role', label: 'Role', type: 'text' },
+    { k: 'businessName', label: 'Business', type: 'text' },
+    { k: 'industry', label: 'Industry', type: 'text' },
+    { k: 'location', label: 'Location', type: 'text' },
+    { k: 'yearsExperience', label: 'Years in the trade', type: 'number' },
+    { k: 'whatTheyDo', label: 'What the business does, in your words', type: 'textarea' },
+  ],
+  voice: [
+    { k: 'formality', label: 'Formality (1 casual – 5 formal)', type: 'select', options: CL_SCALE },
+    { k: 'directness', label: 'Directness (1 diplomatic – 5 blunt)', type: 'select', options: CL_SCALE },
+    { k: 'warmth', label: 'Warmth (1 clinical – 5 very warm)', type: 'select', options: CL_SCALE },
+    { k: 'humor', label: 'Humour', type: 'select', options: [['', '—'], ['none', 'none'], ['dry', 'dry'], ['warm', 'warm'], ['playful', 'playful']] },
+    { k: 'sentenceLength', label: 'Sentence length', type: 'select', options: [['', '—'], ['short', 'short'], ['varied', 'varied'], ['long', 'long']] },
+    { k: 'greeting', label: 'Opens with', type: 'text' },
+    { k: 'signoff', label: 'Signs off with', type: 'text' },
+    { k: 'signaturePhrases', label: 'Phrases you actually use', type: 'list' },
+    { k: 'avoidPhrases', label: 'Language you would never use', type: 'list' },
+    { k: 'vocabulary', label: 'Characteristic vocabulary', type: 'list' },
+  ],
+  expertise: [
+    { k: 'domains', label: 'Expert in', type: 'list' },
+    { k: 'methodologies', label: 'How you work', type: 'list' },
+    { k: 'credentials', label: 'Credentials', type: 'list' },
+    { k: 'strongOpinions', label: 'Strong opinions', type: 'objlist', parts: ['claim', 'rationale'] },
+    { k: 'faq', label: 'Questions you answer constantly', type: 'objlist', parts: ['question', 'answer'] },
+  ],
+  decisionStyle: [
+    { k: 'priorities', label: 'What you protect, most important first', type: 'list' },
+    { k: 'tradeoffRules', label: 'Trade-offs you make', type: 'objlist', parts: ['when', 'prefer', 'over'] },
+    { k: 'riskPosture', label: 'Risk posture', type: 'select', options: [['', '—'], ['conservative', 'conservative'], ['balanced', 'balanced'], ['aggressive', 'aggressive']] },
+    { k: 'escalationTriggers', label: 'Always handle personally', type: 'list' },
+  ],
+  boundaries: [
+    { k: 'neverSay', label: 'Never say', type: 'list' },
+    { k: 'neverPromise', label: 'Never promise', type: 'list' },
+    { k: 'requiresHuman', label: 'Always yours to handle', type: 'list' },
+    { k: 'confidentialTopics', label: 'Confidential', type: 'list' },
+    { k: 'pricingDisclosure', label: 'Pricing', type: 'select', options: [['', '—'], ['none', 'never discuss'], ['ranges', 'ranges only'], ['full', 'full detail']] },
+    { k: 'competitorPolicy', label: 'On competitors', type: 'text' },
+  ],
+};
+const CL_DIM_LABELS = {
+  identity: 'Who they are', voice: 'How they sound', expertise: 'What they know',
+  decisionStyle: 'How they decide', boundaries: 'Limits',
+};
 
 function loadClones() {
   if (!clState.wired) {
@@ -22,7 +80,7 @@ function loadClones() {
 }
 
 async function clFetchList() {
-  const data = await fetchJSON('/clones');
+  const data = await fetchJSON('/api/clones');
   clState.list = (data && data.clones) || [];
   clState.limit = (data && data.limit) != null ? data.limit : 1;
   clState.tier = (data && data.tier) || '';
@@ -62,7 +120,7 @@ function clRenderEmptyDetail() {
 async function clCreate() {
   const name = prompt('Whose clone is this? (e.g. "Dana — Whitfield Dental")');
   if (name === null) return;
-  const res = await fetchJSON('/clones', { method: 'POST', body: { name: name.trim() } });
+  const res = await fetchJSON('/api/clones', { method: 'POST', body: { name: name.trim() } });
   if (res && res.error) return showSettingsToast(res.error, true);
   clState.selectedId = res.clone.id;
   clState.tab = 'interview';
@@ -73,7 +131,7 @@ async function clCreate() {
 async function clOpen(id) {
   clState.selectedId = id;
   clRenderList();
-  const detail = await fetchJSON(`/clones/${id}`);
+  const detail = await fetchJSON(`/api/clones/${id}`);
   if (!detail || detail.error) return showSettingsToast((detail && detail.error) || 'Could not load that clone', true);
   clState.detail = detail;
   if (clState.tab === 'drafts') await clFetchDrafts();
@@ -82,12 +140,14 @@ async function clOpen(id) {
 
 function clTab(tab) {
   clState.tab = tab;
+  clState.editing = false; // leaving the persona tab abandons an unsaved correction rather than
+                           // silently resurrecting the form when the owner comes back to it
   if (tab === 'drafts') { clFetchDrafts().then(clRenderDetail); return; }
   clRenderDetail();
 }
 
 async function clFetchDrafts() {
-  const res = await fetchJSON(`/clones/${clState.selectedId}/drafts`);
+  const res = await fetchJSON(`/api/clones/${clState.selectedId}/drafts`);
   clState.drafts = (res && res.drafts) || [];
 }
 
@@ -131,7 +191,7 @@ function clRenderDetail() {
 
   const body = document.getElementById('clTabBody');
   if (clState.tab === 'interview') body.innerHTML = clInterviewHtml(c);
-  else if (clState.tab === 'persona') body.innerHTML = clPersonaHtml(c.persona || {});
+  else if (clState.tab === 'persona') body.innerHTML = clState.editing ? clPersonaFormHtml(c.persona || {}) : clPersonaHtml(c.persona || {});
   else if (clState.tab === 'prompt') { body.innerHTML = '<div class="cl-muted">Loading…</div>'; clLoadPrompt(); }
   else body.innerHTML = clDraftsHtml();
 }
@@ -188,11 +248,85 @@ function clPersonaHtml(p) {
     section('Limits', [list('Never says', b.neverSay), list('Never promises', b.neverPromise), list('Always yours to handle', b.requiresHuman), list('Confidential', b.confidentialTopics), line('Pricing', b.pricingDisclosure)]),
   ].filter(Boolean).join('');
 
-  return html || '<div class="cl-empty">Nothing learned yet — answer some interview questions.</div>';
+  const edit = '<div style="margin:14px 0;"><button class="btn" onclick="clEditPersona()">Correct this</button> <span class="cl-muted">Fix anything your clone has wrong about you.</span></div>';
+  return edit + (html || '<div class="cl-empty">Nothing learned yet — answer some interview questions, or correct it directly.</div>');
+}
+
+// --- persona correction form ------------------------------------------------
+
+/** One line per entry, parts separated by " | ". Round-trips exactly; see CL_FIELDS. */
+function clObjListToText(arr, parts) {
+  return (arr || []).map((o) => parts.map((p) => String(o[p] || '')).join(' | ')).join('\n');
+}
+function clTextToObjList(text, parts) {
+  return String(text || '').split('\n').map((line) => line.trim()).filter(Boolean).map((line) => {
+    const bits = line.split('|').map((b) => b.trim());
+    const out = {};
+    parts.forEach((p, i) => { out[p] = bits[i] || ''; });
+    return out;
+  });
+}
+
+function clFieldHtml(dim, f, value) {
+  const id = `clF-${dim}-${f.k}`;
+  const lbl = `<div class="cl-muted" style="margin:10px 0 3px;">${escapeHtml(f.label)}</div>`;
+  if (f.type === 'select') {
+    const opts = f.options.map(([v, t]) =>
+      `<option value="${escapeHtml(v)}" ${String(value == null ? '' : value) === v ? 'selected' : ''}>${escapeHtml(t)}</option>`).join('');
+    return `${lbl}<select id="${id}" style="width:100%;">${opts}</select>`;
+  }
+  if (f.type === 'textarea') return `${lbl}<textarea id="${id}" rows="3" style="width:100%;">${escapeHtml(value || '')}</textarea>`;
+  if (f.type === 'list') return `${lbl}<textarea id="${id}" rows="3" style="width:100%;" placeholder="One per line">${escapeHtml((value || []).join('\n'))}</textarea>`;
+  if (f.type === 'objlist') {
+    return `${lbl}<div class="cl-muted" style="font-size:11px;margin-bottom:3px;">One per line: ${escapeHtml(f.parts.join(' | '))}</div>`
+      + `<textarea id="${id}" rows="4" style="width:100%;">${escapeHtml(clObjListToText(value, f.parts))}</textarea>`;
+  }
+  const t = f.type === 'number' ? 'number' : 'text';
+  return `${lbl}<input id="${id}" type="${t}" style="width:100%;" value="${escapeHtml(value == null ? '' : value)}">`;
+}
+
+function clPersonaFormHtml(p) {
+  const sections = Object.entries(CL_FIELDS).map(([dim, fields]) => {
+    const body = fields.map((f) => clFieldHtml(dim, f, (p[dim] || {})[f.k])).join('');
+    return `<h4 style="margin:18px 0 4px;">${escapeHtml(CL_DIM_LABELS[dim])}</h4>${body}`;
+  }).join('');
+
+  return `<div class="cl-muted" style="margin-bottom:6px;">Saving replaces the whole persona, so anything you clear here is genuinely removed — that is the point: it is how you take back something your clone should never have learned. Values outside the allowed range are dropped rather than stored.</div>
+    ${sections}
+    <div style="display:flex;gap:8px;margin-top:16px;">
+      <button class="btn btn-primary" onclick="clSavePersona()">Save corrections</button>
+      <button class="btn" onclick="clCancelPersona()">Cancel</button>
+    </div>`;
+}
+
+function clEditPersona() { clState.editing = true; clRenderDetail(); }
+function clCancelPersona() { clState.editing = false; clRenderDetail(); }
+
+async function clSavePersona() {
+  const val = (dim, k) => { const el = document.getElementById(`clF-${dim}-${k}`); return el ? el.value : ''; };
+  const persona = {};
+  for (const [dim, fields] of Object.entries(CL_FIELDS)) {
+    persona[dim] = {};
+    for (const f of fields) {
+      const raw = val(dim, f.k);
+      if (f.type === 'list') persona[dim][f.k] = String(raw).split('\n').map((s) => s.trim()).filter(Boolean);
+      else if (f.type === 'objlist') persona[dim][f.k] = clTextToObjList(raw, f.parts);
+      else if (f.type === 'number') persona[dim][f.k] = raw === '' ? null : Number(raw);
+      else persona[dim][f.k] = raw;
+    }
+  }
+
+  const res = await fetchJSON(`/api/clones/${clState.selectedId}/persona`, { method: 'PUT', body: { persona } });
+  if (res && res.error) return showSettingsToast(res.error, true);
+
+  clState.editing = false;
+  await clOpen(clState.selectedId);
+  await clFetchList();
+  showSettingsToast(`Saved — persona v${res.personaVersion}, ${res.progress ? res.progress.overall : '?'}% known`);
 }
 
 async function clLoadPrompt() {
-  const res = await fetchJSON(`/clones/${clState.selectedId}/prompt`);
+  const res = await fetchJSON(`/api/clones/${clState.selectedId}/prompt`);
   const body = document.getElementById('clTabBody');
   if (!body) return;
   if (!res || res.error || !res.prompt) { body.innerHTML = '<div class="cl-empty">Could not load the prompt.</div>'; return; }
@@ -252,7 +386,7 @@ async function clNextQuestion() {
   if (clState.busy) return;
   clState.busy = true;
   showSettingsToast('Thinking of a question…');
-  const res = await fetchJSON(`/clones/${clState.selectedId}/interview/next`, { method: 'POST', body: {} });
+  const res = await fetchJSON(`/api/clones/${clState.selectedId}/interview/next`, { method: 'POST', body: {} });
   clState.busy = false;
   if (res && res.error) return showSettingsToast(res.error, true);
   await clOpen(clState.selectedId);
@@ -265,7 +399,7 @@ async function clSubmitAnswer() {
   if (clState.busy) return;
   clState.busy = true;
   showSettingsToast('Listening…');
-  const res = await fetchJSON(`/clones/${clState.selectedId}/interview/answer`, { method: 'POST', body: { answer } });
+  const res = await fetchJSON(`/api/clones/${clState.selectedId}/interview/answer`, { method: 'POST', body: { answer } });
   clState.busy = false;
   if (res && res.error) return showSettingsToast(res.error, true);
   if (res && res.extracted === false) showSettingsToast('Recorded, but nothing concrete could be pulled from that answer', true);
@@ -275,7 +409,7 @@ async function clSubmitAnswer() {
 }
 
 async function clSetStatus(status) {
-  const res = await fetchJSON(`/clones/${clState.selectedId}/status`, { method: 'POST', body: { status } });
+  const res = await fetchJSON(`/api/clones/${clState.selectedId}/status`, { method: 'POST', body: { status } });
   if (res && res.error) return showSettingsToast(res.error, true);
   await clFetchList();
   await clOpen(clState.selectedId);
@@ -283,7 +417,7 @@ async function clSetStatus(status) {
 
 async function clDelete() {
   if (!confirm('Delete this clone? Everything it learned about the owner goes with it.')) return;
-  const res = await fetchJSON(`/clones/${clState.selectedId}`, { method: 'DELETE' });
+  const res = await fetchJSON(`/api/clones/${clState.selectedId}`, { method: 'DELETE' });
   if (res && res.error) return showSettingsToast(res.error, true);
   clState.selectedId = null;
   clState.detail = null;
@@ -299,7 +433,7 @@ async function clNewDraft() {
   if (clState.busy) return;
   clState.busy = true;
   showSettingsToast('Drafting…');
-  const res = await fetchJSON(`/clones/${clState.selectedId}/drafts`, { method: 'POST', body: { inbound, channel } });
+  const res = await fetchJSON(`/api/clones/${clState.selectedId}/drafts`, { method: 'POST', body: { inbound, channel } });
   clState.busy = false;
   if (res && res.error) return showSettingsToast(res.error, true);
   await clFetchDrafts();
@@ -314,7 +448,7 @@ async function clReview(draftId, verdict) {
     if (!finalText.trim()) return showSettingsToast('Edit the text first, then save it', true);
     body.finalText = finalText;
   }
-  const res = await fetchJSON(`/clones/${clState.selectedId}/drafts/${draftId}/review`, { method: 'POST', body });
+  const res = await fetchJSON(`/api/clones/${clState.selectedId}/drafts/${draftId}/review`, { method: 'POST', body });
   if (res && res.error) return showSettingsToast(res.error, true);
   await clFetchDrafts();
   clRenderDetail();
