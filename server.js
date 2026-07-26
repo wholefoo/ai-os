@@ -568,7 +568,7 @@ app.get('/api/stripe/success', async (req, res) => {
     // A returning managed client (already onboarded with a password) → log into their client workspace.
     if (user.role === 'client') {
       const token = generateToken();
-      sessions.set(token, { email: user.email, plan: user.plan, role: 'client', ownerEmail: user.email, stripeCustomerId: user.stripeCustomerId, expiresAt: new Date(Date.now() + 30 * 86400000).toISOString() });
+      sessions.set(token, { email: user.email, plan: user.plan, role: 'client', ownerEmail: orgMembership.orgKeyFor(user), stripeCustomerId: user.stripeCustomerId, expiresAt: new Date(Date.now() + 30 * 86400000).toISOString() });
       res.cookie('ai-os-session', token, { httpOnly: true, secure: process.env.NODE_ENV === 'production', sameSite: 'lax', maxAge: 30 * 86400000 });
       return res.redirect('/app');
     }
@@ -690,7 +690,7 @@ app.post('/api/auth/login', authLimiter, async (req, res) => {
     email: user.email,
     plan: user.plan,
     role: user.role || 'user',
-    ownerEmail: user.email,
+    ownerEmail: orgMembership.orgKeyFor(user), // employee -> employer; everyone else -> themselves
     expiresAt: new Date(Date.now() + 30 * 86400000).toISOString(),
   });
 
@@ -736,7 +736,7 @@ app.post('/api/auth/set-password', heavyLimiter, async (req, res) => {
   saveState('users', users);
   // Log them straight in.
   const sToken = generateToken();
-  sessions.set(sToken, { email: user.email, plan: user.plan, role: user.role || 'client', ownerEmail: user.email, expiresAt: new Date(Date.now() + 30 * 86400000).toISOString() });
+  sessions.set(sToken, { email: user.email, plan: user.plan, role: user.role || 'client', ownerEmail: orgMembership.orgKeyFor(user), expiresAt: new Date(Date.now() + 30 * 86400000).toISOString() });
   res.cookie('ai-os-session', sToken, { httpOnly: true, secure: process.env.NODE_ENV === 'production', sameSite: 'lax', maxAge: 30 * 86400000 });
   logActivity('auth', `Client set password: ${user.email}`, {});
   res.json({ ok: true, redirect: '/app' });
@@ -1512,6 +1512,7 @@ const cloneCompile = require('./lib/business-clone/compile');
 const cloneDraftsLib = require('./lib/business-clone/drafts');
 const cloneEvolve = require('./lib/business-clone/evolve');
 const cloneOnb = require('./lib/business-clone/onboarding');
+const orgMembership = require('./lib/org/membership');
 
 // Server-wide Ed25519 provenance signing key (lazy-generated under .magent/provenance, or supplied
 // via AIOS_PROVENANCE_PRIVATE_KEY). The issuer origin = the control-plane public URL so a sidecar's
@@ -10726,8 +10727,15 @@ app.post('/api/clones', requireCloneAccess, (req, res) => {
   const allowed = cloneStore.canCreate(businessClones, clientId);
   if (!allowed.ok) return res.status(429).json({ error: allowed.error });
 
+  // PER INSTANCE, not per person. With employees, a per-client count would give each of them the
+  // full allowance — five employees on a Business licence would silently become 125 clones. The
+  // licence covers the company, so the count does too.
+  //
+  // This reads businessClones.length directly rather than going through the store. That does not
+  // violate the store's no-unscoped-list rule: that rule protects READS OF CLONE CONTENT, and a
+  // count exposes nothing about anyone.
   const limit = cloneLimit();
-  if (cloneStore.listClones(businessClones, clientId).length >= limit) {
+  if (businessClones.length >= limit) {
     return res.status(403).json({
       error: limit === 1
         ? 'The Community tier includes one clone — your own. Creating clones for clients requires a Business licence.'
@@ -10752,6 +10760,68 @@ app.post('/api/clones', requireCloneAccess, (req, res) => {
 // below would make ":id" swallow the literal paths "templates" and "onboarding".
 app.get('/api/clones/templates', requireCloneAccess, (req, res) => {
   res.json({ templates: cloneInterview.templateList(), default: cloneInterview.DEFAULT_TEMPLATE });
+});
+
+// --- Org roster -------------------------------------------------------------
+// An employee is a user whose ownerEmail points at their employer. No org table: the platform
+// already scopes by owner email (wsOwns), so pointing that field at somebody else makes sites, CRM
+// and analytics scope to the company with no changes to any of them. Clones stay keyed on the
+// individual's own address — a company shares its customers, not a replica of how a person thinks.
+
+/** Seats an org may fill, from the licence. Same source as the clone limit. */
+function orgSeatLimit() {
+  const n = commercial.limits && commercial.limits.businessClones;
+  return (n === undefined || n === null) ? 1 : n;
+}
+
+app.get('/api/org/members', requireAdmin, (req, res) => {
+  const orgKey = orgMembership.orgKeyForSession(req.session);
+  const members = orgMembership.membersOf(users, orgKey);
+  res.json({
+    org: orgKey,
+    members: members.map(orgMembership.summarizeMember),
+    employees: orgMembership.employeesOf(users, orgKey).length,
+    seatLimit: orgSeatLimit(),
+  });
+});
+
+/**
+ * Invite someone into this org. Reuses the existing single-use setupToken + /set-password flow
+ * rather than inventing a second credential path — that flow is already hardened (single-use,
+ * expiring, and it refuses to re-issue against an account that already has a password).
+ *
+ * The invite link is RETURNED rather than emailed, matching the existing resend-invite route. The
+ * operator delivers it. That keeps a route that mints a login credential from also being a route
+ * that sends mail to an arbitrary address.
+ */
+app.post('/api/org/members', requireAdmin, (req, res) => {
+  const body = req.body || {};
+  const check = orgMembership.validateInvite({
+    session: req.session,
+    email: body.email,
+    users,
+    seatLimit: orgSeatLimit(),
+  });
+  if (!check.ok) return res.status(400).json({ error: check.error });
+
+  const employee = orgMembership.buildEmployee({
+    id: uuidv4(),
+    email: check.email,
+    ownerEmail: check.org,
+    name: body.name,
+    plan: (req.session && req.session.plan) || 'business',
+    setupToken: { token: generateToken(), expiresAt: new Date(Date.now() + 7 * 86400000).toISOString() },
+  });
+  users.push(employee);
+  saveState('users', users);
+
+  logActivity('auth', `Employee invited: ${employee.email}`, { org: check.org });
+  res.json({
+    ok: true,
+    member: orgMembership.summarizeMember(employee),
+    link: `${CRM_PUBLIC_BASE}/set-password?token=${encodeURIComponent(employee.setupToken.token)}`,
+    expiresAt: employee.setupToken.expiresAt,
+  });
 });
 
 // --- Onboarding -------------------------------------------------------------
@@ -11106,7 +11176,7 @@ app.post('/api/clones/:id/drafts', requireCloneAccess, heavyLimiter, async (req,
   saveClones();
 
   costLedger.push({
-    id: uuidv4(), agent: 'business-clone', model: result.model, skill: 'clone-draft',
+    id: uuidv4(), agent: 'business-clone', model: result.model, skill: 'clone-draft', clientId: cloneClientOf(req.session),
     inputTokens: result.inputTokens || 0, outputTokens: result.outputTokens || 0,
     cost: result.cost || 0, timestamp: new Date().toISOString(),
   });
@@ -11186,7 +11256,7 @@ app.post('/api/clones/:id/evolve', requireCloneAccess, heavyLimiter, async (req,
   const changes = cloneEvolve.diffPersona(clone.persona, proposed);
 
   costLedger.push({
-    id: uuidv4(), agent: 'business-clone', model: result.model, skill: 'clone-evolve',
+    id: uuidv4(), agent: 'business-clone', model: result.model, skill: 'clone-evolve', clientId: cloneClientOf(req.session),
     inputTokens: result.inputTokens || 0, outputTokens: result.outputTokens || 0,
     cost: result.cost || 0, timestamp: new Date().toISOString(),
   });

@@ -115,6 +115,19 @@ assert(store.getClone(emailClones, 'other@example.com', 'clone-e') === null, 'a 
 assert(store.listClones(emailClones, 'not an email at all!').length === 0, 'a malformed clientId matches nothing');
 assert(store.createClone({ id: 'clone-f', clientId: 'operator' }).clientId === 'operator', 'the non-email fallback id is still accepted');
 
+// --- ONE CLONE PER PERSON. A definition, not a quota: a clone replicates a specific human, so a
+// second one for the same person is a second contradictory account of who they are — and the
+// evolution loop would then have two personas learning from one person's edits. Different registers
+// for different situations come from the role templates, not from a second persona.
+assert(store.MAX_CLONES_PER_PERSON === 1, 'the per-person cap is one');
+const solo = [];
+assert(store.canCreate(solo, 'dana@example.com').ok, 'a person with no clone may create one');
+solo.push(store.createClone({ id: 'solo-1', clientId: 'dana@example.com', name: 'First' }));
+const second = store.canCreate(solo, 'dana@example.com');
+assert(!second.ok, 'the same person may NOT create a second');
+assert(/already has a clone/.test(second.error), `the refusal explains why, got: ${second.error}`);
+assert(store.canCreate(solo, 'sam@example.com').ok, 'a different person is unaffected — the cap is per person, not per instance');
+
 // --- entitlement: reachable is not the same as permitted
 // /api/clones stays on the client-API allowlist so a licensee's EMPLOYEES can reach it. Whether a
 // given person may use it is decided per user, and it fails closed — which is exactly the shape of
