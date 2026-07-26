@@ -10,7 +10,7 @@
 //  See lib/business-clone/README.md.
 // ============================================================
 
-const clState = { wired: false, list: [], selectedId: null, tab: 'interview', detail: null, drafts: [], proposals: [], evidence: null, templates: [], onboarding: null, limit: 1, tier: '', busy: false, editing: false };
+const clState = { wired: false, list: [], selectedId: null, tab: 'interview', detail: null, drafts: [], proposals: [], evidence: null, templates: [], onboarding: null, dispatch: null, limit: 1, tier: '', busy: false, editing: false };
 
 // The editable shape of a persona, mirroring lib/business-clone/persona.js. Enum options must match
 // that module's constants — a value it does not recognise is silently dropped on save, which would
@@ -254,6 +254,7 @@ async function clOpen(id) {
   if (!detail || detail.error) return showSettingsToast((detail && detail.error) || 'Could not load that clone', true);
   clState.detail = detail;
   if (clState.tab === 'drafts') await clFetchDrafts();
+  if (clState.tab === 'direct') await clFetchDispatches();
   clRenderDetail();
 }
 
@@ -262,7 +263,13 @@ function clTab(tab) {
   clState.editing = false; // leaving the persona tab abandons an unsaved correction rather than
                            // silently resurrecting the form when the owner comes back to it
   if (tab === 'drafts') { clFetchDrafts().then(clRenderDetail); return; }
+  if (tab === 'direct') { clFetchDispatches().then(clRenderDetail); return; }
   clRenderDetail();
+}
+
+async function clFetchDispatches() {
+  const res = await fetchJSON(`/api/clones/${clState.selectedId}/dispatches`);
+  clState.dispatch = (res && !res.error) ? res : { dispatches: [], agents: [], allowed: false, cap: null };
 }
 
 async function clFetchDrafts() {
@@ -286,8 +293,8 @@ function clRenderDetail() {
     ? `<div class="cl-esc"><strong>Not ready to work yet.</strong><br>${(c.blockers || []).map(escapeHtml).join('<br>')}</div>`
     : '';
 
-  const TAB_LABELS = { prompt: 'What it was told', evolve: 'What it learned' };
-  const tabs = ['interview', 'persona', 'prompt', 'drafts', 'evolve']
+  const TAB_LABELS = { prompt: 'What it was told', evolve: 'What it learned', direct: 'Direct an agent' };
+  const tabs = ['interview', 'persona', 'prompt', 'drafts', 'direct', 'evolve']
     .map((t) => `<span class="cl-tab ${clState.tab === t ? 'on' : ''}" onclick="clTab('${t}')">${TAB_LABELS[t] || capitalize(t)}</span>`)
     .join('');
 
@@ -314,6 +321,7 @@ function clRenderDetail() {
   else if (clState.tab === 'persona') body.innerHTML = clState.editing ? clPersonaFormHtml(c.persona || {}) : clPersonaHtml(c.persona || {});
   else if (clState.tab === 'prompt') { body.innerHTML = '<div class="cl-muted">Loading…</div>'; clLoadPrompt(); }
   else if (clState.tab === 'evolve') { body.innerHTML = '<div class="cl-muted">Loading…</div>'; clLoadEvolve(); }
+  else if (clState.tab === 'direct') body.innerHTML = clDispatchHtml();
   else body.innerHTML = clDraftsHtml();
 }
 
@@ -508,6 +516,82 @@ function clDraftsHtml() {
       ${actions}
     </div>`;
   }).join('');
+}
+
+// --- directing an agent -----------------------------------------------------
+// The clone commissions work; the agent does it and stays itself. Everything here is a request —
+// the approval gate decides whether it runs now or waits for the owner, and the result comes back
+// as text to read, never as something sent.
+function clDispatchHtml() {
+  const st = clState.dispatch || { dispatches: [], agents: [], allowed: false, cap: null };
+
+  if (!st.allowed) {
+    return `<div class="cl-esc"><strong>Not enabled for this account.</strong><br>Your clone can draft for you, but commissioning work from an agent is a separate permission. Ask the account owner to turn it on.</div>`;
+  }
+
+  const options = (st.agents || []).map((a) =>
+    `<option value="${escapeHtml(a.name)}">${escapeHtml(a.label)} — ${escapeHtml(a.does)}</option>`).join('');
+  const cap = st.cap ? `<span class="cl-muted">${st.cap.used} of ${st.cap.cap} today</span>` : '';
+
+  const form = `
+    <div style="border:1px solid var(--border,#2a2a3a);border-radius:10px;padding:12px;margin-bottom:14px;">
+      <div class="cl-muted" style="margin-bottom:6px;">Ask an agent to do a piece of work for you. Your clone briefs it on who you are and what you will not claim — the agent does its own job. Results come back here for you to read.</div>
+      <select id="clDispatchAgent" style="width:100%;margin-bottom:8px;">${options}</select>
+      <textarea id="clDispatchTask" rows="3" style="width:100%;" placeholder="What do you want done?"></textarea>
+      <textarea id="clDispatchContext" rows="2" style="width:100%;margin-top:6px;" placeholder="Anything to work from (optional) — pasted notes, a customer message, data"></textarea>
+      <div style="display:flex;gap:8px;margin-top:8px;align-items:center;">
+        <button class="btn btn-primary" onclick="clDispatch()">Commission it</button>
+        ${cap}
+      </div>
+    </div>`;
+
+  if (!st.dispatches.length) return form + '<div class="cl-empty">Nothing commissioned yet.</div>';
+
+  return form + st.dispatches.map((d) => {
+    const head = `<div class="cl-muted">${timeAgo(d.createdAt)} · ${escapeHtml(d.agent || 'unknown')}${d.cost ? ` · $${Number(d.cost).toFixed(4)}` : ''}</div>`;
+
+    if (d.status === 'refused') {
+      return `<div class="cl-draft">${head}
+        <div style="margin:6px 0;"><em>${escapeHtml(d.task)}</em></div>
+        <div class="cl-esc"><strong>${clEscalationLead(d)}</strong><br>${(d.refusalReasons || []).map(escapeHtml).join('<br>')}</div>
+      </div>`;
+    }
+    if (d.status === 'pending') {
+      return `<div class="cl-draft">${head}
+        <div style="margin:6px 0;"><em>${escapeHtml(d.task)}</em></div>
+        <div class="cl-warn"><strong>Waiting for your approval.</strong><br>${escapeHtml((d.gateDecision && d.gateDecision.reason) || 'Queued.')} Approve it in Approvals.</div>
+      </div>`;
+    }
+    if (d.status === 'failed') {
+      return `<div class="cl-draft">${head}
+        <div style="margin:6px 0;"><em>${escapeHtml(d.task)}</em></div>
+        <div class="cl-warn"><strong>It did not finish.</strong><br>${escapeHtml(d.error || 'no reason given')}</div>
+      </div>`;
+    }
+    return `<div class="cl-draft">${head}
+      <div style="margin:6px 0;"><em>${escapeHtml(d.task)}</em></div>
+      <textarea rows="10" style="width:100%;" readonly>${escapeHtml(d.output || (d.status === 'running' ? 'Working…' : ''))}</textarea>
+    </div>`;
+  }).join('');
+}
+
+async function clDispatch() {
+  const agent = (document.getElementById('clDispatchAgent') || {}).value || '';
+  const task = ((document.getElementById('clDispatchTask') || {}).value || '').trim();
+  const context = (document.getElementById('clDispatchContext') || {}).value || '';
+  if (!task) return showSettingsToast('Say what you want done first', true);
+
+  // fetchJSON stringifies `body` itself — passing a string here would send a JSON-encoded string
+  // and the route would see no agent and no task.
+  const res = await fetchJSON(`/api/clones/${clState.selectedId}/dispatch`, {
+    method: 'POST',
+    body: { agent, task, context },
+  });
+  if (!res || res.error) return showSettingsToast((res && res.error) || 'Could not commission that', true);
+  if (res.pending) showSettingsToast('Queued for your approval');
+  else if (res.dispatch && res.dispatch.status === 'refused') showSettingsToast('Your clone refused this one');
+  await clFetchDispatches();
+  clRenderDetail();
 }
 
 // --- evolution --------------------------------------------------------------

@@ -1510,6 +1510,7 @@ const cloneStore = require('./lib/business-clone/store');
 const cloneInterview = require('./lib/business-clone/interview');
 const cloneCompile = require('./lib/business-clone/compile');
 const cloneDraftsLib = require('./lib/business-clone/drafts');
+const cloneDispatchLib = require('./lib/business-clone/dispatch');
 const cloneEvolve = require('./lib/business-clone/evolve');
 const cloneOnb = require('./lib/business-clone/onboarding');
 const orgMembership = require('./lib/org/membership');
@@ -2693,6 +2694,51 @@ function startPublishBackground(site, domain) {
 // Reconstructable side effects — invoked by gateAction (immediate) or the approve endpoint
 // (deferred). Each throws on failure; callers translate that to an HTTP error.
 const ACTION_EXECUTORS = {
+  // A business clone commissioning work from an agent. The dispatch RECORD is written before the
+  // gate is consulted and this executor takes only its id, so the run-now path and the
+  // approve-later path operate on the same row and cannot drift apart.
+  'clone.dispatch-agent': async ({ dispatchId }) => {
+    const d = cloneDispatches.find((x) => x && x.id === dispatchId);
+    if (!d) throw new Error('that dispatch no longer exists');
+    if (d.status === 'done' || d.status === 'running') throw new Error('that dispatch has already run');
+    const clone = businessClones.find((c) => c && c.id === d.cloneId && c.clientId === d.clientId);
+    if (!clone) throw new Error('that clone no longer exists');
+
+    // Re-screen at EXECUTION time, not only at request time. An approval can sit in the queue for
+    // days while the persona changes underneath it; running the old decision would enforce a
+    // boundary that has since been lifted, or — the direction that matters — ignore one that has
+    // since been set.
+    const eff = cloneEffective(clone);
+    const screen = cloneDispatchLib.screenDispatch(eff, { agent: d.agent, task: d.task, context: d.context });
+    if (!screen.allow) {
+      d.status = 'refused';
+      d.refusalReasons = screen.reasons;
+      saveCloneDispatches();
+      throw new Error(screen.reasons[0] || 'this dispatch is no longer allowed');
+    }
+
+    d.status = 'running';
+    saveCloneDispatches();
+
+    const built = cloneDispatchLib.buildDispatchPrompt(eff, { agent: d.agent, task: d.task, context: d.context });
+    // No systemOverride. The agent keeps its own prompt and stays itself — the clone briefs it, it
+    // does not become it. That is the difference between directing an agent and replacing one.
+    const result = await executeAgent(d.agent, built.task, { untrusted: built.untrusted, maxTokens: 3000 });
+    cloneDispatchLib.recordResult(d, result);
+    saveCloneDispatches();
+
+    if (result && result.ok) {
+      costLedger.push({
+        id: uuidv4(), agent: d.agent, model: result.model, skill: 'clone-dispatch', clientId: d.clientId,
+        inputTokens: result.inputTokens || 0, outputTokens: result.outputTokens || 0,
+        cost: result.cost || 0, timestamp: new Date().toISOString(),
+      });
+    }
+    logActivity('clone', `${clone.name} commissioned ${d.agent}: ${d.status}`, { cloneId: clone.id, dispatchId: d.id });
+    broadcast({ event: 'clone_dispatch', data: d });
+    if (d.status === 'failed') throw new Error(d.error);
+    return { dispatchId: d.id, status: d.status };
+  },
   'web-studio.github-push': async ({ siteId, mode, repoName, repoUrl, isPrivate, message, token }) => {
     const site = webStudioSites.find(s => s.id === siteId);
     if (!site) throw new Error('Site not found');
@@ -10892,8 +10938,24 @@ function deleteCloneRecords(clone) {
       clonePersonaProposals.splice(i, 1); purged++;
     }
   }
+  // Commissioned work follows the same rule as drafts: an employee's output is the company's record
+  // and is retained with the persona detached, while an owner's own goes with the clone. A new
+  // record collection that is not listed here is a leak that outlives the deletion it was promised.
+  for (let i = cloneDispatches.length - 1; i >= 0; i--) {
+    const d = cloneDispatches[i];
+    if (!d || d.cloneId !== clone.id) continue;
+    if (isEmployee) {
+      d.personaDeleted = true;
+      d.personaDeletedAt = new Date().toISOString();
+      retained++;
+    } else {
+      cloneDispatches.splice(i, 1);
+      purged++;
+    }
+  }
   saveCloneDrafts();
   saveCloneProposals();
+  saveCloneDispatches();
   return { purged, retained, wasEmployee: isEmployee };
 }
 
@@ -11059,6 +11121,22 @@ app.get('/api/org/clones/:id/drafts', requireAdmin, (req, res) => {
  * Offboard someone. Their account goes, their clone's PERSONA goes, and their drafts stay as
  * company records — the split the disclosure promises them at onboarding.
  */
+// Grant or revoke one employee's clone-dispatch authority. Separate from the invite because it is
+// a separate decision: inviting someone says they may have a clone, not that their clone may spend
+// money commissioning work. Starts off, and the owner turns it on per person.
+app.put('/api/org/members/:email/dispatch', requireAdmin, (req, res) => {
+  const orgKey = sessionOrgKey(req.session);
+  const addr = String(req.params.email || '').trim().toLowerCase();
+  const user = findUserByEmail(addr);
+  if (!user || orgMembership.orgKeyFor(user) !== orgKey || !orgMembership.isEmployee(user)) {
+    return res.status(404).json({ error: 'no such person in this organisation' });
+  }
+  user.cloneDispatch = req.body && req.body.enabled === true;
+  saveState('users', users);
+  logActivity('clone', `Clone dispatch ${user.cloneDispatch ? 'enabled' : 'disabled'} for ${addr}`, { org: orgKey });
+  res.json({ ok: true, member: orgMembership.summarizeMember(user) });
+});
+
 app.delete('/api/org/members/:email', requireAdmin, (req, res) => {
   const orgKey = sessionOrgKey(req.session);
   const addr = String(req.params.email || '').trim().toLowerCase();
@@ -11218,7 +11296,7 @@ app.post('/api/clones/:id/interview/next', requireCloneAccess, heavyLimiter, asy
   // Every question is a paid call. Bounded per clone per rolling 24h — costs a real person nothing
   // (nobody answers sixty questions in a day) and stops a script running up a bill on the operator's
   // key. Separate from settings.security.hard_budget, which caps total instance spend.
-  const cap = cloneOnb.withinDailyCap(clone);
+  const cap = cloneOnb.withinDispatchCap(clone);
   if (!cap.ok) {
     return res.status(429).json({
       error: `That is ${cap.used} questions today — enough for one sitting. Pick this up tomorrow, or correct the persona directly.`,
@@ -11448,6 +11526,123 @@ app.post('/api/clones/:id/drafts', requireCloneAccess, heavyLimiter, async (req,
 
   logActivity('clone', `${clone.name} drafted a ${draft.channel} reply${check.blocked ? ' (RED LINE tripped)' : ''}`, { cloneId: clone.id, draftId: draft.id });
   res.json({ ok: true, draft });
+});
+
+// ============================================================
+//  Clone-directed agent dispatch — the clone commissioning work, and the ceiling on that.
+//
+//  The clone directs agent FUNCTIONS; it does not replace them. The agent keeps its own prompt and
+//  its own job, and receives a brief saying who it is working for. Three limits stack, and each one
+//  alone would be insufficient:
+//
+//    1. Only agents on lib/business-clone/dispatch.js's allowlist can be directed at all — an
+//       allowlist, because a denylist here would be a list of things somebody remembered.
+//    2. A requiresHuman or confidential topic blocks the DISPATCH, not merely the drafting. A clone
+//       that cannot write about a topic but can commission an agent to write about it has routed
+//       around the owner's boundary rather than respected it.
+//    3. Every dispatch goes through gateAction exactly as an operator-initiated action does, and an
+//       employee's clone may only dispatch if the employer granted it. A clone never holds more
+//       authority than the person it replicates.
+//
+//  Output is text handed back for review. Nothing here sends, publishes, or acts.
+// ============================================================
+const cloneDispatches = loadState('clone_dispatches', []);
+const saveCloneDispatches = () => saveState('clone_dispatches', cloneDispatches);
+
+/** The person's own authority, which their clone inherits and cannot exceed. */
+function requireCloneDispatch(req, res, next) {
+  const user = req.session && req.session.email ? findUserByEmail(req.session.email) : null;
+  if (!cloneStore.canDispatch(req.session, user)) {
+    return res.status(403).json({ error: 'Your clone is not allowed to commission work from agents. Ask the account owner to enable it.' });
+  }
+  next();
+}
+
+app.get('/api/clones/:id/dispatches', requireCloneAccess, (req, res) => {
+  const clone = cloneOr404(req, res);
+  if (!clone) return;
+  const user = req.session && req.session.email ? findUserByEmail(req.session.email) : null;
+  res.json({
+    ok: true,
+    dispatches: cloneDispatchLib.listDispatches(cloneDispatches, cloneClientOf(req.session), clone.id).slice(0, 50),
+    agents: cloneDispatchLib.directableList(),
+    allowed: cloneStore.canDispatch(req.session, user),
+    cap: cloneDispatchLib.withinDispatchCap(cloneDispatches, clone.id),
+  });
+});
+
+app.post('/api/clones/:id/dispatch', requireCloneAccess, requireCloneDispatch, heavyLimiter, async (req, res) => {
+  const clone = cloneOr404(req, res);
+  if (!clone) return;
+
+  const body = req.body || {};
+  const clientId = cloneClientOf(req.session);
+  const agent = String(body.agent || '').trim();
+  const task = String(body.task || '').trim();
+  const context = String(body.context || '');
+  if (!task) return res.status(400).json({ error: 'a task is required' });
+  if (clone.status === 'paused') return res.status(400).json({ error: 'This clone is paused' });
+
+  // A brief compiled from a half-finished persona tells the agent nothing useful about who it is
+  // working for, which is the only thing dispatch adds over calling the agent yourself.
+  const eff = cloneEffective(clone);
+  const usable = clonePersona.isUsable(eff);
+  if (!usable.usable) return res.status(400).json({ error: 'This clone is not ready to direct agents yet', blockers: usable.reasons });
+
+  const dispatch = cloneDispatchLib.createDispatch({
+    id: uuidv4(), cloneId: clone.id, clientId, agent, task, context,
+    requestedBy: (req.session && req.session.email) || cloneStore.OPERATOR_CLIENT_ID,
+  });
+
+  // Screen BEFORE the gate and before anything is spent. A boundary refusal is not an approval
+  // question — the owner already answered it — so it never reaches the queue.
+  const screen = cloneDispatchLib.screenDispatch(eff, { agent, task, context });
+  if (!screen.allow) {
+    dispatch.status = 'refused';
+    dispatch.refusalReasons = screen.reasons;
+    if (screen.boundaryBlocked) {
+      const routed = routeEscalation(clone, `${task}
+${context}`);
+      dispatch.routedTo = routed.routes;
+      dispatch.routeUnclaimed = routed.fallback;
+      dispatch.refusalReasons = dispatch.refusalReasons.concat(routed.fallback
+        ? ['No one is assigned to this topic yet — it is waiting on you. Add it to the responsibility map.']
+        : routed.routes.map((r) => `This is ${r.handler}'s${r.area ? ` (${r.area})` : ''}.`));
+    }
+    cloneDispatches.push(dispatch);
+    saveCloneDispatches();
+    logActivity('clone', `${clone.name} refused to commission ${agent || 'an agent'}`, { cloneId: clone.id, dispatchId: dispatch.id });
+    return res.json({ ok: true, dispatch });
+  }
+
+  const cap = cloneDispatchLib.withinDispatchCap(cloneDispatches, clone.id);
+  if (!cap.ok) return res.status(429).json({ error: `This clone has commissioned ${cap.used} pieces of work in the last 24 hours, which is the limit.` });
+
+  cloneDispatches.push(dispatch);
+  saveCloneDispatches();
+
+  let gate;
+  try {
+    gate = await gateAction({
+      type: 'clone.dispatch-agent',
+      summary: `${clone.name} wants ${agent} to: ${task.slice(0, 120)}`,
+      target: clone.name,
+      params: { dispatchId: dispatch.id },
+      req,
+    });
+  } catch (e) {
+    dispatch.status = 'failed';
+    dispatch.error = e.message;
+    dispatch.completedAt = new Date().toISOString();
+    saveCloneDispatches();
+    return res.status(502).json({ ok: false, dispatch, error: e.message });
+  }
+
+  dispatch.gateDecision = gate.decision;
+  if (gate.pending) dispatch.approvalId = gate.approval.id;
+  saveCloneDispatches();
+
+  res.json({ ok: true, dispatch, pending: !!gate.pending, approval: gate.approval || null });
 });
 
 // The owner's verdict. This is where the feature learns: an EDIT records both what the clone wrote

@@ -142,6 +142,17 @@ assert(store.hasCloneAccess({ role: 'client' }, { cloneAccess: 'yes' }) === fals
 assert(store.hasCloneAccess(null, { cloneAccess: true }) === false, 'no session means no access regardless of the record');
 assert(store.hasCloneAccess({ role: 'user' }, { cloneAccess: true }) === true, 'the flag governs any non-admin role, not just client');
 
+// --- dispatch authority: strictly narrower than access, and separately granted
+// Having a clone means having something that drafts and waits. Letting it commission work from an
+// agent means it spends money without the person having typed the request. Different amounts of
+// authority, so a different flag — and a clone must never hold more than the person it replicates.
+assert(store.canDispatch({ role: 'admin' }, null) === true, 'the operator may dispatch through their own clone, because the operator may');
+assert(store.canDispatch({ role: 'client' }, { cloneAccess: true }) === false, 'an employee with a clone may NOT dispatch by default — it FAILS CLOSED');
+assert(store.canDispatch({ role: 'client' }, { cloneAccess: true, cloneDispatch: true }) === true, 'until the employer grants it');
+assert(store.canDispatch({ role: 'client' }, { cloneAccess: false, cloneDispatch: true }) === false, 'and the grant is worthless without clone access — you cannot direct agents through a clone you may not have');
+assert(store.canDispatch({ role: 'client' }, { cloneAccess: true, cloneDispatch: 'yes' }) === false, 'only a real boolean true grants it');
+assert(store.canDispatch(null, { cloneAccess: true, cloneDispatch: true }) === false, 'no session, no dispatch');
+
 // --- persona versioning + status transitions
 assert(a.personaVersion === 0 && a.status === 'interviewing', 'new clone starts unversioned and interviewing');
 store.setPersona(a, full);
