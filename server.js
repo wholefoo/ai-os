@@ -1513,6 +1513,7 @@ const cloneDraftsLib = require('./lib/business-clone/drafts');
 const cloneEvolve = require('./lib/business-clone/evolve');
 const cloneOnb = require('./lib/business-clone/onboarding');
 const orgMembership = require('./lib/org/membership');
+const orgProfile = require('./lib/org/profile');
 
 // Server-wide Ed25519 provenance signing key (lazy-generated under .magent/provenance, or supplied
 // via AIOS_PROVENANCE_PRIVATE_KEY). The issuer origin = the control-plane public URL so a sidecar's
@@ -10709,7 +10710,7 @@ function cloneOr404(req, res) {
 
 app.get('/api/clones', requireCloneAccess, (req, res) => {
   const clones = cloneStore.listClones(businessClones, cloneClientOf(req.session));
-  res.json({ clones: clones.map(cloneStore.summarize), limit: cloneLimit(), tier: ACTIVE_TIER });
+  res.json({ clones: clones.map((c) => cloneStore.summarize(c, cloneEffective(c))), limit: cloneLimit(), tier: ACTIVE_TIER });
 });
 
 /** Per-tier clone allowance. Community gets 1 (the operator's own); selling clones needs a licence. */
@@ -10750,7 +10751,7 @@ app.post('/api/clones', requireCloneAccess, (req, res) => {
     businessClones.push(clone);
     saveClones();
     logActivity('clone', `Business clone created: ${clone.name}`, { cloneId: clone.id });
-    res.json({ ok: true, clone: cloneStore.summarize(clone) });
+    res.json({ ok: true, clone: cloneStore.summarize(clone, cloneEffective(clone)) });
   } catch (e) {
     res.status(400).json({ error: e.message });
   }
@@ -10775,7 +10776,7 @@ function orgSeatLimit() {
 }
 
 app.get('/api/org/members', requireAdmin, (req, res) => {
-  const orgKey = orgMembership.orgKeyForSession(req.session);
+  const orgKey = sessionOrgKey(req.session);
   const members = orgMembership.membersOf(users, orgKey);
   res.json({
     org: orgKey,
@@ -10822,6 +10823,78 @@ app.post('/api/org/members', requireAdmin, (req, res) => {
     link: `${CRM_PUBLIC_BASE}/set-password?token=${encodeURIComponent(employee.setupToken.token)}`,
     expiresAt: employee.setupToken.expiresAt,
   });
+});
+
+// --- Company profile --------------------------------------------------------
+// What the COMPANY says, as opposed to what a person says: shared identity facts, and boundary
+// policy that applies to everyone. Merged at the point of use, never copied into a persona — so an
+// employee's correction form, their interview extraction and the evolution loop all operate on a
+// persona that simply does not contain the company's limits, and therefore cannot remove them.
+const orgProfiles = loadState('org_profiles', []);
+const saveOrgProfiles = () => saveState('org_profiles', orgProfiles);
+
+/**
+ * The org key for a session — and it MUST agree with the key a clone created by that session
+ * resolves to, or a profile gets saved where the clone never looks.
+ *
+ * That is not hypothetical: it happened. cloneClientOf maps the API-token service session to
+ * OPERATOR_CLIENT_ID, while the plain org resolver read its synthetic 'service@api-token' address.
+ * The company profile saved fine and was then silently absent from every clone. Real logged-in users
+ * never diverge (both derive from their email), which is exactly what makes this the kind of gap
+ * that survives testing.
+ */
+function sessionOrgKey(session) {
+  if (session && session.service) return cloneStore.OPERATOR_CLIENT_ID;
+  return orgMembership.orgKeyForSession(session);
+}
+
+/** The company profile governing a clone — resolved through its owner's user record. */
+function cloneOrgProfile(clone) {
+  if (!clone) return null;
+  const user = findUserByEmail(clone.clientId);
+  const orgKey = user ? orgMembership.orgKeyFor(user) : String(clone.clientId || '').toLowerCase();
+  return orgProfile.getProfile(orgProfiles, orgKey);
+}
+
+/**
+ * The persona a clone actually speaks and is judged with.
+ *
+ * EVERY site that decides or speaks must use this: compiling the prompt, checking output against red
+ * lines, screening an inbound message, judging readiness, reporting progress. A site left reading
+ * clone.persona is a company policy silently not applied there — there is a test asserting exactly
+ * that failure mode. Sites that MODIFY the persona keep using the raw one, because what they modify
+ * is the person's own.
+ */
+function cloneEffective(clone) {
+  return orgProfile.effectivePersona(clone.persona, cloneOrgProfile(clone));
+}
+
+app.get('/api/org/profile', requireAdmin, (req, res) => {
+  const orgKey = sessionOrgKey(req.session);
+  const existing = orgProfile.getProfile(orgProfiles, orgKey);
+  res.json({ org: orgKey, profile: existing || orgProfile.emptyProfile(orgKey) });
+});
+
+/**
+ * Set the company profile. Admin only — this is policy for everyone on the instance, and an
+ * employee editing it would be editing the limits that constrain them.
+ */
+app.put('/api/org/profile', requireAdmin, (req, res) => {
+  const orgKey = sessionOrgKey(req.session);
+  if (!orgKey) return res.status(400).json({ error: 'no org to attach a profile to' });
+  const incoming = (req.body || {}).profile;
+  if (!incoming || typeof incoming !== 'object' || Array.isArray(incoming)) {
+    return res.status(400).json({ error: 'a profile object is required' });
+  }
+
+  const next = orgProfile.normalizeProfile({ ...incoming, ownerEmail: orgKey });
+  next.updatedAt = new Date().toISOString();
+  const idx = orgProfiles.findIndex((p) => p && p.ownerEmail === orgKey);
+  if (idx >= 0) orgProfiles[idx] = next; else orgProfiles.push(next);
+  saveOrgProfiles();
+
+  logActivity('clone', 'Company profile updated — applies to every clone on this instance', { org: orgKey });
+  res.json({ ok: true, profile: next, inherited: orgProfile.inheritedFrom(next) });
 });
 
 // --- Onboarding -------------------------------------------------------------
@@ -10875,12 +10948,16 @@ app.get('/api/clones/:id', requireCloneAccess, (req, res) => {
   const clone = cloneOr404(req, res);
   if (!clone) return;
   res.json({
-    ...cloneStore.summarize(clone),
+    ...cloneStore.summarize(clone, cloneEffective(clone)),
+    // The person's OWN persona — this is what they can edit. The company's contribution is reported
+    // separately rather than blended in, so the UI can show it as inherited and non-editable instead
+    // of letting someone delete a line that would silently come straight back.
     persona: clone.persona,
-    progress: cloneInterview.progress(clone.persona, clone.templateId),
+    inherited: orgProfile.inheritedFrom(cloneOrgProfile(clone) || {}),
+    progress: cloneInterview.progress(cloneEffective(clone), clone.templateId),
     transcript: clone.interview.turns,
-    promptFingerprint: cloneCompile.fingerprint(clone.persona),
-    promptTokens: cloneCompile.estimateTokens(clone.persona),
+    promptFingerprint: cloneCompile.fingerprint(cloneEffective(clone)),
+    promptTokens: cloneCompile.estimateTokens(cloneEffective(clone)),
   });
 });
 
@@ -10888,7 +10965,7 @@ app.get('/api/clones/:id', requireCloneAccess, (req, res) => {
 app.get('/api/clones/:id/prompt', requireCloneAccess, (req, res) => {
   const clone = cloneOr404(req, res);
   if (!clone) return;
-  res.json({ prompt: cloneCompile.compile(clone.persona), fingerprint: cloneCompile.fingerprint(clone.persona) });
+  res.json({ prompt: cloneCompile.compile(cloneEffective(clone)), fingerprint: cloneCompile.fingerprint(cloneEffective(clone)) });
 });
 
 /**
@@ -10919,8 +10996,8 @@ app.put('/api/clones/:id/persona', requireCloneAccess, (req, res) => {
     ok: true,
     persona: clone.persona,
     personaVersion: clone.personaVersion,
-    progress: cloneInterview.progress(clone.persona, clone.templateId),
-    promptFingerprint: cloneCompile.fingerprint(clone.persona),
+    progress: cloneInterview.progress(cloneEffective(clone), clone.templateId),
+    promptFingerprint: cloneCompile.fingerprint(cloneEffective(clone)),
   });
 });
 
@@ -10952,7 +11029,7 @@ app.post('/api/clones/:id/status', requireCloneAccess, (req, res) => {
   try {
     cloneStore.setStatus(clone, String((req.body || {}).status || ''));
     saveClones();
-    res.json({ ok: true, clone: cloneStore.summarize(clone) });
+    res.json({ ok: true, clone: cloneStore.summarize(clone, cloneEffective(clone)) });
   } catch (e) {
     res.status(400).json({ error: e.message });
   }
@@ -10977,7 +11054,7 @@ app.post('/api/clones/:id/interview/next', requireCloneAccess, heavyLimiter, asy
   }
 
   const built = cloneInterview.buildAskPrompt(clone);
-  if (!built) return res.json({ ok: true, complete: true, progress: cloneInterview.progress(clone.persona, clone.templateId) });
+  if (!built) return res.json({ ok: true, complete: true, progress: cloneInterview.progress(cloneEffective(clone), clone.templateId) });
 
   let question = built.seeds.length ? built.seeds[0].question : null;
   let generated = false;
@@ -10992,7 +11069,7 @@ app.post('/api/clones/:id/interview/next', requireCloneAccess, heavyLimiter, asy
   clone.interview.currentDimension = built.dimension;
   saveClones();
 
-  res.json({ ok: true, question, dimension: built.dimension, generated, progress: cloneInterview.progress(clone.persona, clone.templateId) });
+  res.json({ ok: true, question, dimension: built.dimension, generated, progress: cloneInterview.progress(cloneEffective(clone), clone.templateId) });
 });
 
 // Answer -> extraction -> additive merge. An extraction failure records the answer and moves on
@@ -11031,13 +11108,13 @@ app.post('/api/clones/:id/interview/answer', requireCloneAccess, heavyLimiter, a
     }
   }
 
-  clone.interview.complete = cloneInterview.isComplete(clone.persona, clone.templateId);
+  clone.interview.complete = cloneInterview.isComplete(cloneEffective(clone), clone.templateId);
   saveClones();
 
   res.json({
     ok: true,
     extracted,
-    progress: cloneInterview.progress(clone.persona, clone.templateId),
+    progress: cloneInterview.progress(cloneEffective(clone), clone.templateId),
     persona: clone.persona,
   });
 });
@@ -11054,20 +11131,20 @@ app.post('/api/clones/:id/chat', requireCloneAccess, heavyLimiter, async (req, r
   const message = String((req.body || {}).message || '').trim().slice(0, 4000);
   if (!message) return res.status(400).json({ error: 'a message is required' });
 
-  const usable = clonePersona.isUsable(clone.persona);
+  const usable = clonePersona.isUsable(cloneEffective(clone));
   if (!usable.usable) {
     return res.status(400).json({ error: 'This clone is not ready yet', blockers: usable.reasons });
   }
 
   // systemOverride, not context: the persona IS the identity here, not an addendum to Herald's.
   const result = await executeAgent('business-clone', message, {
-    systemOverride: cloneCompile.compile(clone.persona),
+    systemOverride: cloneCompile.compile(cloneEffective(clone)),
     maxTokens: 1500,
   });
   if (!result.ok) return res.status(502).json({ error: result.error || 'the clone could not respond' });
 
   const reply = String(result.content || '');
-  const check = clonePersona.checkRedLines(reply, clone.persona);
+  const check = clonePersona.checkRedLines(reply, cloneEffective(clone));
 
   clone.metrics.draftsProduced += 1;
   saveClones();
@@ -11081,7 +11158,7 @@ app.post('/api/clones/:id/chat', requireCloneAccess, heavyLimiter, async (req, r
     needsHuman: check.needsHuman,
     violations: check.violations,
     personaVersion: clone.personaVersion,
-    promptFingerprint: cloneCompile.fingerprint(clone.persona),
+    promptFingerprint: cloneCompile.fingerprint(cloneEffective(clone)),
     cost: result.cost,
   });
 });
@@ -11122,7 +11199,7 @@ app.post('/api/clones/:id/drafts', requireCloneAccess, heavyLimiter, async (req,
   }
   if (!inbound) return res.status(400).json({ error: 'an inbound message (or a ticketId) is required' });
 
-  const usable = clonePersona.isUsable(clone.persona);
+  const usable = clonePersona.isUsable(cloneEffective(clone));
   if (!usable.usable) return res.status(400).json({ error: 'This clone is not ready to draft yet', blockers: usable.reasons });
   if (clone.status === 'paused') return res.status(400).json({ error: 'This clone is paused' });
 
@@ -11132,7 +11209,7 @@ app.post('/api/clones/:id/drafts', requireCloneAccess, heavyLimiter, async (req,
 
   // Inbound screen FIRST — before spending anything. If the owner said they handle this topic
   // personally, drafting it would be ignoring them, and paying to ignore them at that.
-  const screen = cloneDraftsLib.screenInbound(clone.persona, inbound);
+  const screen = cloneDraftsLib.screenInbound(cloneEffective(clone), inbound);
   if (screen.escalate) {
     draft.status = 'escalated';
     draft.escalationReasons = screen.reasons;
@@ -11143,7 +11220,7 @@ app.post('/api/clones/:id/drafts', requireCloneAccess, heavyLimiter, async (req,
   }
 
   const built = cloneDraftsLib.buildDraftPrompt({
-    compiledPersona: cloneCompile.compile(clone.persona),
+    compiledPersona: cloneCompile.compile(cloneEffective(clone)),
     inbound,
     channel: draft.channel,
     threadHistory,
@@ -11158,13 +11235,13 @@ app.post('/api/clones/:id/drafts', requireCloneAccess, heavyLimiter, async (req,
   if (!result.ok) return res.status(502).json({ error: result.error || 'the clone could not produce a draft' });
 
   const text = String(result.content || '');
-  const check = clonePersona.checkRedLines(text, clone.persona);
+  const check = clonePersona.checkRedLines(text, cloneEffective(clone));
 
   draft.text = text;
   draft.violations = check.violations;
   draft.blocked = check.blocked;
   draft.personaVersion = clone.personaVersion;
-  draft.promptFingerprint = cloneCompile.fingerprint(clone.persona);
+  draft.promptFingerprint = cloneCompile.fingerprint(cloneEffective(clone));
   draft.cost = result.cost || 0;
   // A draft that trips a red line stays PENDING and is shown to the owner flagged, rather than
   // being hidden or auto-rejected. The owner is the reviewer; suppressing the evidence would hide
@@ -11326,7 +11403,7 @@ app.post('/api/clones/:id/proposals/:pid/decide', requireCloneAccess, (req, res)
   saveCloneProposals();
 
   logActivity('clone', `Persona proposal ${proposal.status} for ${clone.name}`, { cloneId: clone.id, proposalId: proposal.id });
-  res.json({ ok: true, proposal, clone: cloneStore.summarize(clone) });
+  res.json({ ok: true, proposal, clone: cloneStore.summarize(clone, cloneEffective(clone)) });
 });
 
 // --- Commercial Module Routes (registered last so all globals are available) ---

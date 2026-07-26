@@ -30,6 +30,7 @@
     "tools/test-business-clone-evolve.js",
     "tools/test-business-clone-onboarding.js",
     "tools/test-org-membership.js",
+    "tools/test-org-profile.js",
     "tools/verify-clone-live.js",
     "ecosystem.config.js",
     "deploy/n8n-ecosystem.config.example.js",
