@@ -93,6 +93,7 @@ function switchView(view) {
     'brand-kits': loadBrandKits,
     crm: loadCrm,
     clones: loadClones,
+    org: loadOrg,
     analytics: loadAnalytics,
     security: loadSecurity,
     mission: loadMission,
