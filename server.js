@@ -1514,6 +1514,7 @@ const cloneEvolve = require('./lib/business-clone/evolve');
 const cloneOnb = require('./lib/business-clone/onboarding');
 const orgMembership = require('./lib/org/membership');
 const orgProfile = require('./lib/org/profile');
+const orgVisibility = require('./lib/org/visibility');
 
 // Server-wide Ed25519 provenance signing key (lazy-generated under .magent/provenance, or supplied
 // via AIOS_PROVENANCE_PRIVATE_KEY). The issuer origin = the control-plane public URL so a sidecar's
@@ -10848,6 +10849,53 @@ function sessionOrgKey(session) {
   return orgMembership.orgKeyForSession(session);
 }
 
+/**
+ * Delete a clone, and decide what goes with it.
+ *
+ * The persona ALWAYS goes — it is a profile of how one specific person thinks, and deletion means
+ * deletion. What happens to the drafts depends on whose they are:
+ *
+ *  - A SOLO OWNER is their own company. Everything is theirs, so everything goes.
+ *  - An EMPLOYEE's drafts are company correspondence — messages sent to customers in the business's
+ *    name. Deleting those would destroy the company's records of what it said, which is not what
+ *    anyone means by "remove my clone". They are retained and marked as belonging to a person whose
+ *    profile is gone.
+ *
+ * Proposals always go regardless: a proposal is an analysis OF the persona, so it is meaningless
+ * once the persona no longer exists, and it quotes the person's own edits back.
+ */
+function deleteCloneRecords(clone) {
+  const user = findUserByEmail(clone.clientId);
+  const isEmployee = !!user && orgMembership.isEmployee(user);
+
+  businessClones.splice(businessClones.indexOf(clone), 1);
+  saveClones();
+
+  let purged = 0;
+  let retained = 0;
+  for (let i = cloneDrafts.length - 1; i >= 0; i--) {
+    const d = cloneDrafts[i];
+    if (!d || d.cloneId !== clone.id) continue;
+    if (isEmployee) {
+      // Keep the correspondence, detach it from the person's deleted profile.
+      d.personaDeleted = true;
+      d.personaDeletedAt = new Date().toISOString();
+      retained++;
+    } else {
+      cloneDrafts.splice(i, 1);
+      purged++;
+    }
+  }
+  for (let i = clonePersonaProposals.length - 1; i >= 0; i--) {
+    if (clonePersonaProposals[i] && clonePersonaProposals[i].cloneId === clone.id) {
+      clonePersonaProposals.splice(i, 1); purged++;
+    }
+  }
+  saveCloneDrafts();
+  saveCloneProposals();
+  return { purged, retained, wasEmployee: isEmployee };
+}
+
 /** The company profile governing a clone — resolved through its owner's user record. */
 function cloneOrgProfile(clone) {
   if (!clone) return null;
@@ -10895,6 +10943,74 @@ app.put('/api/org/profile', requireAdmin, (req, res) => {
 
   logActivity('clone', 'Company profile updated — applies to every clone on this instance', { org: orgKey });
   res.json({ ok: true, profile: next, inherited: orgProfile.inheritedFrom(next) });
+});
+
+// --- Employer visibility ----------------------------------------------------
+// An employer sees WHAT IS SAID IN THE COMPANY'S NAME — drafts, verdicts, violations, cost. They do
+// not see the persona, the compiled prompt, or the interview transcript. Needing to know what went
+// out to a customer does not entitle anyone to a profile of how their employee thinks.
+//
+// Every response here is built by lib/org/visibility's allowlist rather than by deleting fields from
+// a clone record. A denylist leaks the moment someone adds a field, and the field most likely to be
+// added to a clone is another piece of the persona.
+
+/** Clones belonging to this admin's org, excluding the admin's own. */
+function orgEmployeeClones(session) {
+  const orgKey = sessionOrgKey(session);
+  const mine = String((session && session.email) || '').toLowerCase();
+  return businessClones.filter((c) => {
+    const u = findUserByEmail(c.clientId);
+    const key = u ? orgMembership.orgKeyFor(u) : String(c.clientId || '').toLowerCase();
+    return key === orgKey && String(c.clientId || '').toLowerCase() !== mine;
+  });
+}
+
+app.get('/api/org/clones', requireAdmin, (req, res) => {
+  const views = orgEmployeeClones(req.session).map((c) => {
+    const view = orgVisibility.employerCloneView(c, findUserByEmail(c.clientId));
+    view.completeness = clonePersona.completeness(cloneEffective(c)).overall;
+    return view;
+  });
+  res.json({ clones: views });
+});
+
+app.get('/api/org/clones/:id/drafts', requireAdmin, (req, res) => {
+  const clone = orgEmployeeClones(req.session).find((c) => c.id === req.params.id);
+  if (!clone) return res.status(404).json({ error: 'Clone not found in your organisation' });
+  const drafts = cloneDrafts
+    .filter((d) => d && d.cloneId === clone.id)
+    .sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)))
+    .map(orgVisibility.employerDraftView);
+  res.json({ clone: orgVisibility.employerCloneView(clone, findUserByEmail(clone.clientId)), drafts });
+});
+
+/**
+ * Offboard someone. Their account goes, their clone's PERSONA goes, and their drafts stay as
+ * company records — the split the disclosure promises them at onboarding.
+ */
+app.delete('/api/org/members/:email', requireAdmin, (req, res) => {
+  const orgKey = sessionOrgKey(req.session);
+  const addr = String(req.params.email || '').trim().toLowerCase();
+  if (addr === orgKey) return res.status(400).json({ error: 'the owner cannot offboard themselves' });
+
+  const user = findUserByEmail(addr);
+  if (!user || orgMembership.orgKeyFor(user) !== orgKey || !orgMembership.isEmployee(user)) {
+    return res.status(404).json({ error: 'not an employee of your organisation' });
+  }
+
+  let personaDeleted = 0;
+  let retained = 0;
+  for (const clone of businessClones.filter((c) => String(c.clientId || '').toLowerCase() === addr)) {
+    const r = deleteCloneRecords(clone);
+    personaDeleted++;
+    retained += r.retained;
+  }
+
+  users.splice(users.indexOf(user), 1);
+  saveState('users', users);
+
+  logActivity('auth', `Employee offboarded: ${addr} — ${personaDeleted} persona(s) deleted, ${retained} drafts retained as company records`, { org: orgKey });
+  res.json({ ok: true, offboarded: addr, personaDeleted, draftsRetained: retained });
 });
 
 // --- Onboarding -------------------------------------------------------------
@@ -11004,23 +11120,9 @@ app.put('/api/clones/:id/persona', requireCloneAccess, (req, res) => {
 app.delete('/api/clones/:id', requireCloneAccess, (req, res) => {
   const clone = cloneOr404(req, res);
   if (!clone) return;
-  businessClones.splice(businessClones.indexOf(clone), 1);
-  saveClones();
-
-  // Take the clone's drafts and proposals with it. They contain the customer messages it was given
-  // and the text it wrote in the owner's voice — leaving them behind after someone deletes their
-  // clone keeps a record of how that person speaks, which is precisely what they asked to remove.
-  let purged = 0;
-  for (let i = cloneDrafts.length - 1; i >= 0; i--) {
-    if (cloneDrafts[i] && cloneDrafts[i].cloneId === clone.id) { cloneDrafts.splice(i, 1); purged++; }
-  }
-  for (let i = clonePersonaProposals.length - 1; i >= 0; i--) {
-    if (clonePersonaProposals[i] && clonePersonaProposals[i].cloneId === clone.id) { clonePersonaProposals.splice(i, 1); purged++; }
-  }
-  if (purged) { saveCloneDrafts(); saveCloneProposals(); }
-
-  logActivity('clone', `Business clone deleted: ${clone.name} (${purged} draft/proposal records purged)`, { cloneId: clone.id });
-  res.json({ ok: true, purged });
+  const result = deleteCloneRecords(clone);
+  logActivity('clone', `Business clone deleted: ${clone.name} (${result.purged} purged, ${result.retained} retained as company records)`, { cloneId: clone.id });
+  res.json({ ok: true, ...result });
 });
 
 app.post('/api/clones/:id/status', requireCloneAccess, (req, res) => {

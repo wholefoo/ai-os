@@ -25,6 +25,12 @@ assert(/you read it and you send it|nothing is sent/.test(text), 'it states noth
 assert(/only you/.test(text), 'it states who can see it');
 assert(/delet/.test(text), 'it states they can delete it');
 assert(/paid|costs money/.test(text), 'it states that running it costs money');
+// v2: employers can see what an employee's clone drafts, so the disclosure has to say so BEFORE
+// anyone answers a question. If this assertion ever fails, someone widened visibility without
+// widening what people were told.
+assert(/employer/.test(text), 'it states that an employer can see what the clone writes');
+assert(/company correspondence|business records/.test(text), 'it explains why, and what survives deletion');
+assert(onboarding.DISCLOSURE_VERSION >= 2, 'and the version reflects that widening');
 
 // --- versioned consent: an older acceptance does NOT carry forward
 const rec = onboarding.createRecord('dana@example.com');
