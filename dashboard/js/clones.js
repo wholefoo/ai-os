@@ -455,6 +455,15 @@ async function clLoadPrompt() {
     <div class="cl-pre">${escapeHtml(res.prompt)}</div>`;
 }
 
+// "Left for you" was right when the owner was the only person here. With a responsibility map an
+// escalation usually belongs to someone specific, and saying whose it is IS the routing.
+function clEscalationLead(d) {
+  const routes = (d.routedTo || []).filter((r) => r && r.handler && !r.unclaimed);
+  if (d.routeUnclaimed || !routes.length) return 'Left for you.';
+  const names = [...new Set(routes.map((r) => r.handler))];
+  return escapeHtml(names.length === 1 ? `Left for ${names[0]}.` : `Left for ${names.join(' and ')}.`);
+}
+
 function clDraftsHtml() {
   const newBox = `
     <div style="border:1px solid var(--border,#2a2a3a);border-radius:10px;padding:12px;margin-bottom:14px;">
@@ -478,7 +487,7 @@ function clDraftsHtml() {
       return `<div class="cl-draft">
         <div class="cl-muted">${timeAgo(d.createdAt)} · ${escapeHtml(d.channel)}</div>
         <div style="margin:6px 0;"><em>${escapeHtml(d.inbound)}</em></div>
-        <div class="cl-esc"><strong>Left for you.</strong><br>${(d.escalationReasons || []).map(escapeHtml).join('<br>')}</div>
+        <div class="cl-esc"><strong>${clEscalationLead(d)}</strong><br>${(d.escalationReasons || []).map(escapeHtml).join('<br>')}</div>
       </div>`;
     }
     const warn = d.blocked || (d.violations || []).length

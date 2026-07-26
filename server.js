@@ -1515,6 +1515,7 @@ const cloneOnb = require('./lib/business-clone/onboarding');
 const orgMembership = require('./lib/org/membership');
 const orgProfile = require('./lib/org/profile');
 const orgVisibility = require('./lib/org/visibility');
+const orgResponsibility = require('./lib/org/responsibility');
 
 // Server-wide Ed25519 provenance signing key (lazy-generated under .magent/provenance, or supplied
 // via AIOS_PROVENANCE_PRIVATE_KEY). The issuer origin = the control-plane public URL so a sidecar's
@@ -10945,6 +10946,76 @@ app.put('/api/org/profile', requireAdmin, (req, res) => {
   res.json({ ok: true, profile: next, inherited: orgProfile.inheritedFrom(next) });
 });
 
+// --- Responsibility map -----------------------------------------------------
+// Who handles what, defined once for the company. Personas hold the TOPIC ("contract disputes are
+// not mine to answer"); this holds whose they are. Keeping them separate means a reorganisation
+// edits one map instead of ten personas.
+const orgResponsibilities = loadState('org_responsibilities', []);
+const saveOrgResponsibilities = () => saveState('org_responsibilities', orgResponsibilities);
+
+/** Every escalation topic in play across the org — each clone's effective persona, company included. */
+function orgEscalationTopics(orgKey) {
+  const topics = [];
+  for (const c of businessClones) {
+    const u = findUserByEmail(c.clientId);
+    const key = u ? orgMembership.orgKeyFor(u) : String(c.clientId || '').toLowerCase();
+    if (key !== orgKey) continue;
+    topics.push(...cloneEffective(c).boundaries.requiresHuman);
+  }
+  const prof = orgProfile.getProfile(orgProfiles, orgKey);
+  if (prof) topics.push(...orgProfile.normalizeProfile(prof).boundaries.requiresHuman);
+  return topics;
+}
+
+app.get('/api/org/responsibilities', requireAdmin, (req, res) => {
+  const orgKey = sessionOrgKey(req.session);
+  const map = orgResponsibility.getMap(orgResponsibilities, orgKey) || orgResponsibility.emptyMap(orgKey);
+  res.json({
+    org: orgKey,
+    map,
+    // The health report is the reason this is central rather than per-persona. Returned alongside
+    // rather than behind a second call, because a map is not much use without knowing what it misses.
+    health: orgResponsibility.analyse(map, {
+      escalationTopics: orgEscalationTopics(orgKey),
+      memberEmails: orgMembership.membersOf(users, orgKey).map((u) => String(u.email || '').toLowerCase()),
+    }),
+  });
+});
+
+app.put('/api/org/responsibilities', requireAdmin, (req, res) => {
+  const orgKey = sessionOrgKey(req.session);
+  if (!orgKey) return res.status(400).json({ error: 'no org to attach a map to' });
+  const incoming = (req.body || {}).map;
+  if (!incoming || typeof incoming !== 'object' || Array.isArray(incoming)) {
+    return res.status(400).json({ error: 'a map object is required' });
+  }
+
+  const next = orgResponsibility.normalizeMap({ ...incoming, ownerEmail: orgKey });
+  next.updatedAt = new Date().toISOString();
+  const idx = orgResponsibilities.findIndex((m) => m && m.ownerEmail === orgKey);
+  if (idx >= 0) orgResponsibilities[idx] = next; else orgResponsibilities.push(next);
+  saveOrgResponsibilities();
+
+  const health = orgResponsibility.analyse(next, {
+    escalationTopics: orgEscalationTopics(orgKey),
+    memberEmails: orgMembership.membersOf(users, orgKey).map((u) => String(u.email || '').toLowerCase()),
+  });
+  logActivity('clone', `Responsibility map updated — ${next.areas.length} areas, ${health.gaps.length} uncovered topics`, { org: orgKey });
+  res.json({ ok: true, map: next, health });
+});
+
+/** Where should an escalation go? Falls back to the org owner when nothing claims the topic. */
+function routeEscalation(clone, text) {
+  const user = findUserByEmail(clone.clientId);
+  const orgKey = user ? orgMembership.orgKeyFor(user) : String(clone.clientId || '').toLowerCase();
+  const map = orgResponsibility.getMap(orgResponsibilities, orgKey);
+  const routes = orgResponsibility.routeFor(map, text);
+  if (routes.length) return { routes, fallback: false };
+  // Nobody owns it. Say so plainly rather than silently addressing it to the owner as if by design —
+  // an unclaimed escalation is a gap the owner should fix, not a routing outcome.
+  return { routes: [{ area: null, handler: orgKey, backup: null, matched: [], unclaimed: true }], fallback: true };
+}
+
 // --- Employer visibility ----------------------------------------------------
 // An employer sees WHAT IS SAID IN THE COMPANY'S NAME — drafts, verdicts, violations, cost. They do
 // not see the persona, the compiled prompt, or the interview transcript. Needing to know what went
@@ -11318,6 +11389,18 @@ app.post('/api/clones/:id/drafts', requireCloneAccess, heavyLimiter, async (req,
   if (screen.escalate) {
     draft.status = 'escalated';
     draft.escalationReasons = screen.reasons;
+    // Route it to whoever actually owns the topic. Before the map existed this always meant "the
+    // owner", which is right for a one-person business and wrong for a company.
+    const routed = routeEscalation(clone, inbound);
+    draft.routedTo = routed.routes;
+    draft.routeUnclaimed = routed.fallback;
+    if (!routed.fallback) {
+      draft.escalationReasons = draft.escalationReasons.concat(
+        routed.routes.map((r) => `Routed to ${r.handler}${r.area ? ` (${r.area})` : ''}.`));
+    } else {
+      draft.escalationReasons = draft.escalationReasons.concat(
+        ['No one is assigned to this topic yet — it is waiting on you. Add it to the responsibility map.']);
+    }
     cloneDrafts.push(draft);
     saveCloneDrafts();
     logActivity('clone', `Draft escalated to ${clone.name}'s owner without drafting`, { cloneId: clone.id, draftId: draft.id });
