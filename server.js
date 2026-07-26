@@ -11155,7 +11155,10 @@ app.post('/api/clones/:id/interview/next', requireCloneAccess, heavyLimiter, asy
     });
   }
 
-  const built = cloneInterview.buildAskPrompt(clone);
+  // Ask against the effective persona, and name what the company already answered — an employee
+  // should not be asked what the business does when their employer has already said.
+  const orgKnown = orgProfile.inheritedIdentityFields(cloneOrgProfile(clone) || {});
+  const built = cloneInterview.buildAskPrompt(clone, cloneEffective(clone), orgKnown);
   if (!built) return res.json({ ok: true, complete: true, progress: cloneInterview.progress(cloneEffective(clone), clone.templateId) });
 
   let question = built.seeds.length ? built.seeds[0].question : null;

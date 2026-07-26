@@ -117,6 +117,45 @@ assert(persona.checkRedLines('We are the lowest price anywhere.', eff).blocked, 
 assert(!persona.checkRedLines('We are the lowest price anywhere.', employeeClone.persona).blocked,
   'and would NOT be caught against the raw persona — which is exactly why every decision site must read the effective one');
 
+// =====================================================================================
+//  E5: an employee's interview must not re-ask what the company already answered. Five people
+//  asked "what does the business do?" produce five different answers and five inconsistent clones.
+// =====================================================================================
+const freshEmployee = store.createClone({ id: 'emp-2', clientId: 'jo@whitfield.com', name: 'Jo', templateId: 'sales' });
+
+// Without a company profile the interview opens on identity, as it always has.
+const soloAsk = interview.buildAskPrompt(freshEmployee, freshEmployee.persona, []);
+assert(soloAsk.dimension === 'identity', 'with no company profile the interview still starts at identity');
+assert(soloAsk.seeds.some((q) => q.field === 'businessName'), 'and does ask what the business is called');
+
+// With one, those fields are already answered, so the interview moves on.
+const effective = profile.effectivePersona(freshEmployee.persona, ORG);
+const known = profile.inheritedIdentityFields(ORG);
+const empAsk = interview.buildAskPrompt(freshEmployee, effective, known);
+assert(!empAsk.seeds.some((q) => ['businessName', 'industry', 'whatTheyDo'].includes(q.field)),
+  `an employee is NOT asked the company's own facts (got: ${empAsk.seeds.map((s) => s.field).join(', ')})`);
+// It moves to the emptiest dimension instead — voice, at 0% — rather than the partly-answered
+// identity. That is the existing lowest-score rule, and it is the right one to keep: switching to
+// strict template order would let a dimension that cannot reach the satisfied threshold (someone
+// who will not state their role) block the interview permanently, where lowest-score self-balances.
+assert(empAsk.dimension !== 'identity', `a partly-inherited identity yields to a completely unknown dimension (got ${empAsk.dimension})`);
+// Their OWN identity fields are still outstanding and will be asked when identity comes round.
+const idGaps = persona.completeness(effective).byDimension.identity.missing;
+assert(idGaps.includes('ownerName'), 'their OWN name is still known to be missing');
+assert(!idGaps.includes('businessName') && !idGaps.includes('whatTheyDo'), 'while the company facts are not');
+
+// Naming them explicitly matters: skipping the field does not stop a model opening with
+// "so tell me about the business" when the company name is sitting in its context.
+assert(/do NOT ask about any of these/.test(empAsk.task), 'the prompt names what is already settled');
+assert(/businessName/.test(empAsk.task) && /whatTheyDo/.test(empAsk.task), 'listing the specific fields');
+assert(!/do NOT ask about/.test(soloAsk.task), 'and says nothing of the sort when there is nothing inherited');
+assert(empAsk.knownFromCompany.length === 3, 'the caller can see what was suppressed');
+
+// The employee's interview is genuinely shorter — fewer gaps to close before they are usable.
+const soloGaps = persona.completeness(freshEmployee.persona).overall;
+const empGaps = persona.completeness(effective).overall;
+assert(empGaps > soloGaps, `an employee starts further along (${empGaps}% vs ${soloGaps}%)`);
+
 // --- what the UI needs to show as inherited
 const inh = profile.inheritedFrom(ORG);
 assert(inh.boundaries.neverSay.includes('lowest price anywhere'), 'inherited values are reportable for display');
