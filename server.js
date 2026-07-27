@@ -1519,6 +1519,7 @@ const orgVisibility = require('./lib/org/visibility');
 const orgResponsibility = require('./lib/org/responsibility');
 const orgFoundation = require('./lib/org/foundation');
 const orgDocuments = require('./lib/org/documents');
+const orgExtract = require('./lib/org/extract');
 
 // Server-wide Ed25519 provenance signing key (lazy-generated under .magent/provenance, or supplied
 // via AIOS_PROVENANCE_PRIVATE_KEY). The issuer origin = the control-plane public URL so a sidecar's
@@ -11108,6 +11109,94 @@ app.delete('/api/org/documents/:id', requireAdmin, (req, res) => {
   saveOrgDocs();
   logActivity('clone', `Company document removed: ${doc.filename}`, { org: orgKey });
   res.json({ ok: true });
+});
+
+// --- Building the company profile from those documents ----------------------
+//  The model reads the documents and PROPOSES fields; the owner accepts them one at a time. Nothing
+//  here writes to the profile on its own, and the proposal is held server-side so that accepting an
+//  item means accepting what the server decided that item was — a client that could name an id AND
+//  supply its value could accept "add a limit" and apply "remove the pricing rule".
+//
+//  Not behind gateAction, deliberately: this spends a model call and produces a suggestion, exactly
+//  like the interview and the draft surface, and the human checkpoint is the accept step itself.
+const orgProposals = loadState('org_extract_proposals', []);
+const saveOrgProposals = () => saveState('org_extract_proposals', orgProposals);
+
+app.post('/api/org/documents/:id/extract', requireAdmin, heavyLimiter, async (req, res) => {
+  const orgKey = sessionOrgKey(req.session);
+  const doc = orgDocuments.getDocument(orgDocs, orgKey, req.params.id);
+  if (!doc) return res.status(404).json({ error: 'no such document' });
+
+  let text = '';
+  try { text = fs.readFileSync(orgDocTextPath(doc.id), 'utf-8'); }
+  catch (e) { return res.status(410).json({ error: 'the text for that document is no longer on disk' }); }
+
+  const profile = orgProfile.getProfile(orgProfiles, orgKey) || orgProfile.emptyProfile(orgKey);
+  const built = orgExtract.buildExtractionPrompt(profile, [{ filename: doc.filename, text }]);
+
+  const result = await executeAgent('business-clone', built.task, {
+    systemOverride: built.system,
+    untrusted: built.untrusted,      // the document is DATA — see lib/org/extract.js's header
+    maxTokens: 1500,
+  });
+  if (!result.ok) return res.status(502).json({ error: result.error || 'could not read that document' });
+
+  const parsed = webStudioPipeline.extractJson(result.content);
+  if (!parsed) return res.status(502).json({ error: 'could not make sense of what came back — try again' });
+
+  const { proposed, refused } = orgExtract.computeProposal(profile, parsed);
+  const proposal = {
+    id: uuidv4(), orgKey, documentId: doc.id, filename: doc.filename,
+    proposed, refused, createdAt: new Date().toISOString(),
+  };
+  // One live proposal per document: re-reading a file replaces the last attempt rather than leaving
+  // two sets of ids for the same source, only one of which reflects the current profile.
+  const stale = orgProposals.findIndex((x) => x && x.orgKey === orgKey && x.documentId === doc.id);
+  if (stale >= 0) orgProposals.splice(stale, 1);
+  orgProposals.push(proposal);
+  saveOrgProposals();
+
+  costLedger.push({
+    id: uuidv4(), agent: 'business-clone', model: result.model, skill: 'org-extract', clientId: orgKey,
+    inputTokens: result.inputTokens || 0, outputTokens: result.outputTokens || 0,
+    cost: result.cost || 0, timestamp: new Date().toISOString(),
+  });
+  logActivity('clone', `Read ${proposed.length} suggestion(s) out of ${doc.filename}${refused.length ? ` (${refused.length} refused)` : ''}`, { org: orgKey, documentId: doc.id });
+  res.json({ ok: true, proposal, cost: result.cost || 0 });
+});
+
+app.get('/api/org/proposals', requireAdmin, (req, res) => {
+  const orgKey = sessionOrgKey(req.session);
+  res.json({ ok: true, proposals: orgProposals.filter((x) => x && x.orgKey === orgKey) });
+});
+
+app.post('/api/org/proposals/:id/apply', requireAdmin, (req, res) => {
+  const orgKey = sessionOrgKey(req.session);
+  const proposal = orgProposals.find((x) => x && x.id === req.params.id && x.orgKey === orgKey);
+  if (!proposal) return res.status(404).json({ error: 'no such proposal' });
+
+  const accepted = Array.isArray((req.body || {}).accept) ? req.body.accept : [];
+  const profile = orgProfile.getProfile(orgProfiles, orgKey) || orgProfile.emptyProfile(orgKey);
+  // Only the ids travel. What each one MEANS comes from the proposal the server stored.
+  const { profile: next, applied } = orgExtract.applyProposal(profile, proposal, accepted, {
+    documentId: proposal.documentId, filename: proposal.filename,
+  });
+  next.ownerEmail = orgKey;
+  next.updatedAt = new Date().toISOString();
+
+  const idx = orgProfiles.findIndex((x) => x && x.ownerEmail === orgKey);
+  if (idx >= 0) orgProfiles[idx] = next; else orgProfiles.push(next);
+  saveOrgProfiles();
+
+  // Applied items are dropped from the proposal so the screen cannot offer the same suggestion twice.
+  proposal.proposed = proposal.proposed.filter((x) => !applied.some((a) => a.id === x.id));
+  saveOrgProposals();
+
+  const doc = orgDocuments.getDocument(orgDocs, orgKey, proposal.documentId);
+  if (doc && applied.length) { doc.appliedAt = new Date().toISOString(); saveOrgDocs(); }
+
+  logActivity('clone', `Company profile updated from ${proposal.filename} — ${applied.length} item(s) accepted`, { org: orgKey });
+  res.json({ ok: true, profile: next, applied, proposal });
 });
 
 // --- Responsibility map -----------------------------------------------------

@@ -24,6 +24,8 @@ const orgState = {
                        // never emailed and losing it means the operator has to start the invite over
   docs: null,          // { documents, supported, maxBytes }
   docText: null,       // { id, text } — the one currently expanded
+  proposals: [],       // one per document that has been read
+  accepted: {},        // proposalId -> Set-like map of item ids the owner has ticked
   map: null,
   health: null,
   clones: [],
@@ -105,11 +107,16 @@ async function orgFetchProfile() {
 }
 
 async function orgFetchDocs() {
-  const res = await fetchJSON('/api/org/documents');
+  const [res, props] = await Promise.all([fetchJSON('/api/org/documents'), fetchJSON('/api/org/proposals')]);
   if (!res || Array.isArray(res) || res.error) { showSettingsToast((res && res.error) || 'Could not load your documents', true); return; }
   orgState.org = res.org || orgState.org;
   orgState.docs = res;
+  orgState.proposals = (props && props.proposals) || [];
   orgState.loaded.documents = true;
+}
+
+function orgProposalFor(documentId) {
+  return orgState.proposals.find((p) => p && p.documentId === documentId) || null;
 }
 
 async function orgFetchMembers() {
@@ -151,6 +158,21 @@ function orgListToText(arr) {
 
 // --- Tab 1: Company -----------------------------------------------------
 
+/**
+ * Where a field came from, when it was not typed by hand.
+ *
+ * Shown because a profile that is partly derived from uploaded documents and cannot say WHICH parts
+ * is one nobody can audit — an owner reviewing their limits needs to tell what they decided from
+ * what a PDF suggested and they clicked past.
+ */
+function orgSourceNote(field) {
+  const all = (orgState.profile && orgState.profile.sources) || [];
+  const mine = all.filter((s) => s && s.field === field && s.filename);
+  if (!mine.length) return '';
+  const files = [...new Set(mine.map((s) => s.filename))];
+  return `<div class="org-muted" style="font-size:11px;margin-top:3px;">from ${files.map(escapeHtml).join(', ')}</div>`;
+}
+
 function orgCompanyHtml() {
   const p = orgState.profile || { identity: {}, boundaries: {} };
   const i = p.identity || {};
@@ -170,35 +192,44 @@ function orgCompanyHtml() {
     <h4 style="margin:16px 0 6px;">Who you are</h4>
     <div class="org-muted" style="margin:4px 0 3px;">Business name</div>
     <input id="orgIdentityBusinessName" type="text" style="width:100%;" value="${escapeHtml(i.businessName)}">
+    ${orgSourceNote('identity.businessName')}
     <div class="org-muted" style="margin:10px 0 3px;">Industry</div>
     <input id="orgIdentityIndustry" type="text" style="width:100%;" value="${escapeHtml(i.industry)}">
+    ${orgSourceNote('identity.industry')}
     <div class="org-muted" style="margin:10px 0 3px;">What the business does</div>
     <textarea id="orgIdentityWhatTheyDo" rows="3" style="width:100%;">${escapeHtml(i.whatTheyDo)}</textarea>
+    ${orgSourceNote('identity.whatTheyDo')}
 
     <h4 style="margin:18px 0 6px;">Limits everyone shares</h4>
     <div class="org-grid-2">
       <div>
         <div class="org-muted" style="margin:4px 0 3px;">Never say (one per line)</div>
         <textarea id="orgBoundaryNeverSay" rows="4" style="width:100%;">${escapeHtml(orgListToText(b.neverSay))}</textarea>
+        ${orgSourceNote('boundaries.neverSay')}
       </div>
       <div>
         <div class="org-muted" style="margin:4px 0 3px;">Never promise (one per line)</div>
         <textarea id="orgBoundaryNeverPromise" rows="4" style="width:100%;">${escapeHtml(orgListToText(b.neverPromise))}</textarea>
+        ${orgSourceNote('boundaries.neverPromise')}
       </div>
       <div>
         <div class="org-muted" style="margin:4px 0 3px;">Always yours to handle (one per line)</div>
         <textarea id="orgBoundaryRequiresHuman" rows="4" style="width:100%;">${escapeHtml(orgListToText(b.requiresHuman))}</textarea>
+        ${orgSourceNote('boundaries.requiresHuman')}
       </div>
       <div>
         <div class="org-muted" style="margin:4px 0 3px;">Confidential (one per line)</div>
         <textarea id="orgBoundaryConfidentialTopics" rows="4" style="width:100%;">${escapeHtml(orgListToText(b.confidentialTopics))}</textarea>
+        ${orgSourceNote('boundaries.confidentialTopics')}
       </div>
     </div>
 
     <div class="org-muted" style="margin:14px 0 3px;">Pricing</div>
     <select id="orgBoundaryPricingDisclosure" style="max-width:260px;">${pricingOpts}</select>
+    ${orgSourceNote('boundaries.pricingDisclosure')}
     <div class="org-muted" style="margin:14px 0 3px;">On competitors</div>
     <input id="orgBoundaryCompetitorPolicy" type="text" style="width:100%;" value="${escapeHtml(b.competitorPolicy)}">
+    ${orgSourceNote('boundaries.competitorPolicy')}
 
     <div style="margin-top:16px;">
       <button class="btn btn-primary" onclick="orgSaveProfile()">Save company profile</button>
@@ -270,8 +301,85 @@ function orgDocsHtml() {
           </div>
         </div>
         ${open ? `<textarea rows="14" style="width:100%;margin-top:10px;" readonly>${escapeHtml(orgState.docText.text)}</textarea>` : ''}
+        ${orgProposalHtml(d)}
       </div>`;
   }).join('');
+}
+
+/**
+ * What was found in one document, and what was refused.
+ *
+ * Refusals are shown as loudly as suggestions. A document that tried to loosen a limit is the only
+ * visible sign of an injection attempt an owner will ever get, and burying it would waste the one
+ * chance to notice that a supplier's PDF is not what it appears to be.
+ */
+function orgProposalHtml(doc) {
+  const p = orgProposalFor(doc.id);
+  const btn = `<button class="btn" onclick="orgExtractDoc('${escapeHtml(doc.id)}')">${p ? 'Read it again' : 'Build the profile from this'}</button>`;
+  if (!p) return `<div style="margin-top:10px;">${btn}</div>`;
+
+  const refused = (p.refused || []).length
+    ? `<div class="org-bad" style="margin-top:10px;"><strong>Refused, and worth a look.</strong><br>
+        ${p.refused.map((r) => escapeHtml(r.reason)).join('<br>')}</div>`
+    : '';
+
+  if (!(p.proposed || []).length) {
+    return `${refused}<div class="org-muted" style="margin-top:10px;">Nothing left to take from this document. ${btn}</div>`;
+  }
+
+  const accepted = orgState.accepted[p.id] || {};
+  const rows = p.proposed.map((item) => `
+    <label style="display:flex;gap:8px;align-items:flex-start;padding:8px 0;border-bottom:1px solid var(--border,#2a2a3a);">
+      <input type="checkbox" ${accepted[item.id] ? 'checked' : ''} onchange="orgToggleAccept('${escapeHtml(p.id)}','${escapeHtml(item.id)}',this.checked)" style="margin-top:3px;">
+      <span style="flex:1;">
+        <span class="org-muted">${escapeHtml(item.label)}${item.kind === 'add' ? ' · add' : (item.kind === 'replace' ? ' · replace' : '')}</span><br>
+        <strong>${escapeHtml(item.value)}</strong>
+        ${item.current ? `<br><span class="org-muted">replacing: ${escapeHtml(item.current)}</span>` : ''}
+      </span>
+    </label>`).join('');
+
+  return `
+    ${refused}
+    <div class="org-note" style="margin-top:10px;">
+      Found in this document. Tick what is true and apply it — nothing here has changed your company
+      profile yet. Limits can only be added this way, never removed or loosened.
+    </div>
+    <div>${rows}</div>
+    <div style="display:flex;gap:8px;margin-top:10px;">
+      <button class="btn btn-primary" onclick="orgApplyProposal('${escapeHtml(p.id)}')">Apply what I ticked</button>
+      ${btn}
+    </div>`;
+}
+
+async function orgExtractDoc(documentId) {
+  showSettingsToast('Reading the document…');
+  const res = await fetchJSON(`/api/org/documents/${documentId}/extract`, { method: 'POST', body: {} });
+  if (!res || res.error) return showSettingsToast((res && res.error) || 'Could not read that document', true);
+  await orgFetchDocs();
+  orgRenderTabBody();
+  const n = (res.proposal.proposed || []).length;
+  showSettingsToast(n ? `${n} thing(s) found — tick what is true` : 'Nothing new found in that one');
+}
+
+function orgToggleAccept(proposalId, itemId, on) {
+  if (!orgState.accepted[proposalId]) orgState.accepted[proposalId] = {};
+  orgState.accepted[proposalId][itemId] = !!on;
+  // No re-render: redrawing on every tick would reset the scroll position halfway through a review.
+}
+
+async function orgApplyProposal(proposalId) {
+  const accept = Object.entries(orgState.accepted[proposalId] || {}).filter(([, on]) => on).map(([id]) => id);
+  if (!accept.length) return showSettingsToast('Tick something first', true);
+
+  const res = await fetchJSON(`/api/org/proposals/${proposalId}/apply`, { method: 'POST', body: { accept } });
+  if (!res || res.error) return showSettingsToast((res && res.error) || 'Could not apply that', true);
+
+  orgState.accepted[proposalId] = {};
+  orgState.profile = res.profile;
+  orgState.loaded.company = true;      // the Company tab now has fresher data than it was holding
+  await orgFetchDocs();
+  orgRenderTabBody();
+  showSettingsToast(`${res.applied.length} added to the company profile`);
 }
 
 /**
