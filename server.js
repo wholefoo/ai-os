@@ -1517,6 +1517,7 @@ const orgMembership = require('./lib/org/membership');
 const orgProfile = require('./lib/org/profile');
 const orgVisibility = require('./lib/org/visibility');
 const orgResponsibility = require('./lib/org/responsibility');
+const orgFoundation = require('./lib/org/foundation');
 
 // Server-wide Ed25519 provenance signing key (lazy-generated under .magent/provenance, or supplied
 // via AIOS_PROVENANCE_PRIVATE_KEY). The issuer origin = the control-plane public URL so a sidecar's
@@ -10770,6 +10771,18 @@ function cloneLimit() {
 app.post('/api/clones', requireCloneAccess, (req, res) => {
   const clientId = cloneClientOf(req.session);
 
+  // ORDER OF OPERATIONS, before any allowance is consulted: a company profile, then the founder's
+  // clone, then everyone else. Checked first because it is the only refusal the caller can always
+  // act on — "the company profile needs a business name" tells them what to do next, where a licence
+  // error tells them to go and buy something. See lib/org/foundation.js for why each gate exists.
+  const foundationCheck = orgFoundation.mayCreateClone({
+    profile: orgProfile.getProfile(orgProfiles, sessionOrgKey(req.session)),
+    clones: businessClones,
+    orgKey: sessionOrgKey(req.session),
+    clientId,
+  });
+  if (!foundationCheck.ok) return res.status(409).json({ error: foundationCheck.error, stage: foundationCheck.stage });
+
   // Two ceilings, and they are not redundant. The structural cap in the store protects the
   // instance from a runaway caller regardless of licensing; this one is the commercial allowance.
   // Whichever is lower wins.
@@ -11028,6 +11041,20 @@ function orgEscalationTopics(orgKey) {
   if (prof) topics.push(...orgProfile.normalizeProfile(prof).boundaries.requiresHuman);
   return topics;
 }
+
+// Where this organisation is up to: company profile, then the founder's clone, then everyone else.
+// Deliberately NOT requireAdmin — an employee blocked from building their clone needs to see what is
+// being waited on and whose move it is, which is the whole point of the blocker text. It exposes the
+// stage and the owner's address, never anyone's persona.
+app.get('/api/org/foundation', requireCloneAccess, (req, res) => {
+  const orgKey = sessionOrgKey(req.session);
+  const s = orgFoundation.status({
+    profile: orgProfile.getProfile(orgProfiles, orgKey),
+    clones: businessClones,
+    orgKey,
+  });
+  res.json({ ok: true, ...s, isFounder: String(cloneClientOf(req.session)).toLowerCase() === s.founderEmail });
+});
 
 app.get('/api/org/responsibilities', requireAdmin, (req, res) => {
   const orgKey = sessionOrgKey(req.session);

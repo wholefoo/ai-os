@@ -10,7 +10,7 @@
 //  See lib/business-clone/README.md.
 // ============================================================
 
-const clState = { wired: false, list: [], selectedId: null, tab: 'interview', detail: null, drafts: [], proposals: [], evidence: null, templates: [], onboarding: null, dispatch: null, limit: 1, tier: '', busy: false, editing: false };
+const clState = { wired: false, list: [], selectedId: null, tab: 'interview', detail: null, drafts: [], proposals: [], evidence: null, templates: [], onboarding: null, dispatch: null, foundation: null, limit: 1, tier: '', busy: false, editing: false };
 
 // The editable shape of a persona, mirroring lib/business-clone/persona.js. Enum options must match
 // that module's constants — a value it does not recognise is silently dropped on save, which would
@@ -82,15 +82,17 @@ function loadClones() {
 async function clFetchList() {
   // Templates come along for the ride: the create form can render immediately after this, and a
   // role picker that renders before its options have arrived is an empty dropdown.
-  const [data, onb, tpl] = await Promise.all([
+  const [data, onb, tpl, fnd] = await Promise.all([
     fetchJSON('/api/clones'),
     fetchJSON('/api/clones/onboarding'),
     clState.templates.length ? Promise.resolve(null) : fetchJSON('/api/clones/templates'),
+    fetchJSON('/api/org/foundation'),
   ]);
   clState.list = (data && data.clones) || [];
   clState.limit = (data && data.limit) != null ? data.limit : 1;
   clState.tier = (data && data.tier) || '';
   clState.onboarding = (onb && !onb.error) ? onb : null;
+  clState.foundation = (fnd && !Array.isArray(fnd) && !fnd.error) ? fnd : null;
   if (tpl && tpl.templates) clState.templates = tpl.templates;
   clRenderList();
   if (clState.selectedId && clState.list.some((c) => c.id === clState.selectedId)) clOpen(clState.selectedId);
@@ -100,6 +102,12 @@ async function clFetchList() {
 function clRenderList() {
   const el = document.getElementById('clList');
   const lim = document.getElementById('clLimit');
+  // A button that always fails is worse than no button: hide it while the order gate is closed, so
+  // nobody discovers the rule by being refused. The server enforces it regardless.
+  const newBtn = document.getElementById('clNewBtn');
+  const f = clState.foundation;
+  const gateOpen = !f || f.complete || (f.stage === 'founder' && f.isFounder);
+  if (newBtn) newBtn.style.display = gateOpen ? '' : 'none';
   if (lim) {
     const shown = clState.limit === null || clState.limit === undefined ? '' : (clState.limit > 999 ? '∞' : clState.limit);
     lim.textContent = `${clState.list.length} of ${shown}${clState.tier ? ` · ${clState.tier}` : ''}`;
@@ -130,6 +138,11 @@ function clRenderEmptyDetail() {
   if (!d) return;
   const o = clState.onboarding;
 
+  // The order gate comes before the consent screen: there is no point agreeing to what a clone is
+  // when the company is not ready for one yet. Blocked people get told whose move it is instead.
+  const blocked = clFoundationBlockHtml();
+  if (blocked) { d.innerHTML = blocked; return; }
+
   if (o && !o.disclosureAccepted) { d.innerHTML = clDisclosureHtml(o); return; }
   if (o && o.status === 'dismissed') {
     d.innerHTML = `<div class="cl-empty">You set this aside for later.<br>
@@ -137,6 +150,37 @@ function clRenderEmptyDetail() {
     return;
   }
   d.innerHTML = clCreateFormHtml();
+}
+
+/**
+ * Nothing to build yet, and why. Returns null when the way is clear.
+ *
+ * Two different stages with two different audiences. At the profile stage the OWNER has something to
+ * go and do, so they get the route to it; anyone else is told whose move it is, because "not yet" on
+ * its own leaves a person with no idea whether to wait or to go and ask someone.
+ */
+function clFoundationBlockHtml() {
+  const f = clState.foundation;
+  if (!f || f.complete) return null;
+  // The founder is never held by the founder gate — it exists to hold everyone else until they have
+  // gone first — so at that stage they see the normal create flow.
+  if (f.stage === 'founder' && f.isFounder) return null;
+
+  const reasons = (f.blockers || []).map(escapeHtml).join('<br>');
+
+  if (f.stage === 'profile') {
+    return f.isFounder
+      ? `<div class="cl-esc"><strong>Start with the company, not the clone.</strong><br>
+          ${reasons}<br><br>
+          Every clone inherits the company profile — its facts and its limits — so nobody is asked
+          about the business in their own interview. That is what makes a clone about the person.
+          <div style="margin-top:12px;"><button class="btn btn-primary" onclick="switchView('org')">Set up the company profile</button></div>
+        </div>`
+      : `<div class="cl-esc"><strong>Waiting on ${escapeHtml(f.founderEmail)}.</strong><br>${reasons}</div>`;
+  }
+
+  return `<div class="cl-esc"><strong>Waiting on ${escapeHtml(f.founderEmail)}.</strong><br>${reasons}<br>
+    <span class="cl-muted">The owner's clone comes first — they run the process themselves before anyone else is asked to.</span></div>`;
 }
 
 /** The disclosure. Shown BEFORE the first question, because that is when it can still inform a choice. */
