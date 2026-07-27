@@ -26,6 +26,8 @@ node_modules/
 
 # Content-provenance Ed25519 signing key — a leak forges every provenance record; never commit
 .magent/provenance/
+# Business documents an owner uploaded — the company's own material, never ours to commit
+.magent/org-docs/
 
 # Logs
 *.log

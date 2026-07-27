@@ -14,7 +14,7 @@
 
 const orgState = {
   tab: 'company',
-  loaded: { company: false, people: false, responsibilities: false, clones: false },
+  loaded: { company: false, documents: false, people: false, responsibilities: false, clones: false },
   org: '',
   employees: 0,
   seatLimit: null,
@@ -22,6 +22,8 @@ const orgState = {
   members: [],
   inviteInfo: null,   // { email, link, expiresAt } — kept in state, not a toast, because the link is
                        // never emailed and losing it means the operator has to start the invite over
+  docs: null,          // { documents, supported, maxBytes }
+  docText: null,       // { id, text } — the one currently expanded
   map: null,
   health: null,
   clones: [],
@@ -37,7 +39,7 @@ function loadOrg() {
   // Every visit re-fetches. The health report in particular is derived from personas that change
   // outside this view, so a cached "every topic has an owner" could be reassuring the owner about a
   // gap that opened since they last looked.
-  orgState.loaded = { company: false, people: false, responsibilities: false, clones: false };
+  orgState.loaded = { company: false, documents: false, people: false, responsibilities: false, clones: false };
   orgState.inviteInfo = null;
   orgRenderTabs();
   // Seat usage in the header comes from the same roster call the People tab uses, so it is fetched
@@ -58,7 +60,7 @@ function orgTab(tab) {
 function orgRenderTabs() {
   const el = document.getElementById('orgTabs');
   if (!el) return;
-  const TABS = [['company', 'Company'], ['people', 'People'], ['responsibilities', 'Responsibilities'], ['clones', 'Their clones']];
+  const TABS = [['company', 'Company'], ['documents', 'Documents'], ['people', 'People'], ['responsibilities', 'Responsibilities'], ['clones', 'Their clones']];
   el.innerHTML = TABS.map(([t, label]) =>
     `<span class="org-tab ${orgState.tab === t ? 'on' : ''}" onclick="orgTab('${t}')">${label}</span>`).join('');
 }
@@ -76,7 +78,7 @@ function orgEnsureTabData(tab) {
   if (orgState.loaded[tab]) { orgRenderTabBody(); return; }
   const body = document.getElementById('orgTabBody');
   if (body) body.innerHTML = '<div class="org-muted">Loading…</div>';
-  const fetchers = { company: orgFetchProfile, people: orgFetchMembers, responsibilities: orgFetchResponsibilities, clones: orgFetchClones };
+  const fetchers = { company: orgFetchProfile, documents: orgFetchDocs, people: orgFetchMembers, responsibilities: orgFetchResponsibilities, clones: orgFetchClones };
   (fetchers[tab] || orgFetchProfile)().then(orgRenderTabBody);
 }
 
@@ -84,6 +86,7 @@ function orgRenderTabBody() {
   const body = document.getElementById('orgTabBody');
   if (!body) return;
   if (orgState.tab === 'company') body.innerHTML = orgCompanyHtml();
+  else if (orgState.tab === 'documents') body.innerHTML = orgDocsHtml();
   else if (orgState.tab === 'people') body.innerHTML = orgPeopleHtml();
   else if (orgState.tab === 'responsibilities') body.innerHTML = orgResponsibilitiesHtml();
   else body.innerHTML = orgCloneHtml();
@@ -99,6 +102,14 @@ async function orgFetchProfile() {
   orgState.org = res.org || orgState.org;
   orgState.profile = res.profile;
   orgState.loaded.company = true;
+}
+
+async function orgFetchDocs() {
+  const res = await fetchJSON('/api/org/documents');
+  if (!res || Array.isArray(res) || res.error) { showSettingsToast((res && res.error) || 'Could not load your documents', true); return; }
+  orgState.org = res.org || orgState.org;
+  orgState.docs = res;
+  orgState.loaded.documents = true;
 }
 
 async function orgFetchMembers() {
@@ -218,6 +229,101 @@ async function orgSaveProfile() {
   orgState.loaded.company = true;
   orgRenderTabBody();
   showSettingsToast('Company profile saved');
+}
+
+// --- Tab: Documents ---------------------------------------------------------
+// Upload what the business has already written down, so the company profile does not have to be
+// typed out field by field. This phase stores the text and shows it back; nothing reads it yet.
+
+function orgDocsHtml() {
+  const st = orgState.docs || { documents: [], supported: [], maxBytes: 0 };
+  const accept = (st.supported || []).map((e) => `.${e}`).join(',');
+  const mb = Math.round((st.maxBytes || 0) / 1024 / 1024);
+
+  const form = `
+    <div class="org-note">
+      Upload what the business already has written down — a price list, a services page, an
+      operations note — and the text is kept here for building the company profile from. Nothing is
+      read or acted on yet: you will see exactly what was pulled out of each file, and it stays
+      yours to check.
+      <div style="margin-top:6px;">Readable here: ${escapeHtml((st.supported || []).map((e) => `.${e}`).join(', '))} — up to ${mb} MB each. PDFs cannot be read yet; copy the text out and save it as a .txt.</div>
+    </div>
+    <div class="org-row" style="flex-direction:column;align-items:stretch;gap:8px;">
+      <input type="file" id="orgDocFile" accept="${escapeHtml(accept)}">
+      <div><button class="btn btn-primary" onclick="orgUploadDoc()">Upload</button></div>
+    </div>`;
+
+  if (!(st.documents || []).length) return form + '<div class="org-empty">No documents yet.</div>';
+
+  return form + st.documents.map((d) => {
+    const open = orgState.docText && orgState.docText.id === d.id;
+    return `
+      <div class="org-card">
+        <div style="display:flex;justify-content:space-between;gap:10px;align-items:center;">
+          <div>
+            <strong>${escapeHtml(d.filename)}</strong>
+            <div class="org-muted">${escapeHtml(d.format)} · ${Number(d.chars).toLocaleString()} characters · added ${timeAgo(d.uploadedAt)}</div>
+          </div>
+          <div style="display:flex;gap:6px;">
+            <button class="btn" onclick="orgToggleDocText('${escapeHtml(d.id)}')">${open ? 'Hide text' : 'Show text'}</button>
+            <button class="btn" onclick="orgDeleteDoc('${escapeHtml(d.id)}')">Remove</button>
+          </div>
+        </div>
+        ${open ? `<textarea rows="14" style="width:100%;margin-top:10px;" readonly>${escapeHtml(orgState.docText.text)}</textarea>` : ''}
+      </div>`;
+  }).join('');
+}
+
+/**
+ * Uploads send the file as the RAW request body, which is why this does not go through fetchJSON —
+ * that helper JSON-stringifies whatever it is given, which would turn a document into a quoted
+ * string. The auth header is assembled the same way it does, so the two stay consistent.
+ */
+async function orgUploadDoc() {
+  const input = document.getElementById('orgDocFile');
+  const file = input && input.files && input.files[0];
+  if (!file) return showSettingsToast('Choose a file first', true);
+
+  const headers = {};
+  const token = localStorage.getItem('ai-os-token');
+  if (token) headers.Authorization = `Bearer ${token}`;
+
+  let res;
+  try {
+    const r = await fetch(`/api/org/documents?name=${encodeURIComponent(file.name)}`, {
+      method: 'POST', credentials: 'same-origin', headers, body: file,
+    });
+    res = await r.json().catch(() => ({ error: `HTTP ${r.status}` }));
+  } catch (e) {
+    return showSettingsToast('Could not upload that file', true);
+  }
+  if (!res || res.error) return showSettingsToast(res.error || 'Could not read that file', true);
+
+  input.value = '';
+  await orgFetchDocs();
+  // Open the new document straight away. The whole promise of this screen is that you see what was
+  // actually pulled out of your file, and hiding it behind another click invites trusting it blind.
+  orgState.docText = { id: res.document.id, text: res.preview || '' };
+  orgRenderTabBody();
+  showSettingsToast(`Read ${res.document.chars.toLocaleString()} characters from ${res.document.filename}`);
+}
+
+async function orgToggleDocText(id) {
+  if (orgState.docText && orgState.docText.id === id) { orgState.docText = null; orgRenderTabBody(); return; }
+  const res = await fetchJSON(`/api/org/documents/${id}/text`);
+  if (!res || res.error) return showSettingsToast((res && res.error) || 'Could not load that text', true);
+  orgState.docText = { id, text: res.text || '' };
+  orgRenderTabBody();
+}
+
+async function orgDeleteDoc(id) {
+  if (!confirm('Remove this document? The text taken from it is deleted too.')) return;
+  const res = await fetchJSON(`/api/org/documents/${id}`, { method: 'DELETE' });
+  if (!res || res.error) return showSettingsToast((res && res.error) || 'Could not remove that', true);
+  if (orgState.docText && orgState.docText.id === id) orgState.docText = null;
+  await orgFetchDocs();
+  orgRenderTabBody();
+  showSettingsToast('Removed');
 }
 
 // --- Tab 2: People --------------------------------------------------------

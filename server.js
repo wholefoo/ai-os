@@ -1518,6 +1518,7 @@ const orgProfile = require('./lib/org/profile');
 const orgVisibility = require('./lib/org/visibility');
 const orgResponsibility = require('./lib/org/responsibility');
 const orgFoundation = require('./lib/org/foundation');
+const orgDocuments = require('./lib/org/documents');
 
 // Server-wide Ed25519 provenance signing key (lazy-generated under .magent/provenance, or supplied
 // via AIOS_PROVENANCE_PRIVATE_KEY). The issuer origin = the control-plane public URL so a sidecar's
@@ -11019,6 +11020,94 @@ app.put('/api/org/profile', requireAdmin, (req, res) => {
 
   logActivity('clone', 'Company profile updated — applies to every clone on this instance', { org: orgKey });
   res.json({ ok: true, profile: next, inherited: orgProfile.inheritedFrom(next) });
+});
+
+// --- Company documents ------------------------------------------------------
+//  Business documents the owner uploads so the company profile can be built from what the business
+//  already has written down, instead of typed into a form field by field.
+//
+//  THIS PHASE STORES TEXT AND NOTHING ELSE. No model reads it, no company fact is proposed, no
+//  persona is touched — that is F3, deliberately separate, because the moment this text reaches a
+//  prompt it is the highest-value injection target in the product: company boundaries flow into
+//  every clone on the instance. Treat everything here as untrusted, including when the owner
+//  uploaded it themselves; owners forward supplier documents they have never read.
+//
+//  Extracted text lives on disk under the document's own generated id, NEVER under the uploader's
+//  filename. The filename is kept as a label only. A user-supplied string that reaches a path is the
+//  whole of path traversal, and the cheapest defence is for it never to be a path.
+const ORG_DOCS_DIR = path.join(MAGENT_DIR, 'org-docs');
+const orgDocs = loadState('org_documents', []);
+const saveOrgDocs = () => saveState('org_documents', orgDocs);
+
+function orgDocTextPath(id) {
+  // The id is ours (uuid), not the caller's. Re-validated anyway so that a future caller passing
+  // something else cannot turn this into a path expression.
+  const safe = String(id || '').replace(/[^\w-]/g, '');
+  if (!safe) throw new Error('bad document id');
+  return path.join(ORG_DOCS_DIR, `${safe}.txt`);
+}
+
+app.get('/api/org/documents', requireAdmin, (req, res) => {
+  const orgKey = sessionOrgKey(req.session);
+  res.json({
+    ok: true,
+    org: orgKey,
+    documents: orgDocuments.listDocuments(orgDocs, orgKey),
+    supported: orgDocuments.SUPPORTED,
+    maxBytes: orgDocuments.MAX_UPLOAD_BYTES,
+  });
+});
+
+// The raw body IS the file — the same shape Web Studio's archive import uses, and it avoids adding a
+// multipart parser for a one-field form. The name travels in the query string because that is the
+// only thing about the upload we need besides its bytes.
+app.post('/api/org/documents', requireAdmin, heavyLimiter,
+  express.raw({ type: () => true, limit: orgDocuments.MAX_UPLOAD_BYTES }),
+  async (req, res) => {
+    const orgKey = sessionOrgKey(req.session);
+    if (!orgKey) return res.status(400).json({ error: 'no organisation to attach a document to' });
+
+    const filename = String(req.query.name || '').trim();
+    if (!filename) return res.status(400).json({ error: 'send the file name as ?name=' });
+
+    const result = await orgDocuments.extract({ filename, buffer: req.body });
+    if (!result.ok) return res.status(400).json({ error: result.error });
+
+    const doc = orgDocuments.createDocument({
+      id: uuidv4(), orgKey, filename, format: result.format, chars: result.chars,
+      uploadedBy: (req.session && req.session.email) || orgKey,
+    });
+    fs.mkdirSync(ORG_DOCS_DIR, { recursive: true });
+    fs.writeFileSync(orgDocTextPath(doc.id), result.text, 'utf-8');
+    orgDocs.push(doc);
+    saveOrgDocs();
+
+    logActivity('clone', `Company document added: ${doc.filename} (${doc.chars} characters)`, { org: orgKey, documentId: doc.id });
+    res.json({ ok: true, document: doc, preview: result.text.slice(0, 1500) });
+  });
+
+// The extracted text, for the owner to read before anything is built from it. Scoped, so one org
+// cannot fetch another's by id.
+app.get('/api/org/documents/:id/text', requireAdmin, (req, res) => {
+  const doc = orgDocuments.getDocument(orgDocs, sessionOrgKey(req.session), req.params.id);
+  if (!doc) return res.status(404).json({ error: 'no such document' });
+  let text = '';
+  try { text = fs.readFileSync(orgDocTextPath(doc.id), 'utf-8'); }
+  catch (e) { return res.status(410).json({ error: 'the text for that document is no longer on disk' }); }
+  res.json({ ok: true, document: doc, text });
+});
+
+app.delete('/api/org/documents/:id', requireAdmin, (req, res) => {
+  const orgKey = sessionOrgKey(req.session);
+  const doc = orgDocuments.getDocument(orgDocs, orgKey, req.params.id);
+  if (!doc) return res.status(404).json({ error: 'no such document' });
+  // The file goes with the record. A record removed while its text stayed on disk would be a copy of
+  // the company's documents that nothing lists and nobody can see to delete.
+  try { fs.unlinkSync(orgDocTextPath(doc.id)); } catch (e) { /* already gone is fine */ }
+  orgDocs.splice(orgDocs.indexOf(doc), 1);
+  saveOrgDocs();
+  logActivity('clone', `Company document removed: ${doc.filename}`, { org: orgKey });
+  res.json({ ok: true });
 });
 
 // --- Responsibility map -----------------------------------------------------

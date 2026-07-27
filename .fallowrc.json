@@ -35,6 +35,7 @@
     "tools/test-org-responsibility.js",
     "tools/test-clone-dispatch.js",
     "tools/test-org-foundation.js",
+    "tools/test-org-documents.js",
     "tools/verify-clone-live.js",
     "ecosystem.config.js",
     "deploy/n8n-ecosystem.config.example.js",
