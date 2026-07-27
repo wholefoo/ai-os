@@ -74,3 +74,6 @@ dashboard/assets/carousel/*.png
 data/media-videos/
 data/media-images/
 data/media-audio/
+
+# Scheduled intel-brief output — generated daily, like the media dirs above
+data/intel-briefs/

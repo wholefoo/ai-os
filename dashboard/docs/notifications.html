@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Notifications — AI OS Docs</title>
+  <title>Notifications &amp; Alerts — AI OS Docs</title>
   <meta name="description" content="Real-time notifications via WebSocket, Telegram Bot API, and Slack Incoming Webhooks. Configure multi-channel alerts for agent status and system events.">
   <link rel="canonical" href="https://aiosorchestrationlab.com/docs/notifications">
   <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -16,7 +16,7 @@
   {
     "@context": "https://schema.org",
     "@type": "TechArticle",
-    "headline": "Notifications — AI OS Docs",
+    "headline": "Notifications & Alerts — AI OS Docs",
     "description": "Real-time notifications via WebSocket, Telegram Bot API, and Slack Incoming Webhooks. Configure multi-channel alerts for agent status and system events.",
     "url": "https://aiosorchestrationlab.com/docs/notifications",
     "author": { "@type": "Organization", "name": "AI OS Orchestration Lab" },
@@ -24,6 +24,7 @@
   }
   </script>
   <script type="application/ld+json">{"@context":"https://schema.org","@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Home","item":"https://aiosorchestrationlab.com/"},{"@type":"ListItem","position":2,"name":"Documentation","item":"https://aiosorchestrationlab.com/docs/"},{"@type":"ListItem","position":3,"name":"Notifications"}]}</script>
+  <script type="application/ld+json">{"@context":"https://schema.org","@type":"FAQPage","mainEntity":[{"@type":"Question","name":"What notification channels does AI OS support?","acceptedAnswer":{"@type":"Answer","text":"Three: real-time WebSocket messages in the dashboard, Telegram via the Bot API, and Slack via Incoming Webhooks. All channels are optional and independently configurable."}},{"@type":"Question","name":"What does the WebSocket channel deliver?","acceptedAnswer":{"@type":"Answer","text":"Agent status (started, processing, completed, or failed), batch progress with per-item status and completion counts, system alerts (memory warnings, rate limit hits, server shutdown notices), and step-by-step pipeline updates."}},{"@type":"Question","name":"How do I set up Telegram notifications?","acceptedAnswer":{"@type":"Answer","text":"Create a bot via @BotFather on Telegram, copy the bot token to TELEGRAM_BOT_TOKEN in .env, start a chat with your bot and send any message, then get your chat ID and set it as TELEGRAM_CHAT_ID."}},{"@type":"Question","name":"How do I set up Slack notifications?","acceptedAnswer":{"@type":"Answer","text":"Go to your Slack workspace settings, then Apps, then Incoming Webhooks; create a new webhook and select the target channel; copy the webhook URL to SLACK_WEBHOOK_URL in .env."}},{"@type":"Question","name":"How does the WebSocket connection handle drops?","acceptedAnswer":{"@type":"Answer","text":"The server pings every 30 seconds and disconnects clients that miss 2 pings. The client auto-reconnects with exponential backoff (1s, 2s, 4s, up to 30s max) and shows a reconnect banner while disconnected."}}]}</script>
 </head>
 <body>
   <nav class="landing-nav">
@@ -55,7 +56,7 @@
           </div>
 
           <h1>Notifications</h1>
-          <p class="docs-lead">AI OS delivers notifications through three channels: real-time WebSocket messages in the dashboard, Telegram Bot API, and Slack Incoming Webhooks. All channels are optional and independently configurable.</p>
+          <p class="docs-lead">AI OS offers three notification channels, and it provides real-time delivery via WebSocket for the dashboard, plus optional Telegram Bot API and Slack Incoming Webhooks integrations. All channels are independently configurable.</p>
 
           <h2 id="websocket">WebSocket (Dashboard)</h2>
           <p>The primary notification channel. All connected dashboard clients receive real-time updates via WebSocket:</p>
@@ -136,6 +137,18 @@
             </tbody>
           </table>
 
+          <h2 id="faq">Frequently Asked Questions</h2>
+          <h3>What notification channels does AI OS support?</h3>
+          <p>Three: real-time WebSocket messages in the dashboard, Telegram via the Bot API, and Slack via Incoming Webhooks. All channels are optional and independently configurable.</p>
+          <h3>What does the WebSocket channel deliver?</h3>
+          <p>Agent status (started, processing, completed, or failed), batch progress with per-item status and completion counts, system alerts (memory warnings, rate limit hits, server shutdown notices), and step-by-step pipeline updates.</p>
+          <h3>How do I set up Telegram notifications?</h3>
+          <p>Create a bot via <code>@BotFather</code> on Telegram, copy the bot token to <code>TELEGRAM_BOT_TOKEN</code> in <code>.env</code>, start a chat with your bot and send any message, then get your chat ID and set it as <code>TELEGRAM_CHAT_ID</code>.</p>
+          <h3>How do I set up Slack notifications?</h3>
+          <p>Go to your Slack workspace settings, then Apps, then Incoming Webhooks; create a new webhook and select the target channel; copy the webhook URL to <code>SLACK_WEBHOOK_URL</code> in <code>.env</code>.</p>
+          <h3>How does the WebSocket connection handle drops?</h3>
+          <p>The server pings every 30 seconds and disconnects clients that miss 2 pings. The client auto-reconnects with exponential backoff (1s, 2s, 4s, up to 30s max) and shows a reconnect banner while disconnected.</p>
+
           <div class="docs-page-nav">
             <a href="/docs/billing">&larr; Billing</a>
             <a href="/docs/hermes">Hermes Agent &rarr;</a>
@@ -148,6 +161,7 @@
           <a href="#telegram">Telegram</a>
           <a href="#slack">Slack</a>
           <a href="#notification-events">Events</a>
+          <a href="#faq">FAQ</a>
         </aside>
       </div>
     </div>

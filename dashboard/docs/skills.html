@@ -27,6 +27,7 @@
   }
   </script>
   <script type="application/ld+json">{"@context":"https://schema.org","@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Home","item":"https://aiosorchestrationlab.com/"},{"@type":"ListItem","position":2,"name":"Documentation","item":"https://aiosorchestrationlab.com/docs/"},{"@type":"ListItem","position":3,"name":"Skills & Pipelines"}]}</script>
+  <script type="application/ld+json">{"@context":"https://schema.org","@type":"FAQPage","mainEntity":[{"@type":"Question","name":"What is a skill in AI OS?","acceptedAnswer":{"@type":"Answer","text":"A procedural instruction file that teaches an agent how to perform a specific task. AI OS includes 19 built-in skill files stored in .claude/skills/, each a structured Markdown document an agent reads and follows step by step."}},{"@type":"Question","name":"What sections does a skill file follow?","acceptedAnswer":{"@type":"Answer","text":"Purpose, Inputs, Steps, Output, and Guardrails — a consistent anatomy every skill file follows."}},{"@type":"Question","name":"What is a pipeline, and how is it different from a skill?","acceptedAnswer":{"@type":"Answer","text":"A pipeline is a declarative YAML file in .claude/pipelines/ that chains multiple skills into an automated workflow. The Orchestrator reads the pipeline definition and executes each step in sequence, passing outputs between stages, using variable interpolation ({{variable}}) and step references ({{steps.N.output}})."}},{"@type":"Question","name":"Can pipelines run on a schedule?","acceptedAnswer":{"@type":"Answer","text":"Yes. AI OS supports CRON-scheduled autonomous routines through the Automator and Routine Runner agents, which execute predefined pipelines on a schedule with built-in rate limiting to manage API costs."}},{"@type":"Question","name":"How do I create a custom skill?","acceptedAnswer":{"@type":"Answer","text":"Add a Markdown file to .claude/skills/ following the standard anatomy (Purpose, Inputs, Steps, Output, Guardrails), and the system automatically discovers it and makes it available to agents."}}]}</script>
 </head>
 <body>
   <nav class="landing-nav">
@@ -61,7 +62,7 @@
           <p class="docs-lead">Skills are procedural instruction files that teach agents how to perform specific tasks. Pipelines chain multiple skills into declarative YAML workflows for complex multi-step operations.</p>
 
           <h2 id="skills-overview">Skills Overview</h2>
-          <p>AI OS includes 19 built-in skill files stored in <code>.claude/skills/</code>. Each skill is a structured Markdown document that an agent reads and follows step by step.</p>
+          <p>AI OS offers 19 built-in skill files stored in <code>.claude/skills/</code>, and each one provides a structured Markdown document that an agent reads and follows step by step.</p>
 
           <h3>Skill Categories</h3>
           <ul>
@@ -165,6 +166,18 @@ rate_limit:
             <strong>Tip:</strong> Use the Skills view in the dashboard to browse all available skills, see their descriptions, and trigger them directly.
           </div>
 
+          <h2 id="faq">Frequently Asked Questions</h2>
+          <h3>What is a skill in AI OS?</h3>
+          <p>A procedural instruction file that teaches an agent how to perform a specific task. AI OS includes 19 built-in skill files stored in <code>.claude/skills/</code>, each a structured Markdown document an agent reads and follows step by step.</p>
+          <h3>What sections does a skill file follow?</h3>
+          <p>Purpose, Inputs, Steps, Output, and Guardrails &mdash; a consistent anatomy every skill file follows.</p>
+          <h3>What is a pipeline, and how is it different from a skill?</h3>
+          <p>A pipeline is a declarative YAML file in <code>.claude/pipelines/</code> that chains multiple skills into an automated workflow. The Orchestrator reads the pipeline definition and executes each step in sequence, passing outputs between stages, using variable interpolation (<code>{{variable}}</code>) and step references (<code>{{steps.N.output}}</code>).</p>
+          <h3>Can pipelines run on a schedule?</h3>
+          <p>Yes. AI OS supports CRON-scheduled autonomous routines through the Automator and Routine Runner agents, which execute predefined pipelines on a schedule with built-in rate limiting to manage API costs.</p>
+          <h3>How do I create a custom skill?</h3>
+          <p>Add a Markdown file to <code>.claude/skills/</code> following the standard anatomy (Purpose, Inputs, Steps, Output, Guardrails), and the system automatically discovers it and makes it available to agents.</p>
+
           <div class="docs-page-nav">
             <a href="/docs/agents">&larr; Agent Fleet</a>
             <a href="/docs/knowledge-graph">Knowledge Graph &rarr;</a>
@@ -177,6 +190,7 @@ rate_limit:
           <a href="#pipelines">Pipelines</a>
           <a href="#continuous-loops">Continuous Loops</a>
           <a href="#custom-skills">Custom Skills</a>
+          <a href="#faq">FAQ</a>
         </aside>
       </div>
     </div>

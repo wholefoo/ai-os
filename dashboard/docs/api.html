@@ -3,10 +3,10 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>API Reference — AI OS Docs</title>
+  <title>AI OS API Reference — Endpoints &amp; Authentication</title>
   <meta name="description" content="AI OS API reference — 80+ endpoints for agents, skills, SEO audits, tenant branding, Gemini Omni creative generation, YouTube analysis, and more.">
   <link rel="canonical" href="https://aiosorchestrationlab.com/docs/api">
-  <meta property="og:title" content="API Reference — AI OS Docs">
+  <meta property="og:title" content="AI OS API Reference — Endpoints & Authentication">
   <meta property="og:description" content="80+ endpoints for agents, skills, SEO audits, tenant branding, Gemini Omni creative generation, YouTube analysis, and more.">
   <meta name="twitter:card" content="summary">
   <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -19,7 +19,7 @@
   {
     "@context": "https://schema.org",
     "@type": "TechArticle",
-    "headline": "API Reference — AI OS Docs",
+    "headline": "AI OS API Reference — Endpoints & Authentication",
     "description": "AI OS API reference — 80+ endpoints for agents, skills, SEO audits, tenant branding, Gemini Omni creative generation, YouTube analysis, and more.",
     "url": "https://aiosorchestrationlab.com/docs/api",
     "author": { "@type": "Organization", "name": "AI OS Orchestration Lab" },
@@ -27,6 +27,7 @@
   }
   </script>
   <script type="application/ld+json">{"@context":"https://schema.org","@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Home","item":"https://aiosorchestrationlab.com/"},{"@type":"ListItem","position":2,"name":"Documentation","item":"https://aiosorchestrationlab.com/docs/"},{"@type":"ListItem","position":3,"name":"API Reference"}]}</script>
+  <script type="application/ld+json">{"@context": "https://schema.org", "@type": "FAQPage", "mainEntity": [{"@type": "Question", "name": "Does the AI OS API require authentication?", "acceptedAnswer": {"@type": "Answer", "text": "Yes. In production, API requests require a Bearer token set via the API_TOKEN environment variable, sent as an Authorization: Bearer header. The /api/health endpoint is exempt, and dashboard access uses session cookies set during login instead of a token."}}, {"@type": "Question", "name": "What are the API rate limits?", "acceptedAnswer": {"@type": "Answer", "text": "General API requests are limited to 120 per minute. Heavy operations — clone-url, media/produce, leads/scrape, batch, grok/query, browser/execute, 3d/scenes, and vibe-design/projects — are limited to 10 per minute."}}, {"@type": "Question", "name": "What happens when the rate limit is exceeded?", "acceptedAnswer": {"@type": "Answer", "text": "The API returns a 429 Too Many Requests status with a standard error object describing what went wrong."}}, {"@type": "Question", "name": "What does an API error response look like?", "acceptedAnswer": {"@type": "Answer", "text": "Every endpoint returns a JSON object with an error field describing the problem, alongside a standard HTTP status code — 400 for bad requests, 401 for missing or invalid tokens, 403 for insufficient permissions, 404 for missing resources, 429 for rate limiting, and 500 for server errors."}}, {"@type": "Question", "name": "How many REST endpoints does the API expose?", "acceptedAnswer": {"@type": "Answer", "text": "The AI OS API offers 40+ REST endpoints covering authentication, agent and skill management, the design system, media and 3D generation, monetization, AI queries, tenant branding, and the knowledge graph. All endpoints return JSON."}}, {"@type": "Question", "name": "Can I submit a batch content generation job through the API?", "acceptedAnswer": {"@type": "Answer", "text": "Yes. POST /api/batch accepts a type (blog, social, product, email, or seo), a prompt, and a count of up to 100 items, and is heavy rate limited."}}]}</script>
 </head>
 <body>
   <nav class="landing-nav">
@@ -61,9 +62,13 @@
           <p class="docs-lead">40+ REST endpoints covering authentication, agent management, AI features, billing, and system health. All endpoints return JSON and require Bearer token authentication in production.</p>
 
           <h2 id="authentication">Authentication</h2>
-          <p>API requests in production require a Bearer token set via the <code>API_TOKEN</code> environment variable:</p>
+          <p>The API provides two authentication paths: a Bearer token for programmatic access, and a session cookie for the dashboard. In production, API requests require a Bearer token set via the <code>API_TOKEN</code> environment variable:</p>
           <pre><code>Authorization: Bearer your-api-token</code></pre>
-          <p>The <code>/api/health</code> endpoint is exempt from authentication. Dashboard access uses session cookies set during login.</p>
+          <ul>
+            <li><strong>Bearer token</strong> — required on all endpoints in production, set via <code>API_TOKEN</code></li>
+            <li><strong><code>/api/health</code></strong> — exempt from authentication, so uptime checks work without a token</li>
+            <li><strong>Dashboard sessions</strong> — use a session cookie set during login instead of a Bearer token</li>
+          </ul>
 
           <h2 id="rate-limits">Rate Limits</h2>
           <table class="docs-table">
@@ -75,7 +80,17 @@
               <tr><td>Heavy operations</td><td>10 requests</td><td>1 minute</td></tr>
             </tbody>
           </table>
-          <p>Heavy rate limiting applies to: <code>clone-url</code>, <code>media/produce</code>, <code>leads/scrape</code>, <code>batch</code>, <code>grok/query</code>, <code>browser/execute</code>, <code>3d/scenes</code>, <code>vibe-design/projects</code>.</p>
+          <p>Heavy rate limiting applies to these endpoints:</p>
+          <ul>
+            <li><code>clone-url</code></li>
+            <li><code>media/produce</code></li>
+            <li><code>leads/scrape</code></li>
+            <li><code>batch</code></li>
+            <li><code>grok/query</code></li>
+            <li><code>browser/execute</code></li>
+            <li><code>3d/scenes</code></li>
+            <li><code>vibe-design/projects</code></li>
+          </ul>
 
           <h2 id="system">System</h2>
 
@@ -257,6 +272,20 @@
             </tbody>
           </table>
 
+          <h2 id="faq">Frequently Asked Questions</h2>
+          <h3>Does the AI OS API require authentication?</h3>
+          <p>Yes. In production, API requests require a Bearer token set via the <code>API_TOKEN</code> environment variable, sent as an <code>Authorization: Bearer</code> header. The <code>/api/health</code> endpoint is exempt, and dashboard access uses session cookies set during login instead of a token.</p>
+          <h3>What are the API rate limits?</h3>
+          <p>General API requests are limited to 120 per minute. Heavy operations &mdash; <code>clone-url</code>, <code>media/produce</code>, <code>leads/scrape</code>, <code>batch</code>, <code>grok/query</code>, <code>browser/execute</code>, <code>3d/scenes</code>, and <code>vibe-design/projects</code> &mdash; are limited to 10 per minute.</p>
+          <h3>What happens when the rate limit is exceeded?</h3>
+          <p>The API returns a <code>429 Too Many Requests</code> status with a standard error object describing what went wrong.</p>
+          <h3>What does an API error response look like?</h3>
+          <p>Every endpoint returns a JSON object with an <code>error</code> field describing the problem, alongside a standard HTTP status code &mdash; 400 for bad requests, 401 for missing or invalid tokens, 403 for insufficient permissions, 404 for missing resources, 429 for rate limiting, and 500 for server errors.</p>
+          <h3>How many REST endpoints does the API expose?</h3>
+          <p>The AI OS API offers 40+ REST endpoints covering authentication, agent and skill management, the design system, media and 3D generation, monetization, AI queries, tenant branding, and the knowledge graph. All endpoints return JSON.</p>
+          <h3>Can I submit a batch content generation job through the API?</h3>
+          <p>Yes. <code>POST /api/batch</code> accepts a type (blog, social, product, email, or seo), a prompt, and a count of up to 100 items, and is heavy rate limited.</p>
+
           <div class="docs-page-nav">
             <a href="/docs/batch-queue">&larr; Batch Queue</a>
             <a href="/docs/deployment">Deployment &rarr;</a>
@@ -268,12 +297,16 @@
           <a href="#authentication">Authentication</a>
           <a href="#rate-limits">Rate Limits</a>
           <a href="#system">System</a>
+          <a href="#authentication-endpoints">Auth Endpoints</a>
           <a href="#agents-skills">Agents &amp; Skills</a>
           <a href="#design-system">Design System</a>
           <a href="#media-3d">Media &amp; 3D</a>
           <a href="#monetization">Monetization</a>
-          <a href="#tenant--branding">Tenant &amp; Branding</a>
+          <a href="#ai-queries">AI Queries</a>
+          <a href="#branding">Branding</a>
+          <a href="#knowledge-graph">Knowledge Graph</a>
           <a href="#error-responses">Error Responses</a>
+          <a href="#faq">FAQ</a>
         </aside>
       </div>
     </div>

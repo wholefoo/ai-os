@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Batch Queue — AI OS Docs</title>
+  <title>Batch Queue — Mass Content Production in AI OS</title>
   <meta name="description" content="Mass content production at economy-tier cost. Queue hundreds of generation tasks, manage priorities, and route outputs automatically via DeepSeek V4.">
   <link rel="canonical" href="https://aiosorchestrationlab.com/docs/batch-queue">
   <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -16,7 +16,7 @@
   {
     "@context": "https://schema.org",
     "@type": "TechArticle",
-    "headline": "Batch Queue — AI OS Docs",
+    "headline": "Batch Queue — Mass Content Production in AI OS",
     "description": "Mass content production at economy-tier cost. Queue hundreds of generation tasks, manage priorities, and route outputs automatically via DeepSeek V4.",
     "url": "https://aiosorchestrationlab.com/docs/batch-queue",
     "author": { "@type": "Organization", "name": "AI OS Orchestration Lab" },
@@ -24,6 +24,7 @@
   }
   </script>
   <script type="application/ld+json">{"@context":"https://schema.org","@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Home","item":"https://aiosorchestrationlab.com/"},{"@type":"ListItem","position":2,"name":"Documentation","item":"https://aiosorchestrationlab.com/docs/"},{"@type":"ListItem","position":3,"name":"Batch Queue"}]}</script>
+  <script type="application/ld+json">{"@context": "https://schema.org", "@type": "FAQPage", "mainEntity": [{"@type": "Question", "name": "What is the Batch Queue?", "acceptedAnswer": {"@type": "Answer", "text": "Mass content production at economy-tier cost. It routes high-volume tasks to the Economy tier (DeepSeek V4), queues hundreds of generation tasks, manages priorities, and routes outputs to the right destination automatically."}}, {"@type": "Question", "name": "What content types can I submit to the Batch Queue?", "acceptedAnswer": {"@type": "Answer", "text": "blog, social, product, email, and seo — each with a typical count ranging from 5-30 items (email) up to 10-200 items (product)."}}, {"@type": "Question", "name": "What happens if a batch item fails?", "acceptedAnswer": {"@type": "Answer", "text": "Failed items are automatically retried up to 3 times, using exponential backoff before each retry."}}, {"@type": "Question", "name": "How do I submit a batch job through the API?", "acceptedAnswer": {"@type": "Answer", "text": "POST to /api/batch with a type, a prompt, a count, and an optional priority field. The endpoint is heavy rate limited."}}, {"@type": "Question", "name": "What priority levels are available?", "acceptedAnswer": {"@type": "Answer", "text": "high jumps to the front of the queue and is processed immediately, normal is the default standard FIFO processing, and low is processed only when no higher-priority items remain."}}, {"@type": "Question", "name": "How many items can I submit in one batch?", "acceptedAnswer": {"@type": "Answer", "text": "A maximum of 100 items per single batch submission, with a maximum of 10 batch submissions per minute under the heavy rate limiter."}}]}</script>
 </head>
 <body>
   <nav class="landing-nav">
@@ -55,7 +56,7 @@
           </div>
 
           <h1>Batch Queue</h1>
-          <p class="docs-lead">Mass content production at economy-tier cost. Queue hundreds of generation tasks, manage priorities, and route outputs to the right destination automatically.</p>
+          <p class="docs-lead">The Batch Queue provides mass content production at economy-tier cost. It queues hundreds of generation tasks, manages priorities, and routes outputs to the right destination automatically.</p>
 
           <h2 id="how-it-works">How It Works</h2>
           <p>The Batch Queue routes high-volume tasks to the Economy tier (DeepSeek V4) for cost-efficient processing:</p>
@@ -96,6 +97,7 @@
 }</code></pre>
 
           <h3>Priority Levels</h3>
+          <p>The Batch Queue offers three priority levels:</p>
           <ul>
             <li><strong>high</strong> — Processed immediately, jumps to front of queue</li>
             <li><strong>normal</strong> — Standard FIFO processing (default)</li>
@@ -121,6 +123,20 @@
             <li>Bulk actions (pause, resume, cancel, re-queue failed)</li>
           </ul>
 
+          <h2 id="faq">Frequently Asked Questions</h2>
+          <h3>What is the Batch Queue?</h3>
+          <p>Mass content production at economy-tier cost. It routes high-volume tasks to the Economy tier (DeepSeek V4), queues hundreds of generation tasks, manages priorities, and routes outputs to the right destination automatically.</p>
+          <h3>What content types can I submit to the Batch Queue?</h3>
+          <p><code>blog</code>, <code>social</code>, <code>product</code>, <code>email</code>, and <code>seo</code> &mdash; each with a typical count ranging from 5-30 items (email) up to 10-200 items (product).</p>
+          <h3>What happens if a batch item fails?</h3>
+          <p>Failed items are automatically retried up to 3 times, using exponential backoff before each retry.</p>
+          <h3>How do I submit a batch job through the API?</h3>
+          <p>POST to <code>/api/batch</code> with a <code>type</code>, a <code>prompt</code>, a <code>count</code>, and an optional <code>priority</code> field. The endpoint is heavy rate limited.</p>
+          <h3>What priority levels are available?</h3>
+          <p><strong>high</strong> jumps to the front of the queue and is processed immediately, <strong>normal</strong> is the default standard FIFO processing, and <strong>low</strong> is processed only when no higher-priority items remain.</p>
+          <h3>How many items can I submit in one batch?</h3>
+          <p>A maximum of 100 items per single batch submission, with a maximum of 10 batch submissions per minute under the heavy rate limiter.</p>
+
           <div class="docs-page-nav">
             <a href="/docs/monetization">&larr; Monetization</a>
             <a href="/docs/api">API Reference &rarr;</a>
@@ -134,6 +150,7 @@
           <a href="#api-usage">API Usage</a>
           <a href="#rate-limiting">Rate Limiting</a>
           <a href="#dashboard-view">Dashboard View</a>
+          <a href="#faq">FAQ</a>
         </aside>
       </div>
     </div>

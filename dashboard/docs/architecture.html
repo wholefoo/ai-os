@@ -3,12 +3,14 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Architecture — AI OS Docs</title>
-  <meta name="description" content="AI OS architecture — 6 AI models across 4 routing tiers with effort-based routing: Opus 4.8, OpenAI, Gemini Omni, DeepSeek, Grok-3, Perplexity, Manus, and Hermes MCP. Open-source, self-hosted platform.">
+  <title>AI OS Architecture — Models & Routing</title>
+  <meta name="description" content="AI OS routes requests across 6 AI models in 4 tiers: Opus 4.8, OpenAI, Gemini Omni, DeepSeek, Grok-3, Perplexity, Manus, Hermes MCP — self-hosted.">
   <link rel="canonical" href="https://aiosorchestrationlab.com/docs/architecture">
-  <meta property="og:title" content="Architecture — AI OS Docs">
-  <meta property="og:description" content="6 AI models across 4 routing tiers: Opus 4.8, OpenAI, Gemini Omni, DeepSeek, Grok-3, Perplexity, Manus, Hermes MCP.">
+  <meta property="og:title" content="AI OS Architecture — Models & Routing">
+  <meta property="og:description" content="AI OS routes requests across 6 AI models in 4 tiers: Opus 4.8, OpenAI, Gemini Omni, DeepSeek, Grok-3, Perplexity, Manus, Hermes MCP — self-hosted.">
   <meta name="twitter:card" content="summary">
+  <meta name="twitter:title" content="AI OS Architecture — Models & Routing">
+  <meta name="twitter:description" content="AI OS routes requests across 6 AI models in 4 tiers: Opus 4.8, OpenAI, Gemini Omni, DeepSeek, Grok-3, Perplexity, Manus, Hermes MCP — self-hosted.">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/css/landing.css">
@@ -19,14 +21,15 @@
   {
     "@context": "https://schema.org",
     "@type": "TechArticle",
-    "headline": "Architecture — AI OS Docs",
-    "description": "AI OS architecture — 6 AI models across 4 routing tiers with effort-based routing: Opus 4.8, OpenAI, Gemini Omni, DeepSeek, Grok-3, Perplexity, Manus, and Hermes MCP. Open-source, self-hosted platform.",
+    "headline": "AI OS Architecture — Models & Routing",
+    "description": "AI OS routes requests across 6 AI models in 4 tiers: Opus 4.8, OpenAI, Gemini Omni, DeepSeek, Grok-3, Perplexity, Manus, Hermes MCP — self-hosted.",
     "url": "https://aiosorchestrationlab.com/docs/architecture",
     "author": { "@type": "Organization", "name": "AI OS Orchestration Lab" },
     "publisher": { "@type": "Organization", "name": "AI OS Orchestration Lab", "url": "https://aiosorchestrationlab.com" }
   }
   </script>
   <script type="application/ld+json">{"@context":"https://schema.org","@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Home","item":"https://aiosorchestrationlab.com/"},{"@type":"ListItem","position":2,"name":"Documentation","item":"https://aiosorchestrationlab.com/docs/"},{"@type":"ListItem","position":3,"name":"Architecture"}]}</script>
+  <script type="application/ld+json">{"@context":"https://schema.org","@type":"FAQPage","mainEntity":[{"@type":"Question","name":"What are the three architectural layers of AI OS?","acceptedAnswer":{"@type":"Answer","text":"The Public Layer (landing page, legal pages, documentation, accessible without authentication), the Authenticated Layer (dashboard with 16+ views, gated behind Stripe license payment and a session cookie), and the Intelligence Layer (Orchestrator, agent fleet, multi-model routing, and memory vault, accessed exclusively through the backend API)."}},{"@type":"Question","name":"How does a request flow through AI OS?","acceptedAnswer":{"@type":"Answer","text":"The browser sends an HTTP request to the Express backend; middleware validates the session cookie and checks rate limits; the Orchestrator (Opus 4.8 xhigh) analyzes the request and picks agents; the effort router selects xhigh/high/low based on task complexity and cost; the agent executes, optionally reading or writing the Memory Vault; results stream back via WebSocket."}},{"@type":"Question","name":"What models does AI OS route between?","acceptedAnswer":{"@type":"Answer","text":"Opus 4.8 across three effort tiers (Strategic/xhigh, Professional/high, Scout/low) plus DeepSeek V4 for Economy batch work, Gemini Omni for Creative media, Grok-3 for Realtime data, OpenAI GPT-5.6 for Reasoning, Perplexity Sonar for Grounded Search, Manus for Autonomous multi-step tasks, and Hermes MCP for Persistent background tasks."}},{"@type":"Question","name":"What does the Orchestrator do?","acceptedAnswer":{"@type":"Answer","text":"Running on Opus 4.8 at xhigh effort, it decomposes complex requests into sub-tasks, selects which agents to invoke and in what order, manages inter-agent dependencies and data handoffs, escalates decisions when confidence is low, and synthesizes final outputs from multiple agent results."}},{"@type":"Question","name":"What is the Memory Vault?","acceptedAnswer":{"@type":"Answer","text":"The .magent/ directory: vault/raw/ for ingested source documents, vault/wiki/ for processed knowledge articles, vault/outputs/ for generated artifacts, state/ for debounced JSON runtime state, and team.yaml for the agent roster, roles, and escalation paths."}},{"@type":"Question","name":"What is the backend stack built on?","acceptedAnswer":{"@type":"Answer","text":"Node.js 20 with Express, WebSocket (ws) with heartbeat for real-time updates, Helmet CSP/CORS/express-rate-limit for security, session cookies plus Bearer token API auth, Stripe Checkout and Webhooks for payments, file-based JSON state with debounced auto-save, and PM2 for process management."}}]}</script>
 </head>
 <body>
   <nav class="landing-nav">
@@ -58,7 +61,7 @@
           </div>
 
           <h1>Architecture</h1>
-          <p class="docs-lead">AI OS is built around three pillars: the Orchestrator, the Agent Fleet, and the Memory Vault. Every request flows through a multi-model routing layer that selects the optimal AI provider for each task.</p>
+          <p class="docs-lead">AI OS is a multi-agent orchestration platform built around three pillars: the Orchestrator, the Agent Fleet, and the Memory Vault. It offers a multi-model routing layer that provides the optimal AI provider for each task.</p>
 
           <h2 id="system-topology">System Topology</h2>
           <p>The platform is organized into three vertical layers:</p>
@@ -250,6 +253,20 @@
             <li><strong>Inter + JetBrains Mono</strong> — Google Fonts for UI and code typography</li>
           </ul>
 
+          <h2 id="faq">Frequently Asked Questions</h2>
+          <h3>What are the three architectural layers of AI OS?</h3>
+          <p>The Public Layer (landing page, legal pages, documentation, accessible without authentication), the Authenticated Layer (dashboard with 16+ views, gated behind Stripe license payment and a session cookie), and the Intelligence Layer (Orchestrator, agent fleet, multi-model routing, and memory vault, accessed exclusively through the backend API).</p>
+          <h3>How does a request flow through AI OS?</h3>
+          <p>The browser sends an HTTP request to the Express backend; middleware validates the session cookie and checks rate limits; the Orchestrator (Opus 4.8 xhigh) analyzes the request and picks agents; the effort router selects xhigh/high/low based on task complexity and cost; the agent executes, optionally reading or writing the Memory Vault; results stream back via WebSocket.</p>
+          <h3>What models does AI OS route between?</h3>
+          <p>Opus 4.8 across three effort tiers (Strategic/xhigh, Professional/high, Scout/low) plus DeepSeek V4 for Economy batch work, Gemini Omni for Creative media, Grok-3 for Realtime data, OpenAI GPT-5.6 for Reasoning, Perplexity Sonar for Grounded Search, Manus for Autonomous multi-step tasks, and Hermes MCP for Persistent background tasks.</p>
+          <h3>What does the Orchestrator do?</h3>
+          <p>Running on Opus 4.8 at xhigh effort, it decomposes complex requests into sub-tasks, selects which agents to invoke and in what order, manages inter-agent dependencies and data handoffs, escalates decisions when confidence is low, and synthesizes final outputs from multiple agent results.</p>
+          <h3>What is the Memory Vault?</h3>
+          <p>The <code>.magent/</code> directory: <code>vault/raw/</code> for ingested source documents, <code>vault/wiki/</code> for processed knowledge articles, <code>vault/outputs/</code> for generated artifacts, <code>state/</code> for debounced JSON runtime state, and <code>team.yaml</code> for the agent roster, roles, and escalation paths.</p>
+          <h3>What is the backend stack built on?</h3>
+          <p>Node.js 20 with Express, WebSocket (ws) with heartbeat for real-time updates, Helmet CSP/CORS/express-rate-limit for security, session cookies plus Bearer token API auth, Stripe Checkout and Webhooks for payments, file-based JSON state with debounced auto-save, and PM2 for process management.</p>
+
           <div class="docs-page-nav">
             <a href="/docs/getting-started">&larr; Quick Start</a>
             <a href="/docs/agents">Agent Fleet &rarr;</a>
@@ -265,6 +282,7 @@
           <a href="#memory-vault">Memory Vault</a>
           <a href="#backend-stack">Backend Stack</a>
           <a href="#frontend-stack">Frontend Stack</a>
+          <a href="#faq">FAQ</a>
         </aside>
       </div>
     </div>
