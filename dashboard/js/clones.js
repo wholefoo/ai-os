@@ -577,27 +577,50 @@ function clDispatchHtml() {
     `<option value="${escapeHtml(a.name)}">${escapeHtml(a.label)} — ${escapeHtml(a.does)}</option>`).join('');
   const cap = st.cap ? `<span class="cl-muted">${st.cap.used} of ${st.cap.cap} today</span>` : '';
 
-  const form = `
+  const goalBox = `
     <div style="border:1px solid var(--border,#2a2a3a);border-radius:10px;padding:12px;margin-bottom:14px;">
-      <div class="cl-muted" style="margin-bottom:6px;">Ask an agent to do a piece of work for you. Your clone briefs it on who you are and what you will not claim — the agent does its own job. Results come back here for you to read.</div>
-      <select id="clDispatchAgent" style="width:100%;margin-bottom:8px;">${options}</select>
-      <textarea id="clDispatchTask" rows="3" style="width:100%;" placeholder="What do you want done?"></textarea>
-      <textarea id="clDispatchContext" rows="2" style="width:100%;margin-top:6px;" placeholder="Anything to work from (optional) — pasted notes, a customer message, data"></textarea>
+      <div class="cl-muted" style="margin-bottom:6px;">Say what you want done and let your clone pick the specialist. It will tell you who it chose and why before anything runs.</div>
+      <textarea id="clGoal" rows="2" style="width:100%;" placeholder="What do you want to achieve?"></textarea>
+      <textarea id="clGoalContext" rows="2" style="width:100%;margin-top:6px;" placeholder="Anything to work from (optional)"></textarea>
       <div style="display:flex;gap:8px;margin-top:8px;align-items:center;">
-        <button class="btn btn-primary" onclick="clDispatch()">Commission it</button>
+        <button class="btn btn-primary" onclick="clPlanDispatch()">Let my clone choose</button>
         ${cap}
       </div>
     </div>`;
 
-  if (!st.dispatches.length) return form + '<div class="cl-empty">Nothing commissioned yet.</div>';
+  const form = `
+    <div style="border:1px solid var(--border,#2a2a3a);border-radius:10px;padding:12px;margin-bottom:14px;">
+      <div class="cl-muted" style="margin-bottom:6px;">Or pick the specialist yourself. Your clone briefs it on who you are and what you will not claim — the agent does its own job. Results come back here for you to read.</div>
+      <select id="clDispatchAgent" style="width:100%;margin-bottom:8px;">${options}</select>
+      <textarea id="clDispatchTask" rows="3" style="width:100%;" placeholder="What do you want done?"></textarea>
+      <textarea id="clDispatchContext" rows="2" style="width:100%;margin-top:6px;" placeholder="Anything to work from (optional) — pasted notes, a customer message, data"></textarea>
+      <div style="display:flex;gap:8px;margin-top:8px;">
+        <button class="btn" onclick="clDispatch()">Commission it</button>
+      </div>
+    </div>`;
 
-  return form + st.dispatches.map((d) => {
-    const head = `<div class="cl-muted">${timeAgo(d.createdAt)} · ${escapeHtml(d.agent || 'unknown')}${d.cost ? ` · $${Number(d.cost).toFixed(4)}` : ''}</div>`;
+  if (!st.dispatches.length) return goalBox + form + '<div class="cl-empty">Nothing commissioned yet.</div>';
+
+  return goalBox + form + st.dispatches.map((d) => {
+    const chose = d.selectedBy === 'clone' ? ' · chosen by your clone' : '';
+    const head = `<div class="cl-muted">${timeAgo(d.createdAt)} · ${escapeHtml(d.agent || 'unknown')}${chose}${d.cost ? ` · $${Number(d.cost).toFixed(4)}` : ''}</div>`;
 
     if (d.status === 'refused') {
       return `<div class="cl-draft">${head}
         <div style="margin:6px 0;"><em>${escapeHtml(d.task)}</em></div>
         <div class="cl-esc"><strong>${clEscalationLead(d)}</strong><br>${(d.refusalReasons || []).map(escapeHtml).join('<br>')}</div>
+      </div>`;
+    }
+    if (d.status === 'planned') {
+      return `<div class="cl-draft">${head}
+        <div style="margin:6px 0;"><em>${escapeHtml(d.goal || d.task)}</em></div>
+        <div class="cl-esc"><strong>Your clone chose ${escapeHtml(d.agent)}.</strong><br>
+          ${escapeHtml(d.why || '')}
+          <div class="cl-muted" style="margin-top:6px;">It would ask them: ${escapeHtml(d.task)}</div>
+        </div>
+        <div style="display:flex;gap:8px;margin-top:8px;">
+          <button class="btn btn-primary" onclick="clRunPlan('${escapeHtml(d.id)}')">Yes, go ahead</button>
+        </div>
       </div>`;
     }
     if (d.status === 'pending') {
@@ -617,6 +640,34 @@ function clDispatchHtml() {
       <textarea rows="10" style="width:100%;" readonly>${escapeHtml(d.output || (d.status === 'running' ? 'Working…' : ''))}</textarea>
     </div>`;
   }).join('');
+}
+
+async function clPlanDispatch() {
+  const goal = ((document.getElementById('clGoal') || {}).value || '').trim();
+  const context = (document.getElementById('clGoalContext') || {}).value || '';
+  if (!goal) return showSettingsToast('Say what you want done first', true);
+
+  showSettingsToast('Your clone is deciding…');
+  const res = await fetchJSON(`/api/clones/${clState.selectedId}/dispatch/plan`, { method: 'POST', body: { goal, context } });
+  if (!res || res.error) return showSettingsToast((res && res.error) || 'Your clone could not decide', true);
+
+  await clFetchDispatches();
+  clRenderDetail();
+  if (res.dispatch && res.dispatch.status === 'refused') {
+    showSettingsToast(res.noneFit ? 'Your clone says none of its specialists fit that' : 'Your clone declined that one');
+  } else {
+    showSettingsToast(`Your clone chose ${res.dispatch.agent} — review it before it runs`);
+  }
+}
+
+// Running a plan is a separate click on purpose: choosing the tool and spending money on it are two
+// decisions, and collapsing them would make the clone's choice unreviewable.
+async function clRunPlan(id) {
+  const res = await fetchJSON(`/api/clones/${clState.selectedId}/dispatches/${id}/run`, { method: 'POST', body: {} });
+  if (!res || res.error) return showSettingsToast((res && res.error) || 'Could not commission that', true);
+  if (res.pending) showSettingsToast('Queued for your approval');
+  await clFetchDispatches();
+  clRenderDetail();
 }
 
 async function clDispatch() {

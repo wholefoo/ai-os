@@ -11776,6 +11776,132 @@ app.get('/api/clones/:id/dispatches', requireCloneAccess, (req, res) => {
   });
 });
 
+// The clone picks the tool. This is a PLAN, not a run: it produces a dispatch sitting at 'planned'
+// with the agent the clone chose, why, and how it worded the request. Running it is a second,
+// deliberate step through the same gate as a hand-picked dispatch — selecting is not executing.
+//
+// The plan is recorded even when it will never run, because "what did my clone decide to do" is
+// worth being able to look at, and because a planning call costs money and should count against the
+// same daily ceiling as anything else the clone spends.
+app.post('/api/clones/:id/dispatch/plan', requireCloneAccess, requireCloneDispatch, heavyLimiter, async (req, res) => {
+  const clone = cloneOr404(req, res);
+  if (!clone) return;
+
+  const body = req.body || {};
+  const goal = String(body.goal || '').trim();
+  const context = String(body.context || '');
+  if (!goal) return res.status(400).json({ error: 'say what you want done' });
+  if (clone.status === 'paused') return res.status(400).json({ error: 'This clone is paused' });
+
+  const eff = cloneEffective(clone);
+  const usable = clonePersona.isUsable(eff);
+  if (!usable.usable) return res.status(400).json({ error: 'This clone is not ready to direct agents yet', blockers: usable.reasons });
+
+  // Screen the GOAL before spending anything. The owner's own words are the honest place to check a
+  // boundary: once the clone has reworded it, a keyword match is checking the paraphrase.
+  const upfront = cloneDispatchLib.screenDispatch(eff, { agent: 'researcher', task: goal, context });
+  if (upfront.boundaryBlocked) {
+    const routed = routeEscalation(clone, `${goal}\n${context}`);
+    return res.status(409).json({
+      error: upfront.reasons[0],
+      reasons: upfront.reasons,
+      routedTo: routed.routes,
+      routeUnclaimed: routed.fallback,
+    });
+  }
+
+  const cap = cloneDispatchLib.withinDispatchCap(cloneDispatches, clone.id);
+  if (!cap.ok) return res.status(429).json({ error: `This clone has commissioned ${cap.used} pieces of work in the last 24 hours, which is the limit.` });
+
+  const built = cloneDispatchLib.buildSelectionPrompt(eff, { goal, context });
+  const result = await executeAgent('business-clone', built.task, {
+    systemOverride: built.system,
+    untrusted: built.untrusted,
+    maxTokens: 600,
+  });
+  if (!result.ok) return res.status(502).json({ error: result.error || 'your clone could not decide' });
+
+  const parsed = webStudioPipeline.extractJson(result.content);
+  const choice = cloneDispatchLib.validateSelection(parsed, eff, { goal, context });
+
+  costLedger.push({
+    id: uuidv4(), agent: 'business-clone', model: result.model, skill: 'clone-dispatch-plan', clientId: cloneClientOf(req.session),
+    inputTokens: result.inputTokens || 0, outputTokens: result.outputTokens || 0,
+    cost: result.cost || 0, timestamp: new Date().toISOString(),
+  });
+
+  if (!choice.ok) {
+    // A refusal still gets a record: it costs money and it is part of what the clone did. It is
+    // marked 'refused' so it does not eat the daily allowance.
+    const refusedRec = cloneDispatchLib.createDispatch({
+      id: uuidv4(), cloneId: clone.id, clientId: cloneClientOf(req.session), agent: '', task: '', context,
+      requestedBy: (req.session && req.session.email) || cloneStore.OPERATOR_CLIENT_ID,
+      goal, why: choice.reason, selectedBy: 'clone',
+    });
+    refusedRec.status = 'refused';
+    refusedRec.refusalReasons = choice.reasons || [choice.reason];
+    refusedRec.cost = result.cost || 0;
+    cloneDispatches.push(refusedRec);
+    saveCloneDispatches();
+    return res.json({ ok: true, dispatch: refusedRec, noneFit: !!choice.noneFit });
+  }
+
+  const dispatch = cloneDispatchLib.createDispatch({
+    id: uuidv4(), cloneId: clone.id, clientId: cloneClientOf(req.session),
+    agent: choice.agent, task: choice.task, context,
+    requestedBy: (req.session && req.session.email) || cloneStore.OPERATOR_CLIENT_ID,
+    goal, why: choice.why, selectedBy: 'clone',
+  });
+  dispatch.status = 'planned';
+  dispatch.cost = result.cost || 0;      // the planning call, before any work is commissioned
+  cloneDispatches.push(dispatch);
+  saveCloneDispatches();
+
+  logActivity('clone', `${clone.name} chose ${choice.agent} for: ${goal.slice(0, 80)}`, { cloneId: clone.id, dispatchId: dispatch.id });
+  res.json({ ok: true, dispatch });
+});
+
+// Run a plan. Re-screened and gated exactly as a hand-picked dispatch is — the plan being the
+// clone's idea earns it no shortcut.
+app.post('/api/clones/:id/dispatches/:dispatchId/run', requireCloneAccess, requireCloneDispatch, heavyLimiter, async (req, res) => {
+  const clone = cloneOr404(req, res);
+  if (!clone) return;
+
+  const dispatch = cloneDispatchLib.getDispatch(cloneDispatches, cloneClientOf(req.session), req.params.dispatchId);
+  if (!dispatch || dispatch.cloneId !== clone.id) return res.status(404).json({ error: 'no such plan' });
+  if (dispatch.status !== 'planned') return res.status(400).json({ error: `that plan is already ${dispatch.status}` });
+
+  const screen = cloneDispatchLib.screenDispatch(cloneEffective(clone), { agent: dispatch.agent, task: dispatch.task, context: dispatch.context });
+  if (!screen.allow) {
+    dispatch.status = 'refused';
+    dispatch.refusalReasons = screen.reasons;
+    saveCloneDispatches();
+    return res.json({ ok: true, dispatch });
+  }
+
+  let gate;
+  try {
+    gate = await gateAction({
+      type: 'clone.dispatch-agent',
+      summary: `${clone.name} wants ${dispatch.agent} to: ${String(dispatch.task).slice(0, 120)}`,
+      target: clone.name,
+      params: { dispatchId: dispatch.id },
+      req,
+    });
+  } catch (e) {
+    dispatch.status = 'failed';
+    dispatch.error = e.message;
+    dispatch.completedAt = new Date().toISOString();
+    saveCloneDispatches();
+    return res.status(502).json({ ok: false, dispatch, error: e.message });
+  }
+
+  dispatch.gateDecision = gate.decision;
+  if (gate.pending) { dispatch.approvalId = gate.approval.id; dispatch.status = 'pending'; }
+  saveCloneDispatches();
+  res.json({ ok: true, dispatch, pending: !!gate.pending, approval: gate.approval || null });
+});
+
 app.post('/api/clones/:id/dispatch', requireCloneAccess, requireCloneDispatch, heavyLimiter, async (req, res) => {
   const clone = cloneOr404(req, res);
   if (!clone) return;
