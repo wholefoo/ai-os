@@ -129,4 +129,36 @@ assert(drafts.listDrafts(all, 'dana@example.com', 'c9').length === 0, 'a clone i
 assert(drafts.getDraft(all, 'dana@example.com', 'd9') === null, 'another client\'s draft id is a miss, not a read');
 assert(drafts.getDraft(all, 'dana@example.com', 'd1').id === 'd1', 'own draft is retrievable');
 
+// --- WHO set the limit changes how the refusal reads.
+// An employee never chose the company's limits. Telling them "you asked to handle this personally"
+// when the owner asked is confusing, and reads as an accusation about a choice they did not make.
+const shared = persona.normalize({
+  identity: { ownerName: 'Sam' },
+  boundaries: { requiresHuman: ['contract dispute', 'my own escalation'], confidentialTopics: ['supplier margins', 'my own secret'] },
+});
+const companyBoundaries = { requiresHuman: ['contract dispute'], confidentialTopics: ['supplier margins'] };
+
+const own = drafts.screenInbound(shared, 'about my own escalation please', companyBoundaries);
+assert(/which you asked to handle personally/.test(own.reasons[0]), 'a limit the person set themselves still reads as theirs');
+
+const fromCompany = drafts.screenInbound(shared, 'about the contract dispute', companyBoundaries);
+assert(/your company reserves for a person/.test(fromCompany.reasons[0]),
+  `a company-set limit is attributed to the company, not to the reader (got: ${fromCompany.reasons[0]})`);
+assert(!/you asked/.test(fromCompany.reasons[0]), 'and does not tell them they asked for something they did not');
+
+const ownSecret = drafts.screenInbound(shared, 'about my own secret', companyBoundaries);
+assert(/which you marked confidential/.test(ownSecret.reasons[0]), 'same split for confidential topics — their own');
+const coSecret = drafts.screenInbound(shared, 'about supplier margins', companyBoundaries);
+assert(/your company marked confidential/.test(coSecret.reasons[0]), 'and the company\'s');
+
+// With no company profile supplied, everything is the person's — correct for a one-person business,
+// and the behaviour every existing caller had before company boundaries were passed at all.
+const solo = drafts.screenInbound(shared, 'about the contract dispute');
+assert(/which you asked to handle personally/.test(solo.reasons[0]), 'with no company profile the wording is unchanged');
+assert(solo.escalate, 'and it still escalates — attribution never changes WHETHER a limit applies');
+
+// Case-insensitive attribution: the company wrote "Contract Dispute", the persona holds it lower-case.
+const casing = drafts.screenInbound(shared, 'about the contract dispute', { requiresHuman: ['CONTRACT DISPUTE'] });
+assert(/your company reserves/.test(casing.reasons[0]), 'attribution matches case-insensitively, like every other topic comparison');
+
 done();

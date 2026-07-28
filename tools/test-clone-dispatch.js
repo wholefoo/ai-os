@@ -193,4 +193,29 @@ assert(dispatch.withinDispatchCap(old, 'c1', now).ok, 'and rolls off after 24h')
 const refusals = Array.from({ length: dispatch.DAILY_DISPATCH_CAP + 5 }, () => ({ cloneId: 'c1', status: 'refused', createdAt: iso(1000) }));
 assert(dispatch.withinDispatchCap(refusals, 'c1', now).ok, 'refusals do not count against the cap');
 
+// --- the same attribution rule on the dispatch screen, so the two cannot drift apart
+const dispCompany = { requiresHuman: ['contract dispute'], confidentialTopics: ['supplier margins'] };
+const dispOwn = dispatch.screenDispatch(P, { agent: 'writer', task: 'about the refund policy', companyBoundaries: dispCompany });
+assert(/which you asked to handle personally/.test(dispOwn.reasons[0]), 'a limit the person set reads as theirs here too');
+
+const dispCo = dispatch.screenDispatch(P, { agent: 'writer', task: 'about the contract dispute', companyBoundaries: dispCompany });
+assert(/your company reserves for a person/.test(dispCo.reasons[0]),
+  `a company-set limit is attributed to the company (got: ${dispCo.reasons[0]})`);
+assert(dispCo.boundaryBlocked, 'and it still blocks — wording never changes enforcement');
+
+const dispSecret = dispatch.screenDispatch(P, { agent: 'data-wrangler', task: 'break down supplier margins', companyBoundaries: dispCompany });
+assert(/your company marked confidential/.test(dispSecret.reasons[0]), 'same for a company confidential topic');
+
+assert(/which you asked to handle personally/.test(
+  dispatch.screenDispatch(P, { agent: 'writer', task: 'about the contract dispute' }).reasons[0]),
+  'and with no company boundaries supplied the wording is unchanged');
+
+// The selection path re-screens internally, so it must carry the attribution through rather than
+// silently falling back to "you asked".
+const selCo = dispatch.validateSelection(
+  { agent: 'writer', why: 'They write.', task: 'Draft our position on the contract dispute.' },
+  P, { goal: 'the Meridian situation', companyBoundaries: dispCompany });
+assert(!selCo.ok && /your company reserves/.test(selCo.reason),
+  `validateSelection forwards company boundaries to its inner screen (got: ${selCo.reason})`);
+
 done();

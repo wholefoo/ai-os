@@ -2721,7 +2721,7 @@ const ACTION_EXECUTORS = {
     // boundary that has since been lifted, or — the direction that matters — ignore one that has
     // since been set.
     const eff = cloneEffective(clone);
-    const screen = cloneDispatchLib.screenDispatch(eff, { agent: d.agent, task: d.task, context: d.context });
+    const screen = cloneDispatchLib.screenDispatch(eff, { agent: d.agent, task: d.task, context: d.context, companyBoundaries: cloneCompanyBoundaries(clone) });
     if (!screen.allow) {
       d.status = 'refused';
       d.refusalReasons = screen.reasons;
@@ -10992,6 +10992,19 @@ function cloneOrgProfile(clone) {
 }
 
 /**
+ * The COMPANY's own boundary lists for a clone's org, or null when there is no profile.
+ *
+ * Passed to the screens purely so a refusal can say who set the limit. An employee did not choose
+ * the company's limits, and telling them "you asked to handle this personally" when they did not is
+ * confusing at best. Nothing about WHETHER a limit applies depends on this — that is settled by the
+ * effective persona, which already merges both.
+ */
+function cloneCompanyBoundaries(clone) {
+  const prof = cloneOrgProfile(clone);
+  return prof ? orgProfile.normalizeProfile(prof).boundaries : null;
+}
+
+/**
  * The persona a clone actually speaks and is judged with.
  *
  * EVERY site that decides or speaks must use this: compiling the prompt, checking output against red
@@ -11373,7 +11386,9 @@ app.delete('/api/org/members/:email', requireAdmin, (req, res) => {
   saveState('users', users);
 
   logActivity('auth', `Employee offboarded: ${addr} — ${personaDeleted} persona(s) deleted, ${retained} drafts retained as company records`, { org: orgKey });
-  res.json({ ok: true, offboarded: addr, personaDeleted, draftsRetained: retained });
+  // 'recordsRetained', not 'draftsRetained': it counts commissioned work as well as drafts, and has
+  // done since dispatches existed. The old name under-described what the company keeps.
+  res.json({ ok: true, offboarded: addr, personaDeleted, recordsRetained: retained });
 });
 
 // --- Onboarding -------------------------------------------------------------
@@ -11677,7 +11692,7 @@ app.post('/api/clones/:id/drafts', requireCloneAccess, heavyLimiter, async (req,
 
   // Inbound screen FIRST — before spending anything. If the owner said they handle this topic
   // personally, drafting it would be ignoring them, and paying to ignore them at that.
-  const screen = cloneDraftsLib.screenInbound(cloneEffective(clone), inbound);
+  const screen = cloneDraftsLib.screenInbound(cloneEffective(clone), inbound, cloneCompanyBoundaries(clone));
   if (screen.escalate) {
     draft.status = 'escalated';
     draft.escalationReasons = screen.reasons;
@@ -11808,7 +11823,7 @@ app.post('/api/clones/:id/dispatch/plan', requireCloneAccess, requireCloneDispat
 
   // Screen the GOAL before spending anything. The owner's own words are the honest place to check a
   // boundary: once the clone has reworded it, a keyword match is checking the paraphrase.
-  const upfront = cloneDispatchLib.screenDispatch(eff, { agent: 'researcher', task: goal, context });
+  const upfront = cloneDispatchLib.screenDispatch(eff, { agent: 'researcher', task: goal, context, companyBoundaries: cloneCompanyBoundaries(clone) });
   if (upfront.boundaryBlocked) {
     const routed = routeEscalation(clone, `${goal}\n${context}`);
     return res.status(409).json({
@@ -11831,7 +11846,7 @@ app.post('/api/clones/:id/dispatch/plan', requireCloneAccess, requireCloneDispat
   if (!result.ok) return res.status(502).json({ error: result.error || 'your clone could not decide' });
 
   const parsed = webStudioPipeline.extractJson(result.content);
-  const choice = cloneDispatchLib.validateSelection(parsed, eff, { goal, context });
+  const choice = cloneDispatchLib.validateSelection(parsed, eff, { goal, context, companyBoundaries: cloneCompanyBoundaries(clone) });
 
   costLedger.push({
     id: uuidv4(), agent: 'business-clone', model: result.model, skill: 'clone-dispatch-plan', clientId: cloneClientOf(req.session),
@@ -11880,7 +11895,7 @@ app.post('/api/clones/:id/dispatches/:dispatchId/run', requireCloneAccess, requi
   if (!dispatch || dispatch.cloneId !== clone.id) return res.status(404).json({ error: 'no such plan' });
   if (dispatch.status !== 'planned') return res.status(400).json({ error: `that plan is already ${dispatch.status}` });
 
-  const screen = cloneDispatchLib.screenDispatch(cloneEffective(clone), { agent: dispatch.agent, task: dispatch.task, context: dispatch.context });
+  const screen = cloneDispatchLib.screenDispatch(cloneEffective(clone), { agent: dispatch.agent, task: dispatch.task, context: dispatch.context, companyBoundaries: cloneCompanyBoundaries(clone) });
   if (!screen.allow) {
     dispatch.status = 'refused';
     dispatch.refusalReasons = screen.reasons;
@@ -11936,7 +11951,7 @@ app.post('/api/clones/:id/dispatch', requireCloneAccess, requireCloneDispatch, h
 
   // Screen BEFORE the gate and before anything is spent. A boundary refusal is not an approval
   // question — the owner already answered it — so it never reaches the queue.
-  const screen = cloneDispatchLib.screenDispatch(eff, { agent, task, context });
+  const screen = cloneDispatchLib.screenDispatch(eff, { agent, task, context, companyBoundaries: cloneCompanyBoundaries(clone) });
   if (!screen.allow) {
     dispatch.status = 'refused';
     dispatch.refusalReasons = screen.reasons;
