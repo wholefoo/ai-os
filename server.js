@@ -232,6 +232,15 @@ const CLIENT_API_ALLOW = ['/api/web-studio', '/api/auth', '/api/provenance', '/a
   '/api/commerce', // public offer + checkout (a client may also buy another managed site)
   '/api/clones', // AI Business Clone — every route is owner-scoped via cloneClientOf + getClone,
                  // and admin gets no cross-client view (a clone is a replica of how someone thinks)
+  // EXACT path, and the only /api/org surface a non-admin may reach. An employee who cannot yet
+  // build their clone needs to see WHAT is being waited on and WHOSE move it is — that is the whole
+  // reason the route is not requireAdmin, and without this line the client guard 403s it before the
+  // route's own middleware runs, leaving them a create button that always fails.
+  // Deliberately NOT '/api/org': that would also open members, the profile (writable), documents and
+  // the employer's cross-clone view. The rest of the org surface stays operator-only.
+  // requireCloneAccess still runs behind this, so a managed-website client without clone access is
+  // refused there; an employee of the org passes both and sees only their own org's status.
+  '/api/org/foundation',
   '/api/support/contact']; // public AI helpdesk (exact path — keeps any future /api/support/* internal)
 function clientSurfaceGuard(req, res, next) {
   const url = req.originalUrl.split('?')[0];
