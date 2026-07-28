@@ -85,6 +85,19 @@ Each virtual employee maps to an AI agent with a specific model tier, can receiv
 - **Import / Export** — Import existing sites (ZIP/tar upload or GitHub clone, host-as-is) and export any site (ZIP download or GitHub push)
 - **Tap into AI OS** — Sites auto-route across the agent fleet so models and agents continuously optimize them against AI OS's own AEO scorer
 
+### AI Business Clones
+A clone is a replica of one specific person — their voice, expertise, decision style and hard limits — built by interviewing them, not by filling in a form. It is **not an agent**: an agent is function-first (it exists to do a job), a clone is person-first (what it knows and refuses to say *is* the product). Agents are the tools a clone uses.
+
+**The company profile comes first.** It is a separate record from any clone and gates every clone including the founder's — the facts and limits every clone on the instance inherits. Build it by typing, or upload what the business already has written down (`.txt`, `.md`, `.csv`, `.docx`, `.xlsx`) and accept what AI OS reads out of it field by field. Extraction can only ever *add* a limit, never remove or loosen one, and every accepted value records which document it came from.
+
+- **Draft-only.** The clone produces text, a person reviews it, the person sends it. Nothing here sends.
+- **Boundaries enforced twice** — compiled into the prompt and checked against the generated output in code. A topic the owner reserves is screened *before* any model call, so it costs nothing to refuse.
+- **Company limits merge at the point of use**, never copied into a persona. An employee can add stricter limits for themselves; they cannot remove the company's, because those were never in the record they edit.
+- **Teams** (Business/Enterprise) — invite colleagues and each builds their own clone, one per person. The employer sees the work their clones produced, never their persona.
+- **Responsibility map** — who handles what, defined once for the company, so overlaps, unowned escalation topics and areas pointing at someone who has left are all detectable. Escalations route to whoever owns the topic rather than always to the owner.
+- **Directing agents** — a clone can commission work from a restricted allowlist of agents whose output comes back as text, and can pick the specialist itself from a stated goal. It cannot direct anything that deploys, publishes or sends; a reserved topic blocks the request itself; and every run passes the same approval gate as an operator-initiated action.
+- **Limits per instance**, not per person: 1 on Community, 10 on Business, 25 on Enterprise.
+
 ### CRM + Client Management
 - **CRM** — node:sqlite-backed contact/account store with live ingest seams, notes, edits, and linking
 - **AI Helpdesk (Contact Page)** — the public contact page is a documentation-grounded support agent: visitors submit email + subject + problem and get an instant answer from the docs in a multi-turn thread; anything it can't resolve is logged to the CRM for human follow-up. Visitor input is prompt-injection-fenced, and the support email is not exposed (Enterprise priority channel only)
