@@ -5797,7 +5797,7 @@ function seedCanonicalFacts() {
     ['Routing tier count', '4', 'Model routing tiers: strategic, professional, scout, economy.'],
   ];
 
-  return facts.map(([title, value, note]) => libraryCatalogMod.normalize({
+  return facts.map(([title, value, note]) => libraryCatalogMod.normalizeRecord({
     title,
     value,
     source: 'canonical-fact',
@@ -5887,7 +5887,7 @@ function libraryLookup(query, opts) {
   // Access first, then search. Filtering after a search would still have loaded records the caller
   // may not see into the same array a bug could leak.
   const visible = libraryReaders.readableBy(libraryCatalog, requester);
-  const hits = (query ? libraryCatalogMod.search(visible, query) : visible).slice(0, limit);
+  const hits = (query ? libraryCatalogMod.searchRecords(visible, query) : visible).slice(0, limit);
 
   const untrusted = [];
   for (const r of hits) {
@@ -5941,7 +5941,7 @@ app.get('/api/library', (req, res) => {
 app.get('/api/library/search', (req, res) => {
   const visible = libraryReaders.readableBy(libraryCatalog, libraryRequesterFor(req));
   const q = String(req.query.q || '');
-  const hits = q ? libraryCatalogMod.search(visible, q) : visible;
+  const hits = q ? libraryCatalogMod.searchRecords(visible, q) : visible;
   res.json(hits.slice(0, 100).map(libraryRecordView));
 });
 

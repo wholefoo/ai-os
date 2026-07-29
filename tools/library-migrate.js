@@ -56,6 +56,10 @@ const fs = require('fs');
 const path = require('path');
 
 const catalog = require('../lib/library/catalog');
+// The sentinels come from readers.js rather than being retyped as literals here: the access
+// model owns their spelling, and a migration that invented its own 'all-operators' string
+// would grant nothing while looking correct.
+const { ALL_AGENTS, ALL_OPERATORS } = require('../lib/library/readers');
 const documents = require('../lib/org/documents');
 const { sha256Hex } = require('../lib/provenance');
 
@@ -106,7 +110,7 @@ function collectVaultCandidates() {
       const fpath = path.join(dir, f.name);
       const buf = fs.readFileSync(fpath);
       const stat = fs.statSync(fpath);
-      out.push(catalog.normalize({
+      out.push(catalog.normalizeRecord({
         title: f.name,
         store: 'vault',
         path: `${folder}/${f.name}`,
@@ -117,7 +121,7 @@ function collectVaultCandidates() {
         owner: '',
         addedBy: 'library-migrate',
         addedAt: stat.mtime.toISOString(),
-        readers: ['all-agents', 'all-operators'],
+        readers: [ALL_AGENTS, ALL_OPERATORS],
         sensitivity: 'internal',
         retention: { policy: 'keep' },
         tags: [folder],
@@ -151,7 +155,7 @@ function collectOrgDocsCandidates() {
     const fpath = path.join(ORG_DOCS_DIR, f.name);
     const buf = fs.readFileSync(fpath);
     const stat = fs.statSync(fpath);
-    out.push(catalog.normalize({
+    out.push(catalog.normalizeRecord({
       title: (meta && meta.filename) || f.name,
       store: 'org-docs',
       path: f.name,
@@ -198,7 +202,7 @@ function collectArtifactsCandidates() {
       const buf = fs.readFileSync(full);
       const stat = fs.statSync(full);
       const category = rel.split('/')[0];
-      out.push(catalog.normalize({
+      out.push(catalog.normalizeRecord({
         title: e.name,
         store: 'artifacts',
         path: rel,
@@ -209,7 +213,7 @@ function collectArtifactsCandidates() {
         owner: '',
         addedBy: 'library-migrate',
         addedAt: stat.mtime.toISOString(),
-        readers: ['all-agents', 'all-operators'],
+        readers: [ALL_AGENTS, ALL_OPERATORS],
         sensitivity: 'internal',
         retention: { policy: 'keep' },
         tags: [category],
@@ -264,7 +268,7 @@ function main() {
 
   // Existing records FIRST: on a duplicate, dedupeByHash keeps the first occurrence, so an
   // already-cataloged file keeps its stable id and the fresh candidate (which just got a brand new
-  // id from catalog.normalize()) is the one dropped. Reverse this order and every id would reshuffle
+  // id from catalog.normalizeRecord()) is the one dropped. Reverse this order and every id would reshuffle
   // on every run.
   const { kept, dropped } = catalog.dedupeByHash([...existingList, ...candidates]);
   const added = kept.filter((r) => !existingIds.has(r.id));

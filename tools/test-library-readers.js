@@ -4,6 +4,9 @@
 // grant that quietly admits people, an owner or admin shortcut smuggled in beside the list — not
 // merely to confirm that the happy path returns true.
 const readers = require('../lib/library/readers');
+// FORBIDDEN_KEYS has ONE owner (lib/org/visibility). readers.js used to re-export it for
+// convenience; that made two modules export the same name, so the re-export was dropped.
+const { FORBIDDEN_KEYS } = require('../lib/org/visibility');
 
 const { assert, done } = require('./test-util');
 
@@ -111,9 +114,9 @@ assert(readers.isPublishable({ prompt: 'leak' }) === false, 'isPublishable agree
 
 // The tripwire must stay coupled to the org module's list rather than keeping a private copy that
 // drifts when a new persona field is added there.
-assert(Array.isArray(readers.FORBIDDEN_KEYS) && readers.FORBIDDEN_KEYS.includes('persona'),
-  'FORBIDDEN_KEYS is re-exported from lib/org/visibility, not redefined here');
-for (const key of readers.FORBIDDEN_KEYS) {
+assert(Array.isArray(FORBIDDEN_KEYS) && FORBIDDEN_KEYS.includes('persona'),
+  'FORBIDDEN_KEYS comes from lib/org/visibility — readers.js must not keep a private copy that drifts when a persona field is added there');
+for (const key of FORBIDDEN_KEYS) {
   assert(readers.findPersonaLeaks({ [key]: 'x' }).length > 0, `every forbidden key is actually caught: ${key}`);
 }
 
