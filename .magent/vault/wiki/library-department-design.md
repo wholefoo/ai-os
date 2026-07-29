@@ -1,6 +1,8 @@
 # Knowledge & Records (Department #11) — Architecture & Delivery Plan
 
-*Status: design for human approval. No implementation until signed off. Approval owner: Reviewer.*
+*Status: **rev 3 APPROVED for implementation** by Reviewer (confirming pass — B1/B2/B3 closed, no new errors, both disputed points resolved in the doc's favor). **Rev 4 adds P0 scope the Reviewer has NOT seen** — see the rev-4 note below; that addition needs its own sign-off before P0 is considered fully specified.*
+
+*Revision 4 — the release-procedure gap, found after approval while checking the Reviewer's O2 (README carries a stale count). O2 turned out to be the visible edge of something larger: `tools/check-copy-drift.js` is a **CI-gated** drift check (`.github/workflows/ci.yml:51`), and `.claude/commands/ship.md:10` documents the required procedure for any public-surface feature — update `README.md`, the landing `featureList` JSON-LD in `dashboard/index.html`, **and** the `FEATURES` manifest in the drift check, in the same commit. A new department is unambiguously a public-surface feature. As approved, P0 named none of those four surfaces — which produces the *silent* form of the failure (CI stays green while the public copy quietly omits a whole department), with the loud form arriving only if someone adds the manifest entry without the copy. `DOCS_ENFORCE = true` additionally requires the feature to be documented somewhere in `dashboard/docs/*.html`. Now specified as P0 item 8. Two further canon sites also surfaced and are included: the Atlas voice-agent system prompt (`agent-worker/agent.js:27`, which speaks the count aloud to users) and the published A2A agent card (`lib/a2a.js:31`).*
 
 *Revision 3 — Reviewer sign-off round; verdict was REVISE with three blocking issues, all fixed here. (B1) the P0 verify gate tested only the department string while the DoD forbids the agent counts too, so a page asserting "66 agents" passed a green check — the gate now matches the DoD. (B2) the dashboard manifest glob `**/*.html` excluded `dashboard/js/app.js` and `dashboard/llms.txt`, which both carry the counts. (B3) the artifacts store is a nested tree, so the flat basename guard the schema claimed to inherit cannot express a valid artifact path — the read rule is now stated per store. Two corrections to the review itself: the department-string count is **27** files, not 25 (auto-research carries 6 hits, not 4) — though the sweep the Coder actually performs is **25 tracked files** across all phrasings, which is a different 25 than the review's. And a fourth issue the review did not catch: **3 of the 6 auto-research hits are gitignored regenerated artifacts**, so the verify gate as originally written could never go green — it is now scoped to tracked files. Non-blocking N1/N3/N4 also applied; N2 and N5 accepted as-is with reasons in §9.*
 
@@ -194,6 +196,30 @@ Phase gates are the same shape as the Web Studio plan: In scope · Deferred · D
 
    Ship this *with* P0 — a department whose own headline feature is the canonical-facts shelf cannot land while making the drift it exists to fix measurably worse.
 
+   **Canon sites outside `dashboard/` and `auto-research/`.** The sweep's declared scope misses four tracked files that assert the counts. Two are user- or machine-facing and must be updated; two are internal and are deliberately left:
+
+   | File | Facing | Action |
+   |---|---|---|
+   | `README.md` | Public — open-core GitHub front door; the counts appear in the opening paragraph, the ASCII diagram, the roster prose (~line 54), and both license descriptions | **Update.** Also needs a feature entry — see item 8. |
+   | `agent-worker/agent.js:27` | User — the Atlas voice agent's system prompt; it *speaks* "66 AI agents across 10 departments" in conversation | **Update.** A voice agent stating a wrong count is the most visible failure mode of all. |
+   | `lib/a2a.js:31` | Machine — the published A2A agent-card description, read by external agents | **Update.** |
+   | `server.js:3592`, `.claude/commands/ship.md:10` | Internal comments / procedure doc | Leave; see the N2 reasoning at the end of §8. `ship.md`'s canonical-numbers line is procedure, not a claim about the product. |
+
+8. **Release procedure — `tools/check-copy-drift.js` is CI-gated, and a new department is a public-surface feature.** `.claude/commands/ship.md:10` sets the contract and `.github/workflows/ci.yml:51` enforces it. Four surfaces must change **in the same commit**.
+
+   **Be precise about which failure this guards against.** The check verifies that every entry in its own `FEATURES` manifest appears on the surfaces — so the two ways to get this wrong are asymmetric: adding the manifest entry without the copy **fails CI loudly**, while shipping the department and *skipping the manifest entry* leaves CI **green while the copy drifts silently**. The second is the dangerous one, and it is exactly the failure the check's header records (the copy fell ~10 features behind in a week because the numbers had guards and the features did not). Baseline today is green at 21/21 features, so a silent regression here would be invisible until someone read the README and noticed a department missing.
+
+   | Surface | Requirement |
+   |---|---|
+   | `tools/check-copy-drift.js` | Add a `FEATURES` entry, e.g. `{ name: 'Knowledge & Records library', pattern: /knowledge & records\|company library\|document library/i }`. The pattern must match the wording actually used on the surfaces below — write the copy first, then the pattern. |
+   | `README.md` | Mention the feature (plus the count fixes above). |
+   | `dashboard/index.html` | Add to the landing `featureList` JSON-LD. |
+   | `dashboard/docs/*.html` | **`DOCS_ENFORCE = true`** — the feature must be documented *somewhere* in the docs corpus (aggregate, not per-page). `dashboard/blog/` does not count; it is deliberately unaudited. A new docs page is the natural home, and it must meet the web-content standard (JSON-LD/FAQPage, AEO checklist) like every other docs page. |
+
+   Order matters: the drift check's pattern is matched against the other three surfaces, so a manifest entry added before the copy exists fails CI by design. Write copy → add pattern → verify.
+
+   Verify: `node tools/check-copy-drift.js` (exit 0).
+
 **File manifest (P0):**
 
 | File | New / Modified | What |
@@ -211,6 +237,8 @@ Phase gates are the same shape as the Web Studio plan: In scope · Deferred · D
 | `.magent/team.yaml` | MODIFIED | +`chief-librarian`, +`archivist` roles. |
 | `ai-os-commercial/org-chart/departments.js` | MODIFIED | **Remove** `prod-knowledge` from `ADDITIONAL_AGENTS.product`. |
 | `dashboard/**` — **not** `**/*.html` | MODIFIED | Product-canon sweep: 10 → 11 departments, 66 → 68 agents, 15 → 19 community. **22 tracked files** across all phrasings. **`dashboard/js/app.js` and `dashboard/llms.txt` both carry the counts and an `*.html` glob silently skips them.** Includes the scored JSON-LD `FAQPage` answers in `dashboard/docs/agents.html`. Rely on the verify gate for completeness, not on the count. |
+| `README.md`, `agent-worker/agent.js`, `lib/a2a.js` | MODIFIED | Canon sites outside the swept paths: public README (counts + feature entry), the Atlas voice-agent system prompt (it speaks the count aloud), the published A2A agent card. |
+| `tools/check-copy-drift.js`, `dashboard/index.html`, a new `dashboard/docs/*.html` | MODIFIED / NEW | Release procedure per `ship.md` — `FEATURES` manifest entry, landing `featureList` JSON-LD, and a docs page (`DOCS_ENFORCE = true`). **CI-gated; P0 fails CI without these.** |
 | `auto-research/seed/landing-seo.html`, `instructions.md`, `score.js` | MODIFIED | The 3 **tracked** files of the 6 that carry the string. Update the seed and the two hard-coded checks so the generator does not re-introduce the old numbers. Do **not** edit `asset/` or `history/*` — gitignored, regenerated, and `history/` is a record of past iterations. |
 
 **API routes (P0):**
@@ -280,7 +308,11 @@ Canon check — **must return nothing.** Note both properties: it tests every ph
 ```
 git grep -lE "10 departments|66 agents|all 66|66 AI agents|66, across|15 across 5 departments" -- dashboard auto-research
 ```
-If a new phrasing of either count is introduced anywhere, add it to this pattern in the same commit — the gate is only as good as its alternation list, which is the same enumeration weakness that let a boundary guard miss the one field nobody listed.
+Release-procedure gate (must exit 0 — see P0 item 8):
+```
+node tools/check-copy-drift.js
+```
+If a new phrasing of either count is introduced anywhere, add it to the canon pattern in the same commit — the gate is only as good as its alternation list, which is the same enumeration weakness that let a boundary guard miss the one field nobody listed.
 
 ---
 
@@ -441,6 +473,10 @@ Every boundary the department crosses reuses an existing, proven guard. Nothing 
 
 ---
 
+12. **The design was blind to the repo's own release procedure** (rev 4, found post-approval while checking Reviewer O2). `tools/check-copy-drift.js` is CI-gated at `.github/workflows/ci.yml:51`, and `.claude/commands/ship.md:10` requires a public-surface feature to land in `README.md`, the landing `featureList` JSON-LD, and the drift-check `FEATURES` manifest in one commit — with `DOCS_ENFORCE = true` additionally demanding a docs page. Both review passes missed this, and O2 ("README carries a stale count") was its visible edge: the README needs a *feature entry*, not just a number fix. Now P0 item 8. Worth stating plainly: **the spec was approved in a state that would have shipped a department the public copy never mentions** — and because the drift check only polices its own manifest, CI would have stayed green throughout. Two review passes read the document carefully; neither ran the repo's gates against it. That is the argument for executing a plan's own verify commands during review, not only reading them.
+
+---
+
 **Accepted as-is from the sign-off review, with reasons (rev 3):**
 - **`server.js:3592` hard-codes "66 agents" in an internal comment** (Reviewer N2). Deliberately left outside the sweep's declared scope, which is user-facing copy plus the generator. A stale internal comment misleads a reader; a stale JSON-LD answer misleads a search engine and a customer. Fixing it is welcome in passing, but adding non-user-facing comments to the verify gate would make the gate noisy and eventually ignored.
 - **Line-number anchors drift by a few lines** (Reviewer N5 — `orgDocTextPath` ~11049 vs 11053, `getVaultStats` ~4393 vs 4395, `ACTION_EXECUTORS` ~8629 vs 8633). Every anchor uses the `~` convention and every symbol was verified present within a handful of lines. Chasing exact line numbers in a doc that will outlive them is false precision; the symbol name is the durable locator and every one of them is correct.
@@ -469,7 +505,8 @@ Every locked decision and required content item, mapped to where it is addressed
 | Gotchas in the lib/org header voice | §11 |
 | Security-boundary callouts + inherited guard | §7 |
 | Canonical-facts shelf as the stale-number fix | §1, §6 P0 item 4, §8 (staleness risk) |
-| Flag codebase-vs-briefing contradictions | §9 (11 items after rev 3) |
+| Flag codebase-vs-briefing contradictions | §9 (12 items after rev 4) |
+| CI release procedure (`check-copy-drift.js`, README, featureList, docs page) | §6 P0 item 8, §11 |
 | Per-store path-traversal read rule (Reviewer B3) | §4 store table, §7 |
 | Canon gate matching its own DoD, tracked files only (Reviewer B1 + rev-3 finding) | §6 P0 item 7, verify block, §9 items 10-11 |
 | Client-role reachability of the contribution path | §6 P2 prerequisite steps, §7, §11 |
@@ -500,6 +537,8 @@ Every locked decision and required content item, mapped to where it is addressed
 - **The vault allowlist lives in more places than you think.** `['raw','wiki','outputs']` is hardcoded in at least five spots in server.js and probably a sixth in the map generator. Re-pointing the vault through the catalog means finding all of them; a half-migrated vault where one route still reads the folder directly is a record the catalog's `readers` guard never sees.
 
 - **Two guards stand in front of every route here, and neither is the route's own middleware.** `authMiddleware` decides whether the caller is anyone at all; `CLIENT_API_ALLOW` decides whether a `client` may see this prefix — and it answers 403 *before* the handler's `requireAdmin` ever runs. So a route can look correctly guarded, test green as an operator, and be silently unreachable for the exact role it was written for. That is how P2's contribute route was specced broken. When you add a library prefix to that allowlist, add the **exact path**: `'/api/library'` would hand a client the catalog listing, search, and raw content along with the one route you meant. And when you assert it works, assert the 403s too — the passing half alone is indistinguishable from an over-broad prefix.
+
+- **This repo already has a canon gate, and it is not the one this doc invents.** `tools/check-copy-drift.js` runs in CI and checks that every entry in its `FEATURES` manifest appears in `README.md`, the landing page, and the docs corpus. A new department is a public-surface feature, so P0 must add it to all four places in one commit or CI rejects the build — and the drift check's pattern is matched *against* the copy, so adding the manifest entry before writing the copy fails by design. Write copy, then pattern. The grep gate this doc specifies covers stale *numbers*; the drift check covers missing *features*. They are complementary and you need both, which is precisely the lesson the drift check's own header records: the numbers had guards, the features didn't, and the copy fell ten features behind in a week.
 
 - **Adding a department is a product-copy change, not just a code change.** The count is a fact about the product, and it is carved into 27 files plus a scored JSON-LD block plus the auto-research generator's own checks and seed. Edit only the pages and the generator re-writes the old number back on its next run; edit only the generator and the pages stay wrong until it runs. This department exists partly to end that pattern, which makes shipping it with a stale count the one failure mode nobody would let us live down — and the durable fix is the shelf plus one writer, not a more careful sweep next time.
 
