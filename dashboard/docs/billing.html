@@ -74,8 +74,7 @@
               <tr><td>Custom agents</td><td>&#10060;</td><td>&#10060;</td><td>&#9989;</td><td>&#9989;</td></tr>
               <tr><td>Custom domain</td><td>&#10060;</td><td>&#9989; (self-hosted)</td><td>&#9989;</td><td>&#9989;</td></tr>
               <tr><td>SSO / SAML</td><td>&#10060;</td><td>&#10060;</td><td>&#10060;</td><td>&#9989;</td></tr>
-              <tr><td>Priority support</td><td>&#10060;</td><td>Community</td><td>Priority email</td><td>Priority + Slack</td></tr>
-              <tr><td>Optional renewal</td><td>N/A</td><td>N/A</td><td>N/A</td><td>$997/yr (extend priority support)</td></tr>
+              <tr><td>Support</td><td>Community</td><td>Community</td><td>Priority email</td><td>Priority email + Slack</td></tr>
             </tbody>
           </table>
 
@@ -135,7 +134,7 @@
             <li>Fill in:
               <ul>
                 <li><strong>Name:</strong> <code>AI OS Enterprise License</code></li>
-                <li><strong>Description:</strong> <code>Everything in Business + 1 year priority support, custom agents, target response times, self-hosted</code></li>
+                <li><strong>Description:</strong> <code>Everything in Business + SSO/SAML, custom agents, advanced security, self-hosted</code></li>
               </ul>
             </li>
             <li>Under <strong>Price information:</strong>
@@ -149,11 +148,6 @@
           </ol>
           <pre><code>STRIPE_ENTERPRISE_PRICE_ID=price_XXXXXXXXXXXXXXXXXXXXXXXX</code></pre>
 
-          <h3>Optional Annual Renewal Products</h3>
-          <div class="docs-callout info">
-            <strong>Optional.</strong> If you want to offer an annual renewal to extend priority support, create one additional recurring product: Enterprise Renewal ($997/year). This is optional &mdash; licenses work permanently without renewal. Business has no recurring fees.
-          </div>
-
           <h3>Managed Website ($997 setup + $250/month)</h3>
           <p>The done-for-you, agent-buyable Managed Website offer combines a one-time setup with recurring hosting and maintenance. Create two Stripe products for it:</p>
           <ul>
@@ -163,7 +157,7 @@
           <p>With this service, the operator builds and hosts the customer's site on the VPS with a custom domain and TLS, and the customer gets a scoped workspace dashboard with Web Studio and their own SEO/AEO audits. <a href="/buy">See the Managed Website offer &rarr;</a></p>
 
           <h2 id="step-4-set-up-the-webhook">Step 4 — Set Up the Webhook</h2>
-          <p>The webhook lets Stripe notify your server when payments succeed, annual renewals process, or customers cancel.</p>
+          <p>The webhook lets Stripe notify your server when payments succeed, subscriptions renew, or customers cancel.</p>
           <ol>
             <li>Go to <a href="https://dashboard.stripe.com/webhooks" target="_blank">dashboard.stripe.com/webhooks</a></li>
             <li>Click <strong>+ Add endpoint</strong></li>
@@ -193,8 +187,7 @@ STRIPE_SECRET_KEY=sk_test_XXXXXXXXXXXXXXXXXXXXXXXX
 STRIPE_WEBHOOK_SECRET=whsec_XXXXXXXXXXXXXXXXXXXXXXXX
 STRIPE_BUSINESS_PRICE_ID=price_XXXXXXXXXXXXXXXXXXXXXXXX
 STRIPE_ENTERPRISE_PRICE_ID=price_XXXXXXXXXXXXXXXXXXXXXXXX
-# Optional Enterprise renewal Price ID (if configured)
-# STRIPE_ENTERPRISE_RENEWAL_PRICE_ID=price_XXXXXXXXXXXXXXXXXXXXXXXX</code></pre>
+</code></pre>
 
           <h2 id="step-6-restart-and-test">Step 6 — Restart and Test</h2>
           <pre><code>sudo -u aios pm2 restart ai-os --update-env</code></pre>
@@ -245,10 +238,10 @@ STRIPE_ENTERPRISE_PRICE_ID=price_XXXXXXXXXXXXXXXXXXXXXXXX
             </thead>
             <tbody>
               <tr><td><code>checkout.session.completed</code></td><td>Activate license, create session</td></tr>
-              <tr><td><code>customer.subscription.updated</code></td><td>Update annual renewal status (if applicable)</td></tr>
-              <tr><td><code>customer.subscription.deleted</code></td><td>End annual renewal (license remains active)</td></tr>
-              <tr><td><code>invoice.payment_succeeded</code></td><td>Confirm annual renewal payment</td></tr>
-              <tr><td><code>invoice.payment_failed</code></td><td>Notify user of renewal failure</td></tr>
+              <tr><td><code>customer.subscription.updated</code></td><td>Update managed-website subscription status</td></tr>
+              <tr><td><code>customer.subscription.deleted</code></td><td>End managed-website subscription (any license remains active)</td></tr>
+              <tr><td><code>invoice.payment_succeeded</code></td><td>Confirm subscription payment</td></tr>
+              <tr><td><code>invoice.payment_failed</code></td><td>Notify user of a failed subscription payment</td></tr>
             </tbody>
           </table>
 

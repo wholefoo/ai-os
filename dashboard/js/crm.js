@@ -420,7 +420,6 @@ async function crmOpenContact(id) {
     ${ro('Audit score', c.audit_score)}
     ${ro('Primary domain', c.primary_domain)}
     ${ro('Purchased', date(c.purchased_at))}
-    ${ro('Support expires', date(c.support_expires_at))}
     ${ro('Source', c.source)}
     ${ro('Created', c.created_at ? timeAgo(c.created_at) : '')}
 
@@ -523,8 +522,9 @@ async function crmChangePlan(id) {
 async function crmBillingLink(id) {
   const r = await fetchJSON(`/api/crm/contacts/${id}/billing-link`, { method: 'POST', body: {} });
   if (!r || r.error) return crmResultErr((r && r.error) || 'Failed to generate link');
-  const label = (r.kind === 'portal' ? 'Stripe billing portal link:' : 'Renewal link:') + (r.note ? ' (' + r.note + ')' : '');
-  crmShowResult(crmResultLink(label, r.url));
+  // The portal is the only link this can produce — licences are perpetual, so there is no renewal
+  // to sell and the server returns an error rather than a link when no portal is available.
+  crmShowResult(crmResultLink('Stripe billing portal link:', r.url));
 }
 
 async function crmSecurityAssessment(id) {

@@ -1,6 +1,6 @@
 # AI OS — The Agentic Operating System
 
-A multi-agentic AI operating system built as a Virtual Corporate Headquarters, orchestrating 66 specialized AI agents across 10 departments, powered by 6 AI models across 4 routing tiers. Research, create, analyze, scrape, build and host websites, run an SEO + AEO agency, manage clients, and monetize — all from a single dashboard. Self-hosted, single-customer, open-source core (Community edition) with commercial licenses: Business $1,997 one-time (all 66 agents, all production tools, self-instance theming) and Enterprise $4,997 one-time (everything in Business + 1 year priority support, custom agents, priority response times). All tiers run on your own infrastructure.
+A multi-agentic AI operating system built as a Virtual Corporate Headquarters, orchestrating 66 specialized AI agents across 10 departments, powered by 6 AI models across 4 routing tiers. Research, create, analyze, scrape, build and host websites, run an SEO + AEO agency, manage clients, and monetize — all from a single dashboard. Self-hosted, single-customer, open-source core (Community edition) with commercial licenses: Business $1,997 one-time (all 66 agents, all production tools, self-instance theming) and Enterprise $4,997 one-time (everything in Business + SSO/SAML, advanced security, custom agents). All tiers run on your own infrastructure.
 
 ## Architecture
 
@@ -178,7 +178,7 @@ A clone is a replica of one specific person — their voice, expertise, decision
 
 **Business License ($1,997 one-time)** — Everything in Community plus all 66 agents, all 10 departments, all 6 AI models (4 routing tiers), **up to 100 hosted sites**, unlimited SEO + AEO audits, AI Web Studio, Gemini Omni Creative Studio, YouTube Intelligence, Agent Builder, CRM + client-account management, self-instance theming (brand your own private instance with custom name, logo, colors, and domain — no attribution required), lead generation, product factory, marketing hub, advanced reporting, browser agent, Grok Intel, design system, video meetings, and batch queue. Priority email support included. Self-hosted, single-customer license (one production deployment per key). Lifetime software updates. 14-day refund policy. [Full license](/docs/license-business)
 
-**Enterprise License ($4,997 one-time)** — Everything in Business plus **unlimited hosted sites**, SSO/SAML integration, priority support with target response times (~4hr critical / ~8hr high / ~24hr medium, Mon-Fri 9am-6pm EST), dedicated Slack channel, custom agent development assistance (up to 5 custom agents in Year 1), priority bug fixes, early access to new features, and deployment architecture review. Includes 1 year of priority support; optional $997/year renewal extends support and Slack access (platform works permanently without renewal). Upgrade from Business: $3,000 difference. [Full license](/docs/license-enterprise)
+**Enterprise License ($4,997 one-time)** — Everything in Business plus **unlimited hosted sites**, SSO/SAML integration, a dedicated Slack channel, custom agent development assistance (up to 5 custom agents in Year 1), priority bug fixes, early access to new features, and a deployment architecture review. Upgrade from Business: $3,000 difference. [Full license](/docs/license-enterprise)
 
 **Managed Website (done-for-you, agent-buyable)** — Hands-off option for clients who don't want to self-host: $997 one-time setup + $250/month hosting & maintenance. AI OS designs, builds, and hosts your site on the VPS (custom domain + TLS included) and keeps it maintained. Purchasable directly by an agent through Auto-Mode (gated by human approval).
 
@@ -235,10 +235,8 @@ AI OS follows an open-core model. The Community edition is free and open-source 
 | Free Demo | $0 | Hosted at aiosorchestrationlab.com | Limited preview, 3 agents, 1 SEO audit/mo |
 | Community | Free | Self-hosted | 15 agents, 5 departments, 1 hosted site, 1 SEO audit/mo, full source code |
 | Business | $1,997 one-time | Self-hosted | All 66 agents, up to 100 hosted sites, unlimited SEO + AEO audits, all production tools, self-instance theming |
-| Enterprise | $4,997 one-time | Self-hosted | Everything in Business + unlimited hosted sites, 1 year priority support, custom agents, priority response times |
+| Enterprise | $4,997 one-time | Self-hosted | Everything in Business + unlimited hosted sites, SSO/SAML, advanced security, custom agents |
 | Managed Website | $997 setup + $250/mo | Done-for-you on the VPS | We design, build, host & maintain your site (custom domain + TLS); agent-buyable via Auto-Mode |
-
-Enterprise includes optional $997/yr renewal to extend priority support.
 
 ---
 
@@ -314,7 +312,6 @@ ssh root@your-vps-ip 'sudo -u aios git -C /opt/ai-os pull origin master && sudo 
 | `STRIPE_WEBHOOK_SECRET` | Payments | Stripe webhook signing secret |
 | `STRIPE_BUSINESS_PRICE_ID` | Payments | Stripe price ID for Business license ($1,997) |
 | `STRIPE_ENTERPRISE_PRICE_ID` | Payments | Stripe price ID for Enterprise license ($4,997) |
-| `STRIPE_ENTERPRISE_RENEWAL_PRICE_ID` | Payments | Stripe price ID for Enterprise priority support renewal ($997/yr) |
 | `TELEGRAM_BOT_TOKEN` | No | Telegram notifications |
 | `TELEGRAM_CHAT_ID` | No | Telegram chat target |
 | `SLACK_WEBHOOK_URL` | No | Slack notifications |

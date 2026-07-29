@@ -5845,7 +5845,7 @@ const settingsFieldMap = {
   self_improve: ['github_pat', 'distribution_repo'],
   notifications: ['telegram_bot_token', 'telegram_chat_id', 'slack_webhook_url'],
   automation: ['mode', 'n8n_webhook_base', 'n8n_api_key', 'team_webhook_url'],
-  stripe: ['secret_key', 'webhook_secret', 'business_price_id', 'enterprise_price_id', 'enterprise_renewal_price_id'],
+  stripe: ['secret_key', 'webhook_secret', 'business_price_id', 'enterprise_price_id'],
   seo: ['dataforseo_login', 'dataforseo_password', 'google_places_api_key', 'default_location', 'default_language'],
   general: ['demo_mode', 'cors_origin', 'api_token'],
 };
@@ -8657,10 +8657,8 @@ function renderHQStats(stats) {
             <ul style="list-style:none;padding:0;margin:0 0 16px;font-size:12px;color:var(--text-muted,#94a3b8);line-height:1.9;">
               <li>&#9989; Everything in Business, plus:</li>
               <li>&#9989; SSO / SAML integration</li>
-              <li>&#9989; Priority support (~4hr critical)</li>
               <li>&#9989; Dedicated Slack channel</li>
               <li>&#9989; Custom agent development (5 agents)</li>
-              <li>&#9989; $997/yr optional renewal</li>
             </ul>
             <a href="/api/stripe/checkout?plan=enterprise" target="_blank" style="display:block;text-align:center;padding:10px;background:linear-gradient(135deg,#8b5cf6,#ec4899);color:#fff;border-radius:8px;text-decoration:none;font-weight:600;font-size:13px;transition:opacity 0.2s;" onmouseover="this.style.opacity='0.9'" onmouseout="this.style.opacity='1'">Upgrade to Enterprise</a>
           </div>

@@ -82,7 +82,7 @@ ai-os/
 │   │   ├── design-system/
 │   │   └── agent-builder/
 │   ├── org-chart/        ← Extended departments + agents
-│   └── enterprise/       ← SSO, SLA, priority support (stubs)
+│   └── enterprise/       ← SSO (stub)
 ├── dashboard/            ← Frontend SPA
 ├── .github/              ← CI + PR template
 └── ecosystem.config.js   ← PM2 deployment config

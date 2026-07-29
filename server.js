@@ -279,12 +279,6 @@ const STRIPE_PLANS = {
     amount: 499700, // $4,997 one-time
     mode: 'payment',
   },
-  'enterprise-renewal': {
-    name: 'Enterprise Priority Support Renewal',
-    priceId: process.env.STRIPE_ENTERPRISE_RENEWAL_PRICE_ID || 'price_enterprise_renewal_placeholder',
-    amount: 99700, // $997/yr
-    mode: 'subscription',
-  },
   // Business -> Enterprise upgrade: the customer pays the DIFFERENCE. The actual charge is the Stripe
   // Price object (priceId) you create; `amount` here is just a reference ($4,997 - $1,997 = $3,000).
   'enterprise-upgrade': {
@@ -508,23 +502,15 @@ function fulfillCheckoutSession(stripeSession, source) {
     user.plan = plan;
     user.stripeCustomerId = customerId;
   }
-  // Track support expiration for enterprise/business plans (1 year from purchase)
+  // Licences are perpetual and carry no support term, so a purchase records only WHEN it happened.
+  // There is deliberately no supportExpiresAt: nothing expires, so nothing needs a countdown.
   if (plan === 'enterprise' || plan === 'business') {
     user.purchasedAt = user.purchasedAt || new Date().toISOString();
-    user.supportExpiresAt = user.supportExpiresAt || new Date(Date.now() + 365 * 86400000).toISOString();
-  }
-  if (plan === 'enterprise-renewal') {
-    // Extend support by 1 year from current expiration (or from now if expired)
-    const currentExpiry = user.supportExpiresAt ? new Date(user.supportExpiresAt) : new Date();
-    const base = currentExpiry > new Date() ? currentExpiry : new Date();
-    user.supportExpiresAt = new Date(base.getTime() + 365 * 86400000).toISOString();
-    user.plan = 'enterprise'; // Keep them on enterprise tier
   }
   if (plan === 'enterprise-upgrade') {
-    // Paid the Business→Enterprise difference — promote to enterprise tier + (re)start the support year.
+    // Paid the Business→Enterprise difference — promote to the enterprise tier.
     user.plan = 'enterprise';
     user.purchasedAt = user.purchasedAt || new Date().toISOString();
-    user.supportExpiresAt = new Date(Date.now() + 365 * 86400000).toISOString();
   }
   // Managed-site CLIENT account (metadata.account === 'client'): a scoped client ON THIS instance,
   // distinct from a license buyer who runs their OWN instance. Provision a login-capable client role
@@ -640,7 +626,7 @@ app.post('/api/stripe/webhook', express.raw({ type: 'application/json' }), (req,
         });
         break;
       }
-      // Otherwise a license subscription (e.g. enterprise-renewal) — downgrade by customer. SKIP
+      // Otherwise a license subscription — downgrade by customer. SKIP
       // managed clients here: they are handled by the managed branch above (matched by subscriptionId).
       // Downgrading a client by customer would lock out a multi-site client if one purchase had stored
       // a null subscriptionId and fell through — so only flag it for review, never auto-revoke.
@@ -7914,7 +7900,6 @@ const settings = loadState('settings', {
     webhook_secret: process.env.STRIPE_WEBHOOK_SECRET || '',
     business_price_id: process.env.STRIPE_BUSINESS_PRICE_ID || '',
     enterprise_price_id: process.env.STRIPE_ENTERPRISE_PRICE_ID || '',
-    enterprise_renewal_price_id: process.env.STRIPE_ENTERPRISE_RENEWAL_PRICE_ID || '',
   },
   commerce: {
     // Managed-website offer ($ amounts in CENTS, configurable per white-label operator).
@@ -8154,7 +8139,6 @@ app.get('/api/settings', requireAdmin, (req, res) => {
       webhook_secret: { value: maskKey(settings.stripe.webhook_secret), configured: !!settings.stripe.webhook_secret },
       business_price_id: settings.stripe.business_price_id,
       enterprise_price_id: settings.stripe.enterprise_price_id,
-      enterprise_renewal_price_id: settings.stripe.enterprise_renewal_price_id,
     },
     commerce: {
       managed_enabled: settings.commerce.managed_enabled,
@@ -9751,9 +9735,13 @@ app.post('/api/crm/contacts/:id/billing-link', requireAdmin, async (req, res) =>
       console.error('[crm] billing portal:', e.message); // portal unconfigured / bad customer → fall through
     }
   }
-  crmLogAction(contact, 'billing_link', 'Renewal link generated', req);
-  res.json({ ok: true, kind: 'renewal', url: `${CRM_PUBLIC_BASE}/api/stripe/checkout?plan=enterprise-renewal`,
-    note: customerId ? 'Stripe billing portal unavailable — renewal link instead' : 'No Stripe customer on file — renewal link' });
+  // No portal, and nothing to sell them: licences are perpetual one-time purchases with no renewal.
+  // Returning a checkout link here would send them to a plan that no longer exists.
+  res.status(409).json({
+    error: customerId
+      ? 'Stripe billing portal is unavailable for this customer — check the portal configuration in Stripe.'
+      : 'No Stripe customer on file for this contact, so there is no billing portal to link to.',
+  });
 });
 
 // Run a report-only security assessment across a managed client's sites + record it as a CRM
@@ -9933,7 +9921,7 @@ app.get('/api/seo/free-audit/:id', (req, res) => {
 // Mirrors the free-audit public pattern: heavyLimiter + per-IP/global daily caps (each message is a
 // paid agent call), CRM lead capture, and the visitor's text fenced as UNTRUSTED (prompt-injection
 // defense). There is no outbound email backend, so the agent resolves on-page from the docs and the
-// ticket is logged for human follow-up (Enterprise license holders get priority response).
+// ticket is logged for human follow-up.
 const contactTickets = loadState('contact_tickets', []);
 const SUPPORT_DAILY_MAX = parseInt(process.env.SUPPORT_DAILY_MAX, 10) || 200;      // global agent calls/day
 const SUPPORT_IP_DAILY_MAX = parseInt(process.env.SUPPORT_IP_DAILY_MAX, 10) || 12; // per-IP/day
@@ -9986,7 +9974,7 @@ app.post('/api/support/contact', heavyLimiter, async (req, res) => {
     return res.status(429).json({ error: 'The AI helpdesk has reached today’s limit. Please try again tomorrow.' });
   }
   if (todayIp >= SUPPORT_IP_DAILY_MAX) {
-    return res.status(429).json({ error: 'You’ve reached today’s helpdesk limit. Enterprise license holders receive priority support.' });
+    return res.status(429).json({ error: 'You’ve reached today’s helpdesk limit. Please try again tomorrow.' });
   }
 
   // Reuse the thread only when id AND email match (uuid is unguessable; this also blocks posting into
@@ -12206,53 +12194,8 @@ app.use('/api/*', (req, res) => {
   res.status(404).json({ error: `Route not found: ${req.method} ${req.path}` });
 });
 
-// --- Enterprise Renewal Notification Cron ---
-// Runs daily at 9am — checks for enterprise users whose support expires within 30 days
-cron.schedule('0 9 * * *', () => {
-  const now = new Date();
-  const thirtyDaysOut = new Date(now.getTime() + 30 * 86400000);
-  const fourteenDaysOut = new Date(now.getTime() + 14 * 86400000);
-  const sevenDaysOut = new Date(now.getTime() + 7 * 86400000);
-
-  const renewalUrl = `https://aiosorchestrationlab.com/api/stripe/checkout?plan=enterprise-renewal`;
-
-  users.forEach(user => {
-    if (!user.supportExpiresAt) return;
-    if (user.plan !== 'enterprise' && user.plan !== 'business') return;
-
-    const expiresAt = new Date(user.supportExpiresAt);
-    if (expiresAt < now) return; // Already expired
-
-    const daysUntilExpiry = Math.ceil((expiresAt - now) / 86400000);
-    const alreadyNotified = user.lastRenewalNotice;
-    const lastNoticeDate = alreadyNotified ? new Date(alreadyNotified) : null;
-    const daysSinceLastNotice = lastNoticeDate ? Math.ceil((now - lastNoticeDate) / 86400000) : Infinity;
-
-    // Send at 30 days, 14 days, and 7 days — but don't re-send within 6 days
-    let shouldNotify = false;
-    if (expiresAt <= sevenDaysOut && daysSinceLastNotice >= 6) shouldNotify = true;
-    else if (expiresAt <= fourteenDaysOut && daysSinceLastNotice >= 10) shouldNotify = true;
-    else if (expiresAt <= thirtyDaysOut && !alreadyNotified) shouldNotify = true;
-
-    if (shouldNotify) {
-      const msg = `🔄 *Support Renewal Reminder*\n\n` +
-        `${user.email}'s ${user.plan} priority support expires in *${daysUntilExpiry} days* (${expiresAt.toISOString().split('T')[0]}).\n\n` +
-        `Renewal link: ${renewalUrl}\n` +
-        `Price: $997/year for continued priority support & platform updates.`;
-
-      // Notify via available channels
-      sendTelegramMessage(msg).catch(() => {});
-      sendSlackMessage(msg).catch(() => {});
-
-      user.lastRenewalNotice = now.toISOString();
-      saveState('users', users);
-      logActivity('billing', `Renewal reminder sent to ${user.email} (${daysUntilExpiry} days until expiry)`);
-    }
-  });
-});
-
 // --- Security Self-Scan Cron (report-only) ---
-// Standalone top-level cron (mirrors the renewal job) so it consumes NO user schedule/routine slot.
+// Standalone top-level cron so it consumes NO user schedule/routine slot.
 // Guarded at boot (only registers when enabled) AND at fire time (a settings toggle takes effect
 // without a restart). Runs a 'quick' report-only scan — never assess() against the live tree.
 (() => {
