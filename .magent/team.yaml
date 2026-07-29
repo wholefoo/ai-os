@@ -100,9 +100,20 @@ roles:
     skills: [grok-search]
     cost_tier: realtime
 
+  # --- Knowledge & Records department (governed company library over the existing stores) ---
+  - name: chief-librarian
+    model: claude-opus-4-8
+    description: Department head — taxonomy, cross-department lookup, routing, retention decisions; reads the catalog, never ingests
+    skills: []
+
+  - name: archivist
+    model: claude-opus-4-8
+    description: Intake — format handling, dedupe by content hash, metadata, versioning; extends lib/org/documents.js
+    skills: []
+
   - name: knowledge-graph
     model: claude-opus-4-8
-    description: Auto-organizing knowledge base — categorizes sources, builds semantic connections, generates mind maps
+    description: Auto-organizing knowledge base — categorizes sources, builds semantic connections, generates mind maps (Knowledge & Records)
     skills: [knowledge-categorize]
 
   - name: design-system

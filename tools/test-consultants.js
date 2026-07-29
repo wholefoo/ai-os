@@ -49,11 +49,14 @@ for (const slug of CONSULTANTS) {
   assert(/comms-director/.test(t) && /Orchestrator/.test(t), `consultant-${slug} routes findings via comms-director`);
 }
 
-// --- canonical count guard: the registry is 66 and the auto-research guards agree
+// --- canonical count guard: the registry is 68 and the auto-research guards agree
+// 68 = 66 + chief-librarian + archivist, added with the Knowledge & Records department (#11).
+// This assertion is the tripwire that catches a new agent file landing without the product copy
+// being swept — which is the whole reason it is an equality check and not a `>=`.
 const registry = fs.readdirSync(agentsDir).filter((f) => f.endsWith('.md')).length;
-assert(registry === 66, `agent registry is 66 (58 + 7 consultants + comms-director), got ${registry}`);
+assert(registry === 68, `agent registry is 68 (58 + 7 consultants + comms-director + 2 Knowledge & Records), got ${registry}`);
 const score = fs.readFileSync(path.join(__dirname, '..', 'auto-research', 'score.js'), 'utf8');
-assert(/\/\\b66\\b\//.test(score), 'auto-research score.js FACTS guards 66');
-assert(/\(\?!66\\b\)/.test(score), 'auto-research score.js drift-throw guards 66');
+assert(/\/\\b68\\b\//.test(score), 'auto-research score.js FACTS guards 68');
+assert(/\(\?!68\\b\)/.test(score), 'auto-research score.js drift-throw guards 68');
 
 done();
