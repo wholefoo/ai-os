@@ -8657,7 +8657,6 @@ function renderHQStats(stats) {
             <ul style="list-style:none;padding:0;margin:0 0 16px;font-size:12px;color:var(--text-muted,#94a3b8);line-height:1.9;">
               <li>&#9989; Everything in Business, plus:</li>
               <li>&#9989; SSO / SAML integration</li>
-              <li>&#9989; Dedicated Slack channel</li>
               <li>&#9989; Custom agent development (5 agents)</li>
             </ul>
             <a href="/api/stripe/checkout?plan=enterprise" target="_blank" style="display:block;text-align:center;padding:10px;background:linear-gradient(135deg,#8b5cf6,#ec4899);color:#fff;border-radius:8px;text-decoration:none;font-weight:600;font-size:13px;transition:opacity 0.2s;" onmouseover="this.style.opacity='0.9'" onmouseout="this.style.opacity='1'">Upgrade to Enterprise</a>
