@@ -1,0 +1,464 @@
+# Knowledge & Records (Department #11) — Architecture & Delivery Plan
+
+*Status: design for human approval. No implementation until signed off. Approval owner: Reviewer.*
+
+*Revision 2 — orchestrator review applied. Four corrections against the code: (1) the legacy vault reads are session-authenticated, not public, so the back-compat recommendation no longer proposes a public surface (D-VAULTAUTH, §9.5); (2) Phase 2 now handles the `CLIENT_API_ALLOW` deny-by-default client guard, without which the contribute route 403s for the personnel it exists for; (3) Phase 0 now carries the product-canon sweep, because creating department #11 invalidates the hard-coded "10 departments / 66 agents" in 27 files; (4) route tables name the middlewares that actually exist (`requireAdmin`, `requireClientOrAdmin`, global `authMiddleware`) — there is no `requireAuth` in this codebase.*
+
+Locked decisions: department id `library`, name "Knowledge & Records", #11 · **community** placement · four seats (Chief Librarian NEW, `archivist` NEW, `knowledge-graph` RELOCATED, `golden-loop` RELOCATED) · catalog-over-stores (no fourth physical store) · untrusted-by-default with **no trusted tier** · `readers` allowlist from day one · delete/dispose through the Auto-Mode gate · Ed25519 provenance on outward publish · PDF ingest specced as real work.
+
+---
+
+## 1. Executive Summary
+
+A **Knowledge & Records department** that takes ownership of the company's scattered document machinery and turns it into one governed library. Today four partial implementations each own a slice — the Memory Vault (`.magent/vault`), the document-extraction pipeline (`lib/org/documents.js` → `.magent/org-docs`, currently empty), the artifacts tree (`.magent/artifacts`), and two department-less agents (`knowledge-graph`, `golden-loop`). None of them knows who owns a document, who may read it, how sensitive it is, or when it should be disposed of. The library does not build a fifth thing. It is a **catalog** — a single index over the three existing physical stores — plus a **read choke-point** through which every agent, on every tier, reads library content *as fenced untrusted data*. New uploads land in exactly one existing store (`org-docs`, via the extraction module the archivist extends rather than forks); nothing is physically moved.
+
+The single most important property, stated up front because the rest of the design is subordinate to it: **the library has no trusted tier.** Its whole purpose is that every agent reads it, and much of its content will be documents nobody on our side authored. Every byte leaves the library through `executeAgent`'s fencing envelope as *data*. There is no "it came from inside, therefore it is safe" path, because a library that every agent reads is, by construction, the highest-value prompt-injection surface in the product — larger than the clone feature, which fences for exactly this reason at a fraction of the blast radius.
+
+The department also delivers a structural fix for a documented, recurring defect: product facts (agent count, model count, pricing, limits) live today in several hard-coded copies that drift apart. A **canonical-facts shelf** in the catalog makes those facts a single governed record every caller reads, so "update the number" stops meaning "find and edit N copies."
+
+**Strategic frame (billionaire-strategist lens, kept honest):**
+- **Problem-first.** The burning pain is not "we lack a library product." It is (a) knowledge entropy — facts scattered across three stores with no owner, no sensitivity, no retention, so nobody can answer *what do we know, who can see it, when does it go*; and (b) the stale-number tax, where copies of the same fact drift and ship wrong. Both are felt daily by the operator and by every agent that answers from stale context.
+- **Scale lever: CODE + IP.** A read choke-point every agent uses 24/7 (code that works without permission) sitting over the company's accumulated knowledge (IP that compounds). It decouples "answer correctly" from "someone remembering to update copy N."
+- **Common enemy: drift.** Stale, unfindable, ungoverned documents — the daily tax the department is framed against.
+- **Beg and borrow before building.** The entire department is assembled from four existing partial implementations. Borrowing the forest, not planting one.
+
+---
+
+## 2. Architecture Overview
+
+Four layers. The load-bearing invariant lives at the boundary between the catalog and any agent: content only ever crosses it inside the untrusted fence.
+
+```
+┌──────────────────────────────────────────────────────────────────────────┐
+│  DASHBOARD (existing Memory Vault view, extended)                          │
+│  Library: browse · search · record detail · upload · contribute · retention│
+└───────────────┬──────────────────────────────────────────────────────────┘
+                │ REST  /api/library/*   (+ back-compat /api/vault/*)
+┌───────────────▼──────────────────────────────────────────────────────────┐
+│  CATALOG (server.js state 'library_catalog'  +  lib/library/*)             │
+│   catalog.js  — record shape, normalize, dedupe-by-hash, search predicates │
+│   readers.js  — ALLOWLIST access model (mirrors lib/org/visibility.js)     │
+│   intake.js   — wraps lib/org/documents.js (does NOT reimplement extract)  │
+│   contribute.js — clone/personnel contributions, persona-leak tripwire     │
+│   ── the READ CHOKE-POINT: libraryLookup() → returns fenced untrusted[] ── │
+└───────┬───────────────────────────┬───────────────────────┬───────────────┘
+        │ executeAgent(untrusted:…)  │ gateAction(delete/dispose)             │ signProvenance()
+┌───────▼───────────────────┐  ┌────▼──────────────────┐  ┌─▼───────────────────────┐
+│  AGENT TEAM (.claude)      │  │  AUTO-MODE GATE        │  │  PROVENANCE              │
+│  chief-librarian (head)    │  │  lib/safety/approval.js│  │  lib/provenance Ed25519  │
+│  archivist                 │  │  library.delete-record │  │  sign on outward publish │
+│  knowledge-graph (moved)   │  │  library.retention-…   │  │  (signProvenance @1530)  │
+│  golden-loop     (moved)   │  └────────────────────────┘  └──────────────────────────┘
+└───────┬────────────────────┘
+        │ index over (nothing moves)
+┌───────▼──────────────────────────────────────────────────────────────────┐
+│  PHYSICAL STORES (unchanged — the catalog indexes them in place)           │
+│  1. Memory Vault  .magent/vault/{raw,wiki,outputs}   (markdown, community) │
+│  2. org-docs      .magent/org-docs/<uuid>.txt        (extracted text)      │
+│     ── the ONE canonical landing zone for new uploads (currently empty) ── │
+│  3. artifacts     .magent/artifacts/{docs,…}         (agent output)        │
+│  catalog index    .magent/library/catalog.json  = metadata, NOT a store    │
+└────────────────────────────────────────────────────────────────────────────┘
+```
+
+**How they fit:**
+- **The catalog is an index, not a store.** `.magent/library/catalog.json` holds metadata only (record schema in §4). Document *bytes* never live there. This is why it is not the "fourth store" the brief forbids — no document content moves.
+- **One landing zone for new content.** New uploads go through `lib/org/documents.js` and land in `.magent/org-docs/` under a generated uuid, exactly as the clone feature's uploads do. The clone company-profile flow becomes *one consumer* of that store rather than its sole owner. No new physical store, no second extractor.
+- **One read choke-point.** `libraryLookup(query, {requester})` is the *only* way library content reaches an agent. It resolves reader-permitted records, reads their bytes, and returns them shaped as `untrusted` blocks for `executeAgent`. Callers pass that array to `executeAgent(..., { untrusted })` and **never** concatenate record content into a task string or `systemOverride`. There is no second read path.
+- **The physical stores keep their own guards.** The catalog does not relax any existing guard; it inherits every one (path handling, format allowlist, zip-bomb ceilings, org scoping — see §7 Security boundaries).
+
+---
+
+## 3. The Knowledge & Records agent team
+
+New **community** department `library` added to `COMMUNITY_ORG_CHART` (server.js ~8440). Four seats: two net-new agents, two relocated. See §6 Phase 0 for the exact org-chart and `team.yaml` edits, and §8 (D-COMM) for the community-vs-commercial justification.
+
+| Agent | New? | Org entry | Tier / Effort | One-line role |
+|---|---|---|---|---|
+| **chief-librarian** | NEW | `lib-chief` "Athena" 📚, reportsTo `ceo` | strategic / xhigh | Department head: taxonomy authority, cross-department lookup, routing, retention *decisions* (legal hold is a consult, not its call). Reads only — never ingests. |
+| **archivist** | NEW | `lib-archivist` "Vellum", reportsTo `lib-chief` | professional / high | Intake, format handling, dedupe, metadata, versioning. **Extends** `lib/org/documents.js`; does not reimplement extraction. |
+| **knowledge-graph** | RELOCATED | `lib-graph` "Archive", reportsTo `lib-chief` | professional / high | Categorization, connection discovery, `.magent/knowledge-graph.json`. Unchanged behavior; new home. |
+| **golden-loop** | RELOCATED | `lib-loop` "Tether", reportsTo `lib-chief` | professional / high | Source-change detection + NotebookLM/Gem re-sync. Unchanged behavior; new home. |
+
+**No retention/records officer seat.** Retention and legal hold *consult* the existing `compliance-officer` (Shield, Legal dept) and `general-counsel` (Justice, Legal dept). The Chief Librarian owns the retention *decision*; a record under legal hold cannot be disposed of until Legal clears it (enforced as a `legalHold` flag that the delete/dispose executors refuse — §6 Phase 3).
+
+**Divergence flagged (see §8, D-KG):** `knowledge-graph` is *not* currently department-less — it is placed in the **commercial** `product` department as `prod-knowledge` ("Archive"). Relocation therefore means **removing** it from `ai-os-commercial/org-chart/departments.js` *and* adding it here, not merely adding it. `golden-loop` *is* genuinely department-less (present in `team.yaml` and as an agent file, absent from every org chart), so it is a pure add.
+
+---
+
+## 4. The catalog record schema
+
+The record is the whole design in one shape. Interface signature only (spec, not code):
+
+```ts
+// .magent/library/catalog.json  →  loadState/saveState('library_catalog', LibraryRecord[])
+interface LibraryRecord {
+  id:          string;          // uuid — OURS, never derived from any user string (path-traversal defence)
+  title:       string;          // label only, ≤200 chars, NEVER used as a path
+  store:       'vault' | 'org-docs' | 'artifacts';   // which physical store holds the bytes
+  path:        string;          // location WITHIN that store; resolved + basename/dirname-guarded on read
+  contentHash: string;          // sha256 hex of the bytes (provenance.sha256Hex) — the dedupe + version key
+  format:      string;          // txt|md|csv|docx|xlsx|pdf  (documents.extensionOf — the SAME allowlist)
+  bytes:       number;
+
+  source:      'company-doc' | 'clone-contribution' | 'personnel-contribution'
+             | 'agent-output' | 'canonical-fact';
+  owner:       string;          // orgKey (email) — orgMembership.orgKeyFor / sessionOrgKey
+  addedBy:     string;          // email of the person, or the agent name, that added it
+  addedAt:     string;          // ISO
+
+  // ACCESS — the load-bearing field. An ALLOWLIST, built entry-by-entry (mirrors lib/org/visibility.js).
+  // Entries are: an org email (a person), an agent name, or the sentinel 'all-agents'.
+  // NEVER a denylist. Default for migrated vault content = ['all-agents'] (preserves today's behaviour).
+  readers:     string[];
+  sensitivity: 'public' | 'internal' | 'confidential' | 'restricted';   // human-facing label; `readers` enforces
+
+  retention:   { policy: 'keep' | 'review' | 'expire';
+                 reviewAt: string | null; disposeAt: string | null };   // defaults P0 = {policy:'keep'}
+  legalHold:   boolean;         // set ONLY via the Legal consult route; blocks delete/dispose executors
+
+  provenanceId: string | null;  // set when published outward + Ed25519-signed (§6 Phase 3)
+  personaDerived: false;        // an INVARIANT: must always be false. A true value is a defect the
+                                // contribution path refuses (findLeaks tripwire — §6 Phase 2)
+  tags:        string[];
+}
+```
+
+**Field notes worth their own line:**
+- `readers` is the enforcement; `sensitivity` is advisory. The reader-filter answers one question: *is the requester in `readers`, or is `'all-agents'` present and the requester an agent?* Built by allowlist so that adding a new field to the record can never accidentally widen access — the exact failure `visibility.js` was written to prevent.
+- `contentHash` is both the dedupe key (same bytes already cataloged ⇒ don't double-store) and the version anchor (same `store`+logical title, new hash ⇒ a new version pointing at its predecessor via `tags`/a `supersedes` note).
+- `personaDerived` exists as a named, always-false invariant so the test suite can assert it over whole responses (the `findLeaks` pattern), not field-by-field.
+
+---
+
+## 5. Machinery the department takes ownership of (reuse, don't rebuild)
+
+Every row is an existing, verified anchor. Nothing here is net-new machinery.
+
+| Existing machinery | Verified location | How the library uses it |
+|---|---|---|
+| Document extraction | `lib/org/documents.js` — `SUPPORTED=['txt','md','csv','docx','xlsx']`, `MAX_UPLOAD_BYTES` 10MB, `MAX_TEXT_CHARS` 400k, `readZipEntry` (bomb guard) | `archivist` intake **wraps** `extract()`. PDF is added *inside this module* (§6 P3) so one allowlist + one set of guards stays authoritative. |
+| Extracted-text store | `.magent/org-docs/` + `orgDocTextPath()` (id-only path) — server.js ~11049 | The ONE landing zone for new uploads. Currently empty; the library populates it. |
+| Untrusted fencing | `lib/safety/untrusted.js` `fenceUntrusted`; `executeAgent(..., {untrusted})` server.js ~3569/3610 | The read choke-point returns `untrusted[]` and callers pass it here. The whole no-trusted-tier guarantee. |
+| Reader access model | `lib/org/visibility.js` — allowlist builders, `FORBIDDEN_KEYS`, `findLeaks` | `readers` allowlist + the persona-leak tripwire on contributions. |
+| Org scoping | `lib/org/membership.js` `orgKeyFor`/`orgKeyForSession`; `sessionOrgKey` server.js ~10906 | `owner`/`readers` keyed to the org, so multi-tenant scoping is free. |
+| Auto-Mode gate | `lib/safety/approval.js` `decide()`; `gateAction`/`ACTION_EXECUTORS`/`ALWAYS_GATE` server.js ~2694/2845/8629 | Delete + retention-dispose registered as `'critical'` actions (§6 P3). |
+| Provenance | `lib/provenance/index.js` `sign/verify`; `signProvenance` server.js ~1530 | Ed25519 sidecar on any record published outward. |
+| Vault read surface | server.js ~4393 (`getVaultStats`/`searchVault`/`getSessionContext`) + routes ~5651 | Back-compat `/api/vault/*` kept working, re-pointed to read through the catalog. |
+| State + tests | `loadState/saveState`; `tools/test-*.js` auto-discovered by `tools/test-all.js` | `library_catalog` state; new `tools/test-library-*.js` suites picked up automatically. |
+
+---
+
+## 6. Phased build plan
+
+Phase gates are the same shape as the Web Studio plan: In scope · Deferred · Definition of done · Verify.
+
+### Phase 0 — Catalog + read path + migration (MVP)
+
+**Goal:** *every existing document across all three stores is cataloged with owner/sensitivity/readers/retention, and every agent can read library content through one fenced choke-point — with the canonical-facts shelf live so the stale-number defect has its structural fix.*
+
+**In scope:**
+1. **Catalog core.** `lib/library/catalog.js` (NEW, pure — no I/O): record `normalize()`, `dedupeByHash()`, `search()`/`filter()` predicates, canonical-facts helpers. `lib/library/readers.js` (NEW, pure): `buildReaders()` (allowlist, entry-by-entry), `canRead(record, requester)`, and a `findLeaks`-style whole-record tripwire re-exported from `visibility.js`.
+2. **State + routes** in server.js (MODIFIED): `library_catalog` via `loadState/saveState`; the read choke-point `libraryLookup(query,{requester,limit}) -> { records, untrusted[] }`.
+3. **Migration** `tools/library-migrate.js` (NEW, idempotent): backfill catalog records for `.magent/vault/wiki/*.md`, existing `org-docs`, and `.magent/artifacts/**` **in place** (nothing moves). Dedupe by `store`+`path`+`contentHash`. Defaults: vault → `sensitivity:'internal'`, `readers:['all-agents']`, `retention:{policy:'keep'}`; artifacts → `source:'agent-output'`, lighter metadata. Supports `--dry-run`.
+4. **Canonical-facts shelf.** Seed a small set of `source:'canonical-fact'` records (agent count, model/tier count, pricing, limits) with `sensitivity:'internal'`, `readers:['all-agents']`. This is the shelf callers read instead of hard-coding numbers.
+5. **Org chart + roster.** Add the `library` department to `COMMUNITY_ORG_CHART`; remove `prod-knowledge` from the commercial chart; add the two new agents to `EFFORT_ROUTING` and `team.yaml`; add/relocate the four agent files.
+6. **Back-compat.** `/api/vault/*` keep working, re-pointed through the catalog, at their existing session-auth level plus reader filtering (D-VAULTAUTH).
+7. **Product-canon sweep — not optional, and not a follow-up.** Creating department #11 is the change that invalidates every hard-coded department and agent count in the product copy: `10 departments` appears in **27 files** across `dashboard/` and `auto-research/`, including scored JSON-LD `FAQPage` answers in `dashboard/docs/agents.html` ("66, across 10 departments", twice, plus the prose in the roster section). The counts move to **11 departments**, **68** licensed agents, **19** community placed agents. The auto-research loop's two hard-coded checks and its git-tracked seed must be updated in the same phase, or the generator re-introduces the old numbers on its next run. Ship this *with* P0 — a department whose own headline feature is the canonical-facts shelf cannot land while making the drift it exists to fix measurably worse.
+
+**File manifest (P0):**
+
+| File | New / Modified | What |
+|---|---|---|
+| `lib/library/catalog.js` | NEW | Pure record shape, normalize, dedupe, search predicates. |
+| `lib/library/readers.js` | NEW | Allowlist access model; `canRead`; leak tripwire (re-uses `visibility.findLeaks`). |
+| `tools/library-migrate.js` | NEW | Idempotent backfill of the three stores; `--dry-run`. |
+| `tools/test-library-catalog.js` | NEW | Record/normalize/dedupe/search unit tests. |
+| `tools/test-library-readers.js` | NEW | Allowlist-not-denylist assertions + leak tripwire over whole payloads. |
+| `.claude/agents/chief-librarian.md` | NEW | Department head (frontmatter below). |
+| `.claude/agents/archivist.md` | NEW | Intake agent (frontmatter below). |
+| `.claude/agents/knowledge-graph.md` | MODIFIED | Description: note department = Knowledge & Records. Behavior unchanged. |
+| `.claude/agents/golden-loop.md` | MODIFIED | Same note. Behavior unchanged. |
+| `server.js` | MODIFIED | `library_catalog` state; `libraryLookup`; read routes; `COMMUNITY_ORG_CHART` +`library` dept; `EFFORT_ROUTING` +2 agents; `/api/vault/*` re-pointed. |
+| `.magent/team.yaml` | MODIFIED | +`chief-librarian`, +`archivist` roles. |
+| `ai-os-commercial/org-chart/departments.js` | MODIFIED | **Remove** `prod-knowledge` from `ADDITIONAL_AGENTS.product`. |
+| `dashboard/**/*.html` (27 files) | MODIFIED | Product-canon sweep: 10 → 11 departments, 66 → 68 agents, 15 → 19 community. Includes the JSON-LD `FAQPage` answers in `dashboard/docs/agents.html` (scored — see the web-content standard). |
+| `auto-research/` (checks + git-tracked seed) | MODIFIED | Update the two hard-coded count checks and the seed, so the generator does not re-introduce the old numbers. Gitignored assets regenerate; the seed does not. |
+
+**API routes (P0):**
+
+| Method | Path | Auth | Purpose |
+|---|---|---|---|
+*Middleware names are the ones this codebase actually has: the global `authMiddleware` on `/api/` (server.js ~222) already requires a session cookie or bearer token for every route below, so "authenticated" needs no per-route middleware. Per-route options are `requireAdmin` (server.js ~7957) and `requireClientOrAdmin` (~7968). **There is no `requireAuth`** — do not write one.*
+
+| Method | Path | Auth | Purpose |
+|---|---|---|---|
+| GET | `/api/library` | global `authMiddleware` | Catalog summary/stats, reader-filtered for the session. |
+| GET | `/api/library/search?q=` | global `authMiddleware` | Search titles/tags/content index, reader-filtered. |
+| GET | `/api/library/record/:id` | global + `canRead` | Record metadata (never raw content). |
+| GET | `/api/library/record/:id/content` | `requireAdmin` OR `canRead` | Raw bytes; path resolved + basename/dirname-guarded per store. |
+| GET | `/api/library/canonical` | global `authMiddleware` | The canonical-facts shelf. |
+| GET | `/api/vault`, `/api/vault/:folder`, `/api/vault/:folder/:file` | unchanged from today (session/bearer; file-read stays `requireAdmin`) + reader filtering | Back-compat, now catalog-backed. See D-VAULTAUTH. |
+
+All `/api/library/*` routes are operator-only in P0: the `CLIENT_API_ALLOW` guard (server.js ~230) 403s any unlisted `/api` prefix for the `client` role, and `/api/library` is deliberately **not** added until P2 owner-scopes the surface.
+
+**Agent frontmatter (P0) — the two new files:**
+
+```yaml
+# .claude/agents/chief-librarian.md
+---
+name: chief-librarian
+description: "Department head for Knowledge & Records. Owns taxonomy, cross-department lookup, routing of knowledge requests, and retention decisions (legal hold is a consult with compliance-officer/general-counsel, not this agent's call). Reads the catalog; never ingests. Use to find, classify, or decide the disposition of company knowledge; do NOT use to parse or store uploads — route that to archivist."
+model: claude-opus-4-8
+effort: xhigh
+tools: [file-read, embedding-search]
+triggers: [manual, library_lookup]
+---
+```
+
+```yaml
+# .claude/agents/archivist.md
+---
+name: archivist
+description: "Intake for Knowledge & Records: format handling, dedupe, metadata, and versioning. EXTENDS lib/org/documents.js — it does not reimplement extraction or invent a second store. Use when a document is uploaded or an existing file needs cataloging; do NOT use to decide who may read a record or whether to delete one — that is chief-librarian + the approval gate."
+model: claude-opus-4-8
+effort: high
+tools: [file-read, file-write, embedding-search]
+triggers: [source_added, upload_received, manual]
+---
+```
+
+**Org-chart edit (server.js `COMMUNITY_ORG_CHART.departments`, append):**
+```
+{ id: 'library', name: 'Knowledge & Records', icon: '📚', color: '#0d9488', employees: [
+  { id: 'lib-chief',     title: 'Chief Librarian', name: 'Athena',  agent: 'chief-librarian', tier: 'strategic',    reportsTo: 'ceo',       ... },
+  { id: 'lib-archivist', title: 'Archivist',       name: 'Vellum',  agent: 'archivist',       tier: 'professional', reportsTo: 'lib-chief', ... },
+  { id: 'lib-graph',     title: 'Knowledge Graph', name: 'Archive', agent: 'knowledge-graph', tier: 'professional', reportsTo: 'lib-chief', ... },
+  { id: 'lib-loop',      title: 'Golden Loop',     name: 'Tether',  agent: 'golden-loop',     tier: 'professional', reportsTo: 'lib-chief', ... },
+]}
+```
+`EFFORT_ROUTING`: add `chief-librarian` to `strategic.agents`; add `archivist` to `professional.agents`. (`knowledge-graph` and `golden-loop` are already in `professional.agents` — leave them.)
+
+**Deliberately deferred out of P0:** uploads/dedupe/versioning (P1), clone/personnel contribution (P2), retention/dispose/legal-hold/PDF (P3), embeddings-backed semantic search (uses the existing `embedding-search` tool opportunistically; not a P0 dependency).
+
+**Definition of done (P0):** the operator opens the library, sees every pre-existing vault/org-docs/artifacts item as a record with owner/sensitivity/readers/retention; an agent invoked with a library query receives the content only inside `<<UNTRUSTED_…>>` fences; the canonical-facts shelf returns the current product numbers from one place; `library-migrate.js` run twice produces no duplicates; **no file in `dashboard/` or `auto-research/` still claims 10 departments or 66 agents**, and a re-run of the auto-research loop does not regress them.
+
+**Verify (P0):**
+```
+node tools/library-migrate.js --dry-run
+node tools/test-library-catalog.js && node tools/test-library-readers.js
+node tools/seclint.js --ci
+node tools/test-all.js
+```
+Canon check (must return nothing):
+```
+grep -rl "10 departments" dashboard auto-research
+```
+
+---
+
+### Phase 1 — Intake (uploads, dedupe, versioning; the archivist wired)
+
+**In scope:**
+- `lib/library/intake.js` (NEW): wraps `documents.extract()`, writes bytes to `org-docs` via the existing id-only path, creates the catalog record, dedupes by `contentHash`, chains versions. **Delegates all parsing + guards to `documents.js`** — no parser lives here.
+- Register-in-place for files already in a store (artifacts) without re-uploading.
+- `archivist` triggered on `upload_received`/`source_added`.
+
+**File manifest:** `lib/library/intake.js` (NEW), `tools/test-library-intake.js` (NEW), `server.js` (MODIFIED — routes below).
+
+**API routes (P1):**
+
+| Method | Path | Auth | Purpose |
+|---|---|---|---|
+| POST | `/api/library/upload?name=` | requireAdmin + heavyLimiter + `express.raw` | Upload → `documents.extract` → land in `org-docs` → catalog record. Same raw-body shape as `/api/org/documents`. |
+| POST | `/api/library/register` | requireAdmin | Catalog a file already present in a store, in place (no move). |
+| PATCH | `/api/library/record/:id` | requireAdmin | Edit metadata (title, tags, sensitivity, readers, retention) — `readers` re-validated as an allowlist. |
+
+**Definition of done (P1):** uploading a `.docx` produces a cataloged, deduped record whose bytes are in `org-docs` under a uuid (never the filename); re-uploading identical bytes is recognized as a duplicate; a changed file creates a new version linked to its predecessor.
+
+**Verify (P1):** `node tools/test-library-intake.js && node tools/seclint.js --ci && node tools/test-all.js`
+
+---
+
+### Phase 2 — Clone & personnel contribution (the visibility asymmetry, from day one)
+
+**In scope:**
+- `lib/library/contribute.js` (NEW, pure): builds a catalog record from a clone or personnel contribution; constructs `readers` **by allowlist** (contributor + explicitly named principals only — **never** `'all-agents'` by default); refuses any contribution whose payload trips `visibility.findLeaks` (persona/prompt/transcript/corpus/…); asserts `personaDerived === false`. Persona-derived material is structurally unpublishable to the library.
+- **Passing the client-surface guard — a prerequisite, not a detail.** `CLIENT_API_ALLOW` (server.js ~230) is deny-by-default for the `client` role: every `/api` prefix not on that allowlist returns 403 *before* the route's own middleware runs. `/api/library` is not on it, so the contribute route would 403 for exactly the personnel it exists for. Two ordered steps, in the order the guard's own comment demands ("add a prefix here ONLY after that surface is owner-scoped"):
+  1. **Owner-scope every library route first.** `owner`/`readers` (P0) are what makes this true; each route must resolve the caller's org via `orgKeyForSession` and filter, with no admin cross-org view of another person's contributions.
+  2. **Then add the narrowest possible prefix.** Add the *exact path* `'/api/library/contribute'` — **not** the `'/api/library'` prefix, which would also hand clients the catalog listing, search, record metadata, and raw content routes. This mirrors the precedent already in the guard, where one exact `/api/org/*` path is allowlisted and the bare `/api/org` prefix is deliberately withheld for that reason.
+
+**File manifest:** `lib/library/contribute.js` (NEW), `tools/test-library-contribute.js` (NEW), `server.js` (MODIFIED — contribute route, `CLIENT_API_ALLOW` exact-path entry, org-scoping on the library routes).
+
+**API routes (P2):**
+
+| Method | Path | Auth | Purpose |
+|---|---|---|---|
+| POST | `/api/library/contribute` | `requireClientOrAdmin` (server.js ~7968) **+ the exact path added to `CLIENT_API_ALLOW`** | A personnel member or a clone contributes a resource. `readers` defaults to the org allowlist, never all-agents. Persona-derived content refused with a stated reason. |
+
+**Security boundary (called out explicitly):** this path inherits `visibility.js`'s allowlist model and `FORBIDDEN_KEYS`/`findLeaks` tripwire. **Failure mode if skipped:** a clone publishing persona-derived material into a library that *every agent reads* would leak a named person's psychological profile platform-wide — the exact asymmetry `visibility.js` exists to prevent, at maximum blast radius. The allowlist is built, tested, and shipped in P2; it is not deferred to a v2.
+
+**Definition of done (P2):** a personnel-contributed doc is readable only by its allowlisted principals; a clone contribution defaults to a narrow reader set; an attempt to contribute anything containing a `FORBIDDEN_KEYS` field is refused and the refusal surfaced (not silently dropped); a logged-in `client` can reach `POST /api/library/contribute` **and still gets 403 on `/api/library`, `/api/library/search`, and `/api/library/record/:id/content`** — assert both halves, because the passing half alone is what an over-broad prefix looks like.
+
+**Verify (P2):** `node tools/test-library-contribute.js && node tools/seclint.js --ci && node tools/test-all.js`
+
+---
+
+### Phase 3 — Retention, disposition, legal hold, PDF ingest
+
+**In scope:**
+1. **Delete + dispose through the gate.** Register two actions in `lib/safety/approval.js` `ACTION_RISK`: `'library.delete-record': 'critical'` and `'library.retention-dispose': 'critical'` (matching the `web-studio.delete-site` precedent — irreversible). Add matching `ACTION_EXECUTORS` entries in server.js. Both executors **refuse when `legalHold` is set** (defence in depth beyond the gate). See D-ALWAYSGATE for the open question of whether these should also join `ALWAYS_GATE`.
+2. **Legal hold.** A route to set/clear `legalHold` that first runs an advisory consult with `compliance-officer` + `general-counsel` (their output is fenced untrusted like everything else); the human sets the flag.
+3. **PDF ingest — real work, not a TODO.** MODIFY `lib/org/documents.js`: add `'pdf'` to `SUPPORTED`, add a `fromPdf(buffer)` parser, remove `pdf` from `REFUSALS`, and add a page/size ceiling analogous to `MAX_SHEET_ROWS` (e.g. `MAX_PDF_PAGES`). **Dependency decision (Type 1 — see D-PDF):** the repo carries *no* PDF library today (`docx` 9.7.1 is a generation lib, not extraction; `adm-zip`/`exceljs` are what `documents.js` already uses). A pure-JS PDF text extractor must be added, verified against `package.json`, and approved as a new dependency before this phase starts.
+4. **Provenance on outward publish.** When a record is published outward, attach an Ed25519 sidecar via `signProvenance` (server.js ~1530) and set `provenanceId`.
+
+**File manifest:** `lib/safety/approval.js` (MODIFIED), `lib/org/documents.js` (MODIFIED — PDF), `server.js` (MODIFIED — executors + routes), `tools/test-library-retention.js` (NEW), `tools/test-org-documents.js` (MODIFIED — PDF cases), `package.json` (MODIFIED — PDF dep, pending D-PDF).
+
+**API routes (P3):**
+
+| Method | Path | Auth | Purpose |
+|---|---|---|---|
+| DELETE | `/api/library/record/:id` | requireAdmin | → `gateAction('library.delete-record')`. Refused if `legalHold`. |
+| POST | `/api/library/record/:id/dispose` | requireAdmin | → `gateAction('library.retention-dispose')`. Refused if `legalHold`. |
+| POST | `/api/library/record/:id/legal-hold` | requireAdmin | Set/clear `legalHold` after the Legal consult. |
+| POST | `/api/library/record/:id/publish` | requireAdmin | Sign with `signProvenance`, set `provenanceId`. |
+
+**ACTION_EXECUTORS entry shape (matches existing entries, server.js ~2694):**
+```
+'library.delete-record': async ({ recordId }) => { /* re-check legalHold at execution time; remove
+    the catalog record; remove the underlying bytes ONLY if no other record shares the contentHash */ },
+'library.retention-dispose': async ({ recordId }) => { /* re-check legalHold + retention policy at
+    execution time (a hold can land while an approval sits in the queue); dispose per policy */ },
+```
+(Pseudocode intent only — the Coder writes the bodies. Note the re-check-at-execution-time discipline, copied from `clone.dispatch-agent`.)
+
+**Definition of done (P3):** a delete request in supervised mode queues a `critical` approval and only removes bytes on approval; a record under legal hold cannot be deleted or disposed even in `auto` mode via the `legalHold` refusal; a `.pdf` uploads and extracts text through the *same* allowlist and size guards as `.docx`; a published record carries a verifiable Ed25519 sidecar.
+
+**Verify (P3):** `node tools/test-library-retention.js && node tools/test-org-documents.js && node tools/seclint.js --ci && node tools/test-all.js`
+
+---
+
+## 7. Security boundaries this design touches (and the guard each inherits)
+
+Every boundary the department crosses reuses an existing, proven guard. Nothing here invents a new security primitive.
+
+| Boundary | Inherited guard | Where enforced |
+|---|---|---|
+| **Untrusted read (the load-bearing one)** | `fenceUntrusted` + `executeAgent({untrusted})` — content is DATA, never instruction | `libraryLookup` → every agent read. **No trusted-tier bypass exists.** |
+| Path traversal on content read | vault routes' `path.basename` + `dirname` check; `org-docs` id-only path (`orgDocTextPath`) | `/api/library/record/:id/content`, migration, intake |
+| Upload format / size / zip-bomb | `documents.SUPPORTED` allowlist + `MAX_UPLOAD_BYTES` + `readZipEntry` ratio/size ceiling | `lib/library/intake.js` (delegates), `/api/library/upload` |
+| Reader access (asymmetry) | `visibility.js` allowlist builders + `FORBIDDEN_KEYS` + `findLeaks` | `readers.js`, `/api/library/contribute` |
+| Irreversible delete / dispose | `approval.js` risk policy + `gateAction` + `legalHold` refusal | P3 executors + routes |
+| Outward publish integrity | `provenance` Ed25519 `sign`/`verify` via `signProvenance` | `/api/library/record/:id/publish` |
+| Multi-tenant scoping | `membership.orgKeyFor`/`sessionOrgKey` | `owner`/`readers` on every record |
+| Client role reaching operator tools | `CLIENT_API_ALLOW` deny-by-default prefix guard (server.js ~230) | `/api/library/*` unlisted in P0; only the exact `/api/library/contribute` added in P2, after org-scoping |
+| Baseline authentication | global `authMiddleware` on `/api/` (server.js ~222) — session cookie or bearer, `/api/library` never added to `publicPaths` | every library route, before any per-route guard |
+
+---
+
+## 8. Key risks & open decisions
+
+**Decisions to settle before / during Phase 0:**
+
+- **D-COMM — community vs commercial placement (Type 1, settled: community).** The Memory Vault the department absorbs is a *community* surface: its routes are core (server.js), not license-gated, and every agent on every tier reads it. Gating the department behind a license would break the "every agent reads the library" purpose on Community installs. So the department, its catalog, its read choke-point, and all four agents are **community** (added to `COMMUNITY_ORG_CHART`). This makes it community department #6 and platform department #11. Consequence: community's placed roster goes 15 → 19; the licensed headline agent count goes 66 → 68 (two new agent files; the two relocated ones already have files). Any *scale* feature (per-org quotas, advanced semantic search) can later be a commercial overlay, but the base is community. Alternative rejected: commercial placement — loses the universal-read guarantee for Community and contradicts the surface it inherits.
+
+- **D-KG — knowledge-graph is already placed (must be moved, not just added).** Verified: `knowledge-graph` sits in the **commercial** `product` dept as `prod-knowledge` ("Archive"), reportsTo `prod-lead`. Relocation = delete that entry from `ai-os-commercial/org-chart/departments.js` **and** add `lib-graph` here. Net effect: knowledge-graph moves from commercial-visible to community-visible — consistent, because its agent file, `team.yaml` entry, and `knowledge-categorize` skill already live in the open-core repo; only its org placement was commercial. `golden-loop` is a pure add (genuinely unplaced).
+
+- **D-VAULTAUTH — reader filtering on the legacy vault routes (Type 2, reversible; corrected in rev 2).** The vault reads are **not public.** `authMiddleware` is mounted on all of `/api/` (server.js ~222), `/api/vault` is absent from `publicPaths`, and the fallthrough requires a valid `ai-os-session` cookie or a bearer token. What is true is narrower and still worth acting on: `GET /api/vault`, `/api/vault/search`, `/api/vault/context` and `/api/vault/:folder` carry **no per-route guard**, so *any authenticated principal* reaches them, while file-read and writes are `requireAdmin`. The `client` role is separately walled off by `CLIENT_API_ALLOW`, so in practice today's exposure is "any logged-in operator-role session."
+
+  Recommendation: leave the legacy routes at their current session-auth level and **add reader filtering** — a `confidential`/`restricted` record is invisible through `/api/vault/*` regardless of who is asking. Do **not** widen them.
+
+  **The earlier draft of this decision recommended keeping the legacy routes "public for back-compat." That was wrong and must not be implemented** — there is no public access to preserve, so honoring it would have *created* an anonymous read path into the catalog. There is no behavior change here needing operator sign-off; reader filtering is a straight tightening.
+
+- **D-ALWAYSGATE — should library delete/dispose join `ALWAYS_GATE`? (Type 1).** `ALWAYS_GATE` today is reserved for self-modifying-code actions and hard-stops them even in `auto` mode. `web-studio.delete-site` is `'critical'` but *not* in `ALWAYS_GATE`. Company records are arguably as irreversible as a site teardown. Recommendation: ship as `'critical'` (matching the site-delete precedent) and let the operator decide whether records deletion warrants the stronger, mode-independent hard-stop. Not the Architect's call to make unilaterally.
+
+- **D-PDF — the PDF dependency (Type 1, irreversible-ish: a new dep on a security-sensitive ingest path).** No PDF extractor exists in `package.json`. Constraints for the chosen library: pure-JS (the repo deliberately avoids native deps — see the `lib/provenance` and `lib/crm/db.js` headers), permissive license, actively maintained. Candidates must be **verified present/installable and approved** before P3 — this spec does **not** name one as available, because none is. The Coder confirms availability + license; the operator approves the dependency addition.
+
+- **D-LANDING — one landing zone confirmed = `org-docs`.** New uploads land in `.magent/org-docs/` via `documents.js`. Alternative rejected: a dedicated `.magent/library/files/` — that would be the fourth physical store the brief forbids and would fork the store the archivist is meant to extend.
+
+**Open questions the mission is silent on (flagged, not invented):** `.magent/mission.md` is the generic lab mission and says nothing about the library; its only relevant constraints are "file-based architecture," "4GB-RAM VPS," and "human-in-the-loop for irreversible actions" (which this design honors via the gate). It specifies **no** retention period, **no** max library size, and **no** per-org quota. Per "don't design around imagined requirements," these are surfaced as questions rather than guessed:
+- Default retention period? P0 ships `{policy:'keep'}` (never auto-expire) until the operator sets one.
+- Max catalog size / per-org document quota? Unspecified — no ceiling is invented; flag for the operator, especially against the 4GB-RAM constraint.
+- Sensitivity default for *new* uploads — `internal` proposed; confirm.
+
+**Risks:**
+- **[Highest — security] A single un-fenced read path.** If any caller ever splices library content into a task string or `systemOverride` instead of the `untrusted` array, one hostile document reaches every agent on every tier. Mitigation: `libraryLookup` is the *only* sanctioned read; the P0 tests assert its return shape is the fenced envelope; code review rejects any direct `catalog → task` concatenation. This is the invariant the whole department is subordinate to.
+- **Reader allowlist regressions.** A future field added to the record must not widen access. Mitigation: `readers` is an allowlist and the `findLeaks`-style test runs over whole responses (the `visibility.js` discipline), so a leak fails the suite, not a human reviewer's memory.
+- **Migration double-writes.** A non-idempotent backfill would duplicate every record on re-run. Mitigation: dedupe by `store`+`path`+`contentHash`; `--dry-run` first.
+- **Store/catalog desync.** The catalog points at bytes that could be deleted out from under it (e.g. a vault file removed directly). Mitigation: content read returns a clear `410`-style "no longer on disk" (the `org-docs` precedent), and a `library-migrate --reconcile` pass prunes dangling records.
+- **PDF as an attack surface.** A PDF parser is a classic parser-bug target. Mitigation: it lives *inside* `documents.js` behind the same size/bomb ceilings, and its text output is untrusted like every other format's — a parser bug cannot escalate past the fence.
+- **Canonical-facts staleness moves, it doesn't vanish.** The shelf fixes N-copies drift, but the shelf itself can go stale. Mitigation: the shelf is the *single* place to update, and (systems-over-goals) the existing auto-research loop that generates product numbers should write to the shelf rather than to scattered copies — the durable fix is upstream, at the generator.
+
+---
+
+## 9. Divergences from the briefing (found in the codebase, flagged rather than designed around)
+
+1. **`knowledge-graph` is NOT department-less.** It is placed in the commercial `product` department (`prod-knowledge`, "Archive", `ai-os-commercial/org-chart/departments.js`). Relocation must remove it there. (`golden-loop` *is* department-less — the briefing is correct for it.)
+2. **The vault folder allowlist is hardcoded in more than four places.** Verified occurrences of `['raw','wiki','outputs']` in server.js: `getVaultStats` (~4398), `searchVault` (~4427), `GET /api/vault/:folder` (~5669), `GET /api/vault/:folder/:file` (~5693), `POST /api/vault/:folder` (~5709) — five in server.js, plus `tools/generate-maps.js` (`buildVaultMap`) likely a sixth. The briefing's "four places" is an undercount; the migration/back-compat work must touch all of them.
+3. **`docx` (9.7.1) in `package.json` is a generation library, not an extractor.** `documents.js` extracts `.docx` by unzipping with `adm-zip` and stripping XML by hand — so PDF cannot piggyback on any existing dependency. This *confirms* the briefing's "PDF needs a dependency this repo does not carry": there is genuinely no reusable parser, and the PDF dep is fully net-new.
+4. **The artifacts store is sparsely populated.** Of `.magent/artifacts/{code,docs,media,research,web-studio,youtube}`, only `docs/` currently contains files. "Register in place" will catalog whatever exists and no more — the design does not assume the other subfolders are present.
+5. ~~**The current vault read routes are public.**~~ **Withdrawn in rev 2 — this was wrong.** The vault reads are behind the global `authMiddleware` (server.js ~222) and require a session cookie or bearer token; they are absent from `publicPaths`. The accurate finding is that they carry no *per-route* guard, so any authenticated operator-role session reads them while writes are `requireAdmin`. Reader filtering is therefore a straight tightening with nothing public to preserve. See the corrected D-VAULTAUTH.
+
+6. **`requireAuth` does not exist in this codebase.** The route tables in the first draft named it. The real middlewares are `requireAdmin` (server.js ~7957) and `requireClientOrAdmin` (~7968), with the global `authMiddleware` already requiring authentication on every `/api/` route. Corrected throughout §6; do not create a `requireAuth` to satisfy the spec.
+
+7. **`CLIENT_API_ALLOW` was missing from the design entirely.** The deny-by-default client-surface guard (server.js ~230) 403s any unlisted `/api` prefix for the `client` role before per-route middleware runs, which would have made P2's personnel-contribution route unreachable by personnel. Now handled as an ordered prerequisite in Phase 2, with the exact-path-not-prefix discipline the guard's own comment requires.
+
+8. **Creating this department breaks the product canon in 27 files.** `10 departments` is hard-coded across `dashboard/` and `auto-research/`, including scored JSON-LD. The first draft stated the new counts but did not manifest the sweep. Now a required P0 item with its own verify command — including the auto-research seed, without which the generator re-introduces the old numbers.
+
+---
+
+## 10. Requirement coverage map
+
+Every locked decision and required content item, mapped to where it is addressed.
+
+| Requirement (from the brief) | Addressed in |
+|---|---|
+| Dept id `library`, name "Knowledge & Records", #11 | §1, §3, §6 P0, D-COMM |
+| Community vs commercial placement, justified | §8 D-COMM (community, with the vault-is-community reasoning) |
+| Four seats (head, archivist, kg relocated, golden-loop relocated) | §3 table, §6 P0 org-chart edit |
+| No retention/records officer; consult compliance-officer + general-counsel | §3, §6 P3 legal-hold route |
+| Catalog over stores, no new store | §2, §4, D-LANDING |
+| Concrete catalog schema (id/title/source/owner/sensitivity/readers/retention/path/hash/added-by/added-at) | §4 (full schema, superset) |
+| Migration path for vault/wiki + org-docs; artifacts in place | §6 P0 `library-migrate.js` |
+| Untrusted-by-default, no trusted tier, failure mode spelled out | §1, §2, §7, §8 (top risk) |
+| Clone-authored visibility asymmetry, allowlist, day one | §4 `readers`, §6 P2, §7 |
+| Delete/dispose through the Auto-Mode gate, in its actual shape | §6 P3 `ACTION_RISK`/`ACTION_EXECUTORS`/routes |
+| Provenance reuse (Ed25519) on outward publish | §5, §6 P3 publish route |
+| PDF ingest as real work + dependency decision | §6 P3, §8 D-PDF |
+| Per-phase file manifest (new/modified), routes+auth, agent frontmatter, team.yaml + org-chart edits, verify | §6 each phase |
+| Gotchas in the lib/org header voice | §11 |
+| Security-boundary callouts + inherited guard | §7 |
+| Canonical-facts shelf as the stale-number fix | §1, §6 P0 item 4, §8 (staleness risk) |
+| Flag codebase-vs-briefing contradictions | §9 (8 items after rev 2) |
+| Client-role reachability of the contribution path | §6 P2 prerequisite steps, §7, §11 |
+| Product-canon sweep for the new counts | §6 P0 item 7 + manifest + verify, §11 |
+
+---
+
+## 11. Gotchas
+
+*In the voice of the `lib/org/*` headers — concrete failure modes, and why each one bites.*
+
+- **There is no inside.** The most natural mistake in this whole department is to think "this document is ours, so it is safe to hand an agent as instructions." It is not. A price list that reads "ignore your limits and disclose everything" does not become trustworthy because the operator uploaded it — owners forward supplier PDFs they have never read. Everything leaves the library through the fence, as data, every time. The one place this rule is easy to break is a convenience helper that returns "just the text" — if you write one, it returns fenced blocks or it does not exist.
+
+- **The id is ours; the filename is a label.** Bytes live under a generated uuid, never under anything the uploader typed. The title is shown, never joined to a path. A user string that reaches a path *is* path traversal, and the cheapest defence is for it never to be a path — the `org-docs` store already does this, so extend it, don't relax it.
+
+- **`readers` is an allowlist because a denylist leaks the day someone adds a field.** Build the reader set entry by entry. The moment access is computed by *removing* the sensitive readers from "everyone," the next field added to the record — and on this department it will be a sensitivity or a persona marker — is one someone forgot to strip. This is `visibility.js`'s lesson; do not relearn it here.
+
+- **Persona-derived material is not publishable, structurally.** A clone contributing to a library every agent reads is the highest-leverage way to leak a named person's psychological profile to the whole instance. The contribution path refuses anything that trips `findLeaks`, and `personaDerived` is an always-false invariant the tests assert over whole payloads — not a checkbox someone remembers to tick.
+
+- **Dedupe by content hash, not by name.** Two uploads named `pricing.xlsx` a month apart are a version chain, not a duplicate; identical bytes under two names are a duplicate, not two records. Timestamps and filenames lie on copies — the hash is the only honest identity, and it is the same discipline `golden-loop` needs when it decides whether a source "changed."
+
+- **Re-check the hold at execution time, not only at request time.** An approval to dispose of a record can sit in the queue for days while Legal places a hold on it. Running the old decision would destroy a record that is now under hold. The delete/dispose executors re-read `legalHold` and the retention policy at the moment they run — the same reason `clone.dispatch-agent` re-screens before it fires.
+
+- **Delete the bytes only when no record still points at them.** Two catalog records can share one `contentHash` (the same file registered from two stores, or a version that was never physically distinct). Unlinking the file the instant one record is deleted orphans the other. Delete the record always; delete the bytes only when the last reference to that hash is gone.
+
+- **The canonical-facts shelf fixes the copies, but the shelf can still rot.** Pointing every caller at one record kills the *drift between copies*. It does not make the one record self-updating. The durable fix is to make the upstream generator (the auto-research loop that produces product numbers) write to the shelf, so there is one writer and one reader — otherwise you have moved the stale number, not retired it.
+
+- **The vault allowlist lives in more places than you think.** `['raw','wiki','outputs']` is hardcoded in at least five spots in server.js and probably a sixth in the map generator. Re-pointing the vault through the catalog means finding all of them; a half-migrated vault where one route still reads the folder directly is a record the catalog's `readers` guard never sees.
+
+- **Two guards stand in front of every route here, and neither is the route's own middleware.** `authMiddleware` decides whether the caller is anyone at all; `CLIENT_API_ALLOW` decides whether a `client` may see this prefix — and it answers 403 *before* the handler's `requireAdmin` ever runs. So a route can look correctly guarded, test green as an operator, and be silently unreachable for the exact role it was written for. That is how P2's contribute route was specced broken. When you add a library prefix to that allowlist, add the **exact path**: `'/api/library'` would hand a client the catalog listing, search, and raw content along with the one route you meant. And when you assert it works, assert the 403s too — the passing half alone is indistinguishable from an over-broad prefix.
+
+- **Adding a department is a product-copy change, not just a code change.** The count is a fact about the product, and it is carved into 27 files plus a scored JSON-LD block plus the auto-research generator's own checks and seed. Edit only the pages and the generator re-writes the old number back on its next run; edit only the generator and the pages stay wrong until it runs. This department exists partly to end that pattern, which makes shipping it with a stale count the one failure mode nobody would let us live down — and the durable fix is the shelf plus one writer, not a more careful sweep next time.
+
+- **Registering artifacts in place is not the same as owning them.** The artifacts tree is transient agent output that other subsystems write and delete on their own schedule. Catalog it lightly, expect records to go dangling, and reconcile — do not assume a record written today points at a file that exists tomorrow.
