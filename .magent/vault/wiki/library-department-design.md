@@ -2,6 +2,8 @@
 
 *Status: design for human approval. No implementation until signed off. Approval owner: Reviewer.*
 
+*Revision 3 — Reviewer sign-off round; verdict was REVISE with three blocking issues, all fixed here. (B1) the P0 verify gate tested only the department string while the DoD forbids the agent counts too, so a page asserting "66 agents" passed a green check — the gate now matches the DoD. (B2) the dashboard manifest glob `**/*.html` excluded `dashboard/js/app.js` and `dashboard/llms.txt`, which both carry the counts. (B3) the artifacts store is a nested tree, so the flat basename guard the schema claimed to inherit cannot express a valid artifact path — the read rule is now stated per store. Two corrections to the review itself: the department-string count is **27** files, not 25 (auto-research carries 6 hits, not 4) — though the sweep the Coder actually performs is **25 tracked files** across all phrasings, which is a different 25 than the review's. And a fourth issue the review did not catch: **3 of the 6 auto-research hits are gitignored regenerated artifacts**, so the verify gate as originally written could never go green — it is now scoped to tracked files. Non-blocking N1/N3/N4 also applied; N2 and N5 accepted as-is with reasons in §9.*
+
 *Revision 2 — orchestrator review applied. Four corrections against the code: (1) the legacy vault reads are session-authenticated, not public, so the back-compat recommendation no longer proposes a public surface (D-VAULTAUTH, §9.5); (2) Phase 2 now handles the `CLIENT_API_ALLOW` deny-by-default client guard, without which the contribute route 403s for the personnel it exists for; (3) Phase 0 now carries the product-canon sweep, because creating department #11 invalidates the hard-coded "10 departments / 66 agents" in 27 files; (4) route tables name the middlewares that actually exist (`requireAdmin`, `requireClientOrAdmin`, global `authMiddleware`) — there is no `requireAuth` in this codebase.*
 
 Locked decisions: department id `library`, name "Knowledge & Records", #11 · **community** placement · four seats (Chief Librarian NEW, `archivist` NEW, `knowledge-graph` RELOCATED, `golden-loop` RELOCATED) · catalog-over-stores (no fourth physical store) · untrusted-by-default with **no trusted tier** · `readers` allowlist from day one · delete/dispose through the Auto-Mode gate · Ed25519 provenance on outward publish · PDF ingest specced as real work.
@@ -96,7 +98,8 @@ interface LibraryRecord {
   id:          string;          // uuid — OURS, never derived from any user string (path-traversal defence)
   title:       string;          // label only, ≤200 chars, NEVER used as a path
   store:       'vault' | 'org-docs' | 'artifacts';   // which physical store holds the bytes
-  path:        string;          // location WITHIN that store; resolved + basename/dirname-guarded on read
+  path:        string;          // location WITHIN that store. The read guard is PER STORE — see below;
+                               // there is no single rule, because the stores are not the same shape
   contentHash: string;          // sha256 hex of the bytes (provenance.sha256Hex) — the dedupe + version key
   format:      string;          // txt|md|csv|docx|xlsx|pdf  (documents.extensionOf — the SAME allowlist)
   bytes:       number;
@@ -123,6 +126,16 @@ interface LibraryRecord {
   tags:        string[];
 }
 ```
+
+**The `path` read guard, per store — specified because one rule does not fit all three.** P0 catalogs all three stores and `libraryLookup` reads their bytes, so an implementer hits this in Phase 0. Do not generalize the vault's guard across stores:
+
+| `store` | Shape | Read rule |
+|---|---|---|
+| `vault` | **Flat** — `vault/{raw,wiki,outputs}/<file>` | `path.basename` + confirm `path.dirname(resolved) === dir`, exactly as the existing vault routes do (server.js ~5697). Valid *only* because the folder is flat. |
+| `org-docs` | Flat, uuid-named | Id-only via `orgDocTextPath()` — the filename is never user-derived, so there is nothing to sanitize. Strongest of the three; prefer it for new content. |
+| `artifacts` | **Nested tree** — `artifacts/{docs,code,media,research,web-studio,youtube}/…` | `basename` **cannot express a valid path here** and must not be used. Resolve `path.join(ARTIFACTS_DIR, record.path)`, then assert containment: `path.relative(ARTIFACTS_DIR, resolved)` must not be empty, must not start with `..`, and must not be absolute. |
+
+The containment assertion is the general form; the vault's basename check is a special case of it that happens to be sufficient for a flat directory. If in doubt on any future store, use containment — it is correct for both shapes.
 
 **Field notes worth their own line:**
 - `readers` is the enforcement; `sensitivity` is advisory. The reader-filter answers one question: *is the requester in `readers`, or is `'all-agents'` present and the requester an agent?* Built by allowlist so that adding a new field to the record can never accidentally widen access — the exact failure `visibility.js` was written to prevent.
@@ -164,7 +177,22 @@ Phase gates are the same shape as the Web Studio plan: In scope · Deferred · D
 4. **Canonical-facts shelf.** Seed a small set of `source:'canonical-fact'` records (agent count, model/tier count, pricing, limits) with `sensitivity:'internal'`, `readers:['all-agents']`. This is the shelf callers read instead of hard-coding numbers.
 5. **Org chart + roster.** Add the `library` department to `COMMUNITY_ORG_CHART`; remove `prod-knowledge` from the commercial chart; add the two new agents to `EFFORT_ROUTING` and `team.yaml`; add/relocate the four agent files.
 6. **Back-compat.** `/api/vault/*` keep working, re-pointed through the catalog, at their existing session-auth level plus reader filtering (D-VAULTAUTH).
-7. **Product-canon sweep — not optional, and not a follow-up.** Creating department #11 is the change that invalidates every hard-coded department and agent count in the product copy: `10 departments` appears in **27 files** across `dashboard/` and `auto-research/`, including scored JSON-LD `FAQPage` answers in `dashboard/docs/agents.html` ("66, across 10 departments", twice, plus the prose in the roster section). The counts move to **11 departments**, **68** licensed agents, **19** community placed agents. The auto-research loop's two hard-coded checks and its git-tracked seed must be updated in the same phase, or the generator re-introduces the old numbers on its next run. Ship this *with* P0 — a department whose own headline feature is the canonical-facts shelf cannot land while making the drift it exists to fix measurably worse.
+7. **Product-canon sweep — not optional, and not a follow-up.** Creating department #11 invalidates every hard-coded department and agent count in the product copy. The counts move to **11 departments**, **68** licensed agents, **19** community placed agents. Verified scope:
+
+   | What | Count | Notes |
+   |---|---|---|
+   | `10 departments` under `dashboard/` | 21 files | Includes `dashboard/js/app.js` and `dashboard/llms.txt` — **not** just `.html` |
+   | `10 departments` under `auto-research/` | 6 files, **3 tracked** | Tracked: `seed/landing-seo.html`, `instructions.md`, `score.js`. Gitignored generated artifacts (do not edit): `asset/`, `history/best/`, `history/iter-001-kept/` |
+   | **The actual sweep scope** — all phrasings, tracked only | **25 files** (22 dashboard + 3 auto-research) | This is what the verify gate returns and what the Coder edits |
+   | Same union counting gitignored copies | 28 files | Stated only to explain the discrepancy — the extra 3 regenerate |
+
+   Phrasings in use, all of which the gate must match: `66 agents` (36×), `all 66` (26×), `66 AI agents` (19×), `66, across` (2×), `15 across 5 departments` (2×).
+
+   The two occurrences of "66, across 10 departments" in `dashboard/docs/agents.html` are the highest-stakes: one is inside a scored JSON-LD `FAQPage` answer (line ~38), one is prose (line ~332).
+
+   **Edit tracked files only.** The gitignored `auto-research/asset/` and `history/` copies regenerate from the seed, and `history/` is an immutable record of past iterations that must not be rewritten. Fix `seed/landing-seo.html` plus the two hard-coded checks in `instructions.md` and `score.js`, or the generator re-introduces the old numbers on its next run.
+
+   Ship this *with* P0 — a department whose own headline feature is the canonical-facts shelf cannot land while making the drift it exists to fix measurably worse.
 
 **File manifest (P0):**
 
@@ -182,13 +210,11 @@ Phase gates are the same shape as the Web Studio plan: In scope · Deferred · D
 | `server.js` | MODIFIED | `library_catalog` state; `libraryLookup`; read routes; `COMMUNITY_ORG_CHART` +`library` dept; `EFFORT_ROUTING` +2 agents; `/api/vault/*` re-pointed. |
 | `.magent/team.yaml` | MODIFIED | +`chief-librarian`, +`archivist` roles. |
 | `ai-os-commercial/org-chart/departments.js` | MODIFIED | **Remove** `prod-knowledge` from `ADDITIONAL_AGENTS.product`. |
-| `dashboard/**/*.html` (27 files) | MODIFIED | Product-canon sweep: 10 → 11 departments, 66 → 68 agents, 15 → 19 community. Includes the JSON-LD `FAQPage` answers in `dashboard/docs/agents.html` (scored — see the web-content standard). |
-| `auto-research/` (checks + git-tracked seed) | MODIFIED | Update the two hard-coded count checks and the seed, so the generator does not re-introduce the old numbers. Gitignored assets regenerate; the seed does not. |
+| `dashboard/**` — **not** `**/*.html` | MODIFIED | Product-canon sweep: 10 → 11 departments, 66 → 68 agents, 15 → 19 community. **22 tracked files** across all phrasings. **`dashboard/js/app.js` and `dashboard/llms.txt` both carry the counts and an `*.html` glob silently skips them.** Includes the scored JSON-LD `FAQPage` answers in `dashboard/docs/agents.html`. Rely on the verify gate for completeness, not on the count. |
+| `auto-research/seed/landing-seo.html`, `instructions.md`, `score.js` | MODIFIED | The 3 **tracked** files of the 6 that carry the string. Update the seed and the two hard-coded checks so the generator does not re-introduce the old numbers. Do **not** edit `asset/` or `history/*` — gitignored, regenerated, and `history/` is a record of past iterations. |
 
 **API routes (P0):**
 
-| Method | Path | Auth | Purpose |
-|---|---|---|---|
 *Middleware names are the ones this codebase actually has: the global `authMiddleware` on `/api/` (server.js ~222) already requires a session cookie or bearer token for every route below, so "authenticated" needs no per-route middleware. Per-route options are `requireAdmin` (server.js ~7957) and `requireClientOrAdmin` (~7968). **There is no `requireAuth`** — do not write one.*
 
 | Method | Path | Auth | Purpose |
@@ -231,10 +257,10 @@ triggers: [source_added, upload_received, manual]
 **Org-chart edit (server.js `COMMUNITY_ORG_CHART.departments`, append):**
 ```
 { id: 'library', name: 'Knowledge & Records', icon: '📚', color: '#0d9488', employees: [
-  { id: 'lib-chief',     title: 'Chief Librarian', name: 'Athena',  agent: 'chief-librarian', tier: 'strategic',    reportsTo: 'ceo',       ... },
-  { id: 'lib-archivist', title: 'Archivist',       name: 'Vellum',  agent: 'archivist',       tier: 'professional', reportsTo: 'lib-chief', ... },
-  { id: 'lib-graph',     title: 'Knowledge Graph', name: 'Archive', agent: 'knowledge-graph', tier: 'professional', reportsTo: 'lib-chief', ... },
-  { id: 'lib-loop',      title: 'Golden Loop',     name: 'Tether',  agent: 'golden-loop',     tier: 'professional', reportsTo: 'lib-chief', ... },
+  { id: 'lib-chief', title: 'Chief Librarian', name: 'Athena', agent: 'chief-librarian', tier: 'strategic', avatar: '📚', status: 'active', reportsTo: 'ceo', desc: 'Taxonomy, cross-department lookup, retention decisions' },
+  { id: 'lib-archivist', title: 'Archivist', name: 'Vellum', agent: 'archivist', tier: 'professional', avatar: '🗂️', status: 'active', reportsTo: 'lib-chief', desc: 'Intake, format handling, dedupe, metadata, versioning' },
+  { id: 'lib-graph', title: 'Knowledge Manager', name: 'Archive', agent: 'knowledge-graph', tier: 'professional', avatar: '🧩', status: 'active', reportsTo: 'lib-chief', desc: 'Knowledge ingestion, semantic linking, graph visualization' },
+  { id: 'lib-loop', title: 'Sync Steward', name: 'Tether', agent: 'golden-loop', tier: 'professional', avatar: '🔄', status: 'active', reportsTo: 'lib-chief', desc: 'Source-change detection, knowledge-base re-sync, staleness alerts' },
 ]}
 ```
 `EFFORT_ROUTING`: add `chief-librarian` to `strategic.agents`; add `archivist` to `professional.agents`. (`knowledge-graph` and `golden-loop` are already in `professional.agents` — leave them.)
@@ -250,10 +276,11 @@ node tools/test-library-catalog.js && node tools/test-library-readers.js
 node tools/seclint.js --ci
 node tools/test-all.js
 ```
-Canon check (must return nothing):
+Canon check — **must return nothing.** Note both properties: it tests every phrasing the DoD forbids (not just the department string, or a page asserting "66 agents" passes a green check), and it runs over **tracked files only** via `git grep`, because 3 of the 6 `auto-research/` hits are gitignored generated artifacts that regenerate from the seed and would keep this gate red forever:
 ```
-grep -rl "10 departments" dashboard auto-research
+git grep -lE "10 departments|66 agents|all 66|66 AI agents|66, across|15 across 5 departments" -- dashboard auto-research
 ```
+If a new phrasing of either count is introduced anywhere, add it to this pattern in the same commit — the gate is only as good as its alternation list, which is the same enumeration weakness that let a boundary guard miss the one field nobody listed.
 
 ---
 
@@ -345,7 +372,7 @@ Every boundary the department crosses reuses an existing, proven guard. Nothing 
 | Boundary | Inherited guard | Where enforced |
 |---|---|---|
 | **Untrusted read (the load-bearing one)** | `fenceUntrusted` + `executeAgent({untrusted})` — content is DATA, never instruction | `libraryLookup` → every agent read. **No trusted-tier bypass exists.** |
-| Path traversal on content read | vault routes' `path.basename` + `dirname` check; `org-docs` id-only path (`orgDocTextPath`) | `/api/library/record/:id/content`, migration, intake |
+| Path traversal on content read | **Per store, not one rule** — vault: `basename`+`dirname` (flat only); org-docs: id-only (`orgDocTextPath`); artifacts: `path.relative` containment assertion, because it is a nested tree and `basename` cannot express a valid path in it. See the §4 table. | `/api/library/record/:id/content`, migration, intake |
 | Upload format / size / zip-bomb | `documents.SUPPORTED` allowlist + `MAX_UPLOAD_BYTES` + `readZipEntry` ratio/size ceiling | `lib/library/intake.js` (delegates), `/api/library/upload` |
 | Reader access (asymmetry) | `visibility.js` allowlist builders + `FORBIDDEN_KEYS` + `findLeaks` | `readers.js`, `/api/library/contribute` |
 | Irreversible delete / dispose | `approval.js` risk policy + `gateAction` + `legalHold` refusal | P3 executors + routes |
@@ -403,7 +430,20 @@ Every boundary the department crosses reuses an existing, proven guard. Nothing 
 
 7. **`CLIENT_API_ALLOW` was missing from the design entirely.** The deny-by-default client-surface guard (server.js ~230) 403s any unlisted `/api` prefix for the `client` role before per-route middleware runs, which would have made P2's personnel-contribution route unreachable by personnel. Now handled as an ordered prerequisite in Phase 2, with the exact-path-not-prefix discipline the guard's own comment requires.
 
-8. **Creating this department breaks the product canon in 27 files.** `10 departments` is hard-coded across `dashboard/` and `auto-research/`, including scored JSON-LD. The first draft stated the new counts but did not manifest the sweep. Now a required P0 item with its own verify command — including the auto-research seed, without which the generator re-introduces the old numbers.
+8. **Creating this department breaks the product canon.** `10 departments` is hard-coded in 27 files across `dashboard/` and `auto-research/`, including scored JSON-LD. Revision 1 stated the new counts but did not manifest the sweep; revision 3 corrected its scope (see items 10-11). Now a required P0 item with its own verify command — including the auto-research seed, without which the generator re-introduces the old numbers.
+
+9. **The vault guard does not generalize to the artifacts store** (rev 3, from Reviewer B3). The schema originally claimed one "basename/dirname-guarded" read rule inherited from the vault routes. That guard is correct only for a flat directory; `artifacts/` is a nested tree, so `basename` cannot express a valid path in it. Now specified per store in §4, with `path.relative` containment as the general form. This was a P0 byte-read path, so it would have forced an unspecified design decision during implementation.
+
+10. **The canon verify gate could never have gone green** (rev 3, found while checking Reviewer B2). Three of the six `auto-research/` files carrying the count — `asset/landing-seo.html`, `history/best/landing-seo.html`, `history/iter-001-kept/landing-seo.html` — are **gitignored generated artifacts**. A plain `grep -rl` over the directory reports them forever: editing them is pointless (they regenerate) and wrong for `history/` (a record of past iterations). The gate is now `git grep`, tracked files only. This is the same gitignored-asset / tracked-seed trap that produced the original stale-number drift, which is fitting: the sweep to fix it stepped in it.
+
+11. **Reviewer's own count was off** (rev 3). The sign-off review reported 25 files for the department string (21 dashboard + 4 auto-research); the verified figure is **27**, because auto-research carries 6 hits, not 4. The review's substantive point — the `*.html` glob skips `app.js` and `llms.txt` — was correct and is fixed. Recorded because these numbers are now load-bearing for the sweep, and because the coincidence is a trap: the sweep the Coder performs is also *25* files, but a different 25 (22 dashboard + 3 auto-research, all phrasings, tracked only). Do not reconcile the two figures — they count different things.
+
+
+---
+
+**Accepted as-is from the sign-off review, with reasons (rev 3):**
+- **`server.js:3592` hard-codes "66 agents" in an internal comment** (Reviewer N2). Deliberately left outside the sweep's declared scope, which is user-facing copy plus the generator. A stale internal comment misleads a reader; a stale JSON-LD answer misleads a search engine and a customer. Fixing it is welcome in passing, but adding non-user-facing comments to the verify gate would make the gate noisy and eventually ignored.
+- **Line-number anchors drift by a few lines** (Reviewer N5 — `orgDocTextPath` ~11049 vs 11053, `getVaultStats` ~4393 vs 4395, `ACTION_EXECUTORS` ~8629 vs 8633). Every anchor uses the `~` convention and every symbol was verified present within a handful of lines. Chasing exact line numbers in a doc that will outlive them is false precision; the symbol name is the durable locator and every one of them is correct.
 
 ---
 
@@ -429,7 +469,9 @@ Every locked decision and required content item, mapped to where it is addressed
 | Gotchas in the lib/org header voice | §11 |
 | Security-boundary callouts + inherited guard | §7 |
 | Canonical-facts shelf as the stale-number fix | §1, §6 P0 item 4, §8 (staleness risk) |
-| Flag codebase-vs-briefing contradictions | §9 (8 items after rev 2) |
+| Flag codebase-vs-briefing contradictions | §9 (11 items after rev 3) |
+| Per-store path-traversal read rule (Reviewer B3) | §4 store table, §7 |
+| Canon gate matching its own DoD, tracked files only (Reviewer B1 + rev-3 finding) | §6 P0 item 7, verify block, §9 items 10-11 |
 | Client-role reachability of the contribution path | §6 P2 prerequisite steps, §7, §11 |
 | Product-canon sweep for the new counts | §6 P0 item 7 + manifest + verify, §11 |
 
