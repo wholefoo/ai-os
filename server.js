@@ -215,7 +215,11 @@ function authMiddleware(req, res, next) {
   if (sessionToken && isValidSession(sessionToken)) return next();
   // Allow Bearer token — either the API_TOKEN or a valid session token
   const bearerToken = req.headers.authorization?.replace('Bearer ', '');
-  if (bearerToken === API_TOKEN) return next();
+  // The instance's own API_TOKEN: the operator's automation, not a browser session. Marked so that
+  // surfaces which reason about WHO is asking (the library's reader allowlist) can treat it as the
+  // operator instead of failing closed on an absent session — a token caller has always been able to
+  // read the vault, and the library must not quietly take that away.
+  if (bearerToken === API_TOKEN) { req.isServiceToken = true; return next(); }
   if (bearerToken && isValidSession(bearerToken)) return next();
   res.status(401).json({ error: 'Unauthorized. Provide Authorization: Bearer <token> header.' });
 }
@@ -811,6 +815,7 @@ app.get('/sitemap.xml', (req, res) => {
     { url: '/docs/getting-started', priority: '0.9', freq: 'monthly' },
     { url: '/docs/architecture', priority: '0.7', freq: 'monthly' },
     { url: '/docs/agents', priority: '0.7', freq: 'monthly' },
+    { url: '/docs/knowledge-records', priority: '0.7', freq: 'monthly' },
     { url: '/docs/skills', priority: '0.6', freq: 'monthly' },
     { url: '/docs/business-clone', priority: '0.7', freq: 'monthly' },
     { url: '/docs/knowledge-graph', priority: '0.6', freq: 'monthly' },
@@ -1300,7 +1305,7 @@ app.get('/privacy', (req, res) => res.sendFile(path.join(BASE, 'dashboard', 'pri
 
 // Documentation pages
 app.get('/docs', (req, res) => res.sendFile(path.join(BASE, 'dashboard', 'docs', 'index.html')));
-const docPages = ['getting-started','architecture','agents','skills','business-clone','knowledge-graph','design-system','media-production','monetization','batch-queue','api','deployment','notifications','security','hermes','self-improve','analytics','web-studio-business','agent-ready-sites','client-engine','billing','license-community','license-business','license-enterprise'];
+const docPages = ['getting-started','architecture','agents','knowledge-records','skills','business-clone','knowledge-graph','design-system','media-production','monetization','batch-queue','api','deployment','notifications','security','hermes','self-improve','analytics','web-studio-business','agent-ready-sites','client-engine','billing','license-community','license-business','license-enterprise'];
 docPages.forEach(page => {
   app.get(`/docs/${page}`, (req, res) => res.sendFile(path.join(BASE, 'dashboard', 'docs', `${page}.html`)));
 });
@@ -3436,9 +3441,9 @@ const GROK_BUILD_MODEL = 'grok-build-0.1';
 // Effort-level routing: maps agent tiers to Opus 4.8 effort levels
 const EFFORT_ROUTING = {
   // Strategic tier — full reasoning power, complex planning, architecture decisions
-  strategic: { effort: 'xhigh', agents: ['orchestrator', 'architect', 'reviewer', 'security-auditor', 'web-studio-lead'] },
+  strategic: { effort: 'xhigh', agents: ['orchestrator', 'architect', 'reviewer', 'security-auditor', 'web-studio-lead', 'chief-librarian'] },
   // Professional tier — balanced quality/speed for most agent work
-  professional: { effort: 'high', agents: ['researcher', 'coder', 'writer', 'synthesis', 'research-architect', 'report-compiler', 'data-wrangler', 'design-system', 'lead-gen', 'marketing-hub', 'product-factory', 'knowledge-graph', 'golden-loop', 'automator', 'browser-agent', 'web-builder', 'content-writer', 'hosting-ops'] },
+  professional: { effort: 'high', agents: ['researcher', 'coder', 'writer', 'synthesis', 'research-architect', 'report-compiler', 'data-wrangler', 'design-system', 'lead-gen', 'marketing-hub', 'product-factory', 'knowledge-graph', 'golden-loop', 'archivist', 'automator', 'browser-agent', 'web-builder', 'content-writer', 'hosting-ops'] },
   // Scout tier — fast, lightweight tasks
   scout: { effort: 'low', agents: ['scout', 'social-intel', 'routine-runner'] },
   // Creative tier — Gemini Omni for multimodal generation (video, image, audio)
@@ -5649,6 +5654,26 @@ app.post('/api/schedules', requireAdmin, (req, res) => {
 });
 
 // --- Memory Vault API ---
+//
+//  These routes predate the library and keep working unchanged in shape and auth level (the global
+//  authMiddleware; file-read and writes stay requireAdmin). What is NEW is reader filtering: a vault
+//  file the catalog marks unreadable for this requester is omitted from the listing.
+//
+//  Two notes on why it is shaped this way rather than rewritten:
+//   - Filtering is applied to files that HAVE a catalog record. A file with no record yet (added to
+//     the vault directly, or added since the last migrate) stays visible, because these routes' job
+//     is to show what is on disk and silently hiding uncataloged files would make the vault look
+//     empty after a fresh install. Fail-open is correct HERE and nowhere else in the library: the
+//     alternative breaks the operator's own view of their own files.
+//   - The strict path is /api/library/*, which is catalog-first and fails closed. The legacy routes
+//     are the compatibility surface, not the security boundary.
+function libraryFilterVaultListing(entries, folder, req) {
+  const requester = libraryRequesterFor(req);
+  return entries.filter((e) => {
+    const rec = libraryCatalog.find((r) => r && r.store === 'vault' && r.path === `${folder}/${e.name}`);
+    return rec ? libraryReaders.canRead(rec, requester) : true;
+  });
+}
 
 app.get('/api/vault', (req, res) => {
   res.json(getVaultStats());
@@ -5685,7 +5710,7 @@ app.get('/api/vault/:folder', (req, res) => {
       type: parsed.meta?.type || folder,
     };
   });
-  res.json(result);
+  res.json(libraryFilterVaultListing(result, folder, req));
 });
 
 app.get('/api/vault/:folder/:file', requireAdmin, (req, res) => {
@@ -5721,6 +5746,235 @@ app.post('/api/vault/:folder', requireAdmin, (req, res) => {
   logActivity('vault', `File saved to vault/${folder}/${safeName}`);
   appendLog(`VAULT_WRITE: ${folder}/${safeName}`);
   res.json({ ok: true, path: `vault/${folder}/${safeName}` });
+});
+
+// ============================================================
+// --- Knowledge & Records: the library catalog + THE read choke-point ---
+//
+//  The catalog is an INDEX over the three physical stores (vault, org-docs, artifacts). Document
+//  bytes never move and never live here — `library_catalog.json` is metadata only.
+//
+//  libraryLookup() is the ONLY sanctioned way library content reaches an agent, and it returns
+//  `untrusted: [{label, text}]` shaped for executeAgent's `untrusted` option — NOT pre-fenced text.
+//  That distinction matters: fenceUntrusted() mints a fresh random nonce per call, so fencing must
+//  happen inside executeAgent where the nonce belongs to that one prompt. Pre-fencing here would
+//  reuse one nonce across every caller and hand an attacker the fence markers to forge.
+//
+//  There is NO trusted tier and no "just the text" helper. The library's whole purpose is that every
+//  agent reads it, and much of its content is documents nobody on our side authored — a supplier PDF,
+//  a competitor brochure, a price list the owner forwarded unread. One un-fenced read path reaches
+//  every agent on every tier, which makes this the largest injection surface in the product.
+//
+//  If you are about to add a function that returns library content as a plain string: don't. Pass the
+//  untrusted array to executeAgent instead.
+// ============================================================
+
+const libraryCatalogMod = require('./lib/library/catalog');
+const libraryReaders = require('./lib/library/readers');
+const libraryPaths = require('./lib/library/paths');
+
+// The canonical-facts shelf: the structural fix for numbers that drift across copies. Seeded once,
+// then owned by the operator. Callers read these instead of hard-coding a count in prose — and
+// golden-loop flags one whose upstream value has moved.
+//
+// Values are derived from live state where the code can know them (the agent registry and the org
+// chart are counted at boot, not typed in here), because a shelf that must be hand-updated is just a
+// hard-coded copy with better manners.
+function seedCanonicalFacts() {
+  const deptCount = ORG_CHART.departments.length;
+  const agentDir = path.join(CLAUDE_DIR, 'agents');
+  const agentCount = fs.existsSync(agentDir)
+    ? fs.readdirSync(agentDir).filter((f) => f.endsWith('.md')).length : 0;
+  const communityCount = COMMUNITY_ORG_CHART.departments
+    .reduce((sum, d) => sum + d.employees.length, 0);
+
+  const facts = [
+    ['Department count', String(deptCount), 'Departments on the Virtual HQ org chart (licensed tiers).'],
+    ['Licensed agent count', String(agentCount), 'Agent definitions in .claude/agents — the canonical fleet size on Business/Enterprise.'],
+    ['Community agent count', String(communityCount), 'Agents placed on the Community org chart.'],
+    ['Model count', '6', 'Distinct AI models available across the routing tiers.'],
+    ['Routing tier count', '4', 'Model routing tiers: strategic, professional, scout, economy.'],
+  ];
+
+  return facts.map(([title, value, note]) => libraryCatalogMod.normalize({
+    title,
+    value,
+    source: 'canonical-fact',
+    store: 'vault',
+    // A fact needs a DISTINCT dedupe identity, and it has no bytes to derive one from. The first
+    // version of this seeded every fact with path:'' and contentHash:'' — so all five collapsed to
+    // the single dedupe key `vault::::` the first time library-migrate ran, and the shelf built to
+    // end silent numeric drift silently destroyed four fifths of itself. A synthetic path plus a hash
+    // OF THE VALUE fixes both halves: each fact is distinct, and a changed value changes the hash, so
+    // the version anchor works for facts exactly as it does for documents.
+    path: `canonical/${String(title).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '')}`,
+    contentHash: require('./lib/provenance').sha256Hex(Buffer.from(String(value), 'utf-8')),
+    sensitivity: 'internal',
+    // Both grants: agents quote facts into their answers, operators read the shelf in the dashboard.
+    readers: libraryReaders.buildReaders({ allAgents: true, allOperators: true }),
+    addedBy: 'system',
+    tags: ['canonical', 'counts'],
+    retention: { policy: 'keep' },
+    // The note rides along as a tag-adjacent hint rather than a body: a fact is a value plus its
+    // meaning, and both belong on the record where one lookup finds them.
+    ...(note ? { titleNote: note } : {}),
+  }));
+}
+
+let libraryCatalog = loadState('library_catalog', () => []);
+if (!Array.isArray(libraryCatalog)) libraryCatalog = [];
+console.log(`[LIBRARY] Catalog loaded: ${libraryCatalog.length} records`);
+
+// Seeding is deliberately NOT done here. seedCanonicalFacts() counts the live org chart, and
+// ORG_CHART is built ~2700 lines below this point — calling it here throws on the const's temporal
+// dead zone. The seed runs from ensureCanonicalFacts() immediately after ORG_CHART is assembled.
+// (Found by booting, not by reading: `node --check` cannot see a TDZ violation.)
+function ensureCanonicalFacts() {
+  // Seed only when absent — never overwrite a fact the operator has corrected by hand.
+  if (libraryCatalog.some((r) => r && r.source === 'canonical-fact')) return;
+  libraryCatalog = libraryCatalog.concat(seedCanonicalFacts());
+  saveState('library_catalog', libraryCatalog);
+  console.log('[LIBRARY] Seeded canonical-facts shelf');
+}
+
+/**
+ * Resolve a record's bytes to an absolute path — PER STORE, because the three stores are not the
+ * same shape and one rule does not fit them.
+ *
+ * Returns null when the record does not resolve to a legitimate location, and callers treat null as
+ * "not readable" rather than probing further. Every branch fails closed.
+ */
+// The store roots the path guard resolves against. Passed in rather than imported by the guard so
+// that lib/library/paths.js stays pure and unit-testable — it is the library's path-traversal
+// boundary, and a boundary that can only be exercised by booting the server is one nobody verifies.
+const LIBRARY_ROOTS = {
+  vault: VAULT_DIR,
+  orgDocs: path.join(MAGENT_DIR, 'org-docs'),
+  artifacts: path.join(MAGENT_DIR, 'artifacts'),
+};
+
+function libraryResolvePath(record) {
+  return libraryPaths.resolveRecordPath(record, LIBRARY_ROOTS);
+}
+
+/** Read a record's bytes as text, or null if it is gone or unresolvable. Store/catalog desync is
+ *  expected (another subsystem can delete an artifact), so a missing file is a null, not a throw. */
+function libraryReadText(record) {
+  const full = libraryResolvePath(record);
+  if (!full || !fs.existsSync(full)) return null;
+  try {
+    return fs.readFileSync(full, 'utf-8');
+  } catch { return null; }
+}
+
+/**
+ * THE read choke-point. Every agent read of library content goes through here.
+ *
+ * @param {string} query
+ * @param {object} opts
+ * @param {{kind:'agent'|'person', id:string}} opts.requester  Reader-filtered against the allowlist.
+ * @param {number} [opts.limit=5]
+ * @returns {{records: object[], untrusted: Array<{label:string,text:string}>}}
+ *   `untrusted` is passed STRAIGHT to executeAgent(..., { untrusted }) — never concatenated into a
+ *   task string, never into systemOverride. See the section header.
+ */
+function libraryLookup(query, opts) {
+  const o = opts || {};
+  const requester = o.requester;
+  const limit = Math.max(1, Math.min(20, Number(o.limit) || 5));
+
+  // Access first, then search. Filtering after a search would still have loaded records the caller
+  // may not see into the same array a bug could leak.
+  const visible = libraryReaders.readableBy(libraryCatalog, requester);
+  const hits = (query ? libraryCatalogMod.search(visible, query) : visible).slice(0, limit);
+
+  const untrusted = [];
+  for (const r of hits) {
+    // A canonical fact IS its value — there are no bytes to read, and it still travels fenced,
+    // because "it came from our own shelf" is exactly the reasoning this module refuses to make.
+    const text = r.source === 'canonical-fact' ? r.value : libraryReadText(r);
+    if (text == null || !String(text).trim()) continue;
+    untrusted.push({ label: `library:${r.id} ${r.title}`.slice(0, 60), text: String(text) });
+  }
+  return { records: hits, untrusted };
+}
+
+/**
+ * The requester for a dashboard request. Never an agent — the 'all-agents' grant deliberately does
+ * not admit humans, so a browser session cannot inherit an agent's reach.
+ *
+ * An admin session is an 'operator' (the human running this instance, which is what the legacy vault
+ * routes have always allowed); everyone else is a plain 'person' who must be named on the record.
+ */
+function libraryRequesterFor(req) {
+  // The instance's own API_TOKEN (set by authMiddleware) is the operator's automation. It has no
+  // session, so without this it would fall through to a person with an empty id and — correctly but
+  // uselessly — fail closed on everything.
+  if (req.isServiceToken) return { kind: 'operator', id: 'service-token' };
+  const isAdmin = req.session && req.session.role === 'admin';
+  return { kind: isAdmin ? 'operator' : 'person', id: sessionOrgKey(req.session) || '' };
+}
+
+/** Metadata only — never bytes. Built by allowlist so a new record field cannot leak through a list. */
+function libraryRecordView(r) {
+  return {
+    id: r.id, title: r.title, store: r.store, format: r.format, bytes: r.bytes,
+    source: r.source, owner: r.owner, addedBy: r.addedBy, addedAt: r.addedAt,
+    sensitivity: r.sensitivity, retention: r.retention, legalHold: r.legalHold,
+    tags: r.tags, provenanceId: r.provenanceId,
+    value: r.source === 'canonical-fact' ? r.value : undefined,
+  };
+}
+
+// NOTE: /api/library/* is intentionally absent from CLIENT_API_ALLOW in P0 — these are operator
+// surfaces. The client-facing contribution route arrives in P2, and only after the routes are
+// owner-scoped, per the guard's own comment.
+
+app.get('/api/library', (req, res) => {
+  const visible = libraryReaders.readableBy(libraryCatalog, libraryRequesterFor(req));
+  const byStore = {};
+  for (const r of visible) byStore[r.store] = (byStore[r.store] || 0) + 1;
+  res.json({ total: visible.length, byStore, facts: libraryCatalogMod.canonicalFacts(visible).length });
+});
+
+app.get('/api/library/search', (req, res) => {
+  const visible = libraryReaders.readableBy(libraryCatalog, libraryRequesterFor(req));
+  const q = String(req.query.q || '');
+  const hits = q ? libraryCatalogMod.search(visible, q) : visible;
+  res.json(hits.slice(0, 100).map(libraryRecordView));
+});
+
+app.get('/api/library/canonical', (req, res) => {
+  const visible = libraryReaders.readableBy(libraryCatalog, libraryRequesterFor(req));
+  res.json(libraryCatalogMod.canonicalFacts(visible).map(libraryRecordView));
+});
+
+app.get('/api/library/record/:id', (req, res) => {
+  const rec = libraryCatalog.find((r) => r && r.id === req.params.id);
+  // Same 404 whether the record is absent or merely unreadable — a distinguishable "exists but you
+  // may not see it" is a disclosure about confidential material to someone with no right to it.
+  if (!rec || !libraryReaders.canRead(rec, libraryRequesterFor(req))) {
+    return res.status(404).json({ error: 'No such record' });
+  }
+  res.json(libraryRecordView(rec));
+});
+
+app.get('/api/library/record/:id/content', (req, res) => {
+  const rec = libraryCatalog.find((r) => r && r.id === req.params.id);
+  const isAdmin = req.session && req.session.role === 'admin';
+  // Operator override is explicit and lives HERE, at the route, where a reviewer sees it — never
+  // inside canRead, where it would be invisible to every caller.
+  if (!rec || !(isAdmin || libraryReaders.canRead(rec, libraryRequesterFor(req)))) {
+    return res.status(404).json({ error: 'No such record' });
+  }
+  if (rec.source === 'canonical-fact') return res.json({ id: rec.id, content: rec.value || '' });
+  const text = libraryReadText(rec);
+  if (text == null) {
+    // Store/catalog desync: the record is real, the bytes are not. Say so plainly so a reconcile
+    // pass has something to act on, rather than implying the record never existed.
+    return res.status(410).json({ error: 'The underlying file is no longer on disk', recordId: rec.id });
+  }
+  res.json({ id: rec.id, title: rec.title, content: text });
 });
 
 // --- Cost Tracking API ---
@@ -8480,6 +8734,20 @@ const COMMUNITY_ORG_CHART = {
         { id: 'ops-scout', title: 'Field Scout', name: 'Ranger', agent: 'scout', tier: 'scout', avatar: '🔭', status: 'active', reportsTo: 'coo', desc: 'Quick fact-checking, lookups, rapid triage' },
       ]
     },
+    // Knowledge & Records is COMMUNITY, not commercial, and deliberately so: it owns the Memory
+    // Vault, whose routes are core rather than license-gated, and its whole purpose is that every
+    // agent on every tier can read the library. Gating it would break that on Community installs.
+    // knowledge-graph moves here from the commercial `product` department (it was `prod-knowledge`)
+    // — its agent file, team.yaml entry and skill were always open-core; only its placement was not.
+    {
+      id: 'library', name: 'Knowledge & Records', icon: '📚', color: '#0d9488',
+      employees: [
+        { id: 'lib-chief', title: 'Chief Librarian', name: 'Athena', agent: 'chief-librarian', tier: 'strategic', avatar: '📚', status: 'active', reportsTo: 'ceo', desc: 'Taxonomy authority, cross-department lookup, retention decisions' },
+        { id: 'lib-archivist', title: 'Archivist', name: 'Vellum', agent: 'archivist', tier: 'professional', avatar: '🗂️', status: 'active', reportsTo: 'lib-chief', desc: 'Intake, format handling, dedupe, metadata, versioning' },
+        { id: 'lib-graph', title: 'Knowledge Manager', name: 'Archive', agent: 'knowledge-graph', tier: 'professional', avatar: '🧩', status: 'active', reportsTo: 'lib-chief', desc: 'Knowledge ingestion, semantic linking, graph visualization' },
+        { id: 'lib-loop', title: 'Sync Steward', name: 'Tether', agent: 'golden-loop', tier: 'professional', avatar: '🔄', status: 'active', reportsTo: 'lib-chief', desc: 'Source-change detection, knowledge-base re-sync, staleness alerts' },
+      ]
+    },
   ],
 };
 
@@ -8515,6 +8783,9 @@ const ORG_CHART = (() => {
 
   return chart;
 })();
+
+// The canonical-facts shelf counts the org chart, so it can only be seeded once ORG_CHART exists.
+ensureCanonicalFacts();
 
 // GET /api/hq/org — full org chart
 app.get('/api/hq/org', (req, res) => {
