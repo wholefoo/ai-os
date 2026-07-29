@@ -3593,8 +3593,9 @@ async function executeAgent(agentName, task, options = {}) {
   // It exists for the AI Business Clone, whose whole point is to BE a specific person: appending a
   // persona to an agent's own prompt produces two competing identities, and every agent here is a
   // named character (comms-director is "Herald"), so that bleed shows up in customer-facing drafts.
-  // The alternative — a 67th .md file per clone — would corrupt the canonical agent registry that
-  // the platform's own "66 agents" count is derived from.
+  // The alternative — an extra .md file per clone — would corrupt the canonical agent registry that
+  // the platform's own agent count is derived from. (Deliberately not written as a number here: the
+  // count moves whenever a department is added, and the canonical-facts shelf is where it lives now.)
   //
   // agentName still selects the model and effort tier, so a caller picks routing and identity
   // independently. This is server-constructed only: no route accepts a system prompt from a
@@ -4149,7 +4150,7 @@ app.post('/api/chat', requireAdmin, async (req, res) => {
   messages.push({ role: 'user', content: message });
 
   try {
-    const systemPrompt = `You are Atlas, the CEO and Chief Orchestrator of AI OS Corp — a Virtual Corporate Headquarters with 66 AI agents across 10 departments. You help users navigate the platform, dispatch tasks to the right agents, answer questions about features, and provide strategic guidance. Be concise, helpful, and professional. You know about the full model routing across 6 AI models, the SEO Agency, Creative Studio, YouTube Intelligence, and the full agent fleet.`;
+    const systemPrompt = `You are Atlas, the CEO and Chief Orchestrator of AI OS Corp — a Virtual Corporate Headquarters with 68 AI agents across 11 departments. You help users navigate the platform, dispatch tasks to the right agents, answer questions about features, and provide strategic guidance. Be concise, helpful, and professional. You know about the full model routing across 6 AI models, the SEO Agency, Creative Studio, YouTube Intelligence, Knowledge & Records (the company document library), and the full agent fleet.`;
 
     // Route chat through the same reasoning-mode resolution as agents (honors the opus/balanced/sonnet
     // toggle instead of always hitting Opus), and record spend — callAnthropic does not ledger, only executeAgent does.
@@ -8690,7 +8691,7 @@ app.post('/api/settings/test/:service', requireAdmin, async (req, res) => {
 
 // --- Virtual Corporate HQ ---
 
-// Community ORG_CHART: 5 departments, 15 agents (free, open-source)
+// Community ORG_CHART: 6 departments, 19 agents (free, open-source)
 const COMMUNITY_ORG_CHART = {
   company: 'AI OS Corp',
   departments: [
@@ -8772,9 +8773,9 @@ const ORG_CHART = (() => {
     }
   }
 
-  // Headline agent count = the .claude/agents registry (the canonical 66 on licensed tiers); the org
+  // Headline agent count = the .claude/agents registry (the canonical 68 on licensed tiers); the org
   // tree also carries a couple of platform service-roles (Hermes Director, Data Scientist) that aren't
-  // file-agents, so don't count raw entries. Community surfaces its placed roster (15).
+  // file-agents, so don't count raw entries. Community surfaces its placed roster (19).
   const _agentDir = path.join(CLAUDE_DIR, 'agents');
   const _registry = fs.existsSync(_agentDir) ? fs.readdirSync(_agentDir).filter(f => f.endsWith('.md')).length : 0;
   const _entries = chart.departments.reduce((sum, d) => sum + d.employees.length, 0);
@@ -9596,7 +9597,7 @@ function generateYTVisualAnalysis(frames) {
   const descriptions = [
     { scene: 'Title card / intro animation with channel branding', elements: ['logo', 'title text', 'subscribe button'], onScreenText: 'Building AI Agents in Production' },
     { scene: 'Speaker at desk with monitor showing code editor', elements: ['person', 'monitor', 'code editor', 'terminal'], onScreenText: 'server.js — line 524' },
-    { scene: 'Dashboard view showing agent fleet status panel', elements: ['dashboard UI', 'agent cards', 'status indicators', 'charts'], onScreenText: '66 Active Agents | 6 AI Models' },
+    { scene: 'Dashboard view showing agent fleet status panel', elements: ['dashboard UI', 'agent cards', 'status indicators', 'charts'], onScreenText: '68 Active Agents | 6 AI Models' },
     { scene: 'Terminal showing PM2 process list with running services', elements: ['terminal', 'process table', 'CPU/memory stats'], onScreenText: 'pm2 status — ai-os online' },
     { scene: 'Architecture diagram with model routing flow', elements: ['flowchart', 'arrows', 'model tier boxes'], onScreenText: 'Opus 4.8 xhigh → high → low' },
     { scene: 'SEO audit results showing composite score and findings', elements: ['score badge', 'findings list', 'severity indicators'], onScreenText: 'Composite Score: 67/100' },
