@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Knowledge & Records — The Company Document Library</title>
+  <meta name="description" content="A governed catalog over AI OS's existing document stores, with reader-scoped access, retention, and a canonical-facts shelf every agent reads.">
+  <link rel="canonical" href="https://aiosorchestrationlab.com/docs/knowledge-records">
+  <meta property="og:title" content="Knowledge & Records — The Company Document Library">
+  <meta property="og:description" content="A governed catalog over AI OS's existing document stores, with reader-scoped access, retention, and a canonical-facts shelf every agent reads.">
+  <meta property="og:type" content="article">
+  <meta name="twitter:card" content="summary">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/css/landing.css">
+  <link rel="stylesheet" href="/css/docs.css">
+  <script async src="https://www.googletagmanager.com/gtag/js?id=G-SMHYRX8D4P"></script>
+  <script>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}gtag('js',new Date());gtag('config','G-SMHYRX8D4P');</script>
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "TechArticle",
+    "headline": "Knowledge & Records — The Company Document Library",
+    "description": "A governed catalog over AI OS's existing document stores, with reader-scoped access, retention, and a canonical-facts shelf every agent reads.",
+    "url": "https://aiosorchestrationlab.com/docs/knowledge-records",
+    "author": { "@type": "Organization", "name": "AI OS Orchestration Lab" },
+    "publisher": { "@type": "Organization", "name": "AI OS Orchestration Lab", "url": "https://aiosorchestrationlab.com" }
+  }
+  </script>
+  <script type="application/ld+json">{"@context":"https://schema.org","@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Home","item":"https://aiosorchestrationlab.com/"},{"@type":"ListItem","position":2,"name":"Documentation","item":"https://aiosorchestrationlab.com/docs/"},{"@type":"ListItem","position":3,"name":"Knowledge & Records"}]}</script>
+  <script type="application/ld+json">{"@context": "https://schema.org", "@type": "FAQPage", "mainEntity": [{"@type": "Question", "name": "What is the Knowledge & Records department?", "acceptedAnswer": {"@type": "Answer", "text": "AI OS department #11 — Knowledge & Records — is a governed company document library. It is a catalog over the platform's existing document stores (the Memory Vault, extracted uploads, and agent-output artifacts), not a fourth store: document bytes never move, only their metadata is indexed."}}, {"@type": "Question", "name": "Why does the library have no trusted tier?", "acceptedAnswer": {"@type": "Answer", "text": "Every agent on every tier reads the library, and much of its content will be documents nobody on the operator's side authored. Content only ever reaches an agent inside the same fenced, untrusted-by-default envelope AI OS uses for any outside data, so a hostile or mistaken document cannot escalate into an instruction."}}, {"@type": "Question", "name": "Who is on the Knowledge & Records team?", "acceptedAnswer": {"@type": "Answer", "text": "Four agents: Chief Librarian (Athena) heads the department and owns retention decisions; Archivist (Vellum) handles intake, dedupe, and versioning; Knowledge Manager (Archive) runs semantic linking and graph visualization; and Sync Steward (Tether) detects source changes and re-syncs external knowledge bases."}}, {"@type": "Question", "name": "Who can read a library record?", "acceptedAnswer": {"@type": "Answer", "text": "Every record carries a readers allowlist — an org email, an agent name, or the sentinel all-agents — built entry by entry so a new field can never accidentally widen access. Vault content migrated before the department existed defaults to all-agents, preserving prior behavior; new records default narrower."}}, {"@type": "Question", "name": "What is the canonical-facts shelf?", "acceptedAnswer": {"@type": "Answer", "text": "A small set of library records — agent count, department count, model and tier counts, pricing — that every caller reads instead of a hard-coded copy. It is the structural fix for the recurring defect where the same fact drifted across several files."}}, {"@type": "Question", "name": "Is the library available on the Community edition?", "acceptedAnswer": {"@type": "Answer", "text": "Yes. Knowledge & Records is a community department, not a licensed one, because its whole purpose — every agent on every tier reads it — would break on Community installs if it were gated behind a commercial license."}}]}</script>
+</head>
+<body>
+  <nav class="landing-nav">
+    <div class="nav-container">
+      <a href="/" class="nav-brand">
+        <span class="nav-logo">&#9678;</span>
+        <span class="nav-name">AI OS</span>
+      </a>
+      <div class="nav-links">
+        <a href="/">Home</a>
+        <a href="/docs" class="active">Docs</a>
+        <a href="/blog">Blog</a>
+        <a href="/about">About</a>
+        <a href="/corporate-mandate">Corporate Mandate</a>
+        <a href="/contact">Contact</a>
+      </div>
+      <div class="nav-cta">
+        <a href="/login" class="btn-nav-login">Log In</a>
+      </div>
+    </div>
+  </nav>
+
+  <main class="docs-page">
+    <div class="docs-container">
+      <div class="docs-layout">
+        <div class="docs-content">
+          <div class="docs-breadcrumb">
+            <a href="/docs">Docs</a> <span>/</span> Knowledge &amp; Records
+          </div>
+
+          <h1>Knowledge &amp; Records</h1>
+          <p class="docs-lead">Knowledge &amp; Records is a governed company document library — AI OS department #11, community-placed, with four named agents. It is a <strong>catalog</strong> over the platform's existing document stores, not a fourth one: every record carries an owner, a sensitivity label, a reader allowlist, and a retention policy, and every agent on every tier reads it through the same fenced envelope used for any outside data.</p>
+
+          <h2 id="what-it-catalogs">What It Catalogs</h2>
+          <p>The library indexes three physical stores that already existed before the department did — nothing about them changes, and no document content moves:</p>
+          <table class="docs-table">
+            <thead>
+              <tr><th>Store</th><th>Location</th><th>What lives there</th></tr>
+            </thead>
+            <tbody>
+              <tr><td><strong>Memory Vault</strong></td><td><code>.magent/vault/{raw,wiki,outputs}</code></td><td>Markdown knowledge entries — the Knowledge Graph's home</td></tr>
+              <tr><td><strong>org-docs</strong></td><td><code>.magent/org-docs/&lt;uuid&gt;.txt</code></td><td>Extracted text from uploaded documents (.txt/.md/.csv/.docx/.xlsx) — the landing zone for new uploads</td></tr>
+              <tr><td><strong>artifacts</strong></td><td><code>.magent/artifacts/{docs,code,media,research,web-studio,youtube}</code></td><td>Agent-produced output, nested by kind</td></tr>
+            </tbody>
+          </table>
+          <p>The catalog itself — <code>.magent/library/catalog.json</code> — holds metadata only: which store, which path, a content hash for dedupe, and the governance fields below. Document bytes stay exactly where they already were.</p>
+
+          <h2 id="no-trusted-tier">The Read Choke-Point — No Trusted Tier</h2>
+          <p>The single most important property of the design: <strong>the library has no trusted tier.</strong> Its purpose is that every agent reads it, and much of what it catalogs will be documents nobody on the operator's side authored. There is no "it came from inside, therefore it is safe" path. Content leaves the library only through the read choke-point, which resolves reader-permitted records and returns them fenced as untrusted data — the exact discipline AI OS already applies to scraped web pages and uploaded files. A parser bug or a planted instruction inside a cataloged document cannot escalate past that fence.</p>
+
+          <h2 id="the-team">The Knowledge &amp; Records Team</h2>
+          <table class="docs-table">
+            <thead>
+              <tr><th>Agent</th><th>Role</th></tr>
+            </thead>
+            <tbody>
+              <tr><td><strong>Chief Librarian (Athena)</strong></td><td>Department head. Taxonomy authority, cross-department lookup, routing, and retention decisions. Legal hold is a consult with the Legal department, not this agent's call. Reads only, never ingests.</td></tr>
+              <tr><td><strong>Archivist (Vellum)</strong></td><td>Intake, format handling, dedupe, metadata, and versioning — extends the platform's existing document-extraction pipeline rather than reimplementing it.</td></tr>
+              <tr><td><strong>Knowledge Manager (Archive)</strong></td><td>Auto-categorizing knowledge ingestion, semantic linking, and the radial graph visualization (the former Knowledge Graph agent, relocated here).</td></tr>
+              <tr><td><strong>Sync Steward (Tether)</strong></td><td>Source-change detection and knowledge-base re-sync — keeps external Gems and notebooks current as source material changes.</td></tr>
+            </tbody>
+          </table>
+
+          <h2 id="reader-scoped-access">Reader-Scoped Access &amp; Retention</h2>
+          <p>Every record's <code>readers</code> field is an <strong>allowlist</strong>, built entry by entry — never a denylist, so a new field added to the schema can never accidentally widen access. An entry is an org email, an agent name, or the sentinel <code>all-agents</code>. Vault content migrated before the department existed defaults to <code>all-agents</code>, preserving how it already behaved; new uploads default narrower.</p>
+          <p>Governance fields carried on every catalog record:</p>
+          <ul>
+            <li><strong>owner</strong> — the org the record belongs to, for multi-tenant scoping</li>
+            <li><strong>readers</strong> — the allowlist that actually enforces who may read it</li>
+            <li><strong>sensitivity</strong> — a human-facing label (public, internal, confidential, restricted) that travels alongside the allowlist for readability</li>
+            <li><strong>retention</strong> — a policy of keep, review, or expire, with a scheduled disposal date</li>
+            <li><strong>legalHold</strong> — a flag that blocks delete and dispose in any mode until Legal clears it</li>
+          </ul>
+          <p>The <code>legalHold</code> flag is set only through a consult with the Compliance Officer and General Counsel — never unilaterally by the Chief Librarian.</p>
+
+          <h2 id="canonical-facts-shelf">Canonical-Facts Shelf</h2>
+          <p>Product facts — the agent count, the department count, model and tier counts, pricing — live today in more than one place, and copies of the same fact have drifted apart before. The canonical-facts shelf is a small set of library records with <code>source: 'canonical-fact'</code> that every caller reads instead of a hard-coded number, so updating a fact means editing one governed record rather than finding every copy.</p>
+
+          <h2 id="api">API Reference</h2>
+          <p>The library routes are operator-only today — the client-role guard does not list <code>/api/library/*</code>, so a personnel or clone contribution surface is a later phase, not this one.</p>
+          <table class="docs-table">
+            <thead>
+              <tr><th>Method</th><th>Path</th><th>Purpose</th></tr>
+            </thead>
+            <tbody>
+              <tr><td>GET</td><td><code>/api/library</code></td><td>Catalog summary — record counts by store, reader-filtered for the caller</td></tr>
+              <tr><td>GET</td><td><code>/api/library/search?q=</code></td><td>Search titles, tags, and content, reader-filtered</td></tr>
+              <tr><td>GET</td><td><code>/api/library/canonical</code></td><td>The canonical-facts shelf</td></tr>
+              <tr><td>GET</td><td><code>/api/library/record/:id</code></td><td>Record metadata (never raw content) if the caller can read it</td></tr>
+              <tr><td>GET</td><td><code>/api/library/record/:id/content</code></td><td>Raw bytes, admin-or-reader gated, path resolved per store</td></tr>
+            </tbody>
+          </table>
+          <p>The legacy <code>/api/vault/*</code> routes keep working at their existing session-authenticated level, now re-pointed through the catalog with the same reader filtering.</p>
+
+          <h2 id="faq">Frequently Asked Questions</h2>
+          <h3>What is the Knowledge &amp; Records department?</h3>
+          <p>AI OS department #11 — Knowledge &amp; Records — is a governed company document library. It is a catalog over the platform's existing document stores (the Memory Vault, extracted uploads, and agent-output artifacts), not a fourth store: document bytes never move, only their metadata is indexed.</p>
+          <h3>Why does the library have no trusted tier?</h3>
+          <p>Every agent on every tier reads the library, and much of its content will be documents nobody on the operator's side authored. Content only ever reaches an agent inside the same fenced, untrusted-by-default envelope AI OS uses for any outside data, so a hostile or mistaken document cannot escalate into an instruction.</p>
+          <h3>Who is on the Knowledge &amp; Records team?</h3>
+          <p>Four agents: Chief Librarian (Athena) heads the department and owns retention decisions; Archivist (Vellum) handles intake, dedupe, and versioning; Knowledge Manager (Archive) runs semantic linking and graph visualization; and Sync Steward (Tether) detects source changes and re-syncs external knowledge bases.</p>
+          <h3>Who can read a library record?</h3>
+          <p>Every record carries a readers allowlist — an org email, an agent name, or the sentinel <code>all-agents</code> — built entry by entry so a new field can never accidentally widen access. Vault content migrated before the department existed defaults to <code>all-agents</code>, preserving prior behavior; new records default narrower.</p>
+          <h3>What is the canonical-facts shelf?</h3>
+          <p>A small set of library records — agent count, department count, model and tier counts, pricing — that every caller reads instead of a hard-coded copy. It is the structural fix for the recurring defect where the same fact drifted across several files.</p>
+          <h3>Is the library available on the Community edition?</h3>
+          <p>Yes. Knowledge &amp; Records is a community department, not a licensed one, because its whole purpose — every agent on every tier reads it — would break on Community installs if it were gated behind a commercial license.</p>
+
+          <div class="docs-page-nav">
+            <a href="/docs/agents">&larr; Agent Fleet</a>
+            <a href="/docs/skills">Skills &amp; Pipelines &rarr;</a>
+          </div>
+        </div>
+
+        <aside class="docs-toc">
+          <div class="docs-toc-title">On this page</div>
+          <a href="#what-it-catalogs">What It Catalogs</a>
+          <a href="#no-trusted-tier">No Trusted Tier</a>
+          <a href="#the-team">The Team</a>
+          <a href="#reader-scoped-access">Reader-Scoped Access</a>
+          <a href="#canonical-facts-shelf">Canonical-Facts Shelf</a>
+          <a href="#api">API Reference</a>
+          <a href="#faq">FAQ</a>
+        </aside>
+      </div>
+    </div>
+  </main>
+
+  <footer class="site-footer">
+    <div class="footer-container">
+      <div class="footer-brand">
+        <span class="nav-logo">&#9678;</span>
+        <span class="nav-name">AI OS</span>
+        <p class="footer-tagline">The Agentic Operating System</p>
+        <p class="footer-mission">I fully recognize that in my God-led business, there is no separation between my spiritual life and my professional life. My enterprise is a direct reflection of my covenant with God. <a href="/corporate-mandate">more&nbsp;.&nbsp;.&nbsp;.</a></p>
+      </div>
+      <div class="footer-links">
+        <div class="footer-col">
+          <h4>Product</h4>
+          <a href="/#features">Features</a>
+          <a href="/#pricing">Pricing</a>
+          <a href="/docs">Documentation</a>
+        </div>
+        <div class="footer-col">
+          <h4>Resources</h4>
+          <a href="/blog">Blog</a>
+          <a href="/about">About</a>
+          <a href="/corporate-mandate">Corporate Mandate</a>
+          <a href="/contact">Contact</a>
+        </div>
+        <div class="footer-col">
+          <h4>Legal</h4>
+          <a href="/trust">Trust &amp; Security</a>
+          <a href="/terms">Terms of Service</a>
+          <a href="/privacy">Privacy Policy</a>
+        </div>
+      </div>
+    </div>
+    <div class="footer-bottom">
+      <p>&copy; 2026 AI OS Orchestration Lab. All rights reserved.</p>
+    </div>
+  </footer>
+</body>
+</html>
