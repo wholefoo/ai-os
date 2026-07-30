@@ -48,6 +48,15 @@
 //    node tools/library-migrate.js               backfill + write
 //    node tools/library-migrate.js --dry-run      report what would be added; write nothing
 //    node tools/library-migrate.js --reconcile    also prune records whose bytes no longer exist
+//    node tools/library-migrate.js --artifacts recent:30   include artifacts touched in 30 days
+//    node tools/library-migrate.js --artifacts all         include the WHOLE artifacts tree
+//    node tools/library-migrate.js --drop-artifacts        remove existing artifact records first
+//
+//  Artifacts default to SKIP. That tree is a stream, not a collection — on the production instance
+//  it grew ~11,000 files a month, and cataloging all of it produced 22,034 records in an 18 MB state
+//  file that `saveState` rewrites, synchronously and in full, on every single library write. To
+//  re-baseline an instance that already swallowed the tree:
+//    node tools/library-migrate.js --drop-artifacts && sudo -iu aios pm2 restart ai-os
 // ============================================================
 
 'use strict';
@@ -181,9 +190,17 @@ function collectOrgDocsCandidates() {
  *  stores (§4's per-store table / §9 gotcha #9). `path` is the file's location relative to
  *  ARTIFACTS_DIR with forward slashes, regardless of host OS, so a catalog built on Windows and one
  *  built on the Linux VPS store identical path strings. */
-function collectArtifactsCandidates() {
+function collectArtifactsCandidates(artifacts) {
+  const mode = (artifacts && artifacts.mode) || 'skip';
   const out = [];
+  // Skipping is the default and it short-circuits before the walk: on the production tree that walk
+  // reads and sha256s every file, so 22k artifacts is 22k reads nobody asked for.
+  if (mode === 'skip') return out;
   if (!fs.existsSync(ARTIFACTS_DIR)) return out;
+
+  const cutoff = mode === 'recent'
+    ? Date.now() - (artifacts.days * 86400000)
+    : null;
 
   const walk = (dir) => {
     const entries = fs.readdirSync(dir, { withFileTypes: true });
@@ -192,6 +209,14 @@ function collectArtifactsCandidates() {
       const full = path.join(dir, e.name);
       if (e.isDirectory()) { walk(full); continue; }
       if (!e.isFile()) continue;
+
+      // Age is checked from statSync BEFORE the file is read and hashed — filtering after would
+      // cost the same I/O the filter exists to avoid.
+      if (cutoff !== null) {
+        let mtime;
+        try { mtime = fs.statSync(full).mtimeMs; } catch { continue; }
+        if (mtime < cutoff) continue;
+      }
 
       const rel = path.relative(ARTIFACTS_DIR, full).split(path.sep).join('/');
       // Containment is structural here (this walk only ever descends into ARTIFACTS_DIR's own
@@ -215,7 +240,11 @@ function collectArtifactsCandidates() {
         addedAt: stat.mtime.toISOString(),
         readers: [ALL_AGENTS, ALL_OPERATORS],
         sensitivity: 'internal',
-        retention: { policy: 'keep' },
+        // 'review', not 'keep'. An artifact is transient output that another subsystem deletes on
+        // its own schedule, so promising to retain it is a promise this department cannot keep —
+        // and 'keep' on a stream means the catalog only ever grows. §11: expect these to go
+        // dangling, and reconcile.
+        retention: { policy: 'review' },
         tags: [category],
       }));
     }
@@ -283,19 +312,70 @@ function reconcile(records) {
 
 // ---- main -------------------------------------------------------------------------------------------
 
+/**
+ * How much of the artifacts tree to catalog. Default `skip`, and that default is the whole point.
+ *
+ * Artifacts are not a document collection, they are a STREAM: on the production instance the tree
+ * grew ~11,000 files a month, evenly, with no sign of slowing. Cataloging all of it produced 22,034
+ * records and an 18 MB state file — and `saveState` rewrites that entire file synchronously on every
+ * single library write, so each upload paid for every artifact ever produced. §11 said to catalog
+ * this tree "lightly"; the first implementation had no way to express lightly, so following the
+ * documented command was enough to do the wrong thing.
+ *
+ *   --artifacts skip        (default) do not catalog the artifacts tree at all
+ *   --artifacts recent:30   catalog artifacts modified in the last 30 days
+ *   --artifacts all         the old behaviour, now something you have to ask for by name
+ */
+function parseArtifactsMode(args) {
+  const flag = args.find((a) => a === '--artifacts' || a.startsWith('--artifacts='));
+  if (!flag) return { mode: 'skip', days: 0 };
+
+  const raw = flag.includes('=')
+    ? flag.split('=').slice(1).join('=')
+    : (args[args.indexOf(flag) + 1] || '');
+  const value = String(raw).trim().toLowerCase();
+
+  if (value === 'skip' || value === '') return { mode: 'skip', days: 0 };
+  if (value === 'all') return { mode: 'all', days: 0 };
+
+  const m = value.match(/^recent:(\d+)$/);
+  if (m && Number(m[1]) > 0) return { mode: 'recent', days: Number(m[1]) };
+
+  return { mode: 'invalid', days: 0, raw: value };
+}
+
 function main() {
   const args = process.argv.slice(2);
   const dryRun = args.includes('--dry-run');
   const doReconcile = args.includes('--reconcile');
+  const dropArtifacts = args.includes('--drop-artifacts');
+  const artifacts = parseArtifactsMode(args);
+
+  if (artifacts.mode === 'invalid') {
+    console.error(`[library-migrate] --artifacts: expected skip | recent:<days> | all, got "${artifacts.raw}"`);
+    process.exitCode = 1;
+    return;
+  }
 
   const existing = readStateFile('library_catalog', []);
-  const existingList = Array.isArray(existing) ? existing : [];
+  let existingList = Array.isArray(existing) ? existing : [];
+
+  // --drop-artifacts runs BEFORE candidates are collected, so `--drop-artifacts --artifacts recent:30`
+  // is a re-baseline in one pass rather than two runs with a window in between where the catalog is
+  // empty of them.
+  let droppedArtifacts = 0;
+  if (dropArtifacts) {
+    const before = existingList.length;
+    existingList = existingList.filter((r) => !(r && r.store === 'artifacts'));
+    droppedArtifacts = before - existingList.length;
+  }
+
   const existingIds = new Set(existingList.map((r) => r && r.id).filter(Boolean));
 
   const candidates = [
     ...collectVaultCandidates(),
     ...collectOrgDocsCandidates(),
-    ...collectArtifactsCandidates(),
+    ...collectArtifactsCandidates(artifacts),
   ];
 
   // Existing records FIRST: on a duplicate, dedupeByHash keeps the first occurrence, so an
@@ -319,8 +399,13 @@ function main() {
     }
   }
 
+  if (dropArtifacts) {
+    console.log(`[library-migrate] dropped (artifacts):  ${droppedArtifacts} — existing artifact records removed before this pass`);
+  }
+  const artifactsLabel = artifacts.mode === 'recent' ? `recent:${artifacts.days}` : artifacts.mode;
+  console.log(`[library-migrate] artifacts mode:       ${artifactsLabel}${artifacts.mode === 'skip' ? '  (default — pass --artifacts recent:<days>|all to include them)' : ''}`);
   console.log(`[library-migrate] existing catalog:     ${existingList.length} record(s)`);
-  console.log(`[library-migrate] candidates found:     ${candidates.length} (vault + org-docs + artifacts)`);
+  console.log(`[library-migrate] candidates found:     ${candidates.length} (vault + org-docs${artifacts.mode === 'skip' ? '' : ' + artifacts'})`);
   console.log(`[library-migrate] added:                ${added.length}`);
   console.log(`[library-migrate] skipped (duplicate):  ${skippedDuplicate}`);
   if (added.length) {
@@ -369,6 +454,7 @@ if (require.main === module) {
 }
 
 module.exports = {
+  parseArtifactsMode,
   collectVaultCandidates,
   collectOrgDocsCandidates,
   collectArtifactsCandidates,
