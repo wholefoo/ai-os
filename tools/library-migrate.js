@@ -344,8 +344,43 @@ function parseArtifactsMode(args) {
   return { mode: 'invalid', days: 0, raw: value };
 }
 
+/**
+ * Refuse an argument this version does not understand, instead of ignoring it.
+ *
+ * Learned the hard way: `--drop-artifacts` was run against a deployment that predated the flag. The
+ * old binary ignored it, performed an ordinary no-op pass, printed a cheerful "wrote 22045
+ * record(s)", and exited 0. Every signal said success and nothing had happened. A tool that silently
+ * accepts instructions it cannot carry out is worse than one that fails, because the operator has no
+ * way to tell a completed job from an ignored one — and the natural next move is to trust it.
+ */
+function refuseUnknownFlags(args) {
+  const KNOWN = new Set(['--dry-run', '--reconcile', '--drop-artifacts', '--artifacts']);
+  const unknown = [];
+  for (let i = 0; i < args.length; i += 1) {
+    const a = args[i];
+    if (!a.startsWith('-')) continue;                 // a bare value, e.g. the one after --artifacts
+    const name = a.split('=')[0];
+    if (!KNOWN.has(name)) { unknown.push(a); continue; }
+    // --artifacts takes a value in the next slot unless it used the =form; skip it so the value is
+    // never itself mistaken for a flag.
+    if (name === '--artifacts' && !a.includes('=')) i += 1;
+  }
+  return unknown;
+}
+
 function main() {
   const args = process.argv.slice(2);
+
+  const unknown = refuseUnknownFlags(args);
+  if (unknown.length) {
+    console.error(`[library-migrate] unknown option(s): ${unknown.join(', ')}`);
+    console.error('[library-migrate] known: --dry-run --reconcile --drop-artifacts --artifacts <skip|recent:N|all>');
+    console.error('[library-migrate] NOTHING WAS WRITTEN. If you expected this flag to exist, the deployed');
+    console.error('[library-migrate] copy of this tool is older than the command you were given — update it.');
+    process.exitCode = 1;
+    return;
+  }
+
   const dryRun = args.includes('--dry-run');
   const doReconcile = args.includes('--reconcile');
   const dropArtifacts = args.includes('--drop-artifacts');
@@ -455,6 +490,7 @@ if (require.main === module) {
 
 module.exports = {
   parseArtifactsMode,
+  refuseUnknownFlags,
   collectVaultCandidates,
   collectOrgDocsCandidates,
   collectArtifactsCandidates,
