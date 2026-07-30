@@ -229,6 +229,12 @@ function collectArtifactsCandidates() {
 /** Where this record's bytes SHOULD be, resolved per its store. Mirrors the §4 per-store shape —
  *  vault/artifacts paths are "<subpath within the store>", org-docs paths are the bare filename. */
 function resolveStorePath(record) {
+  // Defensive on shape, not just on store. The catalog is a hand-editable JSON file, and this used to
+  // throw on a null/incomplete record — which aborted the whole --reconcile pass on the first bad
+  // entry and left the operator to find it by eye. An unresolvable record now returns null and is
+  // handled by the caller, so one malformed row cannot take out the tool.
+  if (!record || typeof record !== 'object') return null;
+  if (typeof record.path !== 'string' || !record.path) return null;
   if (record.store === 'vault') return path.join(VAULT_DIR, record.path);
   if (record.store === 'org-docs') return path.join(ORG_DOCS_DIR, record.path);
   if (record.store === 'artifacts') return path.join(ARTIFACTS_DIR, record.path);
@@ -238,15 +244,41 @@ function resolveStorePath(record) {
 /** A record whose bytes vanished out from under the catalog (§8 risk: "store/catalog desync") is
  *  pruned rather than left dangling. Returns { survivors, pruned } so the caller can report exactly
  *  what went, not just a count. */
+/**
+ * Records that legitimately have NO bytes on disk, and must therefore never be pruned for lacking
+ * them.
+ *
+ * `canonical-fact` records ARE their value — there is no file, and their `path` is a synthetic
+ * `canonical/<slug>` that exists only to give each fact a distinct dedupe identity. Reconcile's test
+ * is "do the bytes still exist", which is meaningless for them and answers no every time.
+ *
+ * This is the SECOND time the canonical-facts shelf has been silently destroyed by a mechanism that
+ * assumed every record maps to a file. The first was dedupe collapsing five facts into one (they
+ * shared an empty store+path+hash key); the synthetic path added to fix THAT is exactly what makes
+ * them look dangling HERE. Both failures were total, silent, and only visible by counting afterwards.
+ *
+ * So the rule is a positive allowlist of what reconcile may examine, not a growing list of exceptions:
+ * if a source has no bytes, it is not a candidate for byte-based pruning. A future bytes-less source
+ * must be added here, and the test below fails until it is.
+ */
+const BYTELESS_SOURCES = Object.freeze(['canonical-fact']);
+
 function reconcile(records) {
   const survivors = [];
   const pruned = [];
-  for (const r of records) {
+  const malformed = [];
+  for (const r of Array.isArray(records) ? records : []) {
+    // A non-record is neither a survivor nor "pruned for missing bytes" — calling it pruned would
+    // report a deletion that never described a real document. Counted separately so a corrupt catalog
+    // row is visible rather than folded into the prune tally.
+    if (!r || typeof r !== 'object') { malformed.push(r); continue; }
+    // Bytes-less records skip the existence test entirely — they cannot fail it meaningfully.
+    if (BYTELESS_SOURCES.includes(r.source)) { survivors.push(r); continue; }
     const resolved = resolveStorePath(r);
     if (resolved && fs.existsSync(resolved)) survivors.push(r);
     else pruned.push(r);
   }
-  return { survivors, pruned };
+  return { survivors, pruned, malformed };
 }
 
 // ---- main -------------------------------------------------------------------------------------------
@@ -280,6 +312,11 @@ function main() {
     const result = reconcile(kept);
     finalRecords = result.survivors;
     prunedRecords = result.pruned;
+    // Corrupt rows are dropped from the catalog but reported apart from the prune tally — they were
+    // never records of a real document, so counting them as pruned would overstate what was deleted.
+    if (result.malformed.length) {
+      console.log(`[library-migrate] dropped (malformed):  ${result.malformed.length} — entries that were not records at all`);
+    }
   }
 
   console.log(`[library-migrate] existing catalog:     ${existingList.length} record(s)`);
@@ -301,6 +338,30 @@ function main() {
 
   writeStateFile('library_catalog', finalRecords);
   console.log(`[library-migrate] wrote ${finalRecords.length} record(s) to ${path.join(STATE_DIR, 'library_catalog.json')}`);
+
+  // A RUNNING server will not see any of this until it restarts.
+  //
+  // server.js reads `library_catalog` into memory once, at module load, and never re-reads it. This
+  // tool writes the same file from OUTSIDE that process, so until a restart the API reports whatever
+  // the catalog held at boot — typically just the seeded canonical facts — while the file on disk has
+  // everything. Nothing is lost, and the numbers above are what is really stored; the two views
+  // simply disagree until the process is recycled.
+  //
+  // This reminder exists because that disagreement looks exactly like the migration having silently
+  // failed, and the natural next move — run it again — reports "added: 0, skipped: N" and reinforces
+  // the wrong conclusion. Saying it here costs one line and removes a whole debugging session.
+  // Both branches change what the API should serve: an add makes new records available, a prune
+  // removes records the running process still thinks exist. A run that only skipped duplicates
+  // changed nothing, so it stays quiet — a reminder that fires on a no-op run is one people learn
+  // to ignore, which is how the real warning gets missed later.
+  if (added.length || prunedRecords.length) {
+    console.log('');
+    console.log('[library-migrate] NOTE: a running server still has the OLD catalog in memory.');
+    console.log('[library-migrate]       Restart it for the API to serve these records:');
+    console.log('[library-migrate]         pm2 restart ai-os            # if pm2 runs as you');
+    console.log('[library-migrate]         sudo -iu aios pm2 restart ai-os   # VPS: pm2 runs as the app user');
+    console.log('[library-migrate]       Until then /api/library reports the pre-migration count.');
+  }
 }
 
 if (require.main === module) {
@@ -313,4 +374,5 @@ module.exports = {
   collectArtifactsCandidates,
   resolveStorePath,
   reconcile,
+  BYTELESS_SOURCES,
 };

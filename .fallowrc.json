@@ -41,6 +41,7 @@
     "tools/test-library-catalog.js",
     "tools/test-library-paths.js",
     "tools/test-library-readers.js",
+    "tools/test-library-migrate.js",
     "tools/verify-clone-live.js",
     "ecosystem.config.js",
     "deploy/n8n-ecosystem.config.example.js",
