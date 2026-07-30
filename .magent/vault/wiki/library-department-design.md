@@ -401,7 +401,9 @@ If a new phrasing of either count is introduced anywhere, add it to the canon pa
 
 ---
 
-### Phase 2 — Clone & personnel contribution (the visibility asymmetry, from day one)
+### Phase 2 — Clone & personnel contribution (the visibility asymmetry, from day one) — ✅ BUILT
+
+*Divergences in §9 items 27-29. Gates: `test-library-contribute.js` 63 assertions · `test-all.js` 37/37 · seclint · dupes · dead-code clean · copy-drift 22/22 · an 18-assertion live exercise against a booted server using a REAL client-role session, both DoD halves asserted.*
 
 **In scope:**
 - `lib/library/contribute.js` (NEW, pure): builds a catalog record from a clone or personnel contribution; constructs `readers` **by allowlist** (contributor + explicitly named principals only — **never** `'all-agents'` by default); refuses any contribution whose payload trips `visibility.findLeaks` (persona/prompt/transcript/corpus/…); asserts `personaDerived === false`. Persona-derived material is structurally unpublishable to the library.
@@ -583,6 +585,34 @@ Every boundary the department crosses reuses an existing, proven guard. Nothing 
 - **Line-number anchors drift by a few lines** (Reviewer N5 — `orgDocTextPath` ~11049 vs 11053, `getVaultStats` ~4393 vs 4395, `ACTION_EXECUTORS` ~8629 vs 8633). Every anchor uses the `~` convention and every symbol was verified present within a handful of lines. Chasing exact line numbers in a doc that will outlive them is false precision; the symbol name is the durable locator and every one of them is correct.
 
 ---
+
+### Found by building P2
+
+27. **A route can disarm a module's tripwire by pre-filtering the payload.** `planContribution` scans
+    its whole input with `findPersonaLeaks`, and the first version of the route forwarded a
+    hand-picked subset — `kind`, `title`, `text`, `principals`, `tags`. A body carrying a full
+    `persona` object therefore never reached the guard and was accepted with a **200**. The guard was
+    correct, unit-tested, and bypassed by the code that called it. The route now spreads the whole
+    body and overrides the trusted fields on top. **Only the live exercise caught this**; every unit
+    test passed, because the module was never the broken part.
+
+28. **The operator override had to be narrowed, and as an allowlist.**
+    `/api/library/record/:id/content` let an admin read past `readers` entirely. That is right for
+    the instance's own material and wrong for a contribution, whose narrow reader set would otherwise
+    be decorative — the same cross-account view the clone doctrine already refuses.
+    `readers.OPERATOR_OVERRIDABLE_SOURCES` names the three sources it MAY reach, so a source added
+    later is denied by omission rather than disclosed by it.
+
+29. **`MAX_TEXT_CHARS` was nearly declared twice.** The first draft restated the constant with a
+    comment claiming "one ceiling, not two" — which described the intent while creating the second
+    one. The dead-code gate flagged it as a duplicate export; it is now imported from `documents.js`,
+    which owns what "too long" means.
+
+    Also worth recording, because it cost twenty minutes and looked like a server bug: **PowerShell
+    cannot hold a `localhost` session cookie.** .NET's `CookieContainer` silently refuses cookies for
+    a hostname with no dot, so `-SessionVariable` captures zero cookies and every authenticated
+    request returns 401. Pull the token from `Set-Cookie` and send it as Bearer — the server accepts
+    either, so the guard path tested is identical.
 
 ## 10. Requirement coverage map
 
