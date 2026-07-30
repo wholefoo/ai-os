@@ -245,6 +245,18 @@ const CLIENT_API_ALLOW = ['/api/web-studio', '/api/auth', '/api/provenance', '/a
   // requireCloneAccess still runs behind this, so a managed-website client without clone access is
   // refused there; an employee of the org passes both and sees only their own org's status.
   '/api/org/foundation',
+  // EXACT path, and the only /api/library surface a non-admin may reach. Personnel and their clones
+  // contribute here; everything else in the library stays operator-only.
+  //
+  // Deliberately NOT '/api/library', which would also hand a client the catalog listing, the search,
+  // record metadata and the raw content of every record — the whole read surface, to reach one write
+  // route. Same reasoning as '/api/org/foundation' above.
+  //
+  // The matcher is `url === p || url.startsWith(p + '/')`, so this is segment-safe: it cannot be
+  // widened by a path that merely begins with the same characters. It DOES admit any future
+  // '/api/library/contribute/*' sub-route, so anything added under that segment inherits client
+  // reach — check that before adding one.
+  '/api/library/contribute',
   '/api/support/contact']; // public AI helpdesk (exact path — keeps any future /api/support/* internal)
 function clientSurfaceGuard(req, res, next) {
   const url = req.originalUrl.split('?')[0];
@@ -5774,6 +5786,7 @@ const libraryCatalogMod = require('./lib/library/catalog');
 const libraryReaders = require('./lib/library/readers');
 const libraryPaths = require('./lib/library/paths');
 const libraryIntake = require('./lib/library/intake');
+const libraryContribute = require('./lib/library/contribute');
 
 // The canonical-facts shelf: the structural fix for numbers that drift across copies. Seeded once,
 // then owned by the operator. Callers read these instead of hard-coding a count in prose — and
@@ -5966,7 +5979,14 @@ app.get('/api/library/record/:id/content', (req, res) => {
   const isAdmin = req.session && req.session.role === 'admin';
   // Operator override is explicit and lives HERE, at the route, where a reviewer sees it — never
   // inside canRead, where it would be invisible to every caller.
-  if (!rec || !(isAdmin || libraryReaders.canRead(rec, libraryRequesterFor(req)))) {
+  //
+  // P2 narrowed it: the override reaches the instance's OWN material (company docs, vault, agent
+  // output, canonical facts) and stops at anything a person or their clone contributed. Those carry
+  // a narrow reader set so the contributor decides who sees them, and an operator who could read
+  // past it would make that set decorative. See readers.OPERATOR_OVERRIDABLE_SOURCES for why that
+  // is an allowlist rather than two named exclusions.
+  const override = isAdmin && libraryReaders.operatorMayOverride(rec);
+  if (!rec || !(override || libraryReaders.canRead(rec, libraryRequesterFor(req)))) {
     return res.status(404).json({ error: 'No such record' });
   }
   if (rec.source === 'canonical-fact') return res.json({ id: rec.id, content: rec.value || '' });
@@ -6104,6 +6124,67 @@ app.patch('/api/library/record/:id', requireAdmin, (req, res) => {
   saveState('library_catalog', libraryCatalog);
   logActivity('library', `Record updated: ${patched.record.title}`, { recordId: patched.record.id });
   res.json({ ok: true, record: libraryRecordView(patched.record) });
+});
+
+/**
+ * A person, or their clone, contributing to the library (P2).
+ *
+ * The ONLY library route a non-admin may reach — see the exact-path entry in CLIENT_API_ALLOW, and
+ * note that the listing, search, record metadata and raw-content routes all still 403 for a client.
+ *
+ * `contributor` comes from the SESSION and never from the body. It decides the reader allowlist, so
+ * a body-supplied value would let one client publish under another's name and, worse, into another
+ * person's reader set.
+ */
+app.post('/api/library/contribute', requireClientOrAdmin, heavyLimiter, (req, res) => {
+  const body = req.body || {};
+  const contributor = (req.session && req.session.email) || '';
+  if (!contributor) return res.status(400).json({ error: 'this session has no address to attribute a contribution to' });
+
+  const text = String(body.text == null ? '' : body.text);
+
+  // The WHOLE body is handed to planContribution, then the trusted fields are overridden on top.
+  //
+  // Forwarding a hand-picked subset instead is how the persona tripwire gets silently disarmed: the
+  // guard scans the object it is given, so a `persona` key the route never copied is a key the guard
+  // never sees. That is not hypothetical — the first version of this route did exactly that and
+  // accepted a payload carrying a full persona object with a 200. Spread first, override second.
+  //
+  // Safe to spread because planContribution reads an explicit field list and hardcodes the rest:
+  // `readers`, `source`, `store` and `sensitivity` are not taken from input at all, and `contributor`
+  // is clobbered here by the session's address.
+  const plan = libraryContribute.planContribution({
+    ...body,
+    id: uuidv4(),
+    contributor,
+    text,
+    contentHash: provenanceLib.sha256Hex(Buffer.from(text, 'utf8')),
+  });
+
+  if (!plan.ok) {
+    // The refusal is SURFACED, never a silent drop: the contributor has to be able to see which
+    // field tripped the tripwire, or the only way to publish anything is guesswork.
+    return res.status(400).json({ error: plan.error, leaks: plan.leaks });
+  }
+
+  fs.mkdirSync(ORG_DOCS_DIR, { recursive: true });
+  fs.writeFileSync(orgDocTextPath(plan.record.id), text, 'utf-8');
+  libraryCatalog.push(plan.record);
+  saveState('library_catalog', libraryCatalog);
+
+  logActivity('library', `Contribution: ${plan.record.title} (${plan.record.source})`, {
+    recordId: plan.record.id, contributor, readers: plan.record.readers.length,
+  });
+  // `readers` is included here and nowhere else. libraryRecordView deliberately omits it — a reader
+  // list is access control, not metadata, and a listing should not enumerate who can see what. But
+  // the contributor is entitled to see who can read their OWN contribution, and confirming that at
+  // the moment of writing is the whole point of a narrow default.
+  res.json({
+    ok: true,
+    record: libraryRecordView(plan.record),
+    readers: plan.record.readers,
+    reason: plan.reason,
+  });
 });
 
 // --- Cost Tracking API ---
