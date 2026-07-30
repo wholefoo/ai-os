@@ -5773,6 +5773,7 @@ app.post('/api/vault/:folder', requireAdmin, (req, res) => {
 const libraryCatalogMod = require('./lib/library/catalog');
 const libraryReaders = require('./lib/library/readers');
 const libraryPaths = require('./lib/library/paths');
+const libraryIntake = require('./lib/library/intake');
 
 // The canonical-facts shelf: the structural fix for numbers that drift across copies. Seeded once,
 // then owned by the operator. Callers read these instead of hard-coding a count in prose — and
@@ -5976,6 +5977,133 @@ app.get('/api/library/record/:id/content', (req, res) => {
     return res.status(410).json({ error: 'The underlying file is no longer on disk', recordId: rec.id });
   }
   res.json({ id: rec.id, title: rec.title, content: text });
+});
+
+// --- Library intake (P1) ----------------------------------------------------------------------
+//  Writes. Everything above this line reads.
+//
+//  All three routes are requireAdmin, so the P0 note above still holds: /api/library/* stays OUT of
+//  CLIENT_API_ALLOW. The client-facing contribution route is P2's, and it arrives only once the
+//  routes are owner-scoped — adding the prefix now to save a step later would hand every managed
+//  client the catalog listing, the search and the raw content along with it.
+//
+//  The DECISION (duplicate / version / new) lives in lib/library/intake.js and is pure; these
+//  handlers do the I/O the decision implies and nothing else. That split is why the dedupe and
+//  version rules can be tested without booting a server.
+
+/** Bytes for an org-docs record live under the RECORD's id, never under anything the uploader typed. */
+function libraryDocTextPath(recordId) {
+  return orgDocTextPath(recordId);
+}
+
+app.post('/api/library/upload', requireAdmin, heavyLimiter,
+  express.raw({ type: () => true, limit: orgDocuments.MAX_UPLOAD_BYTES }),
+  async (req, res) => {
+    const filename = String(req.query.name || '').trim();
+    if (!filename) return res.status(400).json({ error: 'send the file name as ?name=' });
+
+    // Parsing, format support, size and zip-bomb guards ALL belong to documents.js. Nothing here
+    // re-implements them; a second parser would be a second place for those guards to be wrong.
+    const result = await orgDocuments.extract({ filename, buffer: req.body });
+    if (!result.ok) return res.status(400).json({ error: result.error });
+
+    // Hash the ORIGINAL BYTES, not the extracted text: two files whose text tidies to the same
+    // string are still two different uploads, and provenance is about what arrived.
+    const contentHash = provenanceLib.sha256Hex(req.body);
+
+    const plan = libraryIntake.planIntake(libraryCatalog, {
+      id: uuidv4(),
+      title: filename,
+      contentHash,
+      format: result.format,
+      bytes: req.body.length,
+      addedBy: (req.session && req.session.email) || 'operator',
+      owner: req.query.owner ? String(req.query.owner) : undefined,
+      access: { allOperators: true },   // an operator upload is readable by operators, explicitly
+    });
+    if (!plan.ok) return res.status(400).json({ error: plan.error });
+
+    if (plan.action === 'duplicate') {
+      // 200, not an error: re-uploading a file you already sent is a no-op, not a failure. Nothing
+      // is written, so the existing bytes keep the one record that points at them.
+      return res.json({
+        ok: true, action: 'duplicate', reason: plan.reason, record: libraryRecordView(plan.existing),
+      });
+    }
+
+    fs.mkdirSync(ORG_DOCS_DIR, { recursive: true });
+    fs.writeFileSync(libraryDocTextPath(plan.record.id), result.text, 'utf-8');
+    libraryCatalog.push(plan.record);
+    saveState('library_catalog', libraryCatalog);
+
+    logActivity('library', `Document cataloged: ${plan.record.title} (${plan.action})`, {
+      recordId: plan.record.id, action: plan.action, supersedes: plan.supersedes,
+    });
+    res.json({
+      ok: true,
+      action: plan.action,
+      reason: plan.reason,
+      record: libraryRecordView(plan.record),
+      supersedes: plan.supersedes,
+      preview: result.text.slice(0, 1500),
+    });
+  });
+
+/** Catalog a file that is already in a store, in place. Nothing moves. */
+app.post('/api/library/register', requireAdmin, (req, res) => {
+  const body = req.body || {};
+  const store = String(body.store || '').trim().toLowerCase();
+  const recPath = String(body.path || '').trim();
+
+  // Resolve through the SAME guard the read path uses, before anything is cataloged. A record whose
+  // path does not resolve is a record the reader can never open, and `..` is refused per store —
+  // basename does not escape, it silently rewrites to a different real file (rev-5 amendment #4).
+  const probe = libraryResolvePath({ store, path: recPath });
+  if (!probe) return res.status(400).json({ error: 'that store/path does not resolve to a readable location' });
+  if (!fs.existsSync(probe)) return res.status(404).json({ error: 'no file at that path' });
+
+  let buf;
+  try { buf = fs.readFileSync(probe); } catch { return res.status(400).json({ error: 'could not read that file' }); }
+
+  const plan = libraryIntake.planRegister(libraryCatalog, {
+    id: uuidv4(),
+    store,
+    path: recPath,
+    title: body.title,
+    contentHash: provenanceLib.sha256Hex(buf),
+    format: String(recPath.split('.').pop() || '').toLowerCase().slice(0, 12),
+    bytes: buf.length,
+    source: body.source,
+    addedBy: (req.session && req.session.email) || 'operator',
+    owner: body.owner,
+    sensitivity: body.sensitivity,
+    tags: body.tags,
+    access: { allOperators: true },
+  });
+  if (!plan.ok) return res.status(400).json({ error: plan.error });
+
+  if (plan.action === 'duplicate') {
+    return res.json({ ok: true, action: 'duplicate', reason: plan.reason, record: libraryRecordView(plan.existing) });
+  }
+
+  libraryCatalog.push(plan.record);
+  saveState('library_catalog', libraryCatalog);
+  logActivity('library', `Registered in place: ${store}/${recPath}`, { recordId: plan.record.id });
+  res.json({ ok: true, action: plan.action, reason: plan.reason, record: libraryRecordView(plan.record) });
+});
+
+/** Curate a record's metadata. Identity fields and legalHold are deliberately not editable here. */
+app.patch('/api/library/record/:id', requireAdmin, (req, res) => {
+  const idx = libraryCatalog.findIndex((r) => r && r.id === req.params.id);
+  if (idx < 0) return res.status(404).json({ error: 'No such record' });
+
+  const patched = libraryIntake.applyPatch(libraryCatalog[idx], req.body || {});
+  if (!patched.ok) return res.status(400).json({ error: patched.error });
+
+  libraryCatalog[idx] = patched.record;
+  saveState('library_catalog', libraryCatalog);
+  logActivity('library', `Record updated: ${patched.record.title}`, { recordId: patched.record.id });
+  res.json({ ok: true, record: libraryRecordView(patched.record) });
 });
 
 // --- Cost Tracking API ---

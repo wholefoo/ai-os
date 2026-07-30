@@ -376,7 +376,9 @@ If a new phrasing of either count is introduced anywhere, add it to the canon pa
 
 ---
 
-### Phase 1 — Intake (uploads, dedupe, versioning; the archivist wired)
+### Phase 1 — Intake (uploads, dedupe, versioning; the archivist wired) — ✅ BUILT
+
+*Six divergences from the section below, all found by building or by RUNNING it, detailed in §9 items 21-26. Where the two disagree, the code is right and this section is history. Gates: `test-library-intake.js` 57 assertions · `test-all.js` 36/36 · seclint clean · dead-code clean (after registering the new suite as an entry point and dropping four speculative exports) · dupes clean · copy-drift 22/22 · a live 21-assertion exercise of all three routes against a booted server, run twice.*
 
 **In scope:**
 - `lib/library/intake.js` (NEW): wraps `documents.extract()`, writes bytes to `org-docs` via the existing id-only path, creates the catalog record, dedupes by `contentHash`, chains versions. **Delegates all parsing + guards to `documents.js`** — no parser lives here.
@@ -559,6 +561,20 @@ Every boundary the department crosses reuses an existing, proven guard. Nothing 
 19. **A pre-existing arithmetic gap was preserved, not fixed.** `dashboard/docs/agents.html` states "45 named employees + 12 system agents", which did not sum to the total before this work either (a gap of 9). The sweep left it as-is rather than inventing a correction to unrelated stale math. Flagged as its own small task, not folded into a department build.
 
 20. **The commercial repo had no commits at all.** Every file in `ai-os-commercial` was untracked, so the `prod-knowledge` removal — and everything else in the private half of the open-core split — had no history and no recovery path. Given an initial commit (`6bfa62a`) with the `.gitignore` it also lacked, which matters more there than in most repos: that code validates license keys, so a committed `.env` would be a licensing bypass rather than only a leak. Verified before committing: no `node_modules`, no `.env`, no key or PEM files, no secret-shaped strings.
+
+### Found by building P1
+
+21. **`intake.js` is PURE — the route writes the bytes.** P1's manifest says the module "writes bytes to `org-docs`". It does not: it returns a duplicate/version/new decision and the handler performs the I/O. Same reasoning as rev-5 lesson #5 (`paths.js`): this module decides whether someone's second upload silently overwrites their first, and a decision reachable only by POSTing a real file to a booted server is one nobody re-verifies. The dedupe and chaining rules now have 57 assertions with no server involved.
+
+22. **`supersedes` is a real field, not a tag.** §4 offered "`tags`/a `supersedes` note". Tags are an unordered, deduped, capped set — which is *precisely* rev-5 defect #1, where a canonical fact's payload lived in its first tag. A version pointer has the same failure shape and fails in the direction that loses history. Added to `normalizeRecord` and covered in `test-library-catalog.js`.
+
+23. **There is no `upload` source, and inventing one does not fail loudly.** The first implementation set `source:'upload'`, which is not in `VALID_SOURCES`; `normalizeRecord` does not throw on an unknown source, it falls back to `'agent-output'`. Every company document an operator uploaded would have been cataloged as something an agent produced — a mislabelling the chief-librarian's taxonomy could never sort out afterwards. Uploads are `'company-doc'`; `planRegister` now *validates* its source rather than defaulting it.
+
+24. **`personaDerived` needed a second check, at the boundary.** `normalizeRecord` throws on `true`, which is right for a programmer error and wrong for an HTTP body — a route would 500 where it should 400. Intake builds an explicit field list, so the flag never reached the throw at all: a caller could send it, be silently ignored, and believe the record was marked. Now refused by name in both `planIntake` and `planRegister`, with the throw kept as the backstop for callers that bypass intake.
+
+25. **`CLIENT_API_ALLOW` is unchanged, deliberately.** All three P1 routes are `requireAdmin`, so P0's note still holds and the prefix stays out. Adding `/api/library` now "to save a step in P2" would hand every managed client the catalog listing, the search and the raw content along with the contribute route.
+
+26. **The live exercise lied twice before it told the truth**, and both lies looked like product bugs. (a) Unauthenticated POSTs returned **400, not 401** — the app-level body parser rejects malformed JSON *before* any route middleware, so the script was testing the parser while appearing to test auth. With valid bodies all three routes 401 correctly. (b) Fixtures with constant content reported `duplicate` where the script expected `new`, on every run after the first — because dedupe is keyed on content hash in *persisted* state and is global rather than scoped to a title, which is the design working. **A test whose fixtures are not unique per run cannot test a content-addressed store**, and the failure presents as the feature being broken.
 
 ---
 

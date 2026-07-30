@@ -13,6 +13,10 @@ const SCHEMA_FIELDS = [
   // amendment to §4: the first implementation read a fact's FIRST TAG instead, which made
   // correctness depend on the order of an unordered set.
   'value',
+  // `supersedes` is the version chain's backward pointer, added in P1. §4 suggested a tag; that is
+  // the same unordered-set mistake as `value` above, and it fails in the direction that loses
+  // history — so it is a real field.
+  'supersedes',
 ];
 
 // --- normalize(): every field present, sanely defaulted, from nothing at all
@@ -27,6 +31,10 @@ assert(catalog.RETENTION_POLICIES.includes(empty.retention.policy), 'retention.p
 assert(empty.retention.policy === 'keep' && empty.retention.reviewAt === null && empty.retention.disposeAt === null, 'retention defaults to {policy:"keep"} per §4, never auto-expire');
 assert(empty.legalHold === false, 'legalHold defaults false');
 assert(empty.provenanceId === null, 'provenanceId defaults null (unpublished)');
+assert(empty.supersedes === null, 'supersedes defaults null — a record replaces nothing until it says so');
+assert(catalog.normalizeRecord({ supersedes: '  abc-123  ' }).supersedes === 'abc-123', 'supersedes is trimmed to a bare id');
+assert(catalog.normalizeRecord({ supersedes: 42 }).supersedes === null, 'a non-string supersedes is refused rather than coerced — a numeric id would never match a uuid and would break the chain silently');
+assert(catalog.normalizeRecord({ supersedes: 'x'.repeat(300) }).supersedes.length === 100, 'supersedes is capped like every other id-shaped field');
 assert(Array.isArray(empty.readers) && empty.readers.length === 0, 'readers defaults to an EMPTY allowlist, not a public one');
 assert(Array.isArray(empty.tags) && empty.tags.length === 0, 'tags defaults to empty');
 assert(empty.personaDerived === false, 'personaDerived defaults false');
