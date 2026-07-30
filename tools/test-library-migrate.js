@@ -79,6 +79,21 @@ for (const bad of ['sometimes', 'recent', 'recent:0', 'recent:-5', 'recent:abc',
     `--artifacts ${bad} is refused rather than silently treated as a default`);
 }
 
+// --- unknown flags are refused, because an ignored instruction looks exactly like a done one -----
+//
+// This is not hypothetical. `--drop-artifacts` was run against a deployment predating the flag: the
+// old binary ignored it, did an ordinary no-op pass, printed "wrote 22045 record(s)" and exited 0.
+// Every signal said success; nothing had happened.
+assert(migrate.refuseUnknownFlags([]).length === 0, 'no args is fine');
+assert(migrate.refuseUnknownFlags(['--dry-run', '--reconcile', '--drop-artifacts']).length === 0, 'known flags pass');
+assert(migrate.refuseUnknownFlags(['--artifacts', 'recent:30']).length === 0,
+  "--artifacts' VALUE is not mistaken for a flag");
+assert(migrate.refuseUnknownFlags(['--artifacts=all', '--dry-run']).length === 0, 'the =form consumes no following slot');
+assert(migrate.refuseUnknownFlags(['--drop-artefacts']).length === 1, 'a misspelt flag is REFUSED, not ignored');
+assert(migrate.refuseUnknownFlags(['--force']).length === 1, 'an invented flag is refused');
+assert(migrate.refuseUnknownFlags(['--artifacts', 'all', '--nope']).join() === '--nope',
+  'the unknown one is named, and the value after --artifacts is not swept up with it');
+
 // A typo must not fall back to `all`. That is the whole failure this flag exists to prevent, and a
 // permissive parser would reintroduce it while looking like it had been fixed.
 assert(migrate.parseArtifactsMode(['--artifacts', 'alll']).mode === 'invalid',
