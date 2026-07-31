@@ -12224,7 +12224,14 @@ app.post('/api/clones/:id/interview/next', requireCloneAccess, heavyLimiter, asy
   // Every question is a paid call. Bounded per clone per rolling 24h — costs a real person nothing
   // (nobody answers sixty questions in a day) and stops a script running up a bill on the operator's
   // key. Separate from settings.security.hard_budget, which caps total instance spend.
-  const cap = cloneOnb.withinDispatchCap(clone);
+  // withinDAILYCap — onboarding's interview-question cap, which takes the clone. NOT
+  // withinDispatchCap, which lives in dispatch.js, caps agent commissions, and takes
+  // (dispatches, cloneId). The two were once both called withinDailyCap; renaming dispatch's copy to
+  // clear a duplicate-export finding also rewrote THIS call site, which pointed at the other module
+  // — so the interview threw `is not a function` on every single question and no interview could
+  // ever run. Nothing caught it: node --check cannot see it, no test exercised the route, and the
+  // failure was a rejected promise that took the process down for pm2 to restart.
+  const cap = cloneOnb.withinDailyCap(clone);
   if (!cap.ok) {
     return res.status(429).json({
       error: `That is ${cap.used} questions today — enough for one sitting. Pick this up tomorrow, or correct the persona directly.`,
