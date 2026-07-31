@@ -427,7 +427,9 @@ If a new phrasing of either count is introduced anywhere, add it to the canon pa
 
 ---
 
-### Phase 3 — Retention, disposition, legal hold, PDF ingest
+### Phase 3 — Retention, disposition, legal hold, PDF ingest — ✅ BUILT
+
+*Both Type-1 decisions were put to the operator and answered: **D-ALWAYSGATE** — ship as `'critical'`, NOT in `ALWAYS_GATE` (the Architect's recommendation, accepted). **D-PDF** — `unpdf` approved and added. Divergences in §9 items 30-32. Gates: `test-library-retention.js` 22 assertions · `test-org-documents.js` 59 (incl. PDF) · `test-all.js` 38/38 · seclint · dupes · dead-code clean · copy-drift 22/22 · a 16-assertion live exercise against a booted server covering queue-not-destroy, hold-blocks-both, and a verifiable sidecar.*
 
 **In scope:**
 1. **Delete + dispose through the gate.** Register two actions in `lib/safety/approval.js` `ACTION_RISK`: `'library.delete-record': 'critical'` and `'library.retention-dispose': 'critical'` (matching the `web-studio.delete-site` precedent — irreversible). Add matching `ACTION_EXECUTORS` entries in server.js. Both executors **refuse when `legalHold` is set** (defence in depth beyond the gate). See D-ALWAYSGATE for the open question of whether these should also join `ALWAYS_GATE`.
@@ -613,6 +615,16 @@ Every boundary the department crosses reuses an existing, proven guard. Nothing 
     a hostname with no dot, so `-SessionVariable` captures zero cookies and every authenticated
     request returns 401. Pull the token from `Set-Cookie` and send it as Bearer — the server accepts
     either, so the guard path tested is identical.
+
+### Found by building P3
+
+30. **Byte deletion was NARROWED to what the library actually wrote.** §6 P3 says "remove the underlying bytes"; the executors only unlink `org-docs` records the library authored itself (store `org-docs` AND an empty `path`, meaning intake/contribute wrote them under the record id). Vault files and artifacts were registered IN PLACE — §11's own rule is that registering is not owning, and a catalog cleanup silently destroying another subsystem's working file or a human-written wiki page is not a trade worth making. The record always goes; the bytes only when they are ours and no surviving record shares the hash.
+
+31. **`executeAgent` returns `{ ok, content }`, not `.output`.** The legal-hold consult read `.output`, which is `undefined` rather than an error — the route would have returned `advice: { complianceOfficer: null }` and read as "Legal had no concerns" when the truth was "nobody asked properly". Now reads `.content`, checks `.ok`, and surfaces per-agent errors so a failed call is distinguishable from a quiet one.
+
+32. **The `auto`-mode hole is real, and is now asserted.** `decide('library.delete-record','auto')` returns `allow=true` — confirmed by running it, not by reading the table. That is the direct consequence of D-ALWAYSGATE's answer, and it is why the `legalHold` refusal sits in the EXECUTOR as well as the route. The retention suite asserts the uncomfortable half deliberately, so nobody later assumes the gate always asks.
+
+    Two tooling notes that each cost real time. **PowerShell variable names are case-insensitive**: `$b = upload(...)` silently overwrote `$B`, the base URL, and every later request tried to resolve a Hashtable as a hostname — failing with "No such host is known" rather than an HTTP status, which looks exactly like a crashed server. And **PowerShell expands `$` inside double quotes**, so an inline `node -e` containing `${...}` is rewritten before node ever sees it; the fixture generator got a real argv CLI instead.
 
 ## 10. Requirement coverage map
 

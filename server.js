@@ -2786,6 +2786,51 @@ const ACTION_EXECUTORS = {
     crm?.unlinkSite(site.id); // CRM: prune any contact link to the deleted site
     return { deleted: true, id: siteId };
   },
+  // --- Library: destroying a company record (P3) ------------------------------------------------
+  //
+  // Both executors re-read the record AT EXECUTION TIME rather than trusting anything captured when
+  // the approval was queued. An approval can sit for days while Legal places a hold, and running the
+  // old decision would destroy a record that is now protected. Same discipline as
+  // clone.dispatch-agent re-screening before it fires.
+  //
+  // The legalHold refusal is here, not only at the gate, because these are 'critical' but NOT in
+  // ALWAYS_GATE: in 'auto' mode the gate lets them through unattended (verified — decide() returns
+  // allow=true). The executor is the last thing standing between an automated policy and a record
+  // under legal hold.
+  'library.delete-record': async ({ recordId }) => {
+    const idx = libraryCatalog.findIndex((r) => r && r.id === recordId);
+    if (idx < 0) throw new Error('No such record');
+    const rec = libraryCatalog[idx];
+    if (rec.legalHold) throw new Error('That record is under legal hold and cannot be deleted');
+
+    libraryCatalog.splice(idx, 1);
+    const unlinked = libraryUnlinkBytesIfUnreferenced(rec);
+    saveState('library_catalog', libraryCatalog);
+    logActivity('library', `Record deleted: ${rec.title}`, { recordId, bytesRemoved: unlinked });
+    return { deleted: true, id: recordId, bytesRemoved: unlinked };
+  },
+
+  'library.retention-dispose': async ({ recordId }) => {
+    const idx = libraryCatalog.findIndex((r) => r && r.id === recordId);
+    if (idx < 0) throw new Error('No such record');
+    const rec = libraryCatalog[idx];
+    if (rec.legalHold) throw new Error('That record is under legal hold and cannot be disposed');
+
+    // The POLICY is re-read too, not just the hold. An operator can switch a record from 'expire'
+    // to 'keep' while its disposal sits in the queue, and honouring the stale intent would destroy
+    // something they had already decided to retain.
+    const policy = (rec.retention && rec.retention.policy) || 'keep';
+    if (policy === 'keep') {
+      throw new Error(`That record's retention policy is now 'keep' — disposal refused (it was queued under a different policy)`);
+    }
+
+    libraryCatalog.splice(idx, 1);
+    const unlinked = libraryUnlinkBytesIfUnreferenced(rec);
+    saveState('library_catalog', libraryCatalog);
+    logActivity('library', `Record disposed under retention policy '${policy}': ${rec.title}`, { recordId, policy, bytesRemoved: unlinked });
+    return { disposed: true, id: recordId, policy, bytesRemoved: unlinked };
+  },
+
   // One nurture-sequence email. Reused verbatim by the immediate path (sequencesTick → gateAction)
   // and the approve-later path (manual mode) — both send AND advance the enrollment identically.
   // Suppression is re-checked here: an unsubscribe that lands while an approval sits in the queue wins.
@@ -6016,6 +6061,48 @@ function libraryDocTextPath(recordId) {
   return orgDocTextPath(recordId);
 }
 
+/**
+ * Remove a deleted record's bytes — but only the bytes this department actually owns, and only when
+ * nothing else points at them. Returns true if a file was unlinked.
+ *
+ * TWO conditions, and both matter for a different reason:
+ *
+ * 1. ONLY `org-docs` RECORDS THE LIBRARY WROTE ITSELF. The catalog spans three physical stores, but
+ *    it only AUTHORED the org-docs ones — vault files and artifacts were registered in place, and
+ *    §11 is explicit that "registering artifacts in place is not the same as owning them": that tree
+ *    is written and deleted by other subsystems on their own schedule. Unlinking there would make a
+ *    catalog cleanup silently destroy another subsystem's working file, or a wiki page a human
+ *    wrote. Deleting the RECORD is always right; deleting bytes we did not create is not ours to do.
+ *    This is a deliberate narrowing of §6 P3's "remove the underlying bytes" — recorded in §9.
+ *
+ * 2. NO SURVIVING RECORD SHARES THE contentHash. Two records can legitimately point at one file (the
+ *    same document registered from two stores, or a version chain where the bytes never changed).
+ *    Unlinking the instant the first is deleted orphans the second — §11 again, and the same
+ *    reasoning the P1/P2 cleanup scripts use.
+ */
+function libraryUnlinkBytesIfUnreferenced(record) {
+  if (!record || record.store !== 'org-docs') return false;
+  // A path means it was registered in place rather than written by intake/contribute under its id.
+  if (record.path) return false;
+
+  if (record.contentHash
+      && libraryCatalog.some((r) => r && r.contentHash === record.contentHash)) {
+    return false;   // another record still refers to these exact bytes
+  }
+
+  try {
+    const f = libraryDocTextPath(record.id);
+    if (!fs.existsSync(f)) return false;
+    fs.unlinkSync(f);
+    return true;
+  } catch (e) {
+    // A record removed with its bytes left behind is recoverable clutter; a throw here would abort
+    // the executor after the catalog was already mutated, leaving the two out of step.
+    appendLog(`[library] could not unlink bytes for ${record.id}: ${e.message}`);
+    return false;
+  }
+}
+
 app.post('/api/library/upload', requireAdmin, heavyLimiter,
   express.raw({ type: () => true, limit: orgDocuments.MAX_UPLOAD_BYTES }),
   async (req, res) => {
@@ -6185,6 +6272,149 @@ app.post('/api/library/contribute', requireClientOrAdmin, heavyLimiter, (req, re
     readers: plan.record.readers,
     reason: plan.reason,
   });
+});
+
+// --- Library retention, disposition, legal hold, provenance (P3) --------------------------------
+//
+// Everything that DESTROYS goes through gateAction. Everything that PROTECTS (legal hold) does not —
+// a hold is the safe direction, and putting it behind an approval queue would mean a record stays
+// deletable while the request to protect it waits.
+
+/** Destroy a record. Critical: queues an approval unless the operator has chosen 'auto' mode. */
+app.delete('/api/library/record/:id', requireAdmin, async (req, res) => {
+  const rec = libraryCatalog.find((r) => r && r.id === req.params.id);
+  if (!rec) return res.status(404).json({ error: 'No such record' });
+  // Checked here for a fast, honest refusal, and AGAIN in the executor because an approval can sit
+  // in the queue while the hold lands. Neither check makes the other redundant.
+  if (rec.legalHold) return res.status(409).json({ error: 'That record is under legal hold and cannot be deleted' });
+
+  const g = await gateAction({
+    type: 'library.delete-record',
+    summary: `Delete library record "${rec.title}" (${rec.source})`,
+    target: rec.id,
+    params: { recordId: rec.id },
+    req,
+  });
+  if (g.pending) return res.json({ ok: true, pending: true, approval: g.approval });
+  res.json({ ok: true, ...g.result });
+});
+
+/** Dispose under the retention policy. Same gate, different intent — and the policy is re-read at
+ *  execution time, so a record switched back to 'keep' while queued is spared. */
+app.post('/api/library/record/:id/dispose', requireAdmin, async (req, res) => {
+  const rec = libraryCatalog.find((r) => r && r.id === req.params.id);
+  if (!rec) return res.status(404).json({ error: 'No such record' });
+  if (rec.legalHold) return res.status(409).json({ error: 'That record is under legal hold and cannot be disposed' });
+
+  const policy = (rec.retention && rec.retention.policy) || 'keep';
+  if (policy === 'keep') {
+    return res.status(409).json({ error: `That record's retention policy is 'keep' — set a policy of 'review' or 'expire' before disposing it` });
+  }
+
+  const g = await gateAction({
+    type: 'library.retention-dispose',
+    summary: `Dispose library record "${rec.title}" under retention policy '${policy}'`,
+    target: rec.id,
+    params: { recordId: rec.id },
+    req,
+  });
+  if (g.pending) return res.json({ ok: true, pending: true, approval: g.approval });
+  res.json({ ok: true, ...g.result });
+});
+
+/**
+ * Set or clear a legal hold, after an ADVISORY consult with Legal.
+ *
+ * The agents advise; the human decides. Their output is fenced as untrusted like every other agent
+ * result — a compliance opinion is still generated text, and the moment it is treated as an
+ * instruction rather than advice, a document that says "no hold is required here" becomes a way to
+ * talk the platform out of protecting a record.
+ *
+ * Not gated: a hold is the protective direction. Queuing it would leave the record deletable while
+ * the request to protect it waits for approval — the gate exists to slow destruction, not caution.
+ * CLEARING a hold is the dangerous direction and is logged loudly; it still requires an admin, and
+ * the record remains gate-protected for the actual deletion.
+ */
+app.post('/api/library/record/:id/legal-hold', requireAdmin, heavyLimiter, async (req, res) => {
+  const idx = libraryCatalog.findIndex((r) => r && r.id === req.params.id);
+  if (idx < 0) return res.status(404).json({ error: 'No such record' });
+  const rec = libraryCatalog[idx];
+
+  const hold = req.body && req.body.hold === true;
+  const reason = String((req.body && req.body.reason) || '').slice(0, 1000);
+  const skipConsult = req.body && req.body.skipConsult === true;
+
+  let advice = null;
+  if (!skipConsult) {
+    const brief = `A company record is being ${hold ? 'PLACED UNDER' : 'RELEASED FROM'} legal hold.\n`
+      + `Title: ${rec.title}\nSource: ${rec.source}\nSensitivity: ${rec.sensitivity}\n`
+      + `Retention policy: ${(rec.retention && rec.retention.policy) || 'keep'}\n`
+      + `Operator's stated reason: ${reason || '(none given)'}\n\n`
+      + `Advise briefly on whether this is appropriate and what obligations follow. `
+      + `You are advising a human who will decide — you are not making the decision.`;
+    try {
+      const [compliance, counsel] = await Promise.all([
+        executeAgent('compliance-officer', brief, { maxTokens: 700 }),
+        executeAgent('general-counsel', brief, { maxTokens: 700 }),
+      ]);
+      // `.content`, not `.output` — executeAgent returns { ok, content, model, cost, ... }. Reading
+      // the wrong key yields undefined rather than throwing, so the route would have returned
+      // `advice: {complianceOfficer: null}` and looked like two agents with nothing to say.
+      advice = {
+        complianceOfficer: (compliance && compliance.ok) ? compliance.content : null,
+        generalCounsel: (counsel && counsel.ok) ? counsel.content : null,
+        // Surfaced rather than swallowed: an operator reading "no advice" should be able to tell
+        // "Legal had no concerns" apart from "the call failed".
+        errors: [compliance, counsel].filter((r) => r && !r.ok).map((r) => r.error),
+      };
+    } catch (e) {
+      // A consult that fails must not block a hold. Protecting the record is the safe default, and
+      // making it depend on a model call would mean an outage prevents legal protection.
+      appendLog(`[library] legal consult failed for ${rec.id}: ${e.message}`);
+      advice = { error: 'the advisory consult failed; the hold was applied without it' };
+    }
+  }
+
+  libraryCatalog[idx] = { ...rec, legalHold: hold };
+  saveState('library_catalog', libraryCatalog);
+  logActivity('library', `Legal hold ${hold ? 'PLACED on' : 'RELEASED from'} "${rec.title}"`, {
+    recordId: rec.id, hold, reason, alert: !hold,
+  });
+  res.json({ ok: true, recordId: rec.id, legalHold: hold, reason, advice });
+});
+
+/**
+ * Publish a record outward with an Ed25519 provenance sidecar.
+ *
+ * Honest naming, per the standing rule this repo already applies to generated sites: the sidecar is
+ * C2PA-VOCABULARY-ALIGNED, not certified C2PA. It proves this instance signed this content hash at
+ * this time, and nothing more.
+ */
+app.post('/api/library/record/:id/publish', requireAdmin, (req, res) => {
+  const idx = libraryCatalog.findIndex((r) => r && r.id === req.params.id);
+  if (idx < 0) return res.status(404).json({ error: 'No such record' });
+  const rec = libraryCatalog[idx];
+
+  if (!signProvenance) {
+    return res.status(503).json({ error: 'provenance signing is unavailable on this instance (no signing key)' });
+  }
+  if (!rec.contentHash) {
+    return res.status(409).json({ error: 'that record has no contentHash to sign' });
+  }
+
+  const sidecar = signProvenance({
+    claim_generator: 'AI OS Knowledge & Records',
+    record_id: rec.id,
+    title: rec.title,
+    content_hash: rec.contentHash,
+    source: rec.source,
+    published_at: new Date().toISOString(),
+  });
+
+  libraryCatalog[idx] = { ...rec, provenanceId: sidecar.signature.signature.slice(0, 64) };
+  saveState('library_catalog', libraryCatalog);
+  logActivity('library', `Published with provenance: ${rec.title}`, { recordId: rec.id });
+  res.json({ ok: true, record: libraryRecordView(libraryCatalog[idx]), sidecar });
 });
 
 // --- Cost Tracking API ---
