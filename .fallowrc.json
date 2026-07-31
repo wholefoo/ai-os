@@ -44,6 +44,7 @@
     "tools/test-library-migrate.js",
     "tools/test-library-intake.js",
     "tools/test-library-contribute.js",
+    "tools/test-library-retention.js",
     "tools/verify-clone-live.js",
     "ecosystem.config.js",
     "deploy/n8n-ecosystem.config.example.js",

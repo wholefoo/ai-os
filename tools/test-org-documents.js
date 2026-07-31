@@ -11,7 +11,7 @@ const buf = (s) => Buffer.from(s, 'utf8');
 
 // --- the allowlist
 assert(docs.isSupported('prices.csv') && docs.isSupported('Handbook.DOCX'), 'supported formats are matched case-insensitively');
-assert(!docs.isSupported('scan.pdf'), 'PDF is not supported');
+assert(docs.isSupported('scan.pdf'), 'PDF IS supported as of P3 (was refused until unpdf was added)');
 assert(!docs.isSupported('notes'), 'nor is a file with no extension');
 assert(!docs.isSupported('archive.zip'), 'nor an arbitrary archive');
 assert(docs.extensionOf('a.b.c.MD') === 'md', 'the extension is the last one, lower-cased');
@@ -19,7 +19,7 @@ assert(docs.extensionOf('') === '' && docs.extensionOf(null) === '', 'and missin
 
 // A refusal has to tell the person what to DO. "Unsupported MIME type" is not something an owner
 // can act on; "open it and save as .docx" is.
-assert(/copy the text/.test(docs.refusalFor('terms.pdf')), 'the PDF refusal says what to do instead');
+assert(docs.refusalFor('terms.pdf') === null, 'PDF no longer carries a refusal — the "copy the text and paste it" message was removed with the format');
 assert(/save it as .docx/.test(docs.refusalFor('old.doc')), 'and the legacy Word one names the conversion');
 assert(/save it as .xlsx/.test(docs.refusalFor('old.xls')), 'as does the legacy Excel one');
 assert(/Export it as Word/.test(docs.refusalFor('brief.pages')), 'and Pages is handled by name rather than falling through');
@@ -76,8 +76,11 @@ assert(/\.txt/.test(docs.refusalFor('thing.rtf')), 'an unknown format lists what
   assert(!/\n\n\n/.test(xlsx.text), 'and empty rows do not become empty lines');
 
   // --- refusals and limits
-  const pdf = await docs.extract({ filename: 'terms.pdf', buffer: buf('%PDF-1.4') });
-  assert(!pdf.ok && /copy the text/.test(pdf.error), 'a PDF is refused BEFORE being parsed, with instructions');
+  // A truncated PDF now reaches the PARSER and fails there, where before it was refused by format.
+  // The distinction matters: the error must still be plain language, not a pdf.js stack trace.
+  const truncatedPdf = await docs.extract({ filename: 'terms.pdf', buffer: buf('%PDF-1.4') });
+  assert(!truncatedPdf.ok, 'a truncated PDF is refused');
+  assert(/corrupt or not really/.test(truncatedPdf.error), 'by the parser, in words rather than a stack trace');
 
   const empty = await docs.extract({ filename: 'blank.txt', buffer: Buffer.alloc(0) });
   assert(!empty.ok && /empty/.test(empty.error), 'an empty file is refused');
@@ -126,5 +129,73 @@ assert(/\.txt/.test(docs.refusalFor('thing.rtf')), 'an unknown format lists what
   assert(Object.keys(hostile).sort().join(',') === 'chars,format,ok,text',
     'but extraction returns TEXT ONLY — no proposed fields, no boundaries, nothing that could reach a persona from here');
 
+  // --- PDF (P3) ---------------------------------------------------------------------------------
+  // The fixture is GENERATED, not committed. A binary blob in the repo is a thing nobody can review
+  // in a diff and nobody dares change; a builder is readable, and it lets a test ask for 600 pages
+  // without a 600-page file existing anywhere.
+  assert(docs.isSupported('report.pdf'), 'pdf is now a supported format');
+  assert(!docs.refusalFor('report.pdf'), 'and no longer carries a refusal message');
+
+  const pdfOut = await docs.extract({ filename: 'q3.pdf', buffer: makePdf(['Revenue was $1,997', 'Second page body']) });
+  assert(pdfOut.ok && pdfOut.format === 'pdf', 'a .pdf extracts');
+  assert(pdfOut.text.includes('Revenue was $1,997'), 'its text comes through verbatim, dollar signs and all');
+  assert(pdfOut.text.includes('Second page body'), 'and so does page two');
+  assert(pdfOut.text.includes('## Page 1') && pdfOut.text.includes('## Page 2'),
+    'pages are labelled — this department exists to be quoted from, and "which page" is the first thing asked of a citation');
+
+  const overLong = await docs.extract({
+    filename: 'huge.pdf',
+    buffer: makePdf(Array.from({ length: docs.MAX_PDF_PAGES + 5 }, (_, i) => `Page ${i + 1} content`)),
+  });
+  assert(overLong.ok, 'an over-long PDF still extracts rather than failing');
+  assert(overLong.text.includes(`truncated at ${docs.MAX_PDF_PAGES}`),
+    'and ANNOUNCES the truncation in the output — silently dropping the back half of a contract is the kind of helpfulness that gets someone in trouble');
+  assert(!overLong.text.includes(`## Page ${docs.MAX_PDF_PAGES + 3}`), 'pages past the ceiling are not included');
+
+  const notReallyPdf = await docs.extract({ filename: 'fake.pdf', buffer: buf('this is not a pdf at all') });
+  assert(notReallyPdf.ok === false, 'a mislabelled .pdf is refused rather than throwing');
+  assert(/corrupt|not really/i.test(notReallyPdf.error), 'with the same plain-language error the other parsers give');
+
+  assert((await docs.extract({ filename: 'empty.pdf', buffer: Buffer.alloc(0) })).ok === false,
+    'an empty .pdf is refused by the shared size check, not by the parser');
+
   done();
 })();
+
+/**
+ * A minimal, valid, uncompressed PDF with known text. Byte offsets in the xref table are COMPUTED —
+ * a wrong offset produces a file some readers accept and others reject, which is a worse fixture
+ * than no fixture at all.
+ */
+function makePdf(pages) {
+  const objs = [];
+  const contentIds = pages.map((_, i) => 4 + i * 2);
+  const pageIds = pages.map((_, i) => 5 + i * 2);
+
+  objs[1] = '<</Type/Catalog/Pages 2 0 R>>';
+  objs[2] = `<</Type/Pages/Kids[${pageIds.map((id) => `${id} 0 R`).join(' ')}]/Count ${pages.length}>>`;
+  objs[3] = '<</Type/Font/Subtype/Type1/BaseFont/Helvetica>>';
+
+  pages.forEach((text, i) => {
+    const safe = String(text).replace(/\\/g, '\\\\').replace(/\(/g, '\\(').replace(/\)/g, '\\)');
+    const stream = `BT /F1 24 Tf 72 700 Td (${safe}) Tj ET`;
+    objs[contentIds[i]] = `<</Length ${stream.length}>>\nstream\n${stream}\nendstream`;
+    objs[pageIds[i]] = `<</Type/Page/Parent 2 0 R/MediaBox[0 0 612 792]`
+      + `/Contents ${contentIds[i]} 0 R/Resources<</Font<</F1 3 0 R>>>>>>`;
+  });
+
+  let out = '%PDF-1.4\n';
+  const offsets = [];
+  for (let i = 1; i < objs.length; i += 1) {
+    if (!objs[i]) continue;
+    offsets[i] = out.length;
+    out += `${i} 0 obj\n${objs[i]}\nendobj\n`;
+  }
+  const xrefAt = out.length;
+  out += `xref\n0 ${objs.length}\n0000000000 65535 f \n`;
+  for (let i = 1; i < objs.length; i += 1) {
+    out += offsets[i] != null ? `${String(offsets[i]).padStart(10, '0')} 00000 n \n` : '0000000000 65535 f \n';
+  }
+  out += `trailer\n<</Size ${objs.length}/Root 1 0 R>>\nstartxref\n${xrefAt}\n%%EOF\n`;
+  return Buffer.from(out, 'latin1');
+}
