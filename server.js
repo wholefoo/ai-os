@@ -2311,7 +2311,7 @@ app.put('/api/bookings/:id/cancel', requireAdmin, (req, res) => {
 // and are NEVER auto-enrolled in email sequences — sequences are for inbound leads; cold email
 // to scraped addresses is an operator decision, made per-contact.
 const prospectsLib = require('./lib/leads/prospects');
-const { safeFetch } = require('./lib/net/safe-fetch');
+const { safeFetch, safeRequest } = require('./lib/net/safe-fetch');
 const prospectRuns = loadState('prospect_runs', []);
 
 function prospectingCfg() {
@@ -12861,6 +12861,11 @@ if (commercial.registerRoutes) {
     // Persistence & utilities
     saveState, loadState, uuidv4, validateBody, fs, path,
     extractJson: webStudioPipeline.extractJson,
+    // SSRF-guarded outbound HTTP. Injected rather than required across the repo boundary, like fs
+    // and path above — and injected AT ALL because the SSRF hardening pass that pinned every fetch
+    // in this repo never crossed into commercial/, which had its own raw fetch() calls to
+    // operator-supplied plugin URLs. A guard the second repo cannot reach is a guard it will not use.
+    safeFetch, safeRequest,
     // Config & constants
     ACTIVE_TIER, COMMERCIAL_FEATURES, PLAN_LEVELS, DEMO_MODE, BASE,
     COST_RATES, MASTER_TENANT_ID, STATE_DIR, MAGENT_DIR, CLAUDE_DIR,
