@@ -362,7 +362,7 @@ function clRenderDetail() {
 
   const body = document.getElementById('clTabBody');
   if (clState.tab === 'interview') body.innerHTML = clInterviewHtml(c);
-  else if (clState.tab === 'persona') body.innerHTML = clState.editing ? clPersonaFormHtml(c.persona || {}) : clPersonaHtml(c.persona || {});
+  else if (clState.tab === 'persona') body.innerHTML = clState.editing ? clPersonaFormHtml(c.persona || {}, c.inherited) : clPersonaHtml(c.persona || {}, c.inherited);
   else if (clState.tab === 'prompt') { body.innerHTML = '<div class="cl-muted">Loading…</div>'; clLoadPrompt(); }
   else if (clState.tab === 'evolve') { body.innerHTML = '<div class="cl-muted">Loading…</div>'; clLoadEvolve(); }
   else if (clState.tab === 'direct') body.innerHTML = clDispatchHtml();
@@ -401,24 +401,71 @@ function clTranscriptHtml(turns) {
     </div>`).join('');
 }
 
+/**
+ * The company's answer for one field, or null.
+ *
+ * `inherited` is what GET /api/clones/:id reports from lib/org/profile.inheritedFrom — the values
+ * the server merges in at every decision site. It is deliberately NOT blended into `persona`, so
+ * this view has to read it explicitly. A view that ignores it shows a blank Business/Industry/What
+ * the business does on every employee and invites each of them to retype what the company document
+ * already says — five people, five slightly different answers, and a persona field the company can
+ * no longer correct centrally.
+ */
+function clInh(inherited, dim, k) {
+  const v = ((inherited || {})[dim] || {})[k];
+  if (v == null || v === '') return null;
+  if (Array.isArray(v)) return v.length ? v : null;
+  return v;
+}
+
+const CL_FROM_COMPANY = '<span class="cl-tag" style="margin-left:6px;opacity:.75;">from the company</span>';
+
 /** Render the persona so the owner can audit what their clone believes about them. */
-function clPersonaHtml(p) {
+function clPersonaHtml(p, inherited) {
   const section = (title, rows) => {
     const real = rows.filter(Boolean);
     return real.length ? `<h4 style="margin:16px 0 6px;">${title}</h4>${real.join('')}` : '';
   };
-  const line = (label, v) => (v || v === 0) ? `<div class="cl-detail-row" style="display:flex;justify-content:space-between;gap:12px;padding:6px 0;border-bottom:1px dashed var(--border,#2a2a3a);font-size:13px;"><span class="cl-muted">${label}</span><span style="text-align:right;">${escapeHtml(v)}</span></div>` : '';
-  const list = (label, arr) => (arr && arr.length) ? `<div style="padding:6px 0;"><div class="cl-muted">${label}</div><div>${arr.map((x) => `<span class="cl-tag" style="margin:3px 4px 0 0;display:inline-block;">${escapeHtml(typeof x === 'string' ? x : (x.claim || x.question || x.when || ''))}</span>`).join('')}</div></div>` : '';
+  const row = (label, inner) => `<div class="cl-detail-row" style="display:flex;justify-content:space-between;gap:12px;padding:6px 0;border-bottom:1px dashed var(--border,#2a2a3a);font-size:13px;"><span class="cl-muted">${label}</span><span style="text-align:right;">${inner}</span></div>`;
+  const line = (label, v) => (v || v === 0) ? row(label, escapeHtml(v)) : '';
+  // The person's own value wins; the company's fills the blank. Same precedence as
+  // effectivePersona, so what is shown here is what the clone actually speaks with.
+  const orgLine = (label, own, dim, k) => {
+    if (own || own === 0) return line(label, own);
+    const inh = clInh(inherited, dim, k);
+    return inh ? row(label, `${escapeHtml(inh)}${CL_FROM_COMPANY}`) : '';
+  };
+  const tags = (arr, from) => arr.map((x) => `<span class="cl-tag" style="margin:3px 4px 0 0;display:inline-block;${from ? 'opacity:.75;' : ''}">${escapeHtml(typeof x === 'string' ? x : (x.claim || x.question || x.when || ''))}</span>`).join('');
+  const list = (label, arr) => (arr && arr.length) ? `<div style="padding:6px 0;"><div class="cl-muted">${label}</div><div>${tags(arr)}</div></div>` : '';
+  // Company limits are ADDITIVE and cannot be removed here, so they are shown alongside the
+  // person's own rather than merged into them — someone looking at this screen should be able to
+  // tell which lines they can take back and which they cannot.
+  const orgList = (label, arr, k) => {
+    const inh = clInh(inherited, 'boundaries', k);
+    if (!inh && !(arr && arr.length)) return '';
+    return `<div style="padding:6px 0;"><div class="cl-muted">${label}</div><div>${tags(arr || [])}${inh ? `${tags(inh, true)}${CL_FROM_COMPANY}` : ''}</div></div>`;
+  };
+
+  // Pricing is the one field where the company does NOT simply fill a blank: effectivePersona takes
+  // whichever of the two is more restrictive, so a person set to "full detail" under a company set
+  // to "never discuss" speaks with "never discuss". Showing their own value here would be a display
+  // that disagrees with the prompt the clone is actually given.
+  const pricingLine = (own) => {
+    const order = { none: 0, ranges: 1, full: 2 };
+    const inh = clInh(inherited, 'boundaries', 'pricingDisclosure');
+    if (inh && (!own || (order[inh] ?? 3) < (order[own] ?? 3))) return row('Pricing', `${escapeHtml(inh)}${CL_FROM_COMPANY}`);
+    return line('Pricing', own);
+  };
 
   const i = p.identity || {}, v = p.voice || {}, e = p.expertise || {}, ds = p.decisionStyle || {}, b = p.boundaries || {};
   const scale = (n) => (n ? `${n} / 5` : '');
 
   const html = [
-    section('Who they are', [line('Name', i.ownerName), line('Role', i.role), line('Business', i.businessName), line('Industry', i.industry), line('Years', i.yearsExperience), line('What the business does', i.whatTheyDo)]),
+    section('Who they are', [line('Name', i.ownerName), line('Role', i.role), orgLine('Business', i.businessName, 'identity', 'businessName'), orgLine('Industry', i.industry, 'identity', 'industry'), line('Years', i.yearsExperience), orgLine('What the business does', i.whatTheyDo, 'identity', 'whatTheyDo')]),
     section('How they sound', [line('Formality', scale(v.formality)), line('Directness', scale(v.directness)), line('Warmth', scale(v.warmth)), line('Humour', v.humor), line('Sign-off', v.signoff), list('Phrases they use', v.signaturePhrases), list('Never uses', v.avoidPhrases)]),
     section('What they know', [list('Expert in', e.domains), list('Methods', e.methodologies), list('Strong opinions', e.strongOpinions), list('Answers on file', e.faq)]),
     section('How they decide', [list('Protects, in order', ds.priorities), list('Trade-offs', ds.tradeoffRules), line('Risk posture', ds.riskPosture), list('Always escalates', ds.escalationTriggers)]),
-    section('Limits', [list('Never says', b.neverSay), list('Never promises', b.neverPromise), list('Always yours to handle', b.requiresHuman), list('Confidential', b.confidentialTopics), line('Pricing', b.pricingDisclosure)]),
+    section('Limits', [orgList('Never says', b.neverSay, 'neverSay'), orgList('Never promises', b.neverPromise, 'neverPromise'), orgList('Always yours to handle', b.requiresHuman, 'requiresHuman'), orgList('Confidential', b.confidentialTopics, 'confidentialTopics'), pricingLine(b.pricingDisclosure)]),
   ].filter(Boolean).join('');
 
   const edit = '<div style="margin:14px 0;"><button class="btn" onclick="clEditPersona()">Correct this</button> <span class="cl-muted">Fix anything your clone has wrong about you.</span></div>';
@@ -440,8 +487,31 @@ function clTextToObjList(text, parts) {
   });
 }
 
-function clFieldHtml(dim, f, value) {
+function clFieldHtml(dim, f, value, inherited) {
   const id = `clF-${dim}-${f.k}`;
+  const inh = clInh(inherited, dim, f.k);
+  const lbl = `<div class="cl-muted" style="margin:10px 0 3px;">${escapeHtml(f.label)}</div>`;
+
+  // A field the company has answered and the person has NOT overridden is shown as read-only rather
+  // than as a blank box. An empty input here reads as "we forgot to ask you", and filling it copies
+  // a company value into a personal record — the one thing lib/org/profile.js exists to prevent.
+  // Rendering no input at all is also what keeps the copy from happening: clSavePersona reads the
+  // DOM, so a field with no element is submitted empty and the server keeps merging it at use.
+  if (inh && !Array.isArray(inh) && !value) {
+    return `${lbl}<div class="cl-detail-row" style="padding:7px 9px;border:1px dashed var(--border,#2a2a3a);border-radius:6px;font-size:13px;opacity:.8;">${escapeHtml(inh)}${CL_FROM_COMPANY}</div>`
+      + `<div class="cl-muted" style="font-size:11px;margin-top:3px;">Set by the company for everyone here — it is not stored on you, and changing it is done once on the Company screen.</div>`;
+  }
+
+  // Company boundary lists are additive: the person can add their own but cannot take the
+  // company's away, so the input holds only theirs and the company's are named beneath it.
+  const note = (inh && Array.isArray(inh))
+    ? `<div class="cl-muted" style="font-size:11px;margin-top:3px;">Always applied on top of yours, from the company: ${escapeHtml(inh.join(', '))}</div>`
+    : (inh ? `<div class="cl-muted" style="font-size:11px;margin-top:3px;">The company's answer is “${escapeHtml(inh)}”. Clear this to go back to it.</div>` : '');
+  if (note) return clFieldInputHtml(id, f, value) + note;
+  return clFieldInputHtml(id, f, value);
+}
+
+function clFieldInputHtml(id, f, value) {
   const lbl = `<div class="cl-muted" style="margin:10px 0 3px;">${escapeHtml(f.label)}</div>`;
   if (f.type === 'select') {
     const opts = f.options.map(([v, t]) =>
@@ -458,9 +528,9 @@ function clFieldHtml(dim, f, value) {
   return `${lbl}<input id="${id}" type="${t}" style="width:100%;" value="${escapeHtml(value == null ? '' : value)}">`;
 }
 
-function clPersonaFormHtml(p) {
+function clPersonaFormHtml(p, inherited) {
   const sections = Object.entries(CL_FIELDS).map(([dim, fields]) => {
-    const body = fields.map((f) => clFieldHtml(dim, f, (p[dim] || {})[f.k])).join('');
+    const body = fields.map((f) => clFieldHtml(dim, f, (p[dim] || {})[f.k], inherited)).join('');
     return `<h4 style="margin:18px 0 4px;">${escapeHtml(CL_DIM_LABELS[dim])}</h4>${body}`;
   }).join('');
 
