@@ -2312,6 +2312,7 @@ app.put('/api/bookings/:id/cancel', requireAdmin, (req, res) => {
 // to scraped addresses is an operator decision, made per-contact.
 const prospectsLib = require('./lib/leads/prospects');
 const { safeFetch, safeRequest } = require('./lib/net/safe-fetch');
+const slackNotify = require('./lib/notify/slack');
 const prospectRuns = loadState('prospect_runs', []);
 
 function prospectingCfg() {
@@ -7631,24 +7632,27 @@ function sendNotification(title, message, priority = 'normal') {
     logActivity('notification', `Telegram notification sent: ${title}`);
   }
 
-  // Slack — real HTTP call to Incoming Webhook
-  if (notificationConfig.slack.enabled && notificationConfig.slack.webhookUrl) {
-    const color = priority === 'critical' ? '#ef4444' : priority === 'normal' ? '#3b82f6' : '#6b7280';
-    fetch(notificationConfig.slack.webhookUrl, {
+  // Slack — real HTTP call to Incoming Webhook.
+  //
+  // The guard is isConfigured, not truthiness: a placeholder like `your-slack-webhook-url-here` is
+  // truthy, so this branch used to fire on instances that had never been connected to Slack and
+  // fail on every notification.
+  //
+  // The activity log now records delivery only AFTER the request succeeds. It previously logged
+  // "Slack notification sent" the moment the request was DISPATCHED, so a channel that had never
+  // delivered anything reported success in the dashboard while failing in stderr — the worst
+  // possible arrangement for something whose job is to tell you when things go wrong.
+  if (notificationConfig.slack.enabled && slackNotify.isConfigured(notificationConfig.slack.webhookUrl)) {
+    const { url } = slackNotify.resolveWebhook(notificationConfig.slack.webhookUrl);
+    notification.channels.push('slack');
+    safeRequest(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        attachments: [{
-          color,
-          title,
-          text: message,
-          footer: 'AI OS Orchestration Lab',
-          ts: Math.floor(Date.now() / 1000),
-        }],
-      }),
-    }).catch(e => console.error('[SLACK] Error:', e.message));
-    notification.channels.push('slack');
-    logActivity('notification', `Slack notification sent: ${title}`);
+      body: JSON.stringify(slackNotify.notificationPayload({ title, message, priority })),
+    }).then((r) => {
+      if (r.status >= 200 && r.status < 300) logActivity('notification', `Slack notification sent: ${title}`);
+      else console.error(`[SLACK] Send failed: ${r.status} ${r.body.slice(0, 120)}`);
+    }).catch((e) => console.error('[SLACK] Error:', e.message));
   }
 
   notifications.unshift(notification);
@@ -9686,41 +9690,40 @@ async function sendTelegramApproval(proposal) {
 // Self-Improving telegram webhook extracted to commercial/modules/self-improving/index.js
 
 // --- Slack Integration ---
-async function sendSlackMessage(text) {
-  const url = settings.notifications?.slack_webhook_url;
-  if (!url) return;
+//
+// One POST helper for both senders. They were separate copies of the same request differing only
+// in payload, and the guard they shared — `if (!url)` — treated the .env placeholder as a
+// configured webhook. See lib/notify/slack.js for why the check is "is it an https URL" rather
+// than a list of placeholder spellings.
+//
+// safeRequest rather than fetch: the webhook URL is operator-configurable through settings, so a
+// raw POST would send notification contents (proposal titles, system state) wherever that value
+// points, including inside the network. Same shape as the plugin test-fire finding.
+async function postToSlack(payload, label) {
+  const resolved = slackNotify.resolveWebhook(settings.notifications?.slack_webhook_url);
+  if (!resolved.ok) return false;
 
   try {
-    await fetch(url, {
+    const r = await safeRequest(resolved.url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ text }),
+      body: JSON.stringify(payload),
     });
+    if (r.status >= 200 && r.status < 300) return true;
+    console.error(`[SLACK] ${label} failed: ${r.status} ${r.body.slice(0, 120)}`);
+    return false;
   } catch (e) {
-    console.error('[SLACK] Send failed:', e.message);
+    console.error(`[SLACK] ${label} failed:`, e.message);
+    return false;
   }
 }
 
+async function sendSlackMessage(text) {
+  return postToSlack({ text }, 'Send');
+}
+
 async function sendSlackApproval(proposal) {
-  const url = settings.notifications?.slack_webhook_url;
-  if (!url) return;
-
-  const riskEmoji = proposal.risk === 'high' ? '🔴' : proposal.risk === 'medium' ? '🟡' : '🟢';
-  const text = `${proposal.icon} *Platform Update Proposal*\n\n` +
-    `*${proposal.title}*\n` +
-    `Type: ${proposal.typeLabel} | Risk: ${riskEmoji} ${proposal.risk}\n` +
-    (proposal.description ? `${proposal.description}\n` : '') +
-    `\nApprove/reject in the dashboard → Platform view`;
-
-  try {
-    await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ text }),
-    });
-  } catch (e) {
-    console.error('[SLACK] Approval send failed:', e.message);
-  }
+  return postToSlack(slackNotify.approvalPayload(proposal), 'Approval send');
 }
 
 // --- Automated Self-Improvement Checks (runs on startup and via CRON) ---
@@ -12996,6 +12999,11 @@ server.listen(PORT, HOST, () => {
   console.log(`Verification rubrics: ${Object.keys(loadVerificationRubrics()).length}`);
   console.log(`Grok queries cached: ${grokCache.size}`);
   console.log(`License tier: ${ACTIVE_TIER.toUpperCase()} | Commercial features: ${Object.entries(COMMERCIAL_FEATURES).filter(([,v]) => v).map(([k]) => k).join(', ') || 'none (community)'}`);
+  // Say it ONCE, at boot, where someone reads it — not once per notification into stderr. A value
+  // that is set but unusable is a mistake somebody made and would want to know about; a value that
+  // is simply absent is not, and stays silent.
+  const slackWarning = slackNotify.configWarning(settings.notifications?.slack_webhook_url);
+  if (slackWarning) console.warn(`[SLACK] ${slackWarning}`);
   logActivity('system', 'AI OS started');
   appendLog('SYSTEM_START');
 });
