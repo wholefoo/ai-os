@@ -12105,7 +12105,7 @@ function onboardingFor(session) {
     rec = cloneOnb.createRecord(clientId);
     cloneOnboarding.push(rec);
   }
-  cloneOnb.reconcile(rec, cloneStore.listClones(businessClones, clientId));
+  cloneOnb.reconcile(rec, cloneStore.listClones(businessClones, clientId), cloneEffective);
   return { rec, clientId };
 }
 
@@ -12113,7 +12113,7 @@ app.get('/api/clones/onboarding', requireCloneAccess, (req, res) => {
   const { rec, clientId } = onboardingFor(req.session);
   saveCloneOnboarding();
   res.json({
-    ...cloneOnb.overview(rec, cloneStore.listClones(businessClones, clientId)),
+    ...cloneOnb.overview(rec, cloneStore.listClones(businessClones, clientId), cloneEffective),
     disclosure: cloneOnb.DISCLOSURE,
   });
 });
@@ -12123,21 +12123,21 @@ app.post('/api/clones/onboarding/accept', requireCloneAccess, (req, res) => {
   cloneOnb.acceptDisclosure(rec);
   saveCloneOnboarding();
   logActivity('clone', `Clone onboarding disclosure accepted (v${cloneOnb.DISCLOSURE_VERSION})`, { clientId });
-  res.json({ ok: true, ...cloneOnb.overview(rec, cloneStore.listClones(businessClones, clientId)), disclosure: cloneOnb.DISCLOSURE });
+  res.json({ ok: true, ...cloneOnb.overview(rec, cloneStore.listClones(businessClones, clientId), cloneEffective), disclosure: cloneOnb.DISCLOSURE });
 });
 
 app.post('/api/clones/onboarding/dismiss', requireCloneAccess, (req, res) => {
   const { rec, clientId } = onboardingFor(req.session);
   cloneOnb.dismiss(rec);
   saveCloneOnboarding();
-  res.json({ ok: true, ...cloneOnb.overview(rec, cloneStore.listClones(businessClones, clientId)), disclosure: cloneOnb.DISCLOSURE });
+  res.json({ ok: true, ...cloneOnb.overview(rec, cloneStore.listClones(businessClones, clientId), cloneEffective), disclosure: cloneOnb.DISCLOSURE });
 });
 
 app.post('/api/clones/onboarding/resume', requireCloneAccess, (req, res) => {
   const { rec, clientId } = onboardingFor(req.session);
   cloneOnb.resume(rec);
   saveCloneOnboarding();
-  res.json({ ok: true, ...cloneOnb.overview(rec, cloneStore.listClones(businessClones, clientId)), disclosure: cloneOnb.DISCLOSURE });
+  res.json({ ok: true, ...cloneOnb.overview(rec, cloneStore.listClones(businessClones, clientId), cloneEffective), disclosure: cloneOnb.DISCLOSURE });
 });
 
 app.get('/api/clones/:id', requireCloneAccess, (req, res) => {
@@ -12185,7 +12185,7 @@ app.put('/api/clones/:id/persona', requireCloneAccess, (req, res) => {
   if (!incoming || typeof incoming !== 'object' || Array.isArray(incoming)) {
     return res.status(400).json({ error: 'a persona object is required' });
   }
-  cloneStore.setPersona(clone, incoming);
+  cloneStore.setPersona(clone, incoming, cloneEffective);
   saveClones();
   logActivity('clone', `Persona corrected by hand: ${clone.name} (v${clone.personaVersion})`, { cloneId: clone.id });
   res.json({
@@ -12209,7 +12209,10 @@ app.post('/api/clones/:id/status', requireCloneAccess, (req, res) => {
   const clone = cloneOr404(req, res);
   if (!clone) return;
   try {
-    cloneStore.setStatus(clone, String((req.body || {}).status || ''));
+    // cloneEffective, not the raw persona: the dashboard renders "Put to work" from summarize(),
+    // which is judged the same way. Without this the button appears for a clone the write path
+    // then refuses — and the refusal names facts the owner can see on their own persona screen.
+    cloneStore.setStatus(clone, String((req.body || {}).status || ''), cloneEffective);
     saveClones();
     res.json({ ok: true, clone: cloneStore.summarize(clone, cloneEffective(clone)) });
   } catch (e) {
@@ -12295,7 +12298,7 @@ app.post('/api/clones/:id/interview/answer', requireCloneAccess, heavyLimiter, a
   if (result.ok && result.content) {
     const patch = webStudioPipeline.extractJson(result.content);
     if (patch) {
-      cloneStore.setPersona(clone, cloneInterview.mergePatch(clone.persona, patch));
+      cloneStore.setPersona(clone, cloneInterview.mergePatch(clone.persona, patch), cloneEffective);
       extracted = true;
     }
   }
@@ -12841,7 +12844,7 @@ app.post('/api/clones/:id/proposals/:pid/decide', requireCloneAccess, (req, res)
       });
     }
 
-    cloneStore.setPersona(clone, proposal.proposed);
+    cloneStore.setPersona(clone, proposal.proposed, cloneEffective);
     saveClones();
   }
 
