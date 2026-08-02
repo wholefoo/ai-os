@@ -51,6 +51,17 @@ assert(schema.parseFrontmatter('description: Use when X; do NOT use for Y: see Z
 
 // An empty list's trailing comment is the most valuable part of it: it records that the question
 // was CONSIDERED. So lists tolerate one, while scalars keep every character.
+// Multi-line YAML lists. 23 of the 68 agents write `tools:` this way and 33 write it inline;
+// reading only the inline form reported those 23 as having no tools and under-counted key 4 by a
+// third of the corpus. A wrong number in the report that plans the next phase is worse than no
+// report, so both forms are pinned here.
+const multi = schema.parseFrontmatter('name: x\ntools:\n  - file-write\n  - content-creation\ntrigger: manual');
+assert(Array.isArray(multi.tools) && multi.tools.length === 2 && multi.tools[0] === 'file-write',
+  'a multi-line YAML list parses into an array');
+assert(multi.trigger === 'manual', '...and the key AFTER the list is still read — the scan resumes, it does not swallow the rest');
+assert(schema.parseFrontmatter('tools:\nname: x').name === 'x',
+  'a bare key with no list under it does not consume the next key');
+
 const commented = schema.parseFrontmatter('gates: []   # nothing irreversible here\ntags: [a, b]  # two');
 assert(Array.isArray(commented.gates) && commented.gates.length === 0, 'an empty list with a trailing comment parses as empty');
 assert(commented.tags.length === 2 && commented.tags[1] === 'b', 'a populated list ignores its trailing comment');

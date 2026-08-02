@@ -271,6 +271,27 @@ verifier must be a different agent with the criteria and the artifact but not th
     Candidate for a `devops.destructive-op` id — the operator's call, and out of scope for P1, which
     is documentation of the current state rather than a change to it.
 
+**P1 batch 3 (Marketing & Sales), 11/68 converted.**
+
+11. **My own coverage report was wrong, and had been every time it was quoted.** 23 of the 68 agents
+    write `tools:` as a multi-line YAML list; the parser read only the inline `[a, b]` form, so those
+    23 counted as having no tools. Key 4 was reported as **33/68** when it is **52/68** — a third of
+    the corpus mis-stated, in the number that decides what P1 does next. Fixed, with both forms
+    pinned by tests. *The lesson is the session's recurring one: the check was wrong, not the thing
+    being checked.*
+12. **`marketing-hub` describes a capability the platform does not have.** Its Gotchas reference a
+    `social-post` tool returning a success response, and there is **no social publishing integration
+    anywhere in this codebase** — no LinkedIn, X, or scheduler client. The queue's `published` state
+    is local bookkeeping. Its handbook now says so in the outcome, and sets the honest ceiling for
+    this agent at `scheduled`. Nothing to gate, because nothing goes out.
+13. **Two tool vocabularies are in use** and neither is validated. The inline form uses real runtime
+    tools (`Read`, `Write`, `Bash`, `Grep`, `firecrawl_*`); the multi-line form uses capability
+    labels (`file-write`, `content-creation`, `social-post`, `skill-execute`, `notification`), some
+    of which name real integrations (`dataforseo_*`, `omni_*`) and some of which name nothing. Note
+    that `tools:` is documentation of intent in this codebase — `executeAgent` grants no per-agent
+    tools — so this is a truthfulness problem, not a privilege one. **Candidate for P4**, where the
+    orchestrator starts routing on frontmatter and the difference begins to matter.
+
 **The safety property to preserve in P1+:** `memory:` is a DECLARATION, not a grant. Reads stay
 governed by the catalog's `readers` allowlist and `operatorMayOverride`, in code, at read time. A
 test asserts `validate()` returns no access decision — if that ever changes, a handbook would be
