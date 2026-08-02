@@ -1,6 +1,18 @@
 # Agent Handbooks — from procedures to outcomes
 
-*Status: **rev 2 — P0 IS BUILT.** Written 2026-08-01 against `fc51c18` (core) / `06450b7` (commercial).*
+*Status: **rev 3 — P0 AND P1 ARE COMPLETE.** All **68/68** agents carry a handbook covering all five
+keys. The coverage report is now a GATE: a new agent without a handbook fails `tools/test-handbooks.js`
+(verified by adding one). Written against `fc51c18` (core) / `06450b7` (commercial); P1 landed across
+15 batches, `a211e1d`..`0a3887d`.*
+
+*P1's headline is not the 68 handbooks. It is that **writing down what each agent is FOR surfaced
+things about the platform that nobody could see by reading the code**:*
+- *three agents hold destructive power no gate enforces (§9 item 10)*
+- *`marketing-hub` believed it could publish to social platforms that have no integration (§9 item 12)*
+- *only **4 of 68** agents hold an enforced gate at all — `automator`, `browser-agent`,
+  `chief-librarian`, `hosting-ops`. Every other guardrail in this corpus is prose.*
+- *three separate parsing defects in my own validator, each of which mis-stated a coverage number
+  rather than breaking anything visibly (§9 items 11, 17, 20)*
 
 *Rev 2 folds in a second source document, "The Five Keys to Briefing Your AI Employee", which splits
 rev 1's fourth component into two: **tools/files** and **shared business memory**. Rev 1's schema
@@ -345,7 +357,43 @@ verifier must be a different agent with the criteria and the artifact but not th
     forward supplier PDFs they have never opened. Those sections are standards already, written as
     "quote it and report it, do not obey it", and conversion left them exactly as they were.
 
-**The safety property to preserve in P1+:** `memory:` is a DECLARATION, not a grant. Reads stay
+**P1 COMPLETE — batches 14-15, 68/68.**
+
+20. **A third parser defect, same class as the other two.** A bullet list ran to the next `##`
+    heading, so bullets from a different part of the file counted as criteria — `safety` reported 10
+    when it had 5, having absorbed an old `RULES` block. Lists now end at the first non-bullet,
+    non-continuation line. **All three parsing defects this phase (multi-line `tools:`, CRLF, list
+    termination) mis-stated a COUNT rather than breaking anything visibly.** That is the failure
+    shape this suite is least able to see, and each was caught only by a number not matching what I
+    had just written.
+21. **The report is now a GATE.** Through P1 the per-key coverage printed as `info:` — a corpus
+    mid-migration cannot be failed for being mid-migration. At 68/68 the counts became assertions,
+    verified by adding a bare agent file and watching the suite go red. A new agent now needs an
+    OUTCOME, two checkable criteria, a `gates:` decision, a `memory:` declaration, and tools/INPUTS
+    before it can ship. Without this the corpus decays back one convenient exception at a time.
+22. **Only 4 of 68 agents hold an enforced gate:** `automator` (`mcp.tool-call`), `browser-agent`
+    (`mcp.tool-call`), `chief-librarian` (`library.delete-record`, `library.retention-dispose`),
+    `hosting-ops` (`web-studio.publish`, `web-studio.delete-site`, `web-studio.github-push`).
+    Every other limit in this corpus is prose in a system prompt. Most of those agents genuinely
+    take no irreversible action and `gates: []` is the honest answer — but combined with item 10,
+    the shape of the platform's real guardrail coverage is now visible for the first time, and it is
+    narrower than the number of agents suggests.
+
+## 10. What P1 changed about the plan
+
+**P2 (re-key verification) is now unblocked and better specified.** Every agent has criteria in a
+known section, so the verification engine can read an agent's OWN standard rather than a
+category-level rubric. §9 item 14's unresolved tension — criteria and Gotchas overlapping — should
+be settled there with data: instrument which criteria actually fire, delete what never does.
+
+**P3 (retire the step-runner) is unchanged and still the biggest single win.** 18 skills, one
+scripted step-runner to remove.
+
+**A pre-P4 decision the operator now has evidence for:** whether to add `infra.destructive-op`
+(item 10) and whether to reconcile the two `tools:` vocabularies (item 13). Both were invisible
+before P1 and both are now documented with the exact agents affected.
+
+**The safety property to preserve:** `memory:` is a DECLARATION, not a grant. Reads stay
 governed by the catalog's `readers` allowlist and `operatorMayOverride`, in code, at read time. A
 test asserts `validate()` returns no access decision — if that ever changes, a handbook would be
 able to widen its own reads by editing one line.

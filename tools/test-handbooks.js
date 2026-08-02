@@ -239,17 +239,31 @@ for (const [n, label] of Object.entries(KEY_NAMES)) {
 }
 assert(architect.r.meta.keysCovered === 5, 'all five keys, in one handbook');
 
-// --- migration progress, reported not enforced -----------------------------------------------------
-// P1 converts the rest. Printing the counts keeps the phase honest without failing the build on work
-// that is deliberately not done yet. Reported per KEY, because "converted" is too coarse to plan
-// with — the corpus may be strong on guardrails and empty on criteria, and that is the fact that
-// decides what P1 actually does.
-const converted = results.filter((x) => x.r.meta.converted).length;
-console.log(`  info: ${converted}/${files.length} agents converted to the handbook shape (P1 converts the remainder)`);
+// --- P1 IS COMPLETE, so the progress report becomes a gate -----------------------------------------
+//
+// Through P1 these were `info:` lines — a corpus mid-migration cannot be failed for being
+// mid-migration. All 68 agents now carry all five keys, so the counts are asserted instead of
+// printed. A NEW agent added without a handbook now fails this suite, which is the point: the
+// alternative is a corpus that decays back one convenient exception at a time.
+//
+// If you are here because you added an agent and this went red: that is the gate working. Give it
+// an OUTCOME, at least two checkable criteria, a `gates:` decision (`[]` is a valid one — see the
+// decision-vs-omission assertions above), a `memory:` declaration, and tools or INPUTS.
+const unconverted = results.filter((x) => !x.r.meta.converted).map((x) => x.file);
+assert(unconverted.length === 0,
+  `every agent carries a handbook${unconverted.length ? ` — missing: ${unconverted.join(', ')}` : ''}`);
+
 for (const [n, label] of Object.entries(KEY_NAMES)) {
-  const n_ = results.filter((x) => x.r.meta.keys[n]).length;
-  console.log(`  info: key ${n} (${label}): ${n_}/${files.length}`);
+  const missing = results.filter((x) => !x.r.meta.keys[n]).map((x) => x.file);
+  assert(missing.length === 0,
+    `every agent covers key ${n} (${label})${missing.length ? ` — missing: ${missing.join(', ')}` : ''}`);
 }
+
+// Reported, not enforced: how much of the corpus states a guardrail it can actually point at.
+// `gates: []` is a legitimate answer for most agents, so this is a fact about the platform's shape
+// rather than a bar to clear.
+const withRealGates = results.filter((x) => x.r.meta.gates.length > 0);
+console.log(`  info: ${withRealGates.length}/${files.length} agents hold at least one enforced gate: ${withRealGates.map((x) => x.file.replace('.md', '')).join(', ')}`);
 const warned = results.filter((x) => x.r.warnings.length);
 for (const w of warned) console.log(`  warn: ${w.file} — ${w.r.warnings[0]}`);
 
