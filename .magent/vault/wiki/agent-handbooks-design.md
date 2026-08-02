@@ -253,6 +253,24 @@ verifier must be a different agent with the criteria and the artifact but not th
 7. **`MEMORY_SOURCES` imports `catalog.VALID_STORES`** rather than restating the store names, so a
    store renamed in the catalog cannot leave a stale vocabulary in the schema.
 
+**P1 batch 1 (Executive) + batch 2 (Engineering), 8/68 converted.**
+
+8. **The orchestrator compressed 98 → 73 lines while GAINING 9 criteria**, losing no threshold
+   (2-of-3 skeptic votes, 50-tool-call cap, 75% budget, 0.7 confidence, tier routing, two revision
+   rounds, Codex on code correctness). The clearest evidence for the direction: on the most
+   procedural file in the corpus, procedure was most of the volume and standards were most of the
+   value.
+9. **The orchestrator has no `## Never without asking` section, deliberately.** The validator warned
+   its stated guardrail had nothing enforcing it and was right: this agent CLASSIFIES
+   irreversibility and routes it; the gates belong to the agents it commissions.
+10. **A real guardrail gap, surfaced by writing `devops`'s handbook and recorded rather than papered
+    over:** its destructive operations — `docker system prune`, volume deletion, force-push,
+    restarting a production service — have **no id in `ACTION_RISK`**. They are governed by the
+    per-command approval rule in its Gotchas, which is a convention, not an enforced gate. Every
+    other agent's dangerous action in this corpus routes through `gateAction`; this one does not.
+    Candidate for a `devops.destructive-op` id — the operator's call, and out of scope for P1, which
+    is documentation of the current state rather than a change to it.
+
 **The safety property to preserve in P1+:** `memory:` is a DECLARATION, not a grant. Reads stay
 governed by the catalog's `readers` allowlist and `operatorMayOverride`, in code, at read time. A
 test asserts `validate()` returns no access decision — if that ever changes, a handbook would be
