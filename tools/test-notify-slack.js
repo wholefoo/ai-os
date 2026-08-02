@@ -24,7 +24,7 @@ for (const value of [
   const r = slack.resolveWebhook(value);
   assert(r.ok === false, `"${value}" is not a usable webhook`);
   assert(r.state === 'invalid', `..."${value}" is INVALID rather than unset — somebody put it there, so it is worth reporting`);
-  assert(slack.isConfigured(value) === false, `...and isConfigured is false, so no send site fires`);
+  assert(slack.webhookReady(value) === false, `...and webhookReady is false, so no send site fires`);
   assert(typeof slack.configWarning(value) === 'string', `...and it produces a boot warning`);
 }
 
@@ -45,7 +45,7 @@ for (const value of ['', '   ', null, undefined]) {
 const real = ['https://hooks', '.slack.com/services/T00000000/B00000000/', 'X'.repeat(24)].join('');
 assert(slack.resolveWebhook(real).ok === true, 'a real Slack webhook URL resolves');
 assert(slack.resolveWebhook(real).url === real, 'and comes back unchanged');
-assert(slack.isConfigured(real) === true, 'and is configured');
+assert(slack.webhookReady(real) === true, 'and is configured');
 assert(slack.configWarning(real) === null, 'and warns about nothing');
 assert(slack.resolveWebhook(`  ${real}  `).ok === true, 'surrounding whitespace is tolerated — it comes from a hand-edited .env');
 
@@ -86,8 +86,8 @@ assert(/Untitled/.test(slack.approvalPayload({}).text), 'with an honest placehol
 const fs = require('fs');
 const path = require('path');
 const src = fs.readFileSync(path.join(__dirname, '..', 'server.js'), 'utf8');
-assert(/slackNotify\.isConfigured\(notificationConfig\.slack\.webhookUrl\)/.test(src),
-  'sendNotification guards on isConfigured, not on truthiness');
+assert(/slackNotify\.webhookReady\(notificationConfig\.slack\.webhookUrl\)/.test(src),
+  'sendNotification guards on webhookReady, not on truthiness');
 assert(/slackNotify\.resolveWebhook\(settings\.notifications\?\.slack_webhook_url\)/.test(src),
   'the shared POST helper resolves through the same module');
 // Scoped to the Slack code, deliberately. An earlier version of this assertion searched the whole
