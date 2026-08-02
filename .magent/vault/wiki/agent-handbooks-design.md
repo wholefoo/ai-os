@@ -292,6 +292,25 @@ verifier must be a different agent with the criteria and the artifact but not th
     tools — so this is a truthfulness problem, not a privilege one. **Candidate for P4**, where the
     orchestrator starts routing on frontmatter and the difference begins to matter.
 
+**P1 batch 4 (Product + Operations), 14/68 converted.**
+
+14. **An unresolved tension, stated rather than settled: criteria and Gotchas overlap.** After
+    conversion, six of `scout`'s eight Gotchas restate a criterion — same content, negative mood.
+    Both are in the system prompt on every call, so the duplication is paid for forever.
+    Deleting the Gotcha is tempting and was NOT done, because most of them carry something the
+    criterion compresses away: a reason ("re-reporting old news triggers wasted update reviews") or
+    a specific incident. **There is no evidence yet about which formulation a model actually acts
+    on.** P2 should settle it with data — instrument which criteria fire during verification, then
+    delete what never does. Deciding it now on aesthetics would be speculation dressed as tidying.
+15. **`scout`'s numbered crawl protocol had drifted to two steps numbered 3 and two numbered 4.**
+    Nobody had read it closely enough to notice. Left as a note in the file where the sequence used
+    to be: it is the clearest small illustration of why procedure rots and standards do not.
+16. **Preserved verbatim: `scout`'s Security & Version-Claim Verification HARD GATE.** Four
+    conditions born of a real incident (a hallucinated "Node.js 22.5.1 critical patch" recommending
+    a version OLDER than installed). These read as numbered steps but are conditions that must hold
+    — standards, not procedure — and converting them would have been the exact scar-tissue loss this
+    design warns about.
+
 **The safety property to preserve in P1+:** `memory:` is a DECLARATION, not a grant. Reads stay
 governed by the catalog's `readers` allowlist and `operatorMayOverride`, in code, at read time. A
 test asserts `validate()` returns no access decision — if that ever changes, a handbook would be
