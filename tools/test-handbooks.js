@@ -84,6 +84,17 @@ assert(!schema.split(crlf).body.includes('\r'), 'the body handed to callers carr
 const bullets = schema.sectionBullets('## A\n- one\n* two\n\n## B\n- three\n', 'A');
 assert(bullets.length === 2 && bullets[0] === 'one', 'bullets are collected under their own heading only');
 assert(schema.sectionBullets('## A\n- one\n', 'Missing').length === 0, 'an absent section is empty, not an error');
+
+// A bullet list ENDS at the first non-bullet, non-continuation line — not at the next heading.
+// Without this the list ran on and swallowed bullets belonging to a different part of the file:
+// `safety` reported 10 criteria when it had 5, because an old RULES block sat between its criteria
+// and the next `##`. The criteria count is what P1 progress is measured by, so an over-count is a
+// wrong number in the report that plans the work.
+assert(schema.sectionBullets('## A\n- one\n- two\nDONE WHEN: something\n- three\n', 'A').length === 2,
+  'a trailing prose line ends the list — bullets after it are not criteria');
+assert(schema.sectionBullets('## A\n- one\n\n- two\n', 'A').length === 2, 'a blank line inside a list does not end it');
+assert(schema.sectionBullets('## A\n- one\n  wrapped continuation\n- two\n', 'A').length === 2,
+  'an indented continuation of a wrapped bullet does not end the list, and is not a second bullet');
 assert(schema.sectionBullets('## what good looks like\n- x\n- y\n', 'What good looks like').length === 2,
   'heading match is case-insensitive — a handbook should not fail on capitalisation');
 
