@@ -68,6 +68,19 @@ assert(commented.tags.length === 2 && commented.tags[1] === 'b', 'a populated li
 assert(schema.parseFrontmatter('color: #ef4444').color === '#ef4444',
   'a scalar keeps its # — stripping comments everywhere would eat colours and "#1" in descriptions');
 
+// CRLF. Some agent files use it and some do not — a Windows repo — and the difference is invisible
+// until it silently zeroes a whole section: a JS regex treats `\r` as a line terminator, so
+// `/^\s*[-*]\s+(.*)$/` fails on a CRLF bullet while the `.trim()`ed heading above it still matches.
+// Four handbooks parsed as having ZERO criteria while looking perfect in an editor.
+const crlf = '---\r\nname: x\r\ndescription: d\r\n---\r\n\r\nOUTCOME: y\r\n\r\n## What good looks like\r\n- first\r\n- second\r\n';
+assert(schema.sectionBullets(schema.split(crlf).body, 'What good looks like').length === 2,
+  'CRLF bullets are found — line endings are normalised in split(), once, so nothing downstream has to care');
+// No ctx here on purpose — this block runs before it is declared, and validate() defaults its
+// registries. Referencing ctx from above its declaration threw a ReferenceError that printed the
+// assertion's own source line instead of a verdict.
+assert(schema.validate(crlf).meta.criteria === 2, '...and a CRLF handbook validates like any other');
+assert(!schema.split(crlf).body.includes('\r'), 'the body handed to callers carries no carriage returns');
+
 const bullets = schema.sectionBullets('## A\n- one\n* two\n\n## B\n- three\n', 'A');
 assert(bullets.length === 2 && bullets[0] === 'one', 'bullets are collected under their own heading only');
 assert(schema.sectionBullets('## A\n- one\n', 'Missing').length === 0, 'an absent section is empty, not an error');
