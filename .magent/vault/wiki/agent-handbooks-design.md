@@ -263,13 +263,24 @@ verifier must be a different agent with the criteria and the artifact but not th
 9. **The orchestrator has no `## Never without asking` section, deliberately.** The validator warned
    its stated guardrail had nothing enforcing it and was right: this agent CLASSIFIES
    irreversibility and routes it; the gates belong to the agents it commissions.
-10. **A real guardrail gap, surfaced by writing `devops`'s handbook and recorded rather than papered
-    over:** its destructive operations — `docker system prune`, volume deletion, force-push,
-    restarting a production service — have **no id in `ACTION_RISK`**. They are governed by the
-    per-command approval rule in its Gotchas, which is a convention, not an enforced gate. Every
-    other agent's dangerous action in this corpus routes through `gateAction`; this one does not.
-    Candidate for a `devops.destructive-op` id — the operator's call, and out of scope for P1, which
-    is documentation of the current state rather than a change to it.
+10. **THE LARGEST FINDING OF P1, and it grew: three agents hold destructive power that no gate
+    enforces.** Surfaced first by `devops` (batch 2), confirmed by `sysadmin` and `it-director`
+    (batch 9). Between them: `rm -rf`, `DROP TABLE`/`DATABASE`, `git push --force`, disk partition
+    operations, `docker system prune`, volume deletion, production service restarts, rollbacks, and
+    fleet-wide patching. **None has an id in `ACTION_RISK`.**
+
+    All three are governed by the same convention — "propose the exact command and wait for approval
+    naming that specific action" — written in prose, in a system prompt, to a language model. This
+    codebase learned elsewhere that a limit existing only as a sentence is a suggestion: it is why
+    clone boundaries are checked in code against the output, why the library's reader allowlist is
+    enforced at read time, and why `gateAction` exists at all. These three are the exception, and
+    they are the agents with root.
+
+    Their handbooks now say so in the `gates:` comment rather than implying a guardrail that is not
+    there. **Recommended: an `infra.destructive-op` id at `critical`**, which would put them on the
+    same footing as `web-studio.delete-site` and `library.delete-record`. That is a change to the
+    platform's guardrails and therefore the operator's call — P1 documents the current state, it
+    does not alter it.
 
 **P1 batch 3 (Marketing & Sales), 11/68 converted.**
 
