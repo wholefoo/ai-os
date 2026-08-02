@@ -52,6 +52,7 @@
     "tools/test-commercial-csv.js",
     "tools/test-commercial-license.js",
     "tools/test-a2a-budget.js",
+    "tools/test-handbooks.js",
     "tools/verify-clone-live.js",
     "ecosystem.config.js",
     "deploy/n8n-ecosystem.config.example.js",
