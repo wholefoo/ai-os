@@ -431,3 +431,41 @@ before P1 and both are now documented with the exact agents affected.
 governed by the catalog's `readers` allowlist and `operatorMayOverride`, in code, at read time. A
 test asserts `validate()` returns no access decision — if that ever changes, a handbook would be
 able to widen its own reads by editing one line.
+
+## 11. What P3 changed about the plan
+
+Step-by-step destinations for all 24 skills are recorded in
+[p3-conversion-ledger.md](p3-conversion-ledger.md), which is the artefact §8's "losing scar tissue"
+risk asks for. Three things the conversion changed about the plan itself:
+
+**The step-runner was worse than "outdated" — it never routed correctly.** The plan treated P3 as
+replacing a working-but-rigid mechanism with a better one. It was not working. Not one skill's
+declared team resolved to a real agent: names were prose (`**Researcher**`, `**Browser Agent**`)
+while agent files are lowercase slugs, and `executeAgent` hard-fails on a miss. The four skills that
+declared a team failed every step; the twenty that declared none ran everything as a literal
+`'writer'`. Windows hid the milder half of it, because `.claude/agents/Reviewer.md` resolves on a
+case-insensitive filesystem and does not on the VPS. So P3 is a bug fix as much as a redesign, and
+that is why a team name that does not resolve is now a **blocking error checked before any token is
+spent**, with the slug shape checked *before* the file lookup.
+
+**`.claude/skills/` holds two kinds of file, and always did.** Five of the 24 are procedures for a
+person or for Claude Code in-session — the pre-commit gate, the pre-flight interrogation, the
+maintainer's VPS harvest, an install guide, a stack walkthrough. Converting them would have meant
+inventing a team for work no agent performs. They now carry `kind: reference`, keep their `## Process`
+legitimately, and the execute route refuses them. **This narrows P5**: outcome intake routes *jobs*,
+and the reference set is not part of that surface.
+
+**P4's cost model has a new input.** A skill now dispatches its whole team in parallel rather than its
+steps in sequence, so per-run cost is team size, not step count, and wall-clock is one call rather
+than N. `MAX_TEAM` (5) and `MAX_TOTAL_CHECKS` (16) are the two budgets holding that down. When P4
+routes by `archetype:`, it is setting effort on an already-parallel fan-out — the interaction is
+multiplicative and should be sized deliberately.
+
+**Still not instrumented (§9 item 14).** P2 gave criteria stable ids and P3 now feeds skill criteria
+through the same engine, so the data is finally *collectable* — but nothing records which criteria
+fail across runs yet. That remains the way to settle the criteria-versus-Gotchas overlap.
+
+**One thing only a live run caught.** The runner passed the execution to `startVerification` under the
+wrong key, so grading ran correctly and attached its verdict to nothing: a completed skill with no
+result, no error anywhere. Every gate was green. This is the third phase in a row where the defect
+that mattered was found by executing the thing rather than by re-reading it.

@@ -6,6 +6,7 @@ description: |
   sets up three skill segments: live CLI tools, app-integration build
   skills, and outcome-focused workflow skills. Route the reader to the
   right usage path after install.
+kind: reference   # a tool install-and-usage guide, read by a person or by Claude Code in-session
 ---
 
 # Firecrawl

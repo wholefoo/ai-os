@@ -54,6 +54,7 @@
     "tools/test-a2a-budget.js",
     "tools/test-handbooks.js",
     "tools/test-handbook-rubric.js",
+    "tools/test-skill-briefs.js",
     "tools/verify-clone-live.js",
     "ecosystem.config.js",
     "deploy/n8n-ecosystem.config.example.js",
@@ -77,6 +78,7 @@
     {
       "file": "lib/orchestrator.js",
       "exports": [
+        "runSequential",
         "classifyAndAct",
         "fanOutAndSynthesize",
         "adversarialVerify",

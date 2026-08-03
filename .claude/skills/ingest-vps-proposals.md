@@ -3,6 +3,7 @@ name: ingest-vps-proposals
 description: Maintainer bridge — pull self-improvement proposals off the live VPS instance, adversarially vet each one, and merge only the real, correct ones upstream into this package as attributed commits. Use to harvest enhancements the VPS self-improvement engine generated (it commits them locally and never pushes them). This is operator/maintainer tooling, NOT a customer feature.
 category: maintainer
 estimated_time: 10-20min
+kind: reference   # a maintainer ritual requiring SSH from the operator's own machine
 ---
 
 # Ingest VPS Self-Improvement Proposals

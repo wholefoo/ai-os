@@ -4,6 +4,7 @@ description: Pre-flight alignment interrogation that runs BEFORE any implementat
 category: planning
 estimated_time: 5-15min
 agents: [orchestrator, architect]
+kind: reference   # an interrogation of the requester — it needs a dialogue with a human, not a one-shot dispatch
 ---
 
 # Grill Me — Pre-Flight Alignment Interrogation

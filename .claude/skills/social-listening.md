@@ -2,52 +2,45 @@
 name: social-listening
 description: Real-time social media intelligence sweep — monitors X, LinkedIn, Bluesky, HN, and Reddit for AI/tech trends and sentiment.
 category: intelligence
+rubric: research
 estimated_time: ~10min
-agents: [social-intel, synthesis]
 ---
 
 # Social Listening Sweep
 
-Complementary to Tech Radar (which crawls websites), this skill monitors social media for real-time discussions, sentiment, and emerging signals.
+## Goal
+The operator learns what the field is actually saying this week that they would not have found by
+reading release notes — with enough sourcing to tell a signal from a loud minority.
+
+## What good looks like
+- Every finding carries its permalink, its author, and its real engagement numbers. A trend asserted
+  without a post behind it is a guess.
+- Sentiment is reported as sentiment and never as fact. "Widely criticised" is a claim about
+  discourse, not about the thing being discussed.
+- A contested topic is flagged as contested, with both sides represented. Averaging a fight into
+  "mixed" loses the only interesting part.
+- Findings below the relevance threshold do not appear, and findings already covered by the latest
+  Tech Radar report are merged rather than repeated as new.
+- Credible low-engagement signals are surfaced separately. The most useful early signal is usually
+  the one that has not gone viral yet, and an engagement filter alone will drop it.
+- Sentiment shifts are stated relative to the previous sweep. A snapshot with no baseline cannot show
+  a shift.
+
+## Guardrails
+- Read-only. Never post, reply, follow, or react.
+- Never attribute a view to a named individual on the basis of a single post's tone.
+- No personal data beyond the public post, its public author handle, and its public metrics.
+
+## Team
+- **social-intel** — the platform sweep, relevance scoring, and sentiment classification
+- **synthesis** — deduplication against Tech Radar, the trend map, and the brief
 
 ## Parameters
-- **topics**: Comma-separated focus topics (default: AI agents, LLM, Claude, MCP)
-- **platforms**: Which platforms to scan (default: all)
-- **min_engagement**: Minimum engagement threshold (default: 100)
-- **timeframe**: How far back to look (default: 24h)
-
-## Steps
-
-1. **Platform Crawl**
-   - Scan each configured platform for relevant posts
-   - Apply engagement threshold filter
-   - Capture: content summary, author, engagement metrics, URL
-
-2. **Relevance Scoring**
-   - Score each finding 1-10 against our stack and watchlist
-   - Discard anything below 5/10 relevance
-   - Flag findings from high-credibility sources (verified researchers, company accounts)
-
-3. **Sentiment Analysis**
-   - Classify each finding: positive, negative, neutral, mixed
-   - Identify contested topics (high negative reply ratio)
-   - Track sentiment shifts from previous sweeps
-
-4. **Deduplication**
-   - Cross-reference against latest Tech Radar report
-   - Merge overlapping findings from different platforms
-   - Prioritize the highest-engagement version
-
-5. **Synthesis**
-   - Generate Social Intelligence Brief
-   - Top 3 trends with sentiment breakdown
-   - Emerging signals from credible low-engagement sources
-   - Action items that should become Tech Radar proposals
-
-6. **Route to Orchestrator**
-   - Deliver brief to orchestrator for review
-   - Flag any findings that warrant immediate Tech Radar proposals
-   - Store raw findings in vault/raw/ for historical analysis
+- `topics`: Comma-separated focus topics (default: AI agents, LLM, Claude, MCP)
+- `platforms`: Which platforms to scan (default: all)
+- `min_engagement`: Minimum engagement threshold (default: 100)
+- `timeframe`: How far back to look (default: 24h)
 
 ## Output
-Social Intelligence Brief saved to `.magent/vault/outputs/social-brief-{date}.md`
+- `.magent/vault/outputs/social-brief-{date}.md` — top trends with sentiment, emerging signals, and
+  anything that should become a Tech Radar proposal

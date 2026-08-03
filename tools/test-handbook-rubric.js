@@ -128,10 +128,20 @@ for (const f of files) {
 // The module can be perfect while the route keeps grading by category. That gap IS the phase.
 const src = fs.readFileSync(path.join(__dirname, '..', 'server.js'), 'utf8');
 assert(/function getRubricForAgent\(/.test(src), 'server.js resolves a rubric for an agent');
-assert(/getRubricForAgent\(agentName\) \|\| getRubricForCategory\(category\)/.test(src),
-  'the verify route PREFERS the agent handbook and falls back to the category — never to an empty check list');
-assert(/agent: rubric\.agent \|\| null/.test(src) && /handbookChecks: rubric\.handbookCheckCount/.test(src),
+// P3 moved this out of the route into startVerification, which the skill runner also calls, and added
+// a third layer on top: a SKILL brief's own criteria. The precedence to protect is unchanged —
+// most-specific first, never an empty check list, which would score 0 and read as a total failure.
+assert(/getRubricForAgent\(agent\) \|\| getRubricForCategory\(category\)/.test(src),
+  'verification PREFERS the agent handbook and falls back to the category — never to an empty check list');
+assert(/getRubricForSkillRun\(skillCriteria, agent\)/.test(src),
+  'and a skill run layers the brief\'s own criteria on top of that');
+assert(/function getRubricForSkillRun/.test(src) && /getRubricForAgent\(agentName\) \|\| getRubricForCategory\('default'\)/.test(src),
+  'whose floor is itself the agent-then-category chain, so the three levels compose rather than replace each other');
+assert(/agent: rubric\.agent \|\| agent \|\| null/.test(src) && /handbookChecks: rubric\.handbookCheckCount/.test(src),
   'the report records which standard it was graded against — "scored 72" is unreadable without it');
+// P3 added the `|| agent` arm: when a SKILL brief's criteria are the top layer, mergeRubric names the
+// rubric after the agent it was built for, but a run graded on a floor-only rubric still has a lead
+// agent worth recording. Without it the report would say the standard belonged to nobody.
 
 console.log(`  info: ${totalChecks} criteria across ${files.length} handbooks are now gradeable checks`);
 done();

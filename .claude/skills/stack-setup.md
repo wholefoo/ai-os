@@ -3,6 +3,7 @@ name: stack-setup
 description: Guided setup of the full AI Agentic OS stack — Hermes, Claude Code, Codex, Obsidian, Higgsfield, and supporting tools with validation checks.
 category: general
 estimated_time: 45min
+kind: reference   # an installation walkthrough performed on the operator's own machine, not by an agent
 ---
 
 # Stack Setup Skill

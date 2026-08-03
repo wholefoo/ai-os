@@ -1109,20 +1109,21 @@ function renderSkillsGrid(skills) {
     const category = s.meta?.category || 'general';
     const time = s.meta?.estimated_time || '~10min';
     const params = s.parameters || [];
-    const steps = s.steps || [];
-    const agents = s.agents || [];
+    // P3: a skill is an outcome brief, so the card shows what it MUST BE TRUE OF and who owns it —
+    // not the steps it used to run. A reference is not dispatchable and says so instead.
+    const criteria = s.criteria || [];
+    const agents = s.team || [];
     const icon = getSkillIcon(category);
     const paramCount = params.length;
 
-    const stepsPreview = steps.length > 0 ? `
+    const stepsPreview = s.dispatchable === false
+      ? '<div class="skill-steps-preview"><span class="skill-step-chip">reference — not dispatchable</span></div>'
+      : (criteria.length > 0 ? `
       <div class="skill-steps-preview">
-        ${steps.slice(0, 5).map((st, i) => {
-          const arrow = i < Math.min(steps.length, 5) - 1 ? '<span class="skill-step-arrow">&#8594;</span>' : '';
-          return `<span class="skill-step-chip">${escapeHtml(st.name)}</span>${arrow}`;
-        }).join('')}
-        ${steps.length > 5 ? `<span class="skill-step-chip">+${steps.length - 5} more</span>` : ''}
+        ${criteria.slice(0, 3).map((c) => `<span class="skill-step-chip" title="${escapeHtml(c)}">${escapeHtml(c.length > 48 ? c.slice(0, 45) + '…' : c)}</span>`).join('')}
+        ${criteria.length > 3 ? `<span class="skill-step-chip">+${criteria.length - 3} more</span>` : ''}
       </div>
-    ` : '';
+    ` : '');
 
     const agentsPreview = agents.length > 0 ? `
       <div class="skill-card-agents">
@@ -1169,24 +1170,20 @@ function renderSkillsExecutions() {
   }
 
   container.innerHTML = recent.map(exec => {
-    const steps = exec.steps || [];
+    // P3: `members` are agents working in parallel, not stages in a chain. The connector line is
+    // gone with the chain — showing one would claim a sequence the run does not have.
+    const members = exec.members || [];
     const progress = exec.progress || (exec.status === 'completed' ? 100 : 0);
     const params = exec.params || {};
     const paramEntries = Object.entries(params).filter(([,v]) => v);
 
-    const stepDots = steps.length > 0 ? `
+    const stepDots = members.length > 0 ? `
       <div class="skill-exec-steps">
-        ${steps.map((s, i) => {
-          const connector = i < steps.length - 1
-            ? `<div class="skill-exec-step-line ${s.status === 'completed' ? 'done' : ''}"></div>`
-            : '';
-          return `
-            <div class="skill-exec-step-dot ${s.status}" title="${escapeHtml(s.name)}">
-              ${s.status === 'completed' ? '&#10003;' : s.status === 'running' ? '&#8634;' : (i + 1)}
+        ${members.map((m, i) => `
+            <div class="skill-exec-step-dot ${m.status}" title="${escapeHtml(m.agent + (m.role ? ' — ' + m.role : ''))}">
+              ${m.status === 'completed' ? '&#10003;' : m.status === 'running' ? '&#8634;' : (i + 1)}
             </div>
-            ${connector}
-          `;
-        }).join('')}
+          `).join('')}
       </div>
     ` : '';
 
@@ -1220,8 +1217,8 @@ async function executeSkill(filename) {
   const skill = state.skills.find(s => s.filename === filename) || await fetchJSON(`/api/skills/${filename}`);
   const name = skill.meta?.name || filename.replace('.md', '');
   const params = skill.parameters || [];
-  const steps = skill.steps || [];
-  const agents = skill.agents || [];
+  const criteria = skill.criteria || [];
+  const agents = skill.team || [];
 
   // Build parameter form HTML
   let formHtml = '';
@@ -1270,25 +1267,21 @@ async function executeSkill(filename) {
     formHtml = `<p style="color: var(--text-secondary); font-size: 13px;">This skill has no configurable parameters — it runs with defaults.</p>`;
   }
 
-  // Build steps preview
-  const stepsHtml = steps.length > 0 ? `
+  // What the result will be GRADED against — the operator sees the bar before spending the tokens.
+  const stepsHtml = criteria.length > 0 ? `
     <div style="margin-top: 16px; padding-top: 12px; border-top: 1px solid var(--border);">
-      <div style="font-size: 11px; color: var(--text-muted); text-transform: uppercase; margin-bottom: 8px; letter-spacing: 0.5px;">Execution Steps</div>
-      <div style="display: flex; gap: 6px; flex-wrap: wrap;">
-        ${steps.map((s, i) => {
-          const arrow = i < steps.length - 1 ? '<span style="color: var(--text-muted); font-size: 10px; align-self: center;">&#8594;</span>' : '';
-          return `<span class="skill-step-chip">${i + 1}. ${escapeHtml(s.name)}</span>${arrow}`;
-        }).join('')}
-      </div>
+      <div style="font-size: 11px; color: var(--text-muted); text-transform: uppercase; margin-bottom: 8px; letter-spacing: 0.5px;">What good looks like</div>
+      <ul style="margin: 0; padding-left: 18px; font-size: 12px; color: var(--text-secondary); display: flex; flex-direction: column; gap: 4px;">
+        ${criteria.map(c => `<li>${escapeHtml(c)}</li>`).join('')}
+      </ul>
     </div>
   ` : '';
 
-  // Build agents preview
   const agentsHtml = agents.length > 0 ? `
     <div style="margin-top: 12px;">
-      <div style="font-size: 11px; color: var(--text-muted); text-transform: uppercase; margin-bottom: 6px; letter-spacing: 0.5px;">Agents Involved</div>
+      <div style="font-size: 11px; color: var(--text-muted); text-transform: uppercase; margin-bottom: 6px; letter-spacing: 0.5px;">Team (runs in parallel)</div>
       <div style="display: flex; gap: 4px; flex-wrap: wrap;">
-        ${agents.map(a => `<span class="skill-agent-chip">${escapeHtml(a.name)}${a.model ? ` (${a.model})` : ''}</span>`).join('')}
+        ${agents.map(a => `<span class="skill-agent-chip" title="${escapeHtml(a.why || '')}">${escapeHtml(a.name)}</span>`).join('')}
       </div>
     </div>
   ` : '';

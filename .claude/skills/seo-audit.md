@@ -2,85 +2,52 @@
 name: seo-audit
 description: Full SEO health audit — keyword research, on-page analysis, content gaps, technical checks, and competitor benchmarking with a prioritized action plan.
 category: marketing
+rubric: marketing
 estimated_time: 30min
 ---
 
-# SEO Audit Skill
+# SEO Audit
 
 ## Goal
-Audit a website's SEO health, research keyword opportunities, identify content gaps, and benchmark against competitors. Produces a prioritized action plan a marketer can execute immediately.
+A marketer who has never seen this site can open the report and start work the same morning: they
+know which three things to fix first, why those three, and what each one is worth. Every finding is
+tied to a page or a query that actually exists on the audited domain.
 
-## Process
-1. **Intake**
-   - Collect target URL/domain from user
-   - Determine audit type: full | keyword-research | content-gap | technical | competitor-comparison
-   - Gather target keywords and competitor domains (optional)
+## What good looks like
+- Every finding names the specific URL or query it came from. A recommendation that could have been
+  written without visiting the site is filler, and filler is what makes an audit unactionable.
+- Title tags are judged against 50–60 characters and meta descriptions against 150–160, because those
+  are the truncation points in the SERP, not style preferences.
+- Thin content is called out at the threshold that matters for the query type — under ~300 words for
+  an informational page — and stale content at 12+ months without an update.
+- The keyword table carries 15–25 opportunities with intent classified as informational,
+  navigational, commercial, or transactional, sorted so the top row is the one to do first.
+- Every technical check reports pass, fail, or warning — never silence. A check that could not be run
+  says so and says why, because an unrun check read as a pass is how a broken robots.txt survives an audit.
+- Competitor claims are comparative and sourced: "ranks above you for X" beats "has stronger content".
+- The action plan splits into what fits in a week and what needs a quarter, and each item carries its
+  expected impact and effort. An unsorted list of 40 fixes is a list nobody starts.
+- If the target URL could not be reached, that is the first finding in the report and the audit
+  continues on whatever data was available — a blank report because one fetch failed is worse than a
+  partial one that says which part is missing.
 
-2. **Keyword Research**
-   - Researcher agent identifies primary, secondary, and long-tail keyword opportunities
-   - Classify intent: informational, navigational, commercial, transactional
-   - Assess difficulty and opportunity score for each keyword
-   - Surface question-based keywords (People Also Ask patterns)
+## Guardrails
+- Never report a metric as measured when it was estimated or inferred. Say which it was.
+- No recommendation that requires access the operator has not granted (server config, DNS, analytics)
+  without labelling it as such.
 
-3. **On-Page SEO Audit**
-   - Analyze key pages: homepage, top landing pages, recent posts
-   - Check title tags (unique, 50-60 chars, keyword present)
-   - Check meta descriptions (compelling, 150-160 chars, CTA)
-   - Validate H1/H2/H3 hierarchy and keyword usage
-   - Review internal linking, image alt text, URL structure
-   - Flag keyword stuffing or thin content
-
-4. **Content Gap Analysis**
-   - Compare topic coverage against competitors
-   - Identify stale content (12+ months without updates)
-   - Flag thin pages (<300 words for informational queries)
-   - Map missing content types: guides, comparisons, glossaries, tools
-   - Identify funnel gaps: awareness, consideration, decision stages
-   - Recommend topic clusters and pillar page opportunities
-
-5. **Technical SEO Check**
-   - Page speed and Core Web Vitals signals (LCP, INP, CLS)
-   - Mobile-friendliness: responsive design, tap targets, viewport
-   - Structured data opportunities: FAQ, HowTo, Product, Article schema
-   - Crawlability: robots.txt, XML sitemap, canonical tags, noindex usage
-   - Broken links, redirect chains, HTTPS/mixed content
-   - Indexation issues and duplicate content risks
-
-6. **Competitor Comparison**
-   - Keyword overlap and gaps vs. each competitor
-   - Content depth, publishing frequency, backlink profile signals
-   - SERP feature ownership: featured snippets, knowledge panels
-   - Technical advantages: speed, mobile experience, structured data
-
-7. **Compile Report**
-   - Writer agent produces structured audit document
-   - Executive summary with top 3 priorities
-   - Keyword opportunity table (15-25 keywords, sorted by opportunity)
-   - On-page issues table with severity ratings
-   - Content gap recommendations with effort estimates
-   - Technical checklist (pass/fail/warning)
-   - Competitor comparison matrix
-   - Prioritized action plan: quick wins (this week) + strategic investments (this quarter)
-
-8. **Review & Deliver**
-   - Reviewer validates all claims and recommendations
-   - Output final report to artifacts
+## Team
+- **seo-technical** — crawlability, status codes, Core Web Vitals, mobile, HTTPS, structured data
+- **seo-keyword** — discovery, gaps, cannibalization, volume and difficulty, intent classification
+- **seo-content** — content inventory, thin and duplicate pages, topical authority, meta quality
+- **seo-backlink** — referring domains, toxic links, anchor distribution, broken backlinks
+- **seo-competitor** — organic competitor set, authority and velocity comparison, ranking overlap
 
 ## Parameters
 - `url`: Required. The website URL or domain to audit.
 - `audit_type`: full|keyword-research|content-gap|technical|competitor-comparison (default: full)
 - `keywords`: Optional. Array of target keywords already being pursued.
 - `competitors`: Optional. Array of competitor domains. Auto-detected if not provided.
-
-## Agents Involved
-- **Researcher**: Keyword research, competitor analysis, web data gathering
-- **Writer**: Compiles findings into structured audit report
-- **Reviewer**: Validates accuracy and completeness of recommendations
-
-## Error Handling
-- If target URL is unreachable → report as critical finding, continue with available data
-- If no competitors provided → auto-identify 2-3 likely competitors via web search
-- If research data is limited → note data gaps, recommend connecting SEO tools (Ahrefs, Semrush)
 
 ## Output
 - `.magent/artifacts/docs/seo-audit-<domain>-<timestamp>.md` — full audit report

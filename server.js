@@ -2314,6 +2314,7 @@ const prospectsLib = require('./lib/leads/prospects');
 const { safeFetch, safeRequest } = require('./lib/net/safe-fetch');
 const slackNotify = require('./lib/notify/slack');
 const handbookRubric = require('./lib/handbooks/rubric');
+const skillBrief = require('./lib/skills/brief');
 const a2aBudget = require('./lib/a2a/budget');
 const prospectRuns = loadState('prospect_runs', []);
 
@@ -4740,38 +4741,35 @@ function parseSkillParams(body) {
   return params;
 }
 
-function parseSkillSteps(body) {
-  const steps = [];
-  const processMatch = body.match(/## Process\n([\s\S]*?)(?=\n##|$)/);
-  if (!processMatch) return steps;
-  const lines = processMatch[1].split('\n');
-  for (const line of lines) {
-    const m = line.match(/^\d+\.\s+\*\*(.+?)\*\*\s*[—-]?\s*(.*)/);
-    if (m) steps.push({ name: m[1], description: m[2] || '' });
-  }
-  return steps;
-}
-
-function parseSkillAgents(body) {
-  const agents = [];
-  const agentMatch = body.match(/## Agents Used\n([\s\S]*?)(?=\n##|$)/);
-  if (!agentMatch) return agents;
-  const lines = agentMatch[1].split('\n').filter(l => l.trim().startsWith('- **'));
-  for (const line of lines) {
-    const m = line.match(/- \*\*(.+?)\*\*\s*(?:\((.+?)\))?\s*[—-]?\s*(.*)/);
-    if (m) agents.push({ name: m[1], model: m[2] || '', role: m[3] || '' });
-  }
-  return agents;
+/**
+ * The dispatch-facing view of a skill file (P3).
+ *
+ * Replaces parseSkillSteps + parseSkillAgents, which read a `## Process` and an `## Agents Used`.
+ * Both are gone: the step list was a procedure the runner executed one model call at a time, and the
+ * agent list never resolved to a real agent in any skill that had one — see lib/skills/brief.js.
+ */
+function skillView(content) {
+  const b = skillBrief.parseBrief(content);
+  return {
+    kind: b.kind,
+    dispatchable: b.dispatchable,
+    goal: b.goal,
+    criteria: b.criteria,
+    guardrails: b.guardrails,
+    team: b.team,
+    lead: b.lead,
+    outputs: b.outputs,
+    parameters: parseSkillParams(content),
+  };
 }
 
 app.get('/api/skills', (req, res) => {
-  const skills = readDir(path.join(CLAUDE_DIR, 'skills'));
-  // Enrich with parsed parameters, steps, and agents
-  const enriched = skills.map(s => ({
+  const dir = path.join(CLAUDE_DIR, 'skills');
+  // Read the RAW file, not readDir's body: `kind` lives in the frontmatter, and a view built from a
+  // frontmatter-stripped body would report every reference as a dispatchable job.
+  const enriched = readDir(dir).map(s => ({
     ...s,
-    parameters: parseSkillParams(s.body),
-    steps: parseSkillSteps(s.body),
-    agents: parseSkillAgents(s.body),
+    ...skillView(fs.readFileSync(path.join(dir, s.filename), 'utf-8')),
   }));
   res.json(enriched);
 });
@@ -4783,13 +4781,7 @@ app.get('/api/skills/:name', (req, res) => {
   if (path.dirname(fpath) !== skillsDir || !fs.existsSync(fpath)) return res.status(404).json({ error: 'Skill not found' });
   const content = fs.readFileSync(fpath, 'utf-8');
   const parsed = parseFrontmatter(content);
-  res.json({
-    filename: base,
-    ...parsed,
-    parameters: parseSkillParams(parsed.body),
-    steps: parseSkillSteps(parsed.body),
-    agents: parseSkillAgents(parsed.body),
-  });
+  res.json({ filename: base, ...parsed, ...skillView(content) });
 });
 
 app.post('/api/skills/:name/execute', requireAdmin, heavyLimiter, (req, res) => {
@@ -4799,25 +4791,43 @@ app.post('/api/skills/:name/execute', requireAdmin, heavyLimiter, (req, res) => 
 
   const content = fs.readFileSync(fpath, 'utf-8');
   const parsed = parseFrontmatter(content);
-  const steps = parseSkillSteps(parsed.body);
-  const agentList = parseSkillAgents(parsed.body).map((a) => a.name).filter(Boolean);
   const skillName = parsed.meta?.name || name.replace('.md', '');
 
+  // A brief that does not validate is refused BEFORE any token is spent. The old runner had no such
+  // check and "succeeded" against a team of names that resolved to nothing, by silently falling back
+  // to a generic writer — which is how every skill ran as the same agent for the life of the feature.
+  const agentNames = fs.readdirSync(path.join(CLAUDE_DIR, 'agents'))
+    .filter((f) => f.endsWith('.md')).map((f) => f.replace(/\.md$/, ''));
+  const v = skillBrief.validateBrief(content, { agentNames });
+  if (!v.brief.dispatchable) {
+    return res.status(400).json({
+      error: `"${skillName}" is a reference, not a dispatchable job — it is a procedure for a person or for Claude Code in-session, and there is no agent to hand it to.`,
+      kind: v.brief.kind,
+    });
+  }
+  if (!v.ok) return res.status(400).json({ error: `"${skillName}" is not a valid outcome brief`, problems: v.errors });
+
+  const brief = v.brief;
   const id = uuidv4();
   const execution = {
     id, skill: name, skillName, status: 'running',
     params: req.body.params || {},
-    steps: steps.map((s, i) => ({ ...s, status: 'pending', index: i })),
-    agents: agentList,
+    goal: brief.goal,
+    criteria: brief.criteria,
+    // One entry per team member, each a real dispatch. Named `members` and not `steps`: a step was a
+    // stage in a procedure, a member is an agent that owns a part of the outcome.
+    members: brief.team.map((m, i) => ({ agent: m.name, role: m.why, status: 'pending', index: i })),
+    agents: brief.team.map((m) => m.name),
+    lead: brief.lead,
     startedAt: new Date().toISOString(),
     log: [], progress: 0,
   };
   workflows.set(id, execution);
   logActivity('skill', `Skill started: ${skillName}`, { executionId: id });
-  appendLog(`SKILL_EXEC: ${skillName} -> ${id}`);
+  appendLog(`SKILL_EXEC: ${skillName} -> ${id} (${execution.agents.join(', ')})`);
   res.json(execution); // respond now; the skill runs for REAL in the background
 
-  runSkillExecution(execution, parsed.body, agentList).catch((e) => {
+  runSkillOutcome(execution, brief).catch((e) => {
     execution.status = 'failed'; execution.error = e.message;
     execution.completedAt = new Date().toISOString();
     broadcast({ event: 'workflow_update', data: execution });
@@ -4825,63 +4835,100 @@ app.post('/api/skills/:name/execute', requireAdmin, heavyLimiter, (req, res) => 
   });
 });
 
-// Run each "## Process" step as a REAL agent call (kernel runSequential), threading outputs
-// forward and streaming progress. Step agents come from the skill's "## Agents Used"
-// (round-robin); falls back to a general writer. Spends real tokens (route is admin + limited).
-async function runSkillExecution(execution, body, agentList) {
-  const fallback = agentList[0] || 'writer';
-  const steps = execution.steps;
-
-  if (!steps.length) {
-    // No parsed Process steps — run the whole skill body as one agent task.
-    const r = await executeAgent(fallback, `Execute the skill "${execution.skillName}".\n\n${String(body).slice(0, 4000)}\n\nInputs: ${JSON.stringify(execution.params)}`, { maxTokens: 4000 });
-    execution.result = r.ok ? r.content : `(failed: ${r.error})`;
-    execution.status = r.ok ? 'completed' : 'failed';
-    execution.progress = 100; execution.completedAt = new Date().toISOString();
+/**
+ * Run a skill as an OUTCOME, not a procedure (P3).
+ *
+ * Every team member gets the SAME brief — the goal, the criteria the result will be graded against,
+ * the guardrails, the inputs — plus the one line saying what they own in this job. Nothing tells them
+ * how to proceed; their handbook is already their system prompt and it says what they are for.
+ *
+ * Three things changed versus the step-runner it replaces:
+ *
+ *   - Members run in PARALLEL, not in a chain. The old runner threaded each step's output into the
+ *     next, which serialised work that has no dependency (a backlink profile does not need the
+ *     keyword table) and made the whole run cost the sum of its steps in wall-clock time.
+ *   - Members are the agents the brief names, and they are validated to exist before the run starts.
+ *   - The run VERIFIES itself against the brief's own criteria rather than a skill-category bucket.
+ *
+ * Cost note: an N-member fan-out is N calls plus one synthesis, against the old runner's one call per
+ * `## Process` step. seo-audit had 8 steps and now has 5 members plus a synthesis — fewer calls, and
+ * five of the six run concurrently.
+ */
+async function runSkillOutcome(execution, brief) {
+  const mark = (i, status, out) => {
+    const m = execution.members[i];
+    if (m) {
+      m.status = status;
+      if (out && out.content) m.output = out.content;
+      if (out && out.model) m.model = out.model;
+      if (out && out.error) m.error = out.error;
+    }
+    const done = execution.members.filter((x) => x.status === 'completed').length;
+    execution.progress = Math.round((done / Math.max(1, execution.members.length)) * 90);
+    execution.log.push({ t: Date.now(), msg: `${(m && m.agent) || i}: ${status}` });
     broadcast({ event: 'workflow_update', data: execution });
-    broadcast({ event: 'skill_progress', data: { id: execution.id, progress: 100, step: 'Complete' } });
-    logActivity('skill', `Skill ${execution.status}: ${execution.skillName}`, { executionId: execution.id });
-    return;
-  }
+    broadcast({ event: 'skill_progress', data: { id: execution.id, progress: execution.progress, step: (m && m.agent) || '' } });
+  };
 
-  const stages = steps.map((s, i) => ({
-    id: s.name || `step-${i + 1}`,
-    agent: agentList.length ? agentList[i % agentList.length] : fallback,
-    buildTask: (ctx) => {
-      const prior = Object.entries(ctx.outputs).map(([k, v]) => `### ${k}\n${String(v).slice(0, 3000)}`).join('\n\n');
-      return `Skill: "${execution.skillName}". Step ${i + 1}/${steps.length}: ${s.name}.\n`
-        + (s.description ? `Detail: ${s.description}\n` : '')
-        + (Object.keys(execution.params).length ? `Inputs: ${JSON.stringify(execution.params)}\n` : '')
-        + (prior ? `\nDeliverables from earlier steps:\n${prior}\n` : '')
-        + '\nCarry out this step and return its deliverable concisely.';
-    },
-  }));
-
-  const result = await orchestrator.runSequential(stages, { runAgent: executeAgent, broadcast, log: appendLog }, {
-    params: execution.params,
-    onStage: (stage, i, status, out) => {
-      const step = execution.steps[i];
-      if (step) {
-        step.status = status;
-        if (out && out.content) step.output = out.content;
-        if (out && out.model) step.model = out.model;
-        if (out && out.error) step.error = out.error;
-      }
-      execution.progress = Math.round((execution.steps.filter((s) => s.status === 'completed').length) / execution.steps.length * 100);
-      execution.log.push({ t: Date.now(), msg: `${stage.id}: ${status}` });
-      broadcast({ event: 'workflow_update', data: execution });
-      broadcast({ event: 'skill_progress', data: { id: execution.id, progress: execution.progress, step: stage.id } });
-    },
+  const taskFor = (member) => skillBrief.buildTask(brief, {
+    role: member.role, params: execution.params, skillName: execution.skillName,
   });
 
-  const completed = (result.outputs || []).filter((o) => o.ok);
-  execution.result = completed.length ? completed[completed.length - 1].content : '';
-  execution.status = result.ok ? 'completed' : 'failed';
-  execution.progress = 100;
+  let result = '';
+  let ok = false;
+
+  if (execution.members.length === 1) {
+    const only = execution.members[0];
+    mark(0, 'running');
+    const r = await executeAgent(only.agent, taskFor(only), { maxTokens: 4000 });
+    mark(0, r.ok ? 'completed' : 'failed', r);
+    result = r.ok ? r.content : '';
+    ok = !!r.ok;
+  } else {
+    const workers = execution.members.map((m, i) => {
+      mark(i, 'running');
+      return { agent: m.agent, task: taskFor(m) };
+    });
+    const fan = await orchestrator.fanOutAndSynthesize(brief.goal, workers,
+      { runAgent: executeAgent, broadcast, log: appendLog },
+      { synthesizer: 'synthesis', synthOpts: { maxTokens: 4000 } });
+
+    (fan.parts || []).forEach((p, i) => mark(i, p.ok ? 'completed' : 'failed', { content: p.content, error: p.error }));
+    result = fan.synthesis || '';
+    // A partial fan-out is still a result: fanOutAndSynthesize only fails when EVERY worker failed.
+    ok = !!fan.ok && !!result;
+  }
+
+  execution.result = result;
+  execution.status = ok ? 'completed' : 'failed';
+  execution.progress = ok ? 95 : 100;
   execution.completedAt = new Date().toISOString();
   broadcast({ event: 'workflow_update', data: execution });
-  broadcast({ event: 'skill_progress', data: { id: execution.id, progress: 100, step: execution.status === 'completed' ? 'Complete' : 'Failed' } });
   logActivity('skill', `Skill ${execution.status}: ${execution.skillName}`, { executionId: execution.id });
+
+  // Verify against THIS skill's criteria, over the lead agent's own handbook rubric. Dispatch without
+  // verification would leave the criteria in the brief decorative — an agent told what it will be
+  // graded on, and then never graded.
+  if (ok) {
+    try {
+      startVerification({
+        // `exec`, not `execution` — the key name is what links the finished verdict back onto this
+        // run. Passing the wrong key graded the output correctly and then attached the result to
+        // nothing, so the dashboard showed a completed skill with no verdict. Silent: the grading
+        // itself succeeded, and only a live run surfaced it.
+        exec: execution,
+        output: result,
+        agent: brief.lead,
+        skillName: execution.skillName,
+        skillCriteria: brief.criteria,
+      });
+    } catch (e) {
+      appendLog(`SKILL_VERIFY_ERR: ${execution.skillName} -> ${e.message}`);
+    }
+  }
+  execution.progress = 100;
+  broadcast({ event: 'workflow_update', data: execution });
+  broadcast({ event: 'skill_progress', data: { id: execution.id, progress: 100, step: ok ? 'Complete' : 'Failed' } });
 }
 
 // --- Verification Protocols (Plan-Execute-Verify) ---
@@ -4916,6 +4963,28 @@ function getRubricForAgent(agentName) {
   const checks = handbookRubric.checksFromHandbook(content);
   if (!checks.length) return null;
   const floor = getRubricForCategory(handbookRubric.floorNameFor(content));
+  return handbookRubric.mergeRubric(checks, floor, { agent: agentName });
+}
+
+/**
+ * The rubric for one skill run: the skill's own criteria over the lead agent's handbook rubric.
+ *
+ * Three levels can meet here — skill brief, agent handbook, category floor — so mergeRubric's total
+ * ceiling does the arithmetic that keeps a single deliverable from costing thirty grading calls. The
+ * skill's criteria sit on top because they are the most specific statement of what THIS job needed;
+ * the agent's are what it always owes regardless of the job.
+ */
+function getRubricForSkillRun(skillCriteria, agentName) {
+  const checks = (skillCriteria || []).map((text) => ({
+    id: handbookRubric.criterionId(text),
+    name: handbookRubric.shortLabel(text),
+    description: text,
+    weight: handbookRubric.HANDBOOK_WEIGHT,
+    category: 'skill',
+    source: 'skill',
+  }));
+  const floor = getRubricForAgent(agentName) || getRubricForCategory('default');
+  if (!checks.length) return floor;
   return handbookRubric.mergeRubric(checks, floor, { agent: agentName });
 }
 
@@ -5135,48 +5204,33 @@ app.get('/api/verify/:id', (req, res) => {
   res.json(v);
 });
 
-// API: Run verification on an execution
-app.post('/api/verify/run', requireAdmin, heavyLimiter, async (req, res) => {
-  const { executionId, rubricCategory, agent, strictness = 'standard', autoApprove = true } = req.body;
-
-  const exec = executionId ? workflows.get(executionId) : null;
-
-  // Determine category — auto-detect from execution or use provided
-  let category = rubricCategory || 'default';
-  if (exec && (category === 'auto' || category === 'default')) {
-    const skill = readDir(path.join(CLAUDE_DIR, 'skills')).find(s => s.filename === exec.skill);
-    category = skill?.meta?.category || exec.category || category;
-  }
-
-  // P2: prefer the AGENT's own handbook criteria, with the rubric it names underneath as a floor.
-  // A generic category rubric can only ask whether the output is actionable and well-formatted; the
-  // handbook asks whether this agent did its job. Falls back to the category when no agent is named
-  // or it has no criteria — never to an empty check list, which would score 0 and read as a failure.
-  const agentName = agent || (exec && exec.agents && exec.agents.length === 1 ? exec.agents[0] : null);
-  const rubric = getRubricForAgent(agentName) || getRubricForCategory(category);
-
-  // The ACTUAL output to grade: explicit body.output, else the linked execution's result/steps.
-  let output = typeof req.body.output === 'string' ? req.body.output : '';
-  if (!output && exec) {
-    output = exec.result
-      || (Array.isArray(exec.steps) ? exec.steps.map(s => s.output).filter(Boolean).join('\n\n') : '')
-      || '';
-  }
-  if (!String(output).trim()) {
-    return res.status(400).json({ error: 'Nothing to verify — provide "output" text or an "executionId" of a completed run.' });
-  }
+/**
+ * Start a verification run and return its report immediately; grading happens in the background.
+ *
+ * Extracted from the /api/verify/run route in P3 so the skill runner can verify its own output
+ * without an HTTP round-trip to itself. One path means a run dispatched by the runner and one
+ * requested by an operator are graded identically — two paths would drift, and the drift would show
+ * up as two different scores for the same artifact.
+ *
+ * @param {object[]} [skillCriteria] the skill brief's own criteria, layered ON TOP of the agent's.
+ */
+function startVerification({ exec = null, output, agent = null, category = 'default',
+  skillName = 'manual', skillCriteria = null, strictness = 'standard', autoApprove = true } = {}) {
+  const rubric = (skillCriteria && skillCriteria.length)
+    ? getRubricForSkillRun(skillCriteria, agent)
+    : (getRubricForAgent(agent) || getRubricForCategory(category));
 
   const id = uuidv4();
   const report = {
     id,
-    executionId: executionId || null,
-    skillName: exec?.skillName || req.body.skillName || 'manual',
+    executionId: (exec && exec.id) || null,
+    skillName,
     category,
     rubricName: rubric.name,
     // Which standard this run was actually graded against. Without these two a report cannot be
     // read later: "scored 72" means nothing unless you know whether it was judged on the agent's
     // own criteria or on six generic ones.
-    agent: rubric.agent || null,
+    agent: rubric.agent || agent || null,
     handbookChecks: rubric.handbookCheckCount || 0,
     floorChecks: rubric.floorCheckCount == null ? (rubric.checks || []).length : rubric.floorCheckCount,
     status: 'running',
@@ -5197,9 +5251,8 @@ app.post('/api/verify/run', requireAdmin, heavyLimiter, async (req, res) => {
   broadcast({ event: 'verification_update', data: report });
   logActivity('verification', `Verification started: ${report.skillName}`, { verificationId: id });
 
-  // Return immediately; grade for real in the background, streaming each check as it lands.
-  res.json(report);
-
+  // Grade for real in the background, streaming each check as it lands. The caller gets the report
+  // straight away — a grading pass is many model calls and nobody should hold a request open for it.
   runRealVerification(report, rubric, output, strictness).then((v) => {
     report.status = 'completed';
     report.verdict = v.verdict;
@@ -5248,6 +5301,43 @@ app.post('/api/verify/run', requireAdmin, heavyLimiter, async (req, res) => {
     broadcast({ event: 'verification_update', data: report });
     appendLog(`VERIFY ERROR: ${report.skillName} -> ${e.message}`);
   });
+
+  return report;
+}
+
+// API: Run verification on an execution
+app.post('/api/verify/run', requireAdmin, heavyLimiter, (req, res) => {
+  const { executionId, rubricCategory, agent, strictness = 'standard', autoApprove = true } = req.body;
+  const exec = executionId ? workflows.get(executionId) : null;
+
+  let category = rubricCategory || 'default';
+  if (exec && (category === 'auto' || category === 'default')) {
+    const skill = readDir(path.join(CLAUDE_DIR, 'skills')).find(s => s.filename === exec.skill);
+    category = skill?.meta?.category || exec.category || category;
+  }
+
+  // The agent whose handbook sets the bar: an explicit one, else the execution's lead. P3 gives every
+  // execution a lead, so this now resolves for a fan-out too — before, only a single-agent execution
+  // could reach the handbook path, which made P2's agent-scoped rubric unreachable from any skill run.
+  const agentName = agent || (exec && (exec.lead || (exec.agents && exec.agents.length === 1 ? exec.agents[0] : null))) || null;
+
+  // The ACTUAL output to grade: explicit body.output, else the linked execution's result.
+  let output = typeof req.body.output === 'string' ? req.body.output : '';
+  if (!output && exec) {
+    output = exec.result
+      || (Array.isArray(exec.members) ? exec.members.map(m => m.output).filter(Boolean).join('\n\n') : '')
+      || '';
+  }
+  if (!String(output).trim()) {
+    return res.status(400).json({ error: 'Nothing to verify — provide "output" text or an "executionId" of a completed run.' });
+  }
+
+  res.json(startVerification({
+    exec, output, agent: agentName, category,
+    skillName: exec?.skillName || req.body.skillName || 'manual',
+    skillCriteria: exec && exec.criteria,
+    strictness, autoApprove,
+  }));
 });
 
 // API: Override verification verdict (human override)

@@ -2,48 +2,39 @@
 name: automation-bridge
 description: Trigger external automations via N8N, Zapier, or webhook integrations with full HITL approval gates.
 category: automation
+rubric: default
 estimated_time: ~2min per action
-agents: [automator, orchestrator]
 ---
 
 # Automation Bridge
 
-Connect AI OS agent outputs to real-world actions through external automation platforms.
+## Goal
+A real-world side effect happens exactly once, only after a human saw exactly what would be sent, and
+the result is recorded whether it worked or not. This skill's output is an audit trail as much as an
+action.
 
-## Parameters
-- **action**: The automation action to trigger (from the action registry)
-- **payload**: Key-value data to send with the trigger
-- **platform**: Target platform (n8n, zapier, webhook)
-- **priority**: normal | urgent (urgent skips queue, still requires approval)
+## What good looks like
+- The approval preview shows what will actually be sent — the resolved action, the destination, and
+  the payload after stripping. An approval given against a summary that differs from the request is
+  not an approval.
+- No credential, token, or password appears in the payload or in any log of it.
+- Every trigger carries its metadata: timestamp, originating agent, run id. A webhook that fired with
+  no attributable source cannot be investigated later.
+- The result records the real response status and body. A timeout is reported as a timeout, never as
+  a success and never as a definite failure — nobody knows whether the far end acted.
+- A failure is reported and left alone. Automatic retry on an action whose effect is unknown is how
+  one email becomes three.
+- The gate level applied matches the registry below, and an action absent from the registry is
+  refused rather than treated as advisory.
 
-## Steps
-
-1. **Resolve Action**
-   - Look up `action` in the automation registry
-   - Validate platform is configured and reachable
-   - Verify all required payload fields are present
-
-2. **Build Payload**
-   - Assemble the webhook payload from provided parameters
-   - Strip any sensitive fields (API keys, tokens, passwords)
-   - Add metadata: timestamp, source agent, run ID
-
-3. **HITL Approval Gate**
-   - Submit to human approval with full payload preview
-   - Display: action name, platform, destination, payload summary
-   - BLOCKING gate — no auto-approve, no timeout bypass
-
-4. **Execute Trigger**
-   - POST payload to the webhook URL
-   - Set timeout based on platform (N8N: 30s, Zapier: 15s, webhook: 10s)
-   - Capture response status and body
-
-5. **Report Result**
-   - Log success/failure to decisions.log
-   - Broadcast status via WebSocket
-   - If failed: report error details, do NOT retry automatically
+## Guardrails
+- The approval gate is blocking. No auto-approve, no timeout bypass, and `priority: urgent` moves an
+  item up the queue without ever skipping the gate.
+- Never retry automatically after a timeout or a failure.
+- Never send to a destination that arrived in the payload rather than the registry.
 
 ## Available Actions (Registry)
+The gate column is the contract — this table, not the caller, decides what needs blocking approval.
 
 | Action | Platform | Description | Gate |
 |--------|----------|-------------|------|
@@ -55,12 +46,16 @@ Connect AI OS agent outputs to real-world actions through external automation pl
 | sync-drive | zapier | Sync file to Google Drive | advisory |
 | notify-team | webhook | Send notification to team channel | advisory |
 
+## Team
+- **automator** — resolves the action, builds the payload, and fires the trigger
+- **safety** — whether this action, to this destination, with this payload, should proceed at all
+
+## Parameters
+- `action`: Required. The automation action to trigger (must exist in the registry above).
+- `payload`: Key-value data to send with the trigger.
+- `platform`: n8n | zapier | webhook
+- `priority`: normal | urgent (urgent moves up the queue; it never skips the gate)
+
 ## Output
-```yaml
-status: success | failed | timeout
-platform: n8n
-action: send-email
-response_code: 200
-execution_id: n8n-exec-12345
-timestamp: 2026-05-24T10:30:00Z
-```
+- A result record carrying status (success | failed | timeout), platform, action, response code,
+  execution id and timestamp, appended to `.magent/decisions.log`

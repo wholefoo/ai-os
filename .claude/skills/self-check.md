@@ -3,6 +3,7 @@ name: self-check
 description: The pre-commit static gate for this repo — run node --check on every changed JS file and seclint --ci to 0 errors, mirroring the CI "Lint & Boot Check" job, before you commit (and push). Read engineering-workflow.md for the full ritual.
 category: engineering
 estimated_time: 1-2min
+kind: reference   # the pre-commit static gate Claude Code runs in-session before committing
 ---
 
 # Self-Check Skill (pre-commit static gate)

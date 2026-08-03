@@ -1,21 +1,39 @@
 ---
 name: verify-output
-description: Plan-Execute-Verify protocol — validates agent outputs against category-specific rubrics before delivery.
+description: Plan-Execute-Verify protocol — scores an agent output against that agent's own handbook criteria, with the named rubric as a floor, and gates delivery on the verdict.
 category: intelligence
+rubric: default
 estimated_time: 2min
 ---
 
-# Output Verification Skill
+# Output Verification
 
 ## Goal
-Run the Verify phase of the Plan-Execute-Verify protocol. Score agent outputs against the appropriate rubric, flag failures, and gate delivery on passing verification.
+A verdict a person can trust without re-reading the output: PASS, REVIEW, or FAIL, with the specific
+criterion behind every deduction. A score with no cited criterion is a number nobody can act on.
 
-## Process
-1. **Load Rubric** — Determine output category, load matching rubric from verification-rubrics.yaml, merge with inherited default checks
-2. **Run Checks** — Evaluate each rubric criterion against the output, scoring pass/partial/fail with evidence
-3. **Score** — Calculate weighted aggregate score (0-100), determine verdict (PASS >= 80, REVIEW 60-79, FAIL < 60)
-4. **Generate Report** — Produce structured verification report with per-check results, overall score, and remediation notes
-5. **Gate Decision** — If PASS, auto-approve delivery. If REVIEW, flag for human review. If FAIL, return to executing agent with specific feedback.
+## What good looks like
+- Every check reports pass, partial, or fail with the evidence from the output that decided it —
+  quoted or located, not asserted.
+- A failed check names the criterion it failed, in the criterion's own words. "Scored 62" without the
+  failing criterion is unreadable a week later.
+- The report states which standard was applied: the agent's own handbook criteria, the floor rubric,
+  or both, and how many checks came from each.
+- The verdict follows the thresholds without exception — PASS at 80 and above, REVIEW from 60 to 79,
+  FAIL below 60 — so two runs over the same output cannot disagree.
+- The verifier judges the artifact, never the reasoning that produced it. An author's explanation of
+  why something is fine is not evidence that it is.
+- A FAIL returns specific, addressable feedback. "Needs improvement" sends the work back with nothing
+  to act on and costs a second full run.
+
+## Guardrails
+- Never auto-approve a REVIEW or FAIL verdict, whatever `auto_approve` is set to. That flag governs
+  passing output only.
+- Never let the agent that produced an output grade it. Verification by its author always passes.
+
+## Team
+- **reviewer** — scores the output against the resolved criteria and issues the verdict
+- **qa** — the second pass for code and anything with an executable claim
 
 ## Parameters
 - `execution_id`: Required. The workflow execution to verify.
@@ -23,12 +41,8 @@ Run the Verify phase of the Plan-Execute-Verify protocol. Score agent outputs ag
 - `strictness`: lenient | standard | strict (default: standard)
 - `auto_approve`: true | false (default: true)
 
-## Agents Used
-- **Reviewer** (Opus) — Primary verification agent, scores against rubric
-- **QA** (Sonnet) — Secondary check for code outputs
-
 ## Output
-`.magent/artifacts/verification/verify-<execution_id>.md`
+- `.magent/artifacts/verification/verify-<execution_id>.md` — per-check results, score, and verdict
 
 ## Verdicts
 - **PASS** (score >= 80) — Output approved for delivery, auto-released if enabled

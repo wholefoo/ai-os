@@ -2,23 +2,38 @@
 name: deep-research
 description: Multi-source deep research with synthesis — goes beyond surface-level search to build comprehensive, cross-referenced knowledge maps.
 category: research
+rubric: research
 estimated_time: 30min
 source: https://github.com/wholefoo/academic-research-skills
 ---
 
-# Deep Research Skill
+# Deep Research
 
 ## Goal
-Conduct exhaustive multi-source research on a topic, synthesizing findings into a comprehensive knowledge map with cross-references, conflicting viewpoints, and confidence levels.
+Someone about to make a strategic decision can read this and know not just what is true, but how
+confident to be and where the field disagrees. Conflicts are surfaced, not averaged away.
 
-## Process
-1. **Scope Definition** — Define research boundaries, key questions, and success criteria
-2. **Broad Sweep** — Cast wide net across web, academic, and technical sources using Firecrawl deep research
-3. **Source Evaluation** — Rate each source for credibility, recency, and relevance (1-10)
-4. **Deep Dive** — Follow high-value threads, extract structured data from key sources
-5. **Synthesis** — Cross-reference findings, identify consensus vs. conflict, surface gaps
-6. **Knowledge Map** — Build structured output linking findings to sources with confidence levels
-7. **Executive Summary** — Distill into actionable insights with recommendations
+## What good looks like
+- At least `min_sources` distinct sources, each rated for credibility, recency and relevance, with
+  the rating's reason given. An unexplained 9/10 is a number, not an assessment.
+- Where sources conflict, the conflict is reported as a conflict — both positions, who holds each,
+  and what would settle it. Presenting one side as consensus is the failure this skill exists to avoid.
+- Every finding carries a confidence level, and low confidence is stated rather than omitted.
+- Known gaps are listed explicitly. "Nothing found on X" is a result worth reporting.
+- Findings are cross-referenced: a claim appearing in three sources is distinguishable from one
+  appearing in one source that the other two cite.
+- The executive summary is decision-shaped — what to do or watch, not a précis of the body.
+- The time range asked for is respected, and anything outside it that was included is labelled.
+
+## Guardrails
+- Never present a source's claim as an independent confirmation of another source that it cites.
+- Never resolve a genuine disagreement by picking the more recent source without saying that is why.
+
+## Team
+- **research-architect** — the boundaries, the questions, and what evidence would answer them
+- **researcher** — the sweep, source retrieval, and per-source evaluation
+- **synthesis** — consensus, conflict and gap map with confidence ratings
+- **report-compiler** — the knowledge map and the executive summary
 
 ## Parameters
 - `topic`: Research topic or question
@@ -32,4 +47,6 @@ Conduct exhaustive multi-source research on a topic, synthesizing findings into 
 - `.magent/artifacts/research/sources-{topic-slug}.md` — Annotated source list with ratings
 
 ## Difference from research-brief
-`research-brief` is a quick 8-source summary. `deep-research` is an exhaustive multi-source synthesis with cross-referencing, confidence scoring, and conflict identification. Use `deep-research` for strategic decisions, `research-brief` for quick context gathering.
+`research-brief` is a quick 8-source summary. `deep-research` is an exhaustive multi-source synthesis
+with cross-referencing, confidence scoring, and conflict identification. Use `deep-research` for
+strategic decisions, `research-brief` for quick context gathering.
