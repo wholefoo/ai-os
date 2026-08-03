@@ -507,10 +507,14 @@ deliverable. The machinery ships, wired and tested, with every archetype at `ful
 agent — stakes stated with the outcome. P5's outcome intake is its natural home, and it now has a
 concrete requirement rather than a guess.
 
-**Open for the operator:** `qa` is a professional-tier sweeper and now routes at `medium`. Unlike
-`safety` it takes no action and blocks nothing automatically — but its verdicts do gate delivery.
-Whether it belongs on the strategic tier is a cost decision, not a correctness one, and it is
-deliberately left as-is rather than moved quietly.
+**RESOLVED by the operator (2026-08-03):** `qa` moved to the strategic tier, so it routes at `xhigh`
+instead of the `medium` P4 had shifted it to. It takes no action and blocks nothing automatically, so
+it is not on the irreversible-action path the way `safety` is — but its pass/fail verdicts gate
+delivery, and a verifier that reasons less is a verifier that misses more. This was a cost decision,
+not a correctness one, and it is the largest single routing increase in the corpus: medium -> xhigh.
+
+Four agents now sit at the strategic floor as sweepers: `reviewer`, `security-auditor`, `safety` and
+`qa` — everything that judges or blocks. That is the shape the floor was built for.
 
 ## 13. What P5 changed about the plan
 

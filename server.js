@@ -3519,7 +3519,13 @@ const EFFORT_ROUTING = {
   // verdicts on irreversible actions before they execute: it holds no `gates:` of its own because it
   // does not TAKE actions, it BLOCKS them, which is the same control path from the other side.
   // Making the veto cheaper to reach is not a cost optimisation.
-  strategic: { effort: 'xhigh', agents: ['orchestrator', 'architect', 'reviewer', 'security-auditor', 'web-studio-lead', 'chief-librarian', 'safety'] },
+  // `qa` joined in the same spirit, by operator decision. It takes no action and blocks nothing
+  // automatically, so it is not on the irreversible-action path the way `safety` is — but its
+  // pass/fail verdicts gate delivery, and a verifier that reasons less is a verifier that misses
+  // more. Unlike `safety`, this one was a cost choice rather than a correctness one: it moves qa
+  // from `medium` (where P4's sweeper shift had put it) to `xhigh`, which is the largest single
+  // routing increase in the corpus.
+  strategic: { effort: 'xhigh', agents: ['orchestrator', 'architect', 'reviewer', 'security-auditor', 'web-studio-lead', 'chief-librarian', 'safety', 'qa'] },
   // Professional tier — balanced quality/speed for most agent work
   professional: { effort: 'high', agents: ['researcher', 'coder', 'writer', 'synthesis', 'research-architect', 'report-compiler', 'data-wrangler', 'design-system', 'lead-gen', 'marketing-hub', 'product-factory', 'knowledge-graph', 'golden-loop', 'archivist', 'automator', 'browser-agent', 'web-builder', 'content-writer', 'hosting-ops'] },
   // Scout tier — fast, lightweight tasks

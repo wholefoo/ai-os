@@ -103,6 +103,12 @@ assert(routeOf('safety').effort === 'xhigh',
   'the `safety` sentinel routes at xhigh — it issues VETO verdicts on irreversible actions, and P4 would have dropped it to medium as a professional-tier sweeper');
 assert(baseFor('safety').tier === 'strategic', 'which is why P4 moved it onto the strategic tier');
 
+// `qa` is the operator's call, not a correctness rule: it takes no action and blocks nothing
+// automatically, so it is not on the irreversible-action path. But its pass/fail verdicts gate
+// delivery, and a verifier that reasons less is a verifier that misses more.
+assert(routeOf('qa').effort === 'xhigh' && baseFor('qa').tier === 'strategic',
+  '`qa` routes at xhigh — its verdicts gate delivery, and P4 had shifted it to medium as a professional-tier sweeper');
+
 // The agents the tier floor exists for. Named explicitly: if either is retiered or retagged, this
 // should fail loudly rather than let their effort drop unnoticed.
 for (const critical of ['reviewer', 'security-auditor']) {
