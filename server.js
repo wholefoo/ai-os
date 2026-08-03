@@ -2317,6 +2317,7 @@ const handbookRubric = require('./lib/handbooks/rubric');
 const handbookArchetype = require('./lib/handbooks/archetype');
 const handbookSchema = require('./lib/handbooks/schema');
 const outcomeIntake = require('./lib/outcomes/intake');
+const criterionStats = require('./lib/handbooks/criterion-stats');
 const skillBrief = require('./lib/skills/brief');
 const a2aBudget = require('./lib/a2a/budget');
 const prospectRuns = loadState('prospect_runs', []);
@@ -5115,6 +5116,11 @@ async function runSkillOutcome(execution, brief, opts = {}) {
 // --- Verification Protocols (Plan-Execute-Verify) ---
 const verifications = new Map();
 
+// §9 item 14: which criteria actually fire, and which say the same thing as another. Persisted
+// because the question is "across runs" — an in-memory tally would reset on every deploy and never
+// reach the sample size at which it is allowed to conclude anything.
+let criterionStore = loadState('criterion_stats', () => criterionStats.emptyStore());
+
 function loadVerificationRubrics() {
   const rubricsPath = path.join(CLAUDE_DIR, 'rules', 'verification-rubrics.yaml');
   if (!fs.existsSync(rubricsPath)) return {};
@@ -5364,6 +5370,18 @@ app.get('/api/verify/history', (req, res) => {
 });
 
 // API: Get verification stats (must be before :id route)
+/**
+ * Which criteria are dead weight, and which duplicate each other (§9 item 14).
+ *
+ * Read-only and deliberately advisory: it names candidates for deletion and never deletes. Removing
+ * a standard is not undone by re-running, and the operator owns that call.
+ *
+ * Registered BEFORE `/api/verify/:id` so the literal path is not swallowed by the id parameter.
+ */
+app.get('/api/verify/criteria', requireAdmin, (req, res) => {
+  res.json(criterionStats.summarizeCriteria(criterionStore));
+});
+
 app.get('/api/verify/stats', (req, res) => {
   const all = [...verifications.values()].filter(v => v.status === 'completed');
   const total = all.length;
@@ -5473,6 +5491,15 @@ function startVerification({ exec = null, output, agent = null, category = 'defa
     report.checksPassed = report.results.filter(r => r.status === 'pass').length;
     report.checksPartial = report.results.filter(r => r.status === 'partial').length;
     report.checksFailed = report.results.filter(r => r.status === 'fail').length;
+
+    // Fold this run into the criterion tally. Best-effort: instrumentation must never be able to
+    // fail a verification that already produced a verdict.
+    try {
+      criterionStore = criterionStats.record(criterionStore, report.results, {
+        agent: report.agent, skillName: report.skillName, at: report.completedAt,
+      });
+      saveState('criterion_stats', criterionStore);
+    } catch (e) { appendLog(`CRITERION_STATS_ERR: ${e.message}`); }
 
     // If linked to an execution, update its verification status
     if (exec) {

@@ -552,3 +552,38 @@ is deliberately not in P5 — it should be added with a bound, not a loop.
 4,146-character deliverable -> 16 checks (2 from the operator's own criteria, 14 from the researcher's
 handbook and its floor) -> verdict `review`, 65, citing the operator's own sentence back:
 "Every claim cites a source retrieved in this run."
+
+## 14. §9 item 14, instrumented
+
+`lib/handbooks/criterion-stats.js` + `GET /api/verify/criteria`. Every completed verification is
+folded into a persisted tally keyed by P2's content-derived criterion ids — which is what those ids
+were built for.
+
+**What prompted it.** The first live P5 outcome graded these three, all `partial`:
+
+- "Every citation is a real, resolvable URL fetched in THIS session."  *(researcher handbook)*
+- "Claims are supported by evidence or labeled as assumptions"          *(floor rubric)*
+- "Every claim cites a source retrieved in this run."                   *(the operator's own)*
+
+Three model calls, three ways of asking one question, in a 16-check run.
+
+**Two signals, opposite remedies.** A criterion that has NEVER failed across enough runs is either
+universally true or ungradeable — it costs a call per run and changes no decision. A PAIR that
+co-occurs and always lands on the same verdict is one standard stated twice.
+
+**The design constraint that shaped the module: it refuses to conclude early.** At n=1 every pair
+agrees perfectly and almost nothing has failed. A naive version would have recommended deleting most
+of the corpus after one run, and a deleted standard is not restored by re-running. So: 8 runs before
+a criterion can be called dead, 5 co-occurrences before a pair can be called redundant, and
+`undecided` is reported as a named count rather than left as an absence — "no redundancy found" and
+"not enough data to look" are different answers and only one is reassuring.
+
+**It is advisory and deletes nothing.** The report names candidates; removing a standard is the
+operator's call. A test asserts the server has no deletion path.
+
+**Verified live.** One real verification recorded 16 criteria and 120 pairs (C(16,2)), persisted to
+`.magent/state/criterion_stats.json`, and correctly reported **0 dead, 0 redundant, 16 undecided** —
+the guards doing their job on a single observation.
+
+**Next:** this needs ~8 real verification runs before it says anything. It accumulates on its own;
+check `/api/verify/criteria` once the platform has done a week of normal work.
