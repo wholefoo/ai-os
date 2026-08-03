@@ -11,9 +11,10 @@ department: tech-support
 archetype: [maintainer]
 rubric: security
 memory: [vault:wiki]
-gates: []   # considered, and uncomfortable: `rm -rf`, DROP TABLE, force-push, partition operations
-            # and production restarts have NO id in ACTION_RISK. Governed by the propose-and-wait
-            # rule below — a convention, not an enforced gate. See design doc §9 item 10.
+gates: [infra.destructive-op]   # `rm -rf`, DROP TABLE, force-push, partition operations, production
+            # restarts. What the gate enforces is that the PLATFORM never runs one unattended: it is
+            # ALWAYS_GATE'd and its executor refuses. It does not follow a command a human types on a
+            # box, so the propose-and-wait rule below is still the operative control. §9 item 10.
 ---
 
 # System Administrator — Root

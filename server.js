@@ -2903,21 +2903,64 @@ const ACTION_EXECUTORS = {
     logActivity('self-improve', `Opened draft distribution PR: ${r.prUrl}`, { planId });
     return r;
   },
+
+  // Destructive infrastructure operations REFUSE, on purpose. This is the one executor in the
+  // registry whose job is to not exist yet.
+  //
+  // `infra.destructive-op` is registered at 'critical' (lib/safety/approval.js) and listed in
+  // ALWAYS_GATE, so `devops`, `sysadmin` and `it-director` can declare a gate the handbook validator
+  // actually checks — design doc §9 item 10, the largest finding of P1. What those three hold is
+  // `rm -rf`, DROP TABLE, force-push, prune, volume deletion, production restarts and fleet patching,
+  // governed until now by a sentence in a system prompt.
+  //
+  // The entry is here rather than absent because a registered id with no executor is a latent
+  // TypeError in gateAction, and because "every ACTION_RISK id has an executor" is an invariant worth
+  // keeping true (tools/test-infra-gate.js asserts it). Refusing rather than doing is the honest
+  // implementation: the platform has no automated path from an agent's proposal to a destructive
+  // command on a live system, and it should not grow one as a side effect of some other change. A
+  // human runs these, having read the exact command.
+  //
+  // Building the first real one? Replace this body deliberately and keep the 'critical' band and the
+  // ALWAYS_GATE entry — those are what stop 'auto' mode running it unattended.
+  'infra.destructive-op': async ({ command = '', target = '' } = {}) => {
+    throw new Error(
+      'infra.destructive-op has no automated executor and is not meant to have one yet: the platform ' +
+      'does not run destructive infrastructure commands on an agent\'s say-so. Propose the exact ' +
+      'command and have a human run it.' +
+      (command || target ? ` (proposed: ${String(command || target).slice(0, 200)})` : '')
+    );
+  },
 };
 
 // gateAction({type, summary, target, params, secrets[], req}) -> {executed, result} | {pending, approval}
 // Action types that NEVER auto-run, no matter what the operator's Auto-Mode setting is (even
 // 'auto', whose whole point is "run everything without asking" — everywhere else in the platform).
-// These two specifically modify the platform's OWN source code or open a real PR against the public
-// distribution repo; the consequence of a stale/misconfigured 'auto' setting silently doing either
-// is severe enough to warrant a hard, non-negotiable human checkpoint independent of the general
-// risk-ceiling mechanism. See lib/self-improve/plan-store.js and lib/self-improve/github-pr.js.
-const ALWAYS_GATE = new Set(['self-improve.apply-plan', 'self-improve.distribution-pr']);
+// The two self-improve entries modify the platform's OWN source code or open a real PR against the
+// public distribution repo; the consequence of a stale/misconfigured 'auto' setting silently doing
+// either is severe enough to warrant a hard, non-negotiable human checkpoint independent of the
+// general risk-ceiling mechanism. See lib/self-improve/plan-store.js and lib/self-improve/github-pr.js.
+//
+// `infra.destructive-op` joins them for the same reason pointed at someone else's machine rather than
+// this one: `rm -rf`, DROP TABLE, force-push, prune, volume deletion, production restarts and fleet
+// patching are not survivable as an 'auto'-mode surprise. Design doc §9 item 10. Its executor refuses
+// outright today — see ACTION_EXECUTORS — so this is the band and the mode-independence being fixed
+// in place BEFORE any capability lands, not a live action being restrained.
+const ALWAYS_GATE = new Set(['self-improve.apply-plan', 'self-improve.distribution-pr', 'infra.destructive-op']);
 
 async function gateAction({ type, summary, target = null, params = {}, secrets = [], req }) {
   const mode = (settings.automation && settings.automation.mode) || 'supervised';
-  const d = ALWAYS_GATE.has(type) ? { allow: false, risk: 'critical', mode, reason: 'always requires human approval (self-modifying-code action)' } : approvalPolicy.decide(type, mode);
+  const alwaysGated = ALWAYS_GATE.has(type);
+  const d = alwaysGated
+    ? { allow: false, risk: approvalPolicy.ACTION_RISK[type] || 'critical', mode, reason: `always requires human approval (${type === 'infra.destructive-op' ? 'destructive infrastructure operation' : 'self-modifying-code action'})` }
+    : approvalPolicy.decide(type, mode);
   const actor = (req && req.session && (req.session.email || req.session.name)) || 'operator';
+
+  // An id in ACTION_RISK with no executor would auto-run straight into a TypeError — the failure
+  // reads as a crash rather than as the registry being half-wired. Refuse before deciding anything,
+  // so the message names the actual defect. tools/test-infra-gate.js keeps the two sides in step.
+  if (!ACTION_EXECUTORS[type]) {
+    throw new Error(`No executor for action type ${type} — it is classified in ACTION_RISK but nothing implements it`);
+  }
 
   if (d.allow) {
     logActivity('approval', `Auto-approved (${d.mode} mode): ${summary}`, { type, risk: d.risk });

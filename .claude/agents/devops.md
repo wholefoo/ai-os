@@ -11,10 +11,9 @@ department: engineering
 archetype: [maintainer]
 rubric: default
 memory: [vault:wiki]
-gates: []   # considered, and the answer is uncomfortable: this agent's destructive operations
-            # (prune, volume delete, force-push, production restart) have NO id in ACTION_RISK.
-            # They are governed by the per-command approval rule in Gotchas — a convention, not an
-            # enforced gate. Recorded rather than papered over; see the design doc §9.
+gates: [infra.destructive-op]   # prune, volume delete, force-push, production restart. The gate
+            # binds the PLATFORM — ALWAYS_GATE'd, executor refuses — not a human at a shell, so the
+            # per-command approval rule in Gotchas is still the operative control. §9 item 10.
 ---
 
 # DevOps Engineer — Relay

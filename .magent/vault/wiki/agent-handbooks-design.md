@@ -7,10 +7,13 @@ keys. The coverage report is now a GATE: a new agent without a handbook fails `t
 
 *P1's headline is not the 68 handbooks. It is that **writing down what each agent is FOR surfaced
 things about the platform that nobody could see by reading the code**:*
-- *three agents hold destructive power no gate enforces (§9 item 10)*
+- *three agents hold destructive power no gate enforces (§9 item 10) — **resolved 2026-08-02**, and
+  the finding was half wrong: see the resolution note there before repeating its framing*
 - *`marketing-hub` believed it could publish to social platforms that have no integration (§9 item 12)*
 - *only **4 of 68** agents hold an enforced gate at all — `automator`, `browser-agent`,
-  `chief-librarian`, `hosting-ops`. Every other guardrail in this corpus is prose.*
+  `chief-librarian`, `hosting-ops`. Every other guardrail in this corpus is prose. (As observed at
+  P1. **7 of 68 as of 2026-08-02**, `devops`/`sysadmin`/`it-director` having joined via §9 item 10 —
+  the live count is whatever `tools/test-handbooks.js` prints, not this line.)*
 - *three separate parsing defects in my own validator, each of which mis-stated a coverage number
   rather than breaking anything visibly (§9 items 11, 17, 20)*
 
@@ -293,6 +296,35 @@ verifier must be a different agent with the criteria and the artifact but not th
     same footing as `web-studio.delete-site` and `library.delete-record`. That is a change to the
     platform's guardrails and therefore the operator's call — P1 documents the current state, it
     does not alter it.
+
+    **RESOLVED 2026-08-02 — the operator took the call, and building it corrected the finding.**
+    `infra.destructive-op` now exists at `critical`, is in `ALWAYS_GATE`, and all three handbooks
+    declare it (`tools/test-infra-gate.js`). Two things this item had wrong:
+
+    - **The gap was never exploitable.** No dispatched agent can run a shell command: `tools:`
+      frontmatter is surfaced only as a description string (`agentConcepts`) and never becomes a
+      runtime grant, and the only tool surface a dispatched agent reaches is MCP — already gated.
+      Every shell call in the codebase is a specific admin-gated path. "Three agents hold destructive
+      power" was true of what the handbooks CLAIM, not of what the platform GRANTS. The fix is
+      therefore pre-emptive: it fixes the band before the capability exists, which is the only time
+      it is cheap. An infra executor written later would otherwise land unclassified, take
+      `classify()`'s `medium` default, and auto-run in supervised mode.
+    - **`critical` alone would not have been enough**, which the recommendation as written implied.
+      `MODES.auto = 'critical'`, so `decide()` returns `allow: true` for a critical action in `auto`
+      mode — deliberate for `library.delete-record` (D-ALWAYSGATE), wrong for this. `ALWAYS_GATE` is
+      what does the work; the band only sets how it is labelled in the queue.
+
+    The executor **refuses**, deliberately: there is no automated path from an agent proposing a
+    command to anything running it, and refusing keeps that true against future drift. Registering
+    the id also exposed a live invariant nobody had needed — `gateAction` called
+    `ACTION_EXECUTORS[type]` unguarded, so a classified-but-unimplemented id was a latent TypeError.
+    Both directions are now asserted: every `ACTION_RISK` id has an executor, and every executor has
+    a band.
+
+    The corpus rule is written as a **derived category — a `maintainer` archetype holding `Bash`** —
+    not as the three names, because an enumerated guard has already failed once in this codebase (a
+    denylist that lost to the one field nobody listed). It currently catches five agents; the fourth
+    root-capable agent someone adds is covered without anyone remembering to add it.
 
 **P1 batch 3 (Marketing & Sales), 11/68 converted.**
 

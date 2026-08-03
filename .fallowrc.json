@@ -58,6 +58,7 @@
     "tools/test-archetype-routing.js",
     "tools/test-outcome-intake.js",
     "tools/test-criterion-stats.js",
+    "tools/test-infra-gate.js",
     "tools/verify-clone-live.js",
     "ecosystem.config.js",
     "deploy/n8n-ecosystem.config.example.js",

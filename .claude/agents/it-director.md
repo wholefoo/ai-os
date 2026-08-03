@@ -11,9 +11,9 @@ department: tech-support
 archetype: [maintainer]
 rubric: default
 memory: [canonical-facts, vault:wiki]
-gates: []   # considered, and uncomfortable: production restarts, rollbacks and fleet patching have
-            # NO id in ACTION_RISK. Governed by the per-action approval rule below — a convention,
-            # not an enforced gate. Same gap as devops and sysadmin; see design doc §9 item 10.
+gates: [infra.destructive-op]   # production restarts, rollbacks, fleet patching. The gate binds the
+            # PLATFORM — ALWAYS_GATE'd, executor refuses — not a human acting on this agent's advice,
+            # so the per-action approval rule below is still the operative control. §9 item 10.
 ---
 
 # IT Director — Matrix

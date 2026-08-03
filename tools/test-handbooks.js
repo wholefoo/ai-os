@@ -261,6 +261,31 @@ for (const [n, label] of Object.entries(KEY_NAMES)) {
     `every agent covers key ${n} (${label})${missing.length ? ` — missing: ${missing.join(', ')}` : ''}`);
 }
 
+// --- a maintainer with a shell must declare a gate ---------------------------------------------------
+//
+// The corpus rule that came out of design doc §9 item 10. It is written as a DERIVED CATEGORY rather
+// than as the three names it currently catches, because this codebase has already been bitten by an
+// enumerated guard: a denylist of fields lost to the one scalar nobody had listed, and only a live
+// run found it. A rule naming devops/sysadmin/it-director would be a list wearing a rule's clothes,
+// and the fourth such agent would land unguarded and green.
+//
+// Why THIS category. `maintainer` is the archetype for keeping a live thing running; `Bash` is the
+// declared ability to act on it. An agent holding both is, by its own frontmatter, positioned over
+// production — so it must have answered the gates question with something, not with silence. It says
+// nothing about which gate: `automator` and `browser-agent` reach production through `mcp.tool-call`,
+// `hosting-ops` through the web-studio ids, and the three root-capable agents through
+// `infra.destructive-op`. Declaring none is the only answer this rule refuses.
+const maintainersWithShell = results.filter((x) => {
+  const meta = schema.parseFrontmatter(schema.split(fs.readFileSync(path.join(AGENTS_DIR, x.file), 'utf8')).frontmatter);
+  const tools = Array.isArray(meta.tools) ? meta.tools : (meta.tools ? [meta.tools] : []);
+  return x.r.meta.archetypes.includes('maintainer') && tools.includes('Bash');
+});
+assert(maintainersWithShell.length >= 5,
+  `the maintainer-with-a-shell category is populated (${maintainersWithShell.length}: ${maintainersWithShell.map((x) => x.file.replace('.md', '')).join(', ')}) — a rule that matches nothing passes for the wrong reason`);
+const ungatedMaintainers = maintainersWithShell.filter((x) => x.r.meta.gates.length === 0);
+assert(ungatedMaintainers.length === 0,
+  `every maintainer holding Bash declares at least one gate${ungatedMaintainers.length ? ` — ungated: ${ungatedMaintainers.map((x) => x.file).join(', ')}` : ''}`);
+
 // Reported, not enforced: how much of the corpus states a guardrail it can actually point at.
 // `gates: []` is a legitimate answer for most agents, so this is a fact about the platform's shape
 // rather than a bar to clear.
