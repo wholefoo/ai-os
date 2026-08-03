@@ -469,3 +469,45 @@ fail across runs yet. That remains the way to settle the criteria-versus-Gotchas
 wrong key, so grading ran correctly and attached its verdict to nothing: a completed skill with no
 result, no error anywhere. Every gate was green. This is the third phase in a row where the defect
 that mattered was found by executing the thing rather than by re-reading it.
+
+## 12. What P4 changed about the plan
+
+P4 wired `archetype:` — declared on all 68 agents in P1, read by nothing until now — to model effort.
+Verification depth was in scope and was deliberately **not** shipped. Both outcomes came from
+measuring against the real corpus rather than reasoning about the rule, and the measurements
+contradicted the design twice.
+
+**The obvious mapping was unsafe.** "Archetype sets effort" would have demoted `reviewer` and
+`security-auditor`, which are strategic-tier SWEEPERS — the agent that grades every other agent's
+output and the one that finds vulnerabilities. So the tier is now a FLOOR and the archetype shifts
+within it. A strategic agent cannot be shifted below `xhigh` whatever mode of work it is doing.
+
+**Two protections, one derived and one not.** An agent that declares any `gates:` never shifts down —
+it can take an irreversible, outward-facing action, and that is derived from the handbook rather than
+an enumerated list, so a newly-gated agent is covered automatically. `safety` needed the other kind:
+it holds no gates because it does not TAKE irreversible actions, it BLOCKS them, and it was on the
+professional tier by omission. P4 moved it to strategic. Making the veto cheaper to reach is not a
+cost optimisation.
+
+**The ladder had a missing rung.** `COST_RATES` priced only low/high/xhigh, so a one-rung shift was a
+cliff (`high` -> `low`) and any `medium` string would have missed the table and billed at the fallback
+rate. Rates are flat per family — effort changes tokens, not price — so adding `medium` is exact. A
+test now asserts every effort the corpus can resolve to is priced.
+
+**Verification depth is NOT archetype-shaped, and that is the substantive finding.** Two attempts:
+making `sweeper` light would have taken 13 of 19 dispatchable skills to 6 checks with no adversarial
+pass, including `security-audit` and `seo-audit`. Retreating to `prototyper`-only still took 4 skills
+light, among them `research-brief` — which on production scored 63 against 16 checks with two hard
+failures and would most likely have read as PASS at light depth. The fault is structural: depth was
+being set by the LEAD AGENT's archetype, but an archetype describes how an AGENT works while depth
+should follow what the OUTPUT is worth. `researcher` is tagged prototyper; a cited research brief is a
+deliverable. The machinery ships, wired and tested, with every archetype at `full`.
+
+**This lands on P5.** The signal that should lower verification depth belongs to the SKILL, not the
+agent — stakes stated with the outcome. P5's outcome intake is its natural home, and it now has a
+concrete requirement rather than a guess.
+
+**Open for the operator:** `qa` is a professional-tier sweeper and now routes at `medium`. Unlike
+`safety` it takes no action and blocks nothing automatically — but its verdicts do gate delivery.
+Whether it belongs on the strategic tier is a cost decision, not a correctness one, and it is
+deliberately left as-is rather than moved quietly.

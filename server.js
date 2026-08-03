@@ -2314,6 +2314,7 @@ const prospectsLib = require('./lib/leads/prospects');
 const { safeFetch, safeRequest } = require('./lib/net/safe-fetch');
 const slackNotify = require('./lib/notify/slack');
 const handbookRubric = require('./lib/handbooks/rubric');
+const handbookArchetype = require('./lib/handbooks/archetype');
 const skillBrief = require('./lib/skills/brief');
 const a2aBudget = require('./lib/a2a/budget');
 const prospectRuns = loadState('prospect_runs', []);
@@ -3502,7 +3503,13 @@ const GROK_BUILD_MODEL = 'grok-build-0.1';
 // Effort-level routing: maps agent tiers to Opus 4.8 effort levels
 const EFFORT_ROUTING = {
   // Strategic tier — full reasoning power, complex planning, architecture decisions
-  strategic: { effort: 'xhigh', agents: ['orchestrator', 'architect', 'reviewer', 'security-auditor', 'web-studio-lead', 'chief-librarian'] },
+  // `safety` joined the strategic tier in P4. It was `professional` by omission, which cost nothing
+  // while every agent resolved to `high` — but once archetypes modulate effort, `safety` is a sweeper
+  // and would have shifted DOWN to medium. It is the read-only sentinel that issues APPROVE/VETO
+  // verdicts on irreversible actions before they execute: it holds no `gates:` of its own because it
+  // does not TAKE actions, it BLOCKS them, which is the same control path from the other side.
+  // Making the veto cheaper to reach is not a cost optimisation.
+  strategic: { effort: 'xhigh', agents: ['orchestrator', 'architect', 'reviewer', 'security-auditor', 'web-studio-lead', 'chief-librarian', 'safety'] },
   // Professional tier — balanced quality/speed for most agent work
   professional: { effort: 'high', agents: ['researcher', 'coder', 'writer', 'synthesis', 'research-architect', 'report-compiler', 'data-wrangler', 'design-system', 'lead-gen', 'marketing-hub', 'product-factory', 'knowledge-graph', 'golden-loop', 'archivist', 'automator', 'browser-agent', 'web-builder', 'content-writer', 'hosting-ops'] },
   // Scout tier — fast, lightweight tasks
@@ -3536,7 +3543,58 @@ const CONSULTANT_PROVIDER = {
 };
 
 // Resolve agent name to effort level / model tier
+/**
+ * The archetype an agent declares, cached by file mtime.
+ *
+ * getAgentEffort runs on every model call, so this must not re-read and re-parse a file each time.
+ * mtime keying means an operator editing a handbook through the Agents tab takes effect on the next
+ * call without a restart — the same expectation the rest of the .claude/ corpus sets.
+ */
+const archetypeCache = new Map();
+function getAgentRoutingFacts(agentName) {
+  const miss = { archetype: handbookArchetype.DEFAULT_ARCHETYPE, holdsGates: false };
+  const file = path.join(CLAUDE_DIR, 'agents', `${path.basename(String(agentName || ''))}.md`);
+  let stamp;
+  try { stamp = fs.statSync(file).mtimeMs; } catch { return miss; }
+  const hit = archetypeCache.get(agentName);
+  if (hit && hit.stamp === stamp) return hit;
+  const content = fs.readFileSync(file, 'utf-8');
+  const facts = {
+    stamp,
+    archetype: handbookArchetype.archetypeFor(content),
+    holdsGates: handbookArchetype.holdsGates(content),
+  };
+  archetypeCache.set(agentName, facts);
+  return facts;
+}
+
+function getAgentArchetype(agentName) { return getAgentRoutingFacts(agentName).archetype; }
+
+/**
+ * Reasoning tier + effort for an agent (P4: modulated by its archetype).
+ *
+ * The tier answers "how much judgement does this ROLE need"; the archetype answers "what MODE of work
+ * is this". They compose — the tier is a floor the archetype cannot shift below, which is what keeps
+ * `reviewer` and `security-auditor` (strategic-tier sweepers) at xhigh instead of being demoted by a
+ * rule that reads "sweepers are cheap".
+ */
 function getAgentEffort(agentName) {
+  const base = baseTierFor(agentName);
+  if (base.tier === 'creative' || !base.effort) return base;
+  const facts = getAgentRoutingFacts(agentName);
+  const arch = handbookArchetype.routeArchetype(facts.archetype, base, { holdsGates: facts.holdsGates });
+  return {
+    ...base,
+    effort: arch.effort,
+    model: `opus-4.8-${arch.effort}`,
+    archetype: arch.archetype,
+    effortFloored: arch.floored,
+    effortHeldByGate: arch.gateHeld,
+  };
+}
+
+/** The tier lookup alone, before any archetype modulation. */
+function baseTierFor(agentName) {
   for (const [tier, config] of Object.entries(EFFORT_ROUTING)) {
     if (config.agents.includes(agentName)) {
       if (tier === 'creative') return { tier, effort: null, model: 'gemini-omni' };
@@ -3597,8 +3655,21 @@ function agentRoutingLabel(name, declaredModel) {
   if (d.includes('gemini')) return { provider: 'omni', label: 'Gemini Omni', tier: 'creative' };
   if (d.includes('deepseek')) return { provider: 'deepseek-v4', label: 'DeepSeek V4', tier: 'economy' };
   if (d.includes('grok')) return { provider: 'grok', label: 'Grok 4.5', tier: 'realtime' };
-  const { tier } = getAgentEffort(name);
-  return { ...tierRoutingLabel(tier), tier };
+  // Label the effort this agent ACTUALLY runs at, not its tier's nominal one. Before P4 those were
+  // always the same; now an archetype can shift a professional agent to `medium`, and a panel showing
+  // "Sonnet 5 high" for an agent dispatched at medium is a display that lies about spend.
+  const routing = getAgentEffort(name);
+  const picked = resolveAnthropicModel(routing);
+  return {
+    provider: picked.apiModel === SONNET_MODEL ? 'sonnet' : 'opus',
+    label: prettyModelString(picked.modelString),
+    tier: routing.tier,
+    archetype: routing.archetype || null,
+    // Why an agent is not where its archetype alone would put it — the two protections, surfaced so
+    // the panel can explain itself rather than looking inconsistent.
+    effortFloored: !!routing.effortFloored,
+    effortHeldByGate: !!routing.effortHeldByGate,
+  };
 }
 
 // Build Anthropic API request body with Opus 4.8 features
@@ -4236,6 +4307,10 @@ const COST_RATES = {
   // Opus 4.8 — effort-based routing (single model, three tiers)
   'opus-4.8-xhigh':    { input: 5.00,  output: 25.00 },   // per 1M — flat Opus 4.8 rate; xhigh spends more TOKENS (deeper thinking), not a higher per-token rate
   'opus-4.8-high':     { input: 5.00,  output: 25.00 },   // standard — professional work
+  // P4 added the `medium` rung. Without it the ladder was low/high/xhigh, so an archetype's one-rung
+  // shift fell off a cliff (high -> low) and, worse, any 'medium' string would have missed COST_RATES
+  // and billed at the fallback Opus rate. Flat per family: effort changes TOKENS, not price.
+  'opus-4.8-medium':   { input: 5.00,  output: 25.00 },
   'opus-4.8-low':      { input: 5.00,  output: 25.00 },   // standard — scout/quick tasks (fewer tokens, same flat rate)
   // Sonnet 5 — the cost-efficient reasoning tier (settings.ai.reasoning_mode). Verified against
   // docs.claude.com/pricing on 2026-07-01: INTRODUCTORY $2/$10 per 1M through 2026-08-31, then reverts to
@@ -4244,11 +4319,13 @@ const COST_RATES = {
   // adjustment for that — but effective cost-per-task runs a bit above the headline rate delta vs Opus.)
   'sonnet-5-xhigh':    { input: 2.00,  output: 10.00 },
   'sonnet-5-high':     { input: 2.00,  output: 10.00 },
+  'sonnet-5-medium':   { input: 2.00,  output: 10.00 },
   'sonnet-5-low':      { input: 2.00,  output: 10.00 },
   // Fable 5 — Anthropic's most capable model, an opt-in premium override (e.g. Web Studio design).
   // $10/$50 per 1M (flat across effort tiers), verified against docs.claude.com/pricing 2026-07-05.
   'fable-5-xhigh':     { input: 10.00, output: 50.00 },
   'fable-5-high':      { input: 10.00, output: 50.00 },
+  'fable-5-medium':    { input: 10.00, output: 50.00 },
   'fable-5-low':       { input: 10.00, output: 50.00 },
   // Legacy aliases (for backward compat with existing ledger entries)
   'claude-4.7-opus':   { input: 15.00, output: 75.00 },
@@ -5049,7 +5126,16 @@ async function gradeCheckAgainstOutput(check, output, strictness, rubricName) {
   return { ...check, score, status, notes, weightedScore: Math.round(score * (check.weight || 1)), model: r.model, graded: !!r.ok };
 }
 
-async function runRealVerification(report, rubric, output, strictness) {
+async function runRealVerification(report, rubric, output, strictness, depth) {
+  // P4: the lead agent's archetype sets how hard this is checked. `light` (prototyper, sweeper) caps
+  // the check list and skips the adversarial pass entirely; `full` (builder, grower, maintainer) is
+  // the pre-P4 behaviour. Defaults to full so any caller that does not pass a depth is unchanged.
+  const d = depth || handbookArchetype.DEPTH.full;
+  if (d.strictness) strictness = d.strictness;
+  if (Array.isArray(rubric.checks) && rubric.checks.length > d.maxChecks) {
+    rubric = { ...rubric, checks: rubric.checks.slice(0, d.maxChecks) };
+    report.checksTotal = rubric.checks.length;
+  }
   // Grade every check concurrently; stream each result as it lands (real progress, no setTimeout).
   const results = await Promise.all((rubric.checks || []).map(async (check) => {
     const res = await gradeCheckAgainstOutput(check, output, strictness, rubric.name);
@@ -5065,8 +5151,10 @@ async function runRealVerification(report, rubric, output, strictness) {
   const aggregateScore = aggregateScoreOf(results);
 
   // Adversarial overall gate: independent skeptics try to refute that the output meets the rubric.
+  // Skipped at `light` depth — 3 further reviewer calls, and for a SWEEPER the subject already IS a
+  // review, so the skeptics would be re-judging a judgement with no independent evidence.
   let adversarial = null;
-  try {
+  if (d.adversarial) try {
     adversarial = await orchestrator.adversarialVerify(
       `Rubric "${rubric.name}". The work output below is claimed to satisfy this rubric's quality bar. Is that claim SOUND?\n\nOUTPUT:\n${String(output || '').slice(0, 12000)}`,
       { runAgent: executeAgent, log: appendLog },
@@ -5220,6 +5308,13 @@ function startVerification({ exec = null, output, agent = null, category = 'defa
     ? getRubricForSkillRun(skillCriteria, agent)
     : (getRubricForAgent(agent) || getRubricForCategory(category));
 
+  // P4: how hard to check is the LEAD AGENT's archetype, not the caller's preference. A sweeper's
+  // output is already a judgement and a prototyper's is a probe; both get the light pass. With no
+  // agent to ask, fall back to full — the pre-P4 behaviour, and the safe direction to be wrong in.
+  const depth = agent
+    ? handbookArchetype.depthFor(getAgentArchetype(agent))
+    : { ...handbookArchetype.DEPTH.full, depth: 'full' };
+
   const id = uuidv4();
   const report = {
     id,
@@ -5239,8 +5334,13 @@ function startVerification({ exec = null, output, agent = null, category = 'defa
     checksPassed: 0,
     checksPartial: 0,
     checksFailed: 0,
-    checksTotal: rubric.checks.length,
-    strictness,
+    // The archetype that set the depth, and the depth itself. Without these, two runs of the same
+    // agent scored differently would look like model variance rather than a different bar.
+    archetype: agent ? getAgentArchetype(agent) : null,
+    verificationDepth: depth.depth,
+    adversarialRun: depth.adversarial,
+    checksTotal: Math.min(rubric.checks.length, depth.maxChecks),
+    strictness: depth.strictness || strictness,
     autoApprove,
     startedAt: new Date().toISOString(),
     completedAt: null,
@@ -5253,7 +5353,7 @@ function startVerification({ exec = null, output, agent = null, category = 'defa
 
   // Grade for real in the background, streaming each check as it lands. The caller gets the report
   // straight away — a grading pass is many model calls and nobody should hold a request open for it.
-  runRealVerification(report, rubric, output, strictness).then((v) => {
+  runRealVerification(report, rubric, output, strictness, depth).then((v) => {
     report.status = 'completed';
     report.verdict = v.verdict;
     report.score = v.aggregateScore;

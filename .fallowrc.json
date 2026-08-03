@@ -55,6 +55,7 @@
     "tools/test-handbooks.js",
     "tools/test-handbook-rubric.js",
     "tools/test-skill-briefs.js",
+    "tools/test-archetype-routing.js",
     "tools/verify-clone-live.js",
     "ecosystem.config.js",
     "deploy/n8n-ecosystem.config.example.js",
