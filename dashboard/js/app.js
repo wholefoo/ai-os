@@ -88,6 +88,7 @@ function switchView(view) {
     dashboard: loadDashboard,
     agents: loadAgents,
     skills: loadSkills,
+    outcomes: loadOutcomes,
     workflows: loadWorkflows,
     'web-studio': loadWebStudio,
     'brand-kits': loadBrandKits,
@@ -1365,6 +1366,112 @@ async function executeSkill(filename) {
       }
     }},
   ]);
+}
+
+// --- Outcomes (P5) -------------------------------------------------------------------------------
+// The operator states a result and names no agent; the orchestrator picks the team. This panel is
+// deliberately thin — every rule about what makes an outcome runnable lives server-side in
+// lib/outcomes/intake.js, and the form shows whatever it says rather than re-implementing it. A
+// second copy of the validation here would drift, and the copy the operator sees would be the wrong one.
+
+/** Nothing to preload — the form is static and the result area fills after a submit. */
+function loadOutcomes() {}
+
+function submitOutcome() {
+  const btn = document.getElementById('outcomeSubmit');
+  const out = document.getElementById('outcomeResult');
+  const lines = (id) => document.getElementById(id).value.split('\n').map(s => s.trim()).filter(Boolean);
+  const body = {
+    goal: document.getElementById('outcomeGoal').value.trim(),
+    criteria: lines('outcomeCriteria'),
+    guardrails: lines('outcomeGuardrails'),
+    stakes: document.getElementById('outcomeStakes').value,
+  };
+
+  btn.disabled = true;
+  out.innerHTML = '<div class="empty-state">Asking the orchestrator to choose a team…</div>';
+
+  fetchJSON('/api/outcomes', { method: 'POST', body }).then((r) => {
+    // A refusal is the server's validation talking. Show its exact words: they name the missing
+    // piece, and paraphrasing them here is how a form starts lying about why it rejected something.
+    if (!r || r.error) {
+      btn.disabled = false;
+      const problems = (r && r.problems) || [];
+      out.innerHTML = `<div class="skill-exec-progress">
+        <div class="skill-exec-header"><span class="skill-exec-name">Not runnable as stated</span>
+        <span class="skill-exec-status failed">refused</span></div>
+        <ul style="margin:8px 0 0; padding-left:18px; font-size:13px; color:var(--text-secondary);">
+          ${problems.map(p => `<li>${escapeHtml(p)}</li>`).join('') || `<li>${escapeHtml((r && r.error) || 'Unknown error')}</li>`}
+        </ul></div>`;
+      return;
+    }
+    renderOutcomeRun(r);
+    pollOutcome(r.id, btn);
+  }).catch((e) => {
+    btn.disabled = false;
+    out.innerHTML = `<div class="empty-state">Could not reach the server: ${escapeHtml(e.message)}</div>`;
+  });
+}
+
+function pollOutcome(id, btn) {
+  let tries = 0;
+  const tick = async () => {
+    tries++;
+    const all = await fetchJSON('/api/workflows').catch(() => null);
+    const run = Array.isArray(all) ? all.find(w => w.id === id) : null;
+    if (run) renderOutcomeRun(run);
+    // Stop once it settles, or after ~15 minutes. A verdict lands after the run completes, so keep
+    // polling a little past 'completed' to pick the verification up.
+    const settled = run && (run.status === 'failed' || (run.status === 'completed' && run.verification));
+    if (settled || tries > 90) { if (btn) btn.disabled = false; return; }
+    setTimeout(tick, 10000);
+  };
+  setTimeout(tick, 5000);
+}
+
+function renderOutcomeRun(run) {
+  const out = document.getElementById('outcomeResult');
+  const members = run.members || [];
+  const v = run.verification;
+  const phase = run.status === 'running'
+    ? (run.phase === 'selecting-team' ? 'choosing the team' : 'working')
+    : run.status;
+
+  out.innerHTML = `
+    <div class="skill-exec-progress">
+      <div class="skill-exec-header">
+        <span class="skill-exec-name">${escapeHtml((run.goal || 'Stated outcome').slice(0, 90))}</span>
+        <span class="skill-exec-status ${run.status}">${escapeHtml(phase)}</span>
+      </div>
+      <div class="skill-exec-bar-wrap">
+        <div class="skill-exec-bar ${(run.progress || 0) >= 100 ? 'complete' : ''}" style="width:${run.progress || 0}%"></div>
+      </div>
+      ${members.length ? `
+        <div style="margin-top:10px;">
+          <div style="font-size:11px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px;">
+            Team chosen by the orchestrator${run.lead ? ` &middot; lead: ${escapeHtml(run.lead)}` : ''}
+          </div>
+          ${members.map(m => `<div style="font-size:12px;color:var(--text-secondary);margin-bottom:3px;">
+            <span class="skill-agent-chip">${escapeHtml(m.agent)}</span>
+            <span style="color:var(--text-muted);">${escapeHtml(m.status)}</span> — ${escapeHtml((m.role || '').slice(0, 90))}
+          </div>`).join('')}
+        </div>` : ''}
+      <div class="skill-exec-meta">
+        <span>Stakes: ${escapeHtml(run.stakes || 'standard')}</span>
+        ${run.result ? `<span>Result: ${(run.result || '').length} chars</span>` : ''}
+        ${run.droppedAgents && run.droppedAgents.length
+          ? `<span title="the orchestrator named agents that do not exist; they were dropped before dispatch">Dropped: ${escapeHtml(run.droppedAgents.join(', '))}</span>` : ''}
+      </div>
+      ${v ? `<div style="margin-top:10px;font-size:13px;">
+          Verdict: <strong>${escapeHtml(v.verdict)}</strong> &middot; ${v.score}/100
+          <span style="color:var(--text-muted);"> — graded against your criteria plus the lead agent's own</span>
+        </div>` : (run.status === 'completed' ? '<div style="margin-top:10px;font-size:12px;color:var(--text-muted);">Grading…</div>' : '')}
+      ${run.error ? `<div style="margin-top:10px;font-size:13px;color:var(--danger,#e5534b);">${escapeHtml(run.error)}</div>
+        ${run.selectionReply ? `<details style="margin-top:6px;"><summary style="font-size:12px;color:var(--text-muted);cursor:pointer;">what the orchestrator actually said</summary>
+          <pre style="white-space:pre-wrap;font-size:11px;color:var(--text-muted);margin-top:6px;">${escapeHtml(run.selectionReply)}</pre></details>` : ''}` : ''}
+      ${run.result ? `<details style="margin-top:12px;"><summary style="font-size:12px;cursor:pointer;">Show the deliverable</summary>
+        <pre style="white-space:pre-wrap;font-size:12px;margin-top:8px;">${escapeHtml(run.result)}</pre></details>` : ''}
+    </div>`;
 }
 
 // --- Workflows ---

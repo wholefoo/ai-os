@@ -46,6 +46,9 @@
         <a href="#" class="nav-item" data-view="skills">
           <span class="nav-icon">&#9889;</span> Skills
         </a>
+        <a href="#" class="nav-item" data-view="outcomes">
+          <span class="nav-icon">&#9678;</span> Outcomes
+        </a>
         <a href="#" class="nav-item" data-view="workflows">
           <span class="nav-icon">&#9654;</span> Workflows
         </a>
@@ -322,6 +325,60 @@
               <div class="empty-state">No skills executed yet. Click a skill above to launch.</div>
             </div>
           </section>
+        </div>
+
+        <!-- Outcomes View (P5) — state a result, name no agent. The orchestrator picks the team. -->
+        <!-- padding-bottom clears the fixed `chatPanel` dock (~393px) so the submit button can be
+             scrolled above it. Without this the button renders but is unclickable — elementFromPoint
+             at its centre returns the chat panel. Every long view has this, but here the button IS
+             the panel's purpose, so it is fixed locally rather than by restyling every view. -->
+        <div class="view" id="view-outcomes" style="padding-bottom:420px;">
+          <div class="skills-launchpad-header">
+            <div>
+              <span class="radar-title">State an outcome</span>
+              <span class="radar-subtitle">Say what must be true when this is done. The orchestrator picks the team from all 68 agents — you name nobody.</span>
+            </div>
+          </div>
+
+          <!-- .skill-exec-form is what stacks label/field/hint and styles textarea+select. Without
+               this wrapper the labels and hints flow INLINE with the inputs — the form renders as a
+               paragraph with boxes in it. Caught by screenshotting; the DOM check passed either way. -->
+          <div class="skill-exec-form" style="max-width:720px;">
+          <div class="form-group">
+            <label for="outcomeGoal">The outcome<span class="required-star">*</span></label>
+            <textarea id="outcomeGoal" rows="3" placeholder="A one-page competitor brief a salesperson can open on a call tomorrow morning."></textarea>
+            <span class="form-hint">What must be TRUE when this is finished — not the steps to get there.</span>
+          </div>
+
+          <div class="form-group">
+            <label for="outcomeCriteria">What good looks like<span class="required-star">*</span></label>
+            <textarea id="outcomeCriteria" rows="4" placeholder="Every claim cites a source retrieved in this run.&#10;No competitor appears without its pricing."></textarea>
+            <span class="form-hint">One per line, at least two. <strong>These become the checks the result is graded against</strong> — the verdict quotes them back.</span>
+          </div>
+
+          <div class="form-group">
+            <label for="outcomeGuardrails">Guardrails</label>
+            <textarea id="outcomeGuardrails" rows="2" placeholder="Never state a private company's revenue as fact."></textarea>
+            <span class="form-hint">One per line. Each agent's own handbook still applies — this is for anything specific to THIS job.</span>
+          </div>
+
+          <div class="form-group">
+            <label for="outcomeStakes">Stakes</label>
+            <select id="outcomeStakes">
+              <option value="standard" selected>Standard — real work, fully verified</option>
+              <option value="probe">Probe — a throwaway look, graded lightly. Do not ship it.</option>
+              <option value="critical">Critical — irreversible or outward-facing, graded strictly</option>
+            </select>
+            <span class="form-hint">The only thing that lowers verification depth. Leave it on Standard unless you mean it.</span>
+          </div>
+
+          <div style="display:flex; gap:10px; align-items:center; margin-top:4px; flex-wrap:wrap;">
+            <button class="btn btn-primary" id="outcomeSubmit" onclick="submitOutcome()">Give it to the team</button>
+            <span id="outcomeCost" style="font-size:12px;color:var(--text-muted);">Spends real model calls: one to choose the team, one per member, one to synthesize, then grading.</span>
+          </div>
+          </div><!-- /.skill-exec-form -->
+
+          <div id="outcomeResult" style="margin-top:20px; max-width:720px;"></div>
         </div>
 
         <!-- Workflows View -->
