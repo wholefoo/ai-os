@@ -379,6 +379,40 @@ verifier must be a different agent with the criteria and the artifact but not th
     the shape of the platform's real guardrail coverage is now visible for the first time, and it is
     narrower than the number of agents suggests.
 
+**P2 BUILT** — `lib/handbooks/rubric.js`, `getRubricForAgent` in server.js, `tools/test-handbook-rubric.js`.
+
+23. **Verification now grades against the agent's own criteria, with the rubric it names as a
+    floor.** 385 criteria across 68 handbooks became gradeable checks. Before: six generic
+    skill-category buckets, so a pass told you the output was "actionable" and "well formatted"
+    without asking whether THIS agent did ITS job. The route prefers the handbook and falls back to
+    the category — never to an empty check list, which would score 0 and read as catastrophic
+    failure rather than as "no handbook".
+24. **§7 said the middle level was "department"; it is implemented as the `rubric:` key the handbook
+    declares.** Usually the same thing, not always — every SEO agent declares `marketing`,
+    `sysadmin` declares `security`. Naming it after the declaration keeps one source of truth: a
+    handbook says which floor it answers to, rather than the org chart saying it on the handbook's
+    behalf.
+25. **Criterion ids are content-derived and stable**, which is what makes §9 item 14 answerable at
+    all: reordering a list does not renumber its criteria, and editing one gives it a NEW id because
+    an edited criterion is a different claim whose old history no longer applies. Instrumenting
+    which criteria ever fail — the actual settlement of the criteria-vs-Gotchas overlap — needs
+    exactly that property.
+26. **A FOURTH silent parsing defect, and the worst of them: every multi-line criterion was being
+    TRUNCATED at its first line.** `sectionBullets` skipped wrapped continuations instead of joining
+    them, so a grader would have been handed `"Every citation is a real, resolvable URL fetched in
+    THIS session. Not a search snippet, not a"` and asked to judge against it. Criteria in this
+    corpus wrap constantly; the longest is 187 characters and was arriving as ~90.
+
+    **Nothing failed. The content just quietly halved.** P1's validator only ever COUNTED bullets,
+    so five batches of green runs said nothing about the text. It surfaced the first time the actual
+    strings were printed — in a before/after demo written to show the operator what P2 changed, not
+    in any test. **Four for four this phase: every defect in my own tooling mis-stated or degraded
+    data rather than breaking visibly.** The lesson is now explicit: for anything derived from
+    files, assert on a VALUE, not only on a count.
+27. **The report records which standard it was graded against** (`agent`, `handbookChecks`,
+    `floorChecks`). "Scored 72" is unreadable a week later without knowing whether the bar was the
+    agent's own criteria or six generic ones.
+
 ## 10. What P1 changed about the plan
 
 **P2 (re-key verification) is now unblocked and better specified.** Every agent has criteria in a

@@ -2313,6 +2313,7 @@ app.put('/api/bookings/:id/cancel', requireAdmin, (req, res) => {
 const prospectsLib = require('./lib/leads/prospects');
 const { safeFetch, safeRequest } = require('./lib/net/safe-fetch');
 const slackNotify = require('./lib/notify/slack');
+const handbookRubric = require('./lib/handbooks/rubric');
 const a2aBudget = require('./lib/a2a/budget');
 const prospectRuns = loadState('prospect_runs', []);
 
@@ -4897,6 +4898,27 @@ function loadVerificationRubrics() {
   }
 }
 
+/**
+ * The rubric for an AGENT: its own handbook criteria over the floor its handbook names.
+ *
+ * P2. Verification used to be keyed on a SKILL's category — six generic buckets, so a pass told you
+ * the output was "actionable" and "well formatted" without ever asking whether THIS agent did ITS
+ * job. Every agent now carries criteria that say exactly what its job is, and P3 removes the skill
+ * as an execution unit entirely, which would leave a category-keyed rubric with no key.
+ *
+ * Returns null when the agent has no handbook, so the caller can fall back rather than grade against
+ * an empty check list — an empty rubric scores 0 and would read as a catastrophic failure.
+ */
+function getRubricForAgent(agentName) {
+  const file = path.join(CLAUDE_DIR, 'agents', `${path.basename(String(agentName || ''))}.md`);
+  if (!agentName || !fs.existsSync(file)) return null;
+  const content = fs.readFileSync(file, 'utf-8');
+  const checks = handbookRubric.checksFromHandbook(content);
+  if (!checks.length) return null;
+  const floor = getRubricForCategory(handbookRubric.floorNameFor(content));
+  return handbookRubric.mergeRubric(checks, floor, { agent: agentName });
+}
+
 function getRubricForCategory(category) {
   const rubrics = loadVerificationRubrics();
   const defaultRubric = rubrics.default || { checks: [] };
@@ -5115,7 +5137,7 @@ app.get('/api/verify/:id', (req, res) => {
 
 // API: Run verification on an execution
 app.post('/api/verify/run', requireAdmin, heavyLimiter, async (req, res) => {
-  const { executionId, rubricCategory, strictness = 'standard', autoApprove = true } = req.body;
+  const { executionId, rubricCategory, agent, strictness = 'standard', autoApprove = true } = req.body;
 
   const exec = executionId ? workflows.get(executionId) : null;
 
@@ -5126,7 +5148,12 @@ app.post('/api/verify/run', requireAdmin, heavyLimiter, async (req, res) => {
     category = skill?.meta?.category || exec.category || category;
   }
 
-  const rubric = getRubricForCategory(category);
+  // P2: prefer the AGENT's own handbook criteria, with the rubric it names underneath as a floor.
+  // A generic category rubric can only ask whether the output is actionable and well-formatted; the
+  // handbook asks whether this agent did its job. Falls back to the category when no agent is named
+  // or it has no criteria — never to an empty check list, which would score 0 and read as a failure.
+  const agentName = agent || (exec && exec.agents && exec.agents.length === 1 ? exec.agents[0] : null);
+  const rubric = getRubricForAgent(agentName) || getRubricForCategory(category);
 
   // The ACTUAL output to grade: explicit body.output, else the linked execution's result/steps.
   let output = typeof req.body.output === 'string' ? req.body.output : '';
@@ -5146,6 +5173,12 @@ app.post('/api/verify/run', requireAdmin, heavyLimiter, async (req, res) => {
     skillName: exec?.skillName || req.body.skillName || 'manual',
     category,
     rubricName: rubric.name,
+    // Which standard this run was actually graded against. Without these two a report cannot be
+    // read later: "scored 72" means nothing unless you know whether it was judged on the agent's
+    // own criteria or on six generic ones.
+    agent: rubric.agent || null,
+    handbookChecks: rubric.handbookCheckCount || 0,
+    floorChecks: rubric.floorCheckCount == null ? (rubric.checks || []).length : rubric.floorCheckCount,
     status: 'running',
     verdict: null,
     score: 0,

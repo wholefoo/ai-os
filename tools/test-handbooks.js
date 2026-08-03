@@ -93,8 +93,10 @@ assert(schema.sectionBullets('## A\n- one\n', 'Missing').length === 0, 'an absen
 assert(schema.sectionBullets('## A\n- one\n- two\nDONE WHEN: something\n- three\n', 'A').length === 2,
   'a trailing prose line ends the list — bullets after it are not criteria');
 assert(schema.sectionBullets('## A\n- one\n\n- two\n', 'A').length === 2, 'a blank line inside a list does not end it');
-assert(schema.sectionBullets('## A\n- one\n  wrapped continuation\n- two\n', 'A').length === 2,
-  'an indented continuation of a wrapped bullet does not end the list, and is not a second bullet');
+const wrapped = schema.sectionBullets('## A\n- one that runs\n  onto a second line\n- two\n', 'A');
+assert(wrapped.length === 2, 'an indented continuation is not a second bullet');
+assert(wrapped[0] === 'one that runs onto a second line',
+  'a wrapped bullet is JOINED, not truncated at its first line — criteria in this corpus wrap constantly, and a truncated one is handed to a grader as half a sentence to judge against');
 assert(schema.sectionBullets('## what good looks like\n- x\n- y\n', 'What good looks like').length === 2,
   'heading match is case-insensitive — a handbook should not fail on capitalisation');
 
