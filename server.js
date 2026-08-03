@@ -2315,6 +2315,8 @@ const { safeFetch, safeRequest } = require('./lib/net/safe-fetch');
 const slackNotify = require('./lib/notify/slack');
 const handbookRubric = require('./lib/handbooks/rubric');
 const handbookArchetype = require('./lib/handbooks/archetype');
+const handbookSchema = require('./lib/handbooks/schema');
+const outcomeIntake = require('./lib/outcomes/intake');
 const skillBrief = require('./lib/skills/brief');
 const a2aBudget = require('./lib/a2a/budget');
 const prospectRuns = loadState('prospect_runs', []);
@@ -4912,6 +4914,105 @@ app.post('/api/skills/:name/execute', requireAdmin, heavyLimiter, (req, res) => 
   });
 });
 
+// ---- P5: stated outcomes ------------------------------------------------------------------------
+
+/** Every real agent, as {name, description} — the roster the orchestrator picks a team from. */
+function agentRoster() {
+  const dir = path.join(CLAUDE_DIR, 'agents');
+  return fs.readdirSync(dir).filter((f) => f.endsWith('.md')).map((f) => {
+    const meta = handbookSchema.parseFrontmatter(handbookSchema.split(fs.readFileSync(path.join(dir, f), 'utf-8')).frontmatter);
+    return { name: f.replace(/\.md$/, ''), description: String(meta.description || '').slice(0, 220) };
+  });
+}
+
+/**
+ * Take a stated outcome, have the orchestrator choose a team, then run it as a P3 brief.
+ *
+ * The operator names no agent. The orchestrator selects from the real roster and every name it
+ * returns is checked against the corpus before dispatch — a model choosing freely will invent one,
+ * and `executeAgent` fails hard on a name with no file.
+ */
+async function runStatedOutcome(execution, outcome) {
+  const roster = agentRoster();
+  const known = roster.map((r) => r.name);
+
+  execution.phase = 'selecting-team';
+  broadcast({ event: 'workflow_update', data: execution });
+
+  const pick = await executeAgent('orchestrator',
+    outcomeIntake.buildIntakeTask(outcome, roster), { maxTokens: 1500 });
+  if (!pick.ok) throw new Error(`team selection failed: ${pick.error}`);
+
+  const sel = outcomeIntake.parseTeamSelection(pick.content, known, skillBrief.MAX_TEAM);
+  // Record what the orchestrator ACTUALLY said whenever no team came back. Without this the failure
+  // reads "selected no valid agents" and there is no way to tell a model that replied in prose from
+  // one that named agents which do not exist — two problems with completely different fixes.
+  if (!sel.team.length) {
+    execution.selectionReply = String(pick.content || '').slice(0, 600);
+    execution.selectionParsedJson = sel.parsed;
+    execution.droppedAgents = sel.dropped;
+  }
+  if (sel.dropped.length) {
+    // Recorded rather than silently ignored: an invented name is the P3 defect recurring at runtime,
+    // and if the orchestrator does it often the roster prompt is what needs fixing.
+    execution.log.push({ t: Date.now(), msg: `orchestrator named ${sel.dropped.length} agent(s) that do not exist: ${sel.dropped.join(', ')}` });
+    appendLog(`OUTCOME_UNKNOWN_AGENTS: ${sel.dropped.join(', ')}`);
+  }
+  if (!sel.team.length) {
+    throw new Error(`the orchestrator selected no valid agents${sel.dropped.length ? ` (it named: ${sel.dropped.join(', ')})` : ''}`);
+  }
+
+  execution.selectedBy = 'orchestrator';
+  execution.droppedAgents = sel.dropped;
+  execution.members = sel.team.map((m, i) => ({ agent: m.name, role: m.why, status: 'pending', index: i }));
+  execution.agents = sel.team.map((m) => m.name);
+  execution.lead = sel.team[0].name;
+  execution.phase = 'working';
+  broadcast({ event: 'workflow_update', data: execution });
+
+  // From here it IS a P3 brief — same runner, same verification path. An outcome and a skill differ
+  // only in where the team came from, and giving them two runners would let the two drift.
+  return runSkillOutcome(execution, {
+    goal: outcome.goal,
+    criteria: outcome.criteria,
+    guardrails: outcome.guardrails,
+    outputs: [],
+    team: sel.team,
+    lead: sel.team[0].name,
+  }, { depthOverride: outcomeIntake.depthForStakes(outcome.stakes) });
+}
+
+app.post('/api/outcomes', requireAdmin, heavyLimiter, (req, res) => {
+  const v = outcomeIntake.validateOutcome(req.body || {});
+  if (!v.ok) return res.status(400).json({ error: 'the outcome cannot be run as stated', problems: v.errors, warnings: v.warnings });
+
+  const outcome = v.outcome;
+  const id = uuidv4();
+  const execution = {
+    id, skill: null, skillName: 'stated outcome', status: 'running', phase: 'selecting-team',
+    params: {},
+    goal: outcome.goal,
+    criteria: outcome.criteria,
+    stakes: outcome.stakes,
+    budgetUsd: outcome.budgetUsd,
+    deadline: outcome.deadline,
+    members: [], agents: [], lead: null,
+    startedAt: new Date().toISOString(),
+    log: [], progress: 0,
+  };
+  workflows.set(id, execution);
+  logActivity('outcome', `Outcome stated: ${outcome.goal.slice(0, 80)}`, { executionId: id });
+  appendLog(`OUTCOME: ${id} stakes=${outcome.stakes} -> orchestrator`);
+  res.json({ ...execution, warnings: v.warnings });
+
+  runStatedOutcome(execution, outcome).catch((e) => {
+    execution.status = 'failed'; execution.error = e.message;
+    execution.completedAt = new Date().toISOString();
+    broadcast({ event: 'workflow_update', data: execution });
+    appendLog(`OUTCOME_ERR: ${id} -> ${e.message}`);
+  });
+});
+
 /**
  * Run a skill as an OUTCOME, not a procedure (P3).
  *
@@ -4931,7 +5032,7 @@ app.post('/api/skills/:name/execute', requireAdmin, heavyLimiter, (req, res) => 
  * `## Process` step. seo-audit had 8 steps and now has 5 members plus a synthesis — fewer calls, and
  * five of the six run concurrently.
  */
-async function runSkillOutcome(execution, brief) {
+async function runSkillOutcome(execution, brief, opts = {}) {
   const mark = (i, status, out) => {
     const m = execution.members[i];
     if (m) {
@@ -4998,6 +5099,9 @@ async function runSkillOutcome(execution, brief) {
         agent: brief.lead,
         skillName: execution.skillName,
         skillCriteria: brief.criteria,
+        // P5: a stated outcome's STAKES decide the depth. A skill run passes nothing and keeps the
+        // archetype-derived default, so this changes only the path that actually states its stakes.
+        depthOverride: opts.depthOverride || null,
       });
     } catch (e) {
       appendLog(`SKILL_VERIFY_ERR: ${execution.skillName} -> ${e.message}`);
@@ -5303,7 +5407,8 @@ app.get('/api/verify/:id', (req, res) => {
  * @param {object[]} [skillCriteria] the skill brief's own criteria, layered ON TOP of the agent's.
  */
 function startVerification({ exec = null, output, agent = null, category = 'default',
-  skillName = 'manual', skillCriteria = null, strictness = 'standard', autoApprove = true } = {}) {
+  skillName = 'manual', skillCriteria = null, strictness = 'standard', autoApprove = true,
+  depthOverride = null } = {}) {
   const rubric = (skillCriteria && skillCriteria.length)
     ? getRubricForSkillRun(skillCriteria, agent)
     : (getRubricForAgent(agent) || getRubricForCategory(category));
@@ -5311,9 +5416,13 @@ function startVerification({ exec = null, output, agent = null, category = 'defa
   // P4: how hard to check is the LEAD AGENT's archetype, not the caller's preference. A sweeper's
   // output is already a judgement and a prototyper's is a probe; both get the light pass. With no
   // agent to ask, fall back to full — the pre-P4 behaviour, and the safe direction to be wrong in.
-  const depth = agent
-    ? handbookArchetype.depthFor(getAgentArchetype(agent))
-    : { ...handbookArchetype.DEPTH.full, depth: 'full' };
+  //
+  // P5: a stated OUTCOME overrides this. Stakes are a property of the work — "is this a probe or is
+  // it going to a customer" — which is the question P4 measured that an archetype cannot answer.
+  // When an outcome states its stakes, that wins; otherwise the agent's archetype decides.
+  const depth = depthOverride
+    || (agent ? handbookArchetype.depthFor(getAgentArchetype(agent))
+      : { ...handbookArchetype.DEPTH.full, depth: 'full' });
 
   const id = uuidv4();
   const report = {

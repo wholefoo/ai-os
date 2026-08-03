@@ -10,7 +10,30 @@
   },
   "permissions": {
     "allow": [
-      "mcp__firecrawl__*"
+      "mcp__firecrawl__*",
+      "Bash(npx fallow dead-code)",
+      "Bash(npx fallow dead-code *)",
+      "Bash(npx fallow dupes)",
+      "Bash(npx fallow dupes *)",
+      "Bash(node tools/test-all.js)",
+      "Bash(node tools/test-all.js *)",
+      "Bash(node tools/seclint.js --ci)",
+      "Bash(node tools/seclint.js --ci *)",
+      "Bash(node tools/test-handbooks.js)",
+      "Bash(node tools/test-handbooks.js *)",
+      "Bash(node tools/check-copy-drift.js)",
+      "Bash(node tools/check-copy-drift.js *)",
+      "mcp__Claude_Preview__preview_screenshot",
+      "mcp__Claude_Preview__preview_logs",
+      "mcp__Claude_Preview__preview_snapshot",
+      "mcp__Claude_Preview__preview_console_logs",
+      "mcp__Claude_Browser__preview_logs",
+      "mcp__Claude_Browser__read_page",
+      "mcp__Claude_Browser__find",
+      "mcp__Claude_Browser__get_page_text",
+      "mcp__Claude_Browser__read_console_messages",
+      "mcp__Claude_Browser__tabs_context",
+      "mcp__ccd_session_mgmt__list_sessions"
     ]
   },
   "hooks": {

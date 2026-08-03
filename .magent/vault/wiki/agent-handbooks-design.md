@@ -511,3 +511,44 @@ concrete requirement rather than a guess.
 `safety` it takes no action and blocks nothing automatically — but its verdicts do gate delivery.
 Whether it belongs on the strategic tier is a cost decision, not a correctness one, and it is
 deliberately left as-is rather than moved quietly.
+
+## 13. What P5 changed about the plan
+
+P5 gives an operator a way to state an outcome without naming an agent, and closes the arc: the
+criteria they type become the checks the result is graded against.
+
+**It does NOT route to a department, and §7 was wrong to assume it could.** All 68 handbooks declare a
+`department:`, but those values are a TAXONOMY rather than a team — `board` holds reviewer,
+security-auditor, synthesis, report-compiler and research-architect; `product` holds the seven LLM
+consultants plus product-factory and researcher. A department LEAD is not derivable either:
+`escalates_to` appears on 27 of 68 agents, four departments declare none, the tally names no
+in-department lead for 5 of 11, and engineering is a two-way tie. Naming the missing leads would put
+a fabricated org chart into the routing path — the same class of claim P3 deleted when it found
+teams of `**Researcher**` resolving to no file. So an outcome goes to the ORCHESTRATOR, whose stated
+job is exactly this, and which selects from the real roster. Department routing stays available once
+departments describe teams rather than tags; that is a corpus decision, not a code one.
+
+**`stakes` is the signal P4 went looking for and could not find.** probe | standard | critical, stated
+with the work rather than inferred from the worker. `standard` is the default, so silence buys full
+verification and lowering the bar has to be a choice. This is what P4's depth machinery was built for
+and deliberately left unused.
+
+**An outcome and a skill share one runner.** Once the team is chosen, `runStatedOutcome` hands off to
+P3's `runSkillOutcome` — they differ only in where the team came from. Two runners would drift, and
+the drift would show up as the same work graded differently depending on how it was started.
+
+**The orchestrator's selection is filtered against the real roster.** A model choosing freely will
+eventually name an agent that does not exist; `executeAgent` fails hard on that. Unknown names are
+dropped and recorded rather than passed through.
+
+**Non-determinism is real here and worth knowing.** The first live dispatch failed — the orchestrator
+answered in prose instead of the requested JSON and no team came back. The second, identical request
+succeeded. Team selection is a model call and will fail this way sometimes; the run now records what
+the orchestrator actually said, because "selected no valid agents" cannot distinguish a prose reply
+from invented agent names, and those need different fixes. A retry is the obvious next hardening and
+is deliberately not in P5 — it should be added with a bound, not a loop.
+
+**Verified end to end, live.** Stated outcome -> orchestrator chose researcher/writer/reviewer ->
+4,146-character deliverable -> 16 checks (2 from the operator's own criteria, 14 from the researcher's
+handbook and its floor) -> verdict `review`, 65, citing the operator's own sentence back:
+"Every claim cites a source retrieved in this run."
