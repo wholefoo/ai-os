@@ -19,7 +19,7 @@ const path = require('path');
 const vm = require('vm');
 const profile = require('../lib/org/profile');
 const persona = require('../lib/business-clone/persona');
-const { assert, done } = require('./test-util');
+const { assert, done, serverSource } = require('./test-util');
 
 const src = fs.readFileSync(path.join(__dirname, '..', 'dashboard', 'js', 'clones.js'), 'utf8');
 const ctx = {
@@ -100,7 +100,7 @@ assert(!ctx.clPersonaHtml(EMPLOYEE, {}).includes('from the company'),
 // this suite was written for: both render functions worked, and clRenderDetail dropped the block.
 assert(/clPersonaFormHtml\(c\.persona \|\| \{\}, c\.inherited\)/.test(src) && /clPersonaHtml\(c\.persona \|\| \{\}, c\.inherited\)/.test(src),
   'clRenderDetail PASSES c.inherited to both renderers — a correct renderer called without it is the whole defect');
-assert(/inherited: orgProfile\.inheritedFrom\(/.test(fs.readFileSync(path.join(__dirname, '..', 'server.js'), 'utf8')),
+assert(/inherited: orgProfile\.inheritedFrom\(/.test(serverSource()),
   'and the clone detail route still sends an `inherited` block for it to read');
 
 done();

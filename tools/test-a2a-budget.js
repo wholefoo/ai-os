@@ -8,7 +8,7 @@
 // "budget enforced BEFORE the money is spent" are different claims and only the second one is
 // worth anything.
 const budget = require('../lib/a2a/budget');
-const { assert, done } = require('./test-util');
+const { assert, done, serverSource } = require('./test-util');
 
 const RATE = { input: 5.00, output: 25.00 };   // Opus 4.8, per 1M
 const DAY = '2026-08-01';
@@ -95,9 +95,10 @@ assert(budget.remainingUsd({ date: DAY, spentUsd: 5, reservedUsd: 0 }, 1.00, DAY
 
 // --- the route actually reserves before it spends --------------------------------------------------
 // The module can be perfect while the route keeps its old check-then-charge. That gap IS the bug.
-const fs = require('fs');
-const path = require('path');
-const src = fs.readFileSync(path.join(__dirname, '..', 'server.js'), 'utf8');
+// serverSource() normalises CRLF, which MATTERS here: the two assertions below match a multi-line
+// literal, and a branch checkout on Windows rewrites server.js with CRLF, breaking the match while
+// the reservation logic is entirely untouched. It reads exactly like a code regression and is not one.
+const src = serverSource();
 const reserveAt = src.indexOf('a2aBudget.hold(');
 const executeAt = src.indexOf('const result = await executeAgent(\n    skill.agent,');
 const settleAt = src.indexOf('a2aBudget.settle(');

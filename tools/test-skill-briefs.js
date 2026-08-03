@@ -12,7 +12,7 @@ const fs = require('fs');
 const path = require('path');
 const brief = require('../lib/skills/brief');
 const schema = require('../lib/handbooks/schema');
-const { assert, done } = require('./test-util');
+const { assert, done, serverSource } = require('./test-util');
 
 const AGENTS_DIR = path.join(__dirname, '..', '.claude', 'agents');
 const SKILLS_DIR = path.join(__dirname, '..', '.claude', 'skills');
@@ -125,7 +125,7 @@ assert(refs.some((f) => brief.parseBrief(fs.readFileSync(path.join(SKILLS_DIR, f
   'at least one reference DOES keep a `## Process` — proving the exemption is real and not just unexercised');
 
 // A reference must be refused by the execute route rather than dispatched to nobody.
-const srcRoute = fs.readFileSync(path.join(__dirname, '..', 'server.js'), 'utf8');
+const srcRoute = serverSource();
 assert(/if \(!v\.brief\.dispatchable\)/.test(srcRoute), 'the execute route refuses a reference before spending a token');
 assert(/skillBrief\.validateBrief\(content, \{ agentNames \}\)/.test(srcRoute),
   'and validates the brief against the REAL agent files first — the check that would have caught the unresolvable team names');
@@ -139,7 +139,7 @@ assert(/skillCriteria: brief\.criteria/.test(srcRoute),
   'and hands over the brief\'s own criteria, so the run is graded on what the agent was told it would be graded on');
 
 // And the server no longer carries the machinery that read it.
-const src = fs.readFileSync(path.join(__dirname, '..', 'server.js'), 'utf8');
+const src = serverSource();
 assert(!/function parseSkillSteps/.test(src), 'parseSkillSteps is deleted — the step parser is gone, not orphaned');
 assert(!/function runSkillExecution/.test(src), 'runSkillExecution is deleted');
 assert(/function runSkillOutcome/.test(src), 'and replaced by the outcome runner');

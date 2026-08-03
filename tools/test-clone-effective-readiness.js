@@ -19,7 +19,7 @@ const store = require('../lib/business-clone/store');
 const onboarding = require('../lib/business-clone/onboarding');
 const persona = require('../lib/business-clone/persona');
 const profile = require('../lib/org/profile');
-const { assert, done } = require('./test-util');
+const { assert, done, serverSource } = require('./test-util');
 
 const ORG = profile.normalizeProfile({
   ownerEmail: 'owner@example.com',
@@ -138,7 +138,7 @@ assert(soloRec.status === 'completed', 'and their onboarding still completes wit
 // two functions beside it were left reading clone.persona.
 const fs = require('fs');
 const path = require('path');
-const src = fs.readFileSync(path.join(__dirname, '..', 'server.js'), 'utf8');
+const src = serverSource();
 
 // Bounded by `;` rather than `)`: these calls contain nested calls of their own
 // (`listClones(businessClones, clientId)`), so a `[^)]*` window stops at the first inner paren and

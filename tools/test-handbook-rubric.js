@@ -8,7 +8,7 @@ const fs = require('fs');
 const path = require('path');
 const rubric = require('../lib/handbooks/rubric');
 const schema = require('../lib/handbooks/schema');
-const { assert, done } = require('./test-util');
+const { assert, done, serverSource } = require('./test-util');
 
 const HB = [
   '---', 'name: fixture', 'description: d', 'rubric: research', '---', '',
@@ -126,7 +126,7 @@ for (const f of files) {
 
 // --- the server actually uses it -------------------------------------------------------------------
 // The module can be perfect while the route keeps grading by category. That gap IS the phase.
-const src = fs.readFileSync(path.join(__dirname, '..', 'server.js'), 'utf8');
+const src = serverSource();
 assert(/function getRubricForAgent\(/.test(src), 'server.js resolves a rubric for an agent');
 // P3 moved this out of the route into startVerification, which the skill runner also calls, and added
 // a third layer on top: a SKILL brief's own criteria. The precedence to protect is unchanged —

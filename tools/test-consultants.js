@@ -2,7 +2,7 @@
 // canonical count guard (registry must stay at 66 so the auto-research drift guard matches).
 const fs = require('fs');
 const path = require('path');
-const { assert, done } = require('./test-util');
+const { assert, done, serverSource } = require('./test-util');
 
 const agentsDir = path.join(__dirname, '..', '.claude', 'agents');
 const CONSULTANTS = ['anthropic', 'openai', 'gemini', 'deepseek', 'grok', 'perplexity', 'manus'];
@@ -19,7 +19,7 @@ for (const slug of CONSULTANTS) {
 }
 
 // --- provider-routing map in server.js covers all seven and points each somewhere real
-const server = fs.readFileSync(path.join(__dirname, '..', 'server.js'), 'utf8');
+const server = serverSource();
 const mapBlock = (server.match(/const CONSULTANT_PROVIDER = \{([\s\S]*?)\};/) || [])[1] || '';
 assert(mapBlock, 'CONSULTANT_PROVIDER map present in server.js');
 for (const slug of CONSULTANTS) {

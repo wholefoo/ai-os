@@ -4,7 +4,7 @@
 const persona = require('../lib/business-clone/persona');
 const onboarding = require('../lib/business-clone/onboarding');
 
-const { assert, done } = require('./test-util');
+const { assert, done, serverSource } = require('./test-util');
 
 const usablePersona = persona.normalize({
   identity: { ownerName: 'Dana', role: 'Owner', businessName: 'W', industry: 'D', whatTheyDo: 'Equipment', yearsExperience: 18 },
@@ -146,9 +146,7 @@ assert(s.disclosureVersion === onboarding.DISCLOSURE_VERSION, 'summary carries t
 //
 // A cross-module call is only correct relative to a module the caller cannot see, so check it here
 // rather than trusting a rename to be careful. Cheap, and it catches the whole class.
-const fs = require('fs');
-const path = require('path');
-const serverSrc = fs.readFileSync(path.join(__dirname, '..', 'server.js'), 'utf8');
+const serverSrc = serverSource();
 
 const WIRING = {
   cloneOnb: require('../lib/business-clone/onboarding'),

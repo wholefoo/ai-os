@@ -6,7 +6,7 @@
 // as configuration and fired a real request at a string that was never a URL. It failed every
 // time, in stderr, while the dashboard's activity log recorded "Slack notification sent".
 const slack = require('../lib/notify/slack');
-const { assert, done } = require('./test-util');
+const { assert, done, serverSource } = require('./test-util');
 
 // --- the placeholder, and everything like it ----------------------------------------------------
 // Note these are NOT matched by a list of known placeholder spellings. They fail because they are
@@ -83,9 +83,7 @@ assert(/Untitled/.test(slack.approvalPayload({}).text), 'with an honest placehol
 
 // --- the send sites actually use the guard --------------------------------------------------------
 // The module can be perfect while a caller keeps its own `if (url)`. That gap is the whole defect.
-const fs = require('fs');
-const path = require('path');
-const src = fs.readFileSync(path.join(__dirname, '..', 'server.js'), 'utf8');
+const src = serverSource();
 assert(/slackNotify\.webhookReady\(notificationConfig\.slack\.webhookUrl\)/.test(src),
   'sendNotification guards on webhookReady, not on truthiness');
 assert(/slackNotify\.resolveWebhook\(settings\.notifications\?\.slack_webhook_url\)/.test(src),
