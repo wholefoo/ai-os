@@ -1132,8 +1132,15 @@ function renderSkillsGrid(skills) {
       </div>
     ` : '';
 
+    // A REFERENCE is a procedure for a person or for Claude Code in-session — the pre-commit gate,
+    // the pre-flight interrogation, an install guide. There is no agent to hand it to, and the API
+    // refuses it. Offering a Launch button anyway is a dead-end click, so these open for READING
+    // instead: they are genuinely useful to follow, just not to dispatch.
+    const isReference = s.dispatchable === false;
+    const action = isReference ? `openSkillReference('${s.filename}')` : `executeSkill('${s.filename}')`;
+
     return `
-      <div class="skill-card" onclick="executeSkill('${s.filename}')">
+      <div class="skill-card" onclick="${action}">
         <div class="skill-card-icon">${icon}</div>
         <div class="skill-card-header">
           <span class="skill-name">${capitalize(name.replace(/-/g, ' '))}</span>
@@ -1143,9 +1150,9 @@ function renderSkillsGrid(skills) {
         ${stepsPreview}
         ${agentsPreview}
         <div class="skill-meta">
-          <span class="skill-time">${time}${paramCount > 0 ? `<span class="skill-param-count">${paramCount} params</span>` : ''}</span>
-          <button class="skill-run-btn large" onclick="event.stopPropagation(); executeSkill('${s.filename}')">
-            <span class="run-icon">&#9654;</span> Launch
+          <span class="skill-time">${isReference ? 'read-only' : time}${!isReference && paramCount > 0 ? `<span class="skill-param-count">${paramCount} params</span>` : ''}</span>
+          <button class="skill-run-btn large" onclick="event.stopPropagation(); ${action}">
+            ${isReference ? '<span class="run-icon">&#9776;</span> Open' : '<span class="run-icon">&#9654;</span> Launch'}
           </button>
         </div>
       </div>
@@ -1211,6 +1218,30 @@ function renderSkillsExecutions() {
       </div>
     `;
   }).join('');
+}
+
+/**
+ * Open a REFERENCE skill for reading. No dispatch, no parameters, no cost.
+ *
+ * Rendered as escaped preformatted text rather than parsed markdown: the body is operator-authored
+ * and may contain shell snippets and angle brackets, and a half-correct markdown renderer here would
+ * be both an XSS surface and a way to silently mangle a command someone is about to run.
+ */
+async function openSkillReference(filename) {
+  const skill = await fetchJSON(`/api/skills/${filename}`).catch(() => null);
+  if (!skill || skill.error) {
+    showModal('Could not open', `<div class="empty-state">${escapeHtml((skill && skill.error) || 'Skill not found')}</div>`,
+      [{ label: 'Close', class: 'btn-secondary', action: closeModal }]);
+    return;
+  }
+  const name = skill.meta?.name || filename.replace('.md', '');
+  showModal(capitalize(name.replace(/-/g, ' ')), `
+    <div style="font-size:12px;color:var(--text-muted);margin-bottom:10px;">
+      A procedure for a person or for Claude Code in-session — there is no agent to hand it to, so it
+      is not dispatchable. Follow it yourself.
+    </div>
+    <pre style="white-space:pre-wrap;font-size:12px;line-height:1.5;max-height:60vh;overflow:auto;">${escapeHtml(skill.body || '')}</pre>
+  `, [{ label: 'Close', class: 'btn-secondary', action: closeModal }]);
 }
 
 async function executeSkill(filename) {

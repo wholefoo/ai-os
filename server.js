@@ -3415,6 +3415,13 @@ function readDir(dir, ext = '.md') {
 }
 
 function parseFrontmatter(text) {
+  // CRLF is normalised FIRST. Without this the regex below cannot match a file checked out with
+  // CRLF — which is every .md on a Windows working copy — and the function silently degrades to
+  // `{meta:{}, body: <the whole file including its frontmatter>}`. Nothing throws: the dashboard
+  // just loses every category, description and estimated_time, and any consumer of `body` gets the
+  // YAML header as content. Production (LF) was unaffected, which is exactly why it survived.
+  // Same fix as lib/handbooks/schema.js split() and tools/test-util.js serverSource().
+  text = String(text == null ? '' : text).replace(/\r\n?/g, '\n');
   const match = text.match(/^---\n([\s\S]*?)\n---\n([\s\S]*)$/);
   if (match) {
     try {
