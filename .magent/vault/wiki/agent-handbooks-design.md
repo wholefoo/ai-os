@@ -587,3 +587,28 @@ the guards doing their job on a single observation.
 
 **Next:** this needs ~8 real verification runs before it says anything. It accumulates on its own;
 check `/api/verify/criteria` once the platform has done a week of normal work.
+
+## 15. Bounded retry on team selection
+
+Team selection is a model call and is non-deterministic — one live dispatch answered in prose instead
+of the requested JSON and the identical retry succeeded. `MAX_SELECTION_ATTEMPTS = 2`.
+
+**What is retryable matters more than the count.** A reply that could not be read is a FORMAT failure
+and is worth asking again. A failed CALL — budget exhausted, provider error, agent missing — will not
+fix itself, and retrying it spends the money twice before failing anyway. Only the first kind loops;
+`!pick.ok` throws immediately.
+
+**The second attempt is not a repeat.** A blind retry is the same coin flip. `buildRetryTask` names
+what went wrong, and the two failure modes get different corrections: a prose reply is told the shape
+was wrong, invented names are quoted back and told to copy exactly from the list. Each retry carries
+the full ask, because the call has no conversation history to rely on.
+
+**The ceiling is the point.** Each attempt is a full-roster prompt. If the orchestrator cannot produce
+a parseable team twice, a third is unlikely to differ and the operator is better served seeing the
+failure than paying for more of it. `selectionAttempts` is recorded on the execution, so how often the
+retry actually fires is measurable rather than assumed.
+
+**Verified live to the extent it can be:** a real dispatch recorded `selectionAttempts: 1` and
+succeeded first time, and `stakes: probe` correctly produced light depth (6 checks, no adversarial
+pass, lenient bands). **The retry BRANCH itself has not fired in a live run** — it needs the ~1-in-3
+prose failure to occur. When it does, `selectionAttempts: 2` on the workflow record is the evidence.

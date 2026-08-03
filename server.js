@@ -4947,11 +4947,37 @@ async function runStatedOutcome(execution, outcome) {
   execution.phase = 'selecting-team';
   broadcast({ event: 'workflow_update', data: execution });
 
-  const pick = await executeAgent('orchestrator',
-    outcomeIntake.buildIntakeTask(outcome, roster), { maxTokens: 1500 });
-  if (!pick.ok) throw new Error(`team selection failed: ${pick.error}`);
+  // Ask for a team, with a BOUNDED retry. Team selection is a model call and is non-deterministic:
+  // one live dispatch answered in prose instead of JSON and the identical retry succeeded.
+  //
+  // What is retryable matters more than the count. A reply we could not read is a FORMAT failure and
+  // is worth asking again. A failed CALL — budget exhausted, provider error, agent missing — will not
+  // fix itself, and retrying it just spends the money twice before failing anyway. So only the first
+  // kind loops, and the retry names what went wrong rather than repeating the same prompt.
+  let sel = null;
+  let pick = null;
+  for (let attempt = 1; attempt <= outcomeIntake.MAX_SELECTION_ATTEMPTS; attempt++) {
+    execution.selectionAttempts = attempt;
+    const task = attempt === 1
+      ? outcomeIntake.buildIntakeTask(outcome, roster)
+      : outcomeIntake.buildRetryTask(outcome, roster, { dropped: (sel && sel.dropped) || [] });
 
-  const sel = outcomeIntake.parseTeamSelection(pick.content, known, skillBrief.MAX_TEAM);
+    pick = await executeAgent('orchestrator', task, { maxTokens: 1500 });
+    if (!pick.ok) throw new Error(`team selection failed: ${pick.error}`);   // not retryable
+
+    sel = outcomeIntake.parseTeamSelection(pick.content, known, skillBrief.MAX_TEAM);
+    if (sel.dropped.length) {
+      // Recorded rather than silently ignored: an invented name is the P3 defect recurring at runtime,
+      // and if the orchestrator does it often the roster prompt is what needs fixing.
+      execution.log.push({ t: Date.now(), msg: `attempt ${attempt}: orchestrator named ${sel.dropped.length} agent(s) that do not exist: ${sel.dropped.join(', ')}` });
+      appendLog(`OUTCOME_UNKNOWN_AGENTS: ${sel.dropped.join(', ')}`);
+    }
+    if (sel.team.length) break;
+
+    execution.log.push({ t: Date.now(), msg: `attempt ${attempt}: no usable team (${sel.parsed ? 'JSON parsed but no known agent named' : 'reply was not JSON'})` });
+    appendLog(`OUTCOME_SELECTION_RETRY: attempt ${attempt} of ${outcomeIntake.MAX_SELECTION_ATTEMPTS}`);
+  }
+
   // Record what the orchestrator ACTUALLY said whenever no team came back. Without this the failure
   // reads "selected no valid agents" and there is no way to tell a model that replied in prose from
   // one that named agents which do not exist — two problems with completely different fixes.
@@ -4959,15 +4985,7 @@ async function runStatedOutcome(execution, outcome) {
     execution.selectionReply = String(pick.content || '').slice(0, 600);
     execution.selectionParsedJson = sel.parsed;
     execution.droppedAgents = sel.dropped;
-  }
-  if (sel.dropped.length) {
-    // Recorded rather than silently ignored: an invented name is the P3 defect recurring at runtime,
-    // and if the orchestrator does it often the roster prompt is what needs fixing.
-    execution.log.push({ t: Date.now(), msg: `orchestrator named ${sel.dropped.length} agent(s) that do not exist: ${sel.dropped.join(', ')}` });
-    appendLog(`OUTCOME_UNKNOWN_AGENTS: ${sel.dropped.join(', ')}`);
-  }
-  if (!sel.team.length) {
-    throw new Error(`the orchestrator selected no valid agents${sel.dropped.length ? ` (it named: ${sel.dropped.join(', ')})` : ''}`);
+    throw new Error(`the orchestrator selected no valid agents after ${execution.selectionAttempts} attempt(s)${sel.dropped.length ? ` (it named: ${sel.dropped.join(', ')})` : ''}`);
   }
 
   execution.selectedBy = 'orchestrator';
