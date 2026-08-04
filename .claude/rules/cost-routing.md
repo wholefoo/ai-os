@@ -7,25 +7,19 @@ description: Rules for routing tasks to the most cost-effective execution engine
 
 ## Model Tier Hierarchy
 
-Claude Code runs a **single model — `claude-opus-4-8`** — at three **effort tiers**. The
-tiers do NOT switch models; they vary reasoning effort, which changes how many tokens a
-task spends. Opus 4.8 bills the same flat rate ($5/1M input, $25/1M output) at every
-effort level — lower effort is cheaper because it spends fewer tokens, not because the
-per-token rate drops.
+**Which model and what it costs are defined in `.claude/context/runtime.md`, which is canonical.
+Read it there.** In short: five tiers — Strategic / Professional / Scout on Claude Code, Creative on
+Gemini Omni, Economy on DeepSeek, plus a Cross-Model verification seat on Codex.
 
-| Tier | Engine | Model | Effort | Per-token rate | Use When |
-|------|--------|-------|--------|----------------|----------|
-| **Strategic** | Claude Code | claude-opus-4-8 | xhigh | $5/$25 per 1M (flat) | Planning, architecture, review, safety |
-| **Professional** | Claude Code | claude-opus-4-8 | high | $5/$25 per 1M (flat) | Core coding, research, writing, QA |
-| **Scout** | Claude Code | claude-opus-4-8 | low | $5/$25 per 1M (flat) | Quick lookups, classification, triage |
-| **Creative** | Gemini Omni | gemini-omni-flash | — | $1.25/$5 per 1M | Video, image, audio, UI generation (name-routed: media-producer, vibe-designer, video-creator, audio-producer, thumbnail-gen) |
-| **Economy** | DeepSeek Tui | deepseek-v4 | — | $0.10-0.50 per 1M | Bulk content, data processing, batch ops |
-| **Cross-Model** | Codex CLI | gpt-5.5 | — | ChatGPT plan (flat) | Adversarial review seat, second-opinion code review |
+> This section used to restate the model and price table and **drifted into being wrong**: it
+> asserted a single model at a flat $5/$25, while `runtime.md` and `engineering-workflow.md` both
+> correctly described `balanced` mode routing professional and scout work to **Sonnet 5** at
+> different rates. Three copies, one of them stale, and the stale one is the file an agent reads
+> when deciding where to send work. Corrected 2026-08-03 by deleting the copy, not by syncing it —
+> syncing three copies is how it broke.
 
-Effort drives cost on the Claude tiers: higher effort lets the model reason longer and
-emit more tokens (so a Strategic task costs more than a Scout task on the same flat rate),
-while lower effort caps token spend for cheap, fast work. The Economy and Cross-Model
-tiers use genuinely different external models with their own pricing.
+What this file owns, and what nothing else should restate, is the **decision matrix below**: given a
+task, which tier gets it.
 
 The Cross-Model tier is not a general work tier — it exists solely for verification diversity (see `adversarial-verification.md`). Never dispatch production tasks to it.
 

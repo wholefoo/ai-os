@@ -9,7 +9,7 @@ kind: reference   # the pre-commit static gate Claude Code runs in-session befor
 # Self-Check Skill (pre-commit static gate)
 
 ## Goal
-Catch the two most common avoidable breaks — JS syntax errors and security-lint regressions — *before* they reach a commit, reproducing locally the checks that CI's **Lint & Boot Check** job will run anyway. This repo has **no unit-test suite**; this static gate plus a boot-verify (see `engineering-workflow.md`) is the verification story. Keep the tree at **0 seclint errors**.
+Catch the two most common avoidable breaks — JS syntax errors and security-lint regressions — *before* they reach a commit, reproducing locally the checks that CI's **Lint & Boot Check** job will run anyway. Keep the tree at **0 seclint errors**. This static gate is **not** the whole verification story: run `node tools/test-all.js` too (CI does, as "Regression suites"), plus a boot-verify where the change is observable. See `engineering-workflow.md`.
 
 ## When to run
 Before **every** commit that touches JavaScript (`server.js`, `dashboard/js/*.js`, `lib/**`, `commercial/**`). For CSS/HTML-only changes, the syntax step does not apply — a static review is enough; don't boot a server that proves nothing.

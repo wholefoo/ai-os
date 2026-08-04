@@ -5,12 +5,14 @@ description: The proven, repo-specific mechanics for changing this codebase — 
 
 # Engineering Workflow (how we actually ship here)
 
-This repo has **no unit-test suite**. Verification is done by static self-check + booting the
-real server and exercising routes. These are the mechanics that keep changes correct and cheap.
-(Architecture/feature map lives in `.claude/claude.md`; this file is process only.)
+Verification here is the **regression suites** (`node tools/test-all.js`) plus a static self-check
+plus, where it applies, booting the real server and exercising routes. These are the mechanics that
+keep changes correct and cheap. (Architecture map: `.claude/claude.md` routes to `.claude/context/`;
+this file is process only. The verification STANDARD is `.claude/rules/testing.md`.)
 
 ## Pre-commit self-check (the real CI gate)
 Before every commit that touches JS:
+0. `node tools/test-all.js` — every `tools/test-*.js` suite must pass. A feature with a testable seam gets its own suite, registered in `.fallowrc.json` `entry`.
 1. `node --check <file>` on each changed `.js` (server.js, dashboard/js/*.js, lib/**). Syntax errors here are the #1 avoidable break.
 2. `node tools/seclint.js --ci` → **must be 0 errors**. seclint's ERROR rules: `route-no-auth` (mutating `/api` route with no auth middleware), `path-traversal` (`path.join` from `req.*` without `path.basename`), `shell-injection` (`exec`/`execSync` with an interpolated string), `jsonld-breakout` (generated-site `set:html={JSON.stringify(...)}` not escaping `<`→`<`). WARN-only: `innerhtml-unescaped`. (WARN never fails CI; keep ERRORs at 0.)
    - A genuine false positive gets a `// seclint-ok: <one-line reason>` on that line — never a blanket disable.

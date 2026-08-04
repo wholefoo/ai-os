@@ -141,6 +141,44 @@ consequence.
 **Verify:** body-line delta per agent, plus the existing budget gate (`MAX_BODY_LINES`), plus a spot
 re-run of those agents to confirm behaviour is unchanged.
 
+> **SHIPPED 2026-08-03 — and the premise above was WRONG, which changed the whole phase.**
+>
+> **"27 restatements" was a keyword proxy, not a measurement.** It came from grepping the *stem* of
+> each rule filename (`cost-routing` → `cost`, `security` → `securit`) across agent files, which
+> counts coincidence. Auditing the actual canonical claims found close to zero: Economy-tier ban 0,
+> skeptic-panel 0, `seclint` 0, `node --check` 0, `DEMO_MODE` 0, tool-call cap 1, budget threshold 1.
+> P1's handbook conversion had already removed this duplication — "the orchestrator compressed
+> 98 → 73 lines while GAINING 9 criteria" was exactly that. **There was nothing to delete from agent
+> bodies, and deleting the 20 `.magent/artifacts/` mentions would have been wrong: that is each
+> agent's own output boundary, not a restatement of a rule.**
+>
+> **The real duplication was INSIDE `.claude/rules/`, and both instances had drifted into FALSEHOOD:**
+>
+> - **"This repo has no unit-test suite"** — asserted in `testing.md`, `engineering-workflow.md` AND
+>   `.claude/skills/self-check.md`, with 55 suite files gating CI as "Regression suites". Not merely
+>   stale: `testing.md` went on to instruct agents *"Do not claim 'tests pass' — there are none to
+>   run."* The corpus was telling agents not to run the thing that would have caught the corpus.
+> - **`cost-routing.md`'s model/price table** — "a single model, `claude-opus-4-8`, flat $5/$25",
+>   while `runtime.md` and `engineering-workflow.md` both correctly described `balanced` mode routing
+>   professional and scout work to **Sonnet 5** at different rates. Three copies, and the stale one
+>   was the file an agent reads *when deciding where to send work*.
+>
+> **Both fixed by deleting the copy and pointing at one canonical home — not by syncing.** Syncing
+> three copies is how it broke. `cost-routing.md` keeps what it uniquely owns (the routing decision
+> matrix) and now links to `runtime.md` for model and price.
+>
+> `tools/test-rules-canon.js` pins the properties that allowed the drift, each proven red first: a
+> guidance file denying the suite exists, a price table returning to `cost-routing.md`, and — the
+> category case — **any** guidance file smuggling in a per-million rate. That last assertion was
+> itself first written as an enumerated list (`consultant-anthropic.md` + `runtime.md`) and failed
+> against the other six provider consultants, which own their own providers' pricing legitimately.
+> An enumerated guard losing to the members nobody listed, caught this time by running it red before
+> trusting it.
+>
+> **Left alone, deliberately:** `karpathy-guidelines.md` §1–4 compress to the router's
+> non-negotiables #7–10. That is a summary-to-detail relationship — progressive disclosure working
+> as intended — not the drift-prone kind, because neither states a fact that can go stale.
+
 ### 3.4 Design interfaces rather than examples
 
 **Ask:** give a brand book / design interface (HTML with palettes, fonts, voice) rather than specific
