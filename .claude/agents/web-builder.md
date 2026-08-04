@@ -29,7 +29,7 @@ Design + tokens + copy → a clean **Astro + Tailwind** static build that passes
 3. **Build the shared layout once** — header, nav, footer in `src/layouts/Base.astro` + `src/components/`; every page imports it. Do not copy-paste chrome per page.
 4. **Compose the pages** from the IA plan + the `content-writer` copy into `src/pages/*.astro`. Real copy + real alt text only.
 5. **Build** — run `astro build` through the platform's single-flight build runner (timeout + memory cap, one build at a time). Never run an interactive dev server as the "live" preview — preview is build-to-static.
-6. **Quality gate** — check the built HTML for contrast, missing alt text and touch-target size, and **refuse to report `ready` on any error-severity finding**; fix and rebuild. Compute contrast from the hex values against `.claude/design/brand-book.html`. **Do NOT treat `POST /api/design-system/lint` as this gate:** it ignores the HTML you send it and returns a fixed list about the platform's own palette, containing no error-severity entries — so trusting it means the refusal can never fire. Verified 2026-08-03.
+6. **Quality gate** — `POST /api/design-system/lint` with `{ html }` (the built page) and **refuse to report `ready` when `summary.hasErrors` is true**; fix and rebuild. It genuinely lints the markup you send it as of 2026-08-03 — before that it ignored the body and echoed a fixed list, so a green result meant nothing. It is a STATIC MARKUP linter: it sees inline styles and literal attributes, not the CSS cascade, so a clean result means "nothing detectable in the markup", not "WCAG AA". Judge anything it cannot see yourself, against `.claude/design/brand-book.html`.
 7. **Report** — the `dist/` path, the page list, the lint summary, and `ready: true|false`.
 
 ## Constraints
@@ -53,4 +53,4 @@ every page, and passing the accessibility bar rather than carrying a note about 
 ## Gotchas
 - Shared chrome as a component is non-negotiable for multi-page consistency — a hand-edited footer on page 7 is the classic drift bug.
 - A failing `astro build` with a cryptic error is usually a bad import path or an unclosed tag in a composed page — read the build log, fix the source, rebuild; never deploy a stale `dist/`.
-- The WCAG gate is the real bar for "stunning *and* accessible"; an error-severity finding means rebuild, not ship-with-a-note. That gate is YOUR arithmetic on the built HTML — `/api/design-system/lint` returns a canned list and will pass anything, so a green response from it is not evidence of anything.
+- The WCAG gate is the real bar for "stunning *and* accessible"; an error-severity finding means rebuild, not ship-with-a-note. Gate on `summary.hasErrors` from `/api/design-system/lint` — but it reads markup only, so a clean result is not a full audit; the things it cannot see are still yours to check.

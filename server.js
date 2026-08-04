@@ -1515,6 +1515,7 @@ const aeoReadability = require('./lib/aeo/readability');
 const aeoCrawlers = require('./lib/aeo/crawlers');
 const shareOfModel = require('./lib/aeo/share-of-model');
 const approvalPolicy = require('./lib/safety/approval');
+const designLint = require('./lib/design-lint');
 const provenanceLib = require('./lib/provenance');
 const mythos = require('./lib/security/mythos');
 const clonePersona = require('./lib/business-clone/persona');
@@ -8399,26 +8400,13 @@ const designSystem = {
     { id: 'input', name: 'Input Field', background: 'background', border: 'neutral', text: 'primary-ink', radius: 'md', padding: 'sm md' },
     { id: 'nav-item', name: 'Nav Item (Active)', background: 'primary-dim', text: 'primary', radius: 'md', padding: 'sm lg' },
   ],
-  linterResults: [
-    // Ratios below are COMPUTED (WCAG 2.1 relative luminance), not estimated. Until 2026-08-03 this
-    // list named 3 colours and quoted 3.1/2.1/3.2 — stale figures from the token object, which was
-    // itself wrong in 8 of 9 places. Six colours fail AA on white, and `primary` is one of them.
-    // tools/test-brand-book.js recomputes every figure here and in the tokens.
-    { rule: 'color-contrast', status: 'warning', message: 'Primary blue (#3b82f6) fails WCAG AA on white background (3.68:1, needs 4.5:1) — passes on the dark surface (5.03:1)', severity: 'medium' },
-    { rule: 'color-contrast', status: 'warning', message: 'Secondary violet (#8b5cf6) fails WCAG AA on white background (4.23:1, needs 4.5:1)', severity: 'medium' },
-    { rule: 'color-contrast', status: 'warning', message: 'Tertiary cyan (#06b6d4) fails WCAG AA on white background (2.43:1, needs 4.5:1)', severity: 'medium' },
-    { rule: 'color-contrast', status: 'warning', message: 'Success green (#10b981) fails WCAG AA on white background (2.54:1, needs 4.5:1)', severity: 'medium' },
-    { rule: 'color-contrast', status: 'warning', message: 'Warning amber (#f59e0b) fails WCAG AA on white background (2.15:1, needs 4.5:1)', severity: 'medium' },
-    { rule: 'color-contrast', status: 'warning', message: 'Error red (#ef4444) fails WCAG AA on white background (3.76:1, needs 4.5:1)', severity: 'medium' },
-    { rule: 'color-hierarchy', status: 'pass', message: 'All colors assigned to valid hierarchy roles (neutral/primary/secondary/tertiary/semantic)', severity: 'low' },
-    { rule: 'component-refs', status: 'pass', message: 'All 8 components reference roles, not hardcoded hex values', severity: 'high' },
-    { rule: 'unused-token', status: 'pass', message: 'All defined tokens are referenced in components', severity: 'low' },
-    { rule: 'font-fallback', status: 'pass', message: 'All font stacks include system fallbacks', severity: 'low' },
-    { rule: 'spacing-consistency', status: 'pass', message: 'Spacing values follow 4px base grid', severity: 'low' },
-    { rule: 'touch-target', status: 'pass', message: 'All interactive elements meet 44px minimum', severity: 'high' },
-    { rule: 'dual-structure', status: 'pass', message: 'Reasoning and tokens both present — AI can interpret intent and apply exact values', severity: 'high' },
-    { rule: 'radius-reasoning', status: 'pass', message: 'Shape language documented: medium radius for balanced professional/approachable feel', severity: 'low' },
-  ],
+  // COMPUTED at boot from the tokens above — see the assignment right after this object, and
+  // lib/design-lint.js. This was a hand-written array until 2026-08-03: it named 3 colours as
+  // failing AA when 6 do, and quoted ratios (3.1/2.1/3.2) copied from token figures that were
+  // themselves wrong in 8 of 9 places. Nothing recomputed it because the lint endpoint returned it
+  // verbatim. A findings list that is not derived from the thing it describes will drift, and will
+  // look authoritative the whole time.
+  linterResults: [],
   skills: [
     { id: 'mesh-gradient', name: 'Mesh Gradient', description: 'Generate CSS mesh gradients from color tokens', category: 'visual' },
     { id: 'glassmorphism', name: 'Glassmorphism', description: 'Apply frosted glass effect to surfaces', category: 'visual' },
@@ -8429,6 +8417,11 @@ const designSystem = {
     { id: 'cross-platform-export', name: 'Cross-Platform Export', description: 'Export DESIGN.md for Claude Code, Cursor, Anti-gravity, or Codex', category: 'export' },
   ],
 };
+
+// Derive the findings from the tokens, once, at boot. The dashboard reads this; the lint route
+// recomputes on demand. Deriving is the whole point — the previous hand-written list had drifted
+// from the palette it claimed to describe and nothing could notice.
+designSystem.linterResults = designLint.lintTokens(designSystem.tokens, designSystem.components);
 
 // Design System routes extracted to commercial/modules/design-system/index.js
 
@@ -13341,6 +13334,9 @@ if (commercial.registerRoutes) {
     // in this repo never crossed into commercial/, which had its own raw fetch() calls to
     // operator-supplied plugin URLs. A guard the second repo cannot reach is a guard it will not use.
     safeFetch, safeRequest,
+    // The real design linter. Injected, not required across the repo boundary — same reasoning as
+    // safeFetch above. The commercial lint route used to return a canned array; it now calls this.
+    designLint,
     // Config & constants
     ACTIVE_TIER, COMMERCIAL_FEATURES, PLAN_LEVELS, DEMO_MODE, BASE,
     COST_RATES, MASTER_TENANT_ID, STATE_DIR, MAGENT_DIR, CLAUDE_DIR,

@@ -90,29 +90,29 @@ for (const [name, t] of Object.entries(serverColors)) {
 assert(wrong.length === 0,
   `every claimed contrast figure recomputes correctly${wrong.length ? ` — ${wrong.length} wrong: ${wrong.join(' | ')}` : ` (${Object.keys(serverColors).length} tokens x onWhite/onDark/passes)`}`);
 
-// --- 4. the linter's canned results do not contradict the tokens -----------------------------------------
-// POST /api/design-system/lint ignores its request body and returns this static array, so it cannot
-// disagree with reality by linting badly — only by being written wrong. It was: it named 3 colours
-// as failing AA on white when 6 do. Pinned to the tokens so the two cannot part company again.
+// --- 4. the linter's findings are DERIVED from the tokens, not written alongside them ---------------------
+// This assertion used to slice the hand-written `linterResults` array out of server.js and check it
+// named every failing colour — because that array was hand-written, had drifted, and named 3 when 6
+// fail. It is now computed at boot by lib/design-lint.js, so the stronger property is available:
+// check the derivation itself, and that the output still covers every failing token.
 const failingOnWhite = Object.entries(serverColors).filter(([, t]) => !t.passes).map(([k]) => k);
-// Slice FORWARD from linterResults. The first draft searched for the next `skills: [` with a bare
-// indexOf, which matches an earlier occurrence elsewhere in server.js and yields a backwards slice —
-// an empty string that made the assertion fail for the wrong reason. A guard that fails for the
-// wrong reason is only luckier than one that passes for the wrong reason.
-const linterStart = serverSrc.indexOf('linterResults: [');
-assert(linterStart > 0, 'the linterResults array was located in server.js');
-const linterBlock = serverSrc.slice(linterStart, serverSrc.indexOf('skills: [', linterStart));
-assert(linterBlock.includes('color-contrast'), '...and the slice actually contains the contrast findings');
+assert(/designSystem\.linterResults = designLint\.lintTokens\(designSystem\.tokens/.test(serverSrc),
+  'server.js DERIVES the findings from the tokens — a hand-written list beside the data it describes is what drifted');
+assert(/linterResults: \[\],/.test(serverSrc),
+  '...and carries no hand-written findings to fall back on');
 
-const unreported = failingOnWhite.filter((c) => !new RegExp(serverColors[c].hex, 'i').test(linterBlock));
+const derived = require('../lib/design-lint').lintTokens(
+  { colors: Object.fromEntries(Object.entries(serverColors).map(([k, v]) => [k, { hex: v.hex }])) }, []);
+const unreported = failingOnWhite.filter((c) => !derived.some((f) => f.rule === 'color-contrast' && f.message.includes(serverColors[c].hex)));
 assert(unreported.length === 0,
-  `the linter's contrast findings name every token that fails AA on white${unreported.length
+  `the derived findings name every token that fails AA on white${unreported.length
     ? ` — unreported: ${unreported.join(', ')}` : ` (${failingOnWhite.join(', ')})`}`);
 
-// And the ratios quoted in those findings must be the real ones. They were not: the three findings
-// quoted 3.1, 2.1 and 3.2, which were the stale hardcoded figures, not the computed 2.54, 2.15, 2.43.
+// The ratios in those messages must be the computed ones. The old hand-written findings quoted
+// 3.1, 2.1 and 3.2 — stale figures copied from the token object, which was itself wrong.
 const misquoted = failingOnWhite
-  .map((c) => ({ c, quoted: (linterBlock.match(new RegExp(`${serverColors[c].hex}[^\\n]*?\\((\\d+\\.\\d+):1`, 'i')) || [])[1] }))
+  .map((c) => ({ c, msg: (derived.find((f) => f.rule === 'color-contrast' && f.message.includes(serverColors[c].hex)) || {}).message || '' }))
+  .map((x) => ({ ...x, quoted: (x.msg.match(/\((\d+\.\d+):1/) || [])[1] }))
   .filter((x) => x.quoted && Math.abs(parseFloat(x.quoted) - ratio(serverColors[x.c].hex, WHITE)) > 0.01)
   .map((x) => `${x.c} quotes ${x.quoted}, computes ${ratio(serverColors[x.c].hex, WHITE).toFixed(2)}`);
 assert(misquoted.length === 0,
