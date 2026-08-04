@@ -376,6 +376,34 @@ Smaller than expected, because the memory system already implements progressive 
   the one-sentence cron prompts ("clean up dead code", "unify duplicated abstractions") are a
   configuration task, not a build. Start with one, on a real repo, and read the first three runs
   before adding a second.
+
+  > **SHIPPED 2026-08-03 — `ai-os-unify-duplication`, weekly, Mondays 09:00 local.**
+  > (`~/.claude/scheduled-tasks/ai-os-unify-duplication/SKILL.md`)
+  >
+  > **The verb was chosen from data, and "clean up dead code" was REJECTED.** That is the source
+  > document's flagship example, but `fallow dead-code` is a CI gate here and sits at zero — a loop
+  > on it would spend tokens confirming green every week, forever. A maintenance verb is worth
+  > scheduling only where there is a standing backlog the gates do *not* already cover.
+  > `npx fallow dupes --min-occurrences 2` shows **946 duplicated lines (1.9%) across 25 files**,
+  > below CI's threshold of 3 and therefore unclaimed. That is the backlog.
+  >
+  > **Posture: branch and verify, never push.** Each run takes ONE clone family, extracts it on
+  > `maint/dedupe-YYYY-MM-DD`, runs the whole loop (suites, `node --check`, both fallow gates,
+  > seclint, boot smoke), and stops. It aborts before touching anything if the working tree is dirty
+  > or master is out of sync, and deletes its own branch rather than leave a broken one. Same shape
+  > as `/autoresearch`: the machine does the labour, the human keeps the merge.
+  >
+  > **The prompt's most important instruction is the refusal.** It is told not to extract coincidental
+  > similarity, not to extract `server.js` clones that close over different module state, and not to
+  > create a helper needing three flags to serve two callers — and that reporting "nothing worth
+  > extracting" is a correct outcome. A duplication tool run without judgement makes a codebase worse
+  > in a way that passes every gate. The report format asks for **rejected** candidates first, since
+  > that is what tells the operator whether the remaining backlog is real work or noise.
+  >
+  > **Known limits.** It fires only while the Claude Code app is open (a missed run executes on next
+  > launch), and the platform's own `routine-runner` could not host it — dispatched agents hold no
+  > shell, so they cannot run `fallow` or edit files (§9 item 13). The backlog is finite: expect empty
+  > reports within a few months, which is success rather than failure.
 - **Confirm the ablation switch** (§4) once, globally, since it is a harness feature rather than a
   project one.
 
