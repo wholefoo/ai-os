@@ -8361,15 +8361,15 @@ const designSystem = {
   },
   tokens: {
     colors: {
-      primary: { hex: '#3b82f6', role: 'Primary actions, links, focus states', hierarchy: 'primary-ink', usage: 'Main CTA buttons, active nav, links — the primary "ink" of the interface', screenPct: '10-15%', wcag: { onWhite: 4.5, onDark: 8.2, passes: true } },
-      secondary: { hex: '#8b5cf6', role: 'Secondary actions, accents, badges', hierarchy: 'secondary', usage: 'Secondary buttons, accent highlights, category badges', screenPct: '5-8%', wcag: { onWhite: 4.8, onDark: 7.9, passes: true } },
-      tertiary: { hex: '#06b6d4', role: 'Tertiary highlights, attention CTAs', hierarchy: 'tertiary', usage: 'Loud call-to-action elements, promotional badges, new feature indicators', screenPct: '2-5%', wcag: { onWhite: 3.2, onDark: 9.1, passes: false } },
-      success: { hex: '#10b981', role: 'Success states, confirmations, positive', hierarchy: 'semantic', usage: 'Confirmation messages, positive trends, completed states', screenPct: '3-5%', wcag: { onWhite: 3.1, onDark: 9.4, passes: false } },
-      warning: { hex: '#f59e0b', role: 'Warnings, caution states, pending', hierarchy: 'semantic', usage: 'Caution alerts, pending actions, attention-needed indicators', screenPct: '2-4%', wcag: { onWhite: 2.1, onDark: 10.2, passes: false } },
-      error: { hex: '#ef4444', role: 'Errors, destructive actions, critical', hierarchy: 'semantic', usage: 'Error messages, destructive buttons, critical alerts', screenPct: '1-3%', wcag: { onWhite: 4.0, onDark: 7.1, passes: true } },
-      neutral: { hex: '#6b7280', role: 'Canvas — borders, muted text, disabled', hierarchy: 'neutral', usage: 'Borders, disabled states, placeholder text — the background "canvas" (80-90% of screen)', screenPct: '80-90%', wcag: { onWhite: 4.6, onDark: 6.3, passes: true } },
-      background: { hex: '#0f1419', role: 'Page background', hierarchy: 'neutral', usage: 'Root page background, deepest layer', screenPct: 'base', wcag: { onWhite: 16.1, onDark: 1.0, passes: true } },
-      surface: { hex: '#1a2332', role: 'Elevated surfaces', hierarchy: 'neutral', usage: 'Cards, modals, elevated panels — sits above background', screenPct: '20-40%', wcag: { onWhite: 14.2, onDark: 1.2, passes: true } },
+      primary: { hex: '#3b82f6', role: 'Primary actions, links, focus states', hierarchy: 'primary-ink', usage: 'Main CTA buttons, active nav, links — the primary "ink" of the interface', screenPct: '10-15%', wcag: { onWhite: 3.68, onDark: 5.03, passes: false } },
+      secondary: { hex: '#8b5cf6', role: 'Secondary actions, accents, badges', hierarchy: 'secondary', usage: 'Secondary buttons, accent highlights, category badges', screenPct: '5-8%', wcag: { onWhite: 4.23, onDark: 4.37, passes: false } },
+      tertiary: { hex: '#06b6d4', role: 'Tertiary highlights, attention CTAs', hierarchy: 'tertiary', usage: 'Loud call-to-action elements, promotional badges, new feature indicators', screenPct: '2-5%', wcag: { onWhite: 2.43, onDark: 7.62, passes: false } },
+      success: { hex: '#10b981', role: 'Success states, confirmations, positive', hierarchy: 'semantic', usage: 'Confirmation messages, positive trends, completed states', screenPct: '3-5%', wcag: { onWhite: 2.54, onDark: 7.3, passes: false } },
+      warning: { hex: '#f59e0b', role: 'Warnings, caution states, pending', hierarchy: 'semantic', usage: 'Caution alerts, pending actions, attention-needed indicators', screenPct: '2-4%', wcag: { onWhite: 2.15, onDark: 8.62, passes: false } },
+      error: { hex: '#ef4444', role: 'Errors, destructive actions, critical', hierarchy: 'semantic', usage: 'Error messages, destructive buttons, critical alerts', screenPct: '1-3%', wcag: { onWhite: 3.76, onDark: 4.92, passes: false } },
+      neutral: { hex: '#6b7280', role: 'Canvas — borders, muted text, disabled', hierarchy: 'neutral', usage: 'Borders, disabled states, placeholder text — the background "canvas" (80-90% of screen)', screenPct: '80-90%', wcag: { onWhite: 4.83, onDark: 3.83, passes: true } },
+      background: { hex: '#0f1419', role: 'Page background', hierarchy: 'neutral', usage: 'Root page background, deepest layer', screenPct: 'base', wcag: { onWhite: 18.51, onDark: 1, passes: true } },
+      surface: { hex: '#1a2332', role: 'Elevated surfaces', hierarchy: 'neutral', usage: 'Cards, modals, elevated panels — sits above background', screenPct: '20-40%', wcag: { onWhite: 15.78, onDark: 1.17, passes: true } },
     },
     typography: {
       fontFamily: { primary: 'Inter, system-ui, sans-serif', mono: 'JetBrains Mono, monospace' },
@@ -8400,9 +8400,16 @@ const designSystem = {
     { id: 'nav-item', name: 'Nav Item (Active)', background: 'primary-dim', text: 'primary', radius: 'md', padding: 'sm lg' },
   ],
   linterResults: [
-    { rule: 'color-contrast', status: 'warning', message: 'Success green (#10b981) fails WCAG AA on white background (3.1:1, needs 4.5:1)', severity: 'medium' },
-    { rule: 'color-contrast', status: 'warning', message: 'Warning amber (#f59e0b) fails WCAG AA on white background (2.1:1, needs 4.5:1)', severity: 'medium' },
-    { rule: 'color-contrast', status: 'warning', message: 'Tertiary cyan (#06b6d4) fails WCAG AA on white background (3.2:1, needs 4.5:1)', severity: 'medium' },
+    // Ratios below are COMPUTED (WCAG 2.1 relative luminance), not estimated. Until 2026-08-03 this
+    // list named 3 colours and quoted 3.1/2.1/3.2 — stale figures from the token object, which was
+    // itself wrong in 8 of 9 places. Six colours fail AA on white, and `primary` is one of them.
+    // tools/test-brand-book.js recomputes every figure here and in the tokens.
+    { rule: 'color-contrast', status: 'warning', message: 'Primary blue (#3b82f6) fails WCAG AA on white background (3.68:1, needs 4.5:1) — passes on the dark surface (5.03:1)', severity: 'medium' },
+    { rule: 'color-contrast', status: 'warning', message: 'Secondary violet (#8b5cf6) fails WCAG AA on white background (4.23:1, needs 4.5:1)', severity: 'medium' },
+    { rule: 'color-contrast', status: 'warning', message: 'Tertiary cyan (#06b6d4) fails WCAG AA on white background (2.43:1, needs 4.5:1)', severity: 'medium' },
+    { rule: 'color-contrast', status: 'warning', message: 'Success green (#10b981) fails WCAG AA on white background (2.54:1, needs 4.5:1)', severity: 'medium' },
+    { rule: 'color-contrast', status: 'warning', message: 'Warning amber (#f59e0b) fails WCAG AA on white background (2.15:1, needs 4.5:1)', severity: 'medium' },
+    { rule: 'color-contrast', status: 'warning', message: 'Error red (#ef4444) fails WCAG AA on white background (3.76:1, needs 4.5:1)', severity: 'medium' },
     { rule: 'color-hierarchy', status: 'pass', message: 'All colors assigned to valid hierarchy roles (neutral/primary/secondary/tertiary/semantic)', severity: 'low' },
     { rule: 'component-refs', status: 'pass', message: 'All 8 components reference roles, not hardcoded hex values', severity: 'high' },
     { rule: 'unused-token', status: 'pass', message: 'All defined tokens are referenced in components', severity: 'low' },

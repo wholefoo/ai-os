@@ -9,9 +9,10 @@ agents, skills and pipelines exist; this file adds the API endpoints and groups 
 **Knowledge Graph** — auto-organizing knowledge base that categorizes sources into types (wiki, docs, research, outputs, raw) and discovers semantic connections. Visual radial graph in the dashboard.
 - API: `/api/knowledge-graph`, `/api/knowledge-graph/stats`, `POST /api/knowledge-graph/auto-categorize` · Agent: knowledge-graph · Skill: knowledge-categorize
 
-**Design System Protocol** — DESIGN.md-based universal token system with built-in WCAG linter. Color roles, typography scales, spacing grids, border radii. Includes "Skills as Ingredients" for programmatic design feature generation.
+**Design System Protocol** — universal token system (colour roles, typography scale, spacing grid, border radii) with reasoning attached to each decision. Includes "Skills as Ingredients" for programmatic design feature generation. Tokens live in `designSystem` (server.js); `.claude/design/brand-book.html` is the readable interface and computes every contrast ratio at render.
 - API: `/api/design-system`, `/api/design-system/tokens`, `POST /api/design-system/lint` · Agent: design-system · Skill: design-lint
-- ⚠ **`DESIGN.md` does not exist in this repo** (verified 2026-08-03). Dangling reference; the fix is the HTML brand book in `model-fit-2026-design.md` §3.4.
+- ⚠ **`POST /api/design-system/lint` lints nothing.** It ignores the request body and returns a fixed `linterResults` array with no error-severity entries. `web-builder`'s handbook used to call it the quality gate — corrected 2026-08-03. Business+ gated, so on Community it does not register at all.
+- **`DESIGN.md` is an EXPORT** (`/api/design-system/export`), not an input. Its absence from the repo is expected — an earlier note here called it a dangling reference, which was wrong.
 
 **Media Production Pipeline** — multi-engine: Remotion (programmable video as React code), Google Vids (prompt-to-production with consistent avatars), Blender MCP (text-to-3D). Template-driven with parameterized inputs.
 - API: `/api/media/productions`, `/api/media/templates`, `/api/media/stats`, `POST /api/media/produce` · Agent: media-producer · Skill: media-produce

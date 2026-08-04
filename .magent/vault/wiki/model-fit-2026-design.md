@@ -196,6 +196,41 @@ type scale, spacing grid, voice, component states — which doubles as 3.6's ric
 **Verify:** the WCAG design-lint gate `web-builder` already runs is the checker; a generated site
 should pass it against tokens read from the brand book rather than from prose.
 
+> **SHIPPED 2026-08-03 — and BOTH paragraphs above are wrong. Read the corrections before reusing them.**
+>
+> **1. The "dangling `DESIGN.md`" finding was FALSE, and it was propagated twice before being
+> checked** (here, and into `.claude/context/capabilities.md`, both shipped). `DESIGN.md` is an
+> **export format** emitted on demand by `GET /api/design-system/export` for Claude Code / Cursor /
+> Codex. Its absence from the repo is correct. The tokens live in `designSystem` in `server.js`.
+> The lesson is the one this repo already holds: *look at the code before calling something broken*
+> — the claim came from `find`ing a filename, not from reading the module that owns it.
+>
+> **2. The verification plan was invalid.** `POST /api/design-system/lint` **ignores its request
+> body entirely** and returns a hardcoded `designSystem.linterResults` array. `web-builder`'s
+> handbook called it the quality gate and promised to refuse `ready` on error-severity findings —
+> the canned array contains none, so that refusal could never fire. A gate that reads as enforcement
+> and enforces nothing, the same shape as a fake `gates:` id. It is also business+ gated, so on
+> Community it does not even register.
+>
+> **What that fake gate was hiding — the real find.** The token object carried hardcoded
+> `wcag: { onWhite, onDark, passes }` per colour and **8 of the 9 were wrong**. Three were wrong in
+> the direction that matters: `primary` (3.68), `secondary` (4.23) and `error` (3.76) were marked
+> `passes: true` while failing AA on white. The linter never noticed because it recomputes nothing,
+> and its three findings quoted the same stale figures. **Six** colours fail AA on white, not three.
+>
+> **Shipped:** `.claude/design/brand-book.html`, which computes every ratio at render — a page that
+> derives cannot drift from what it displays. `server.js` token figures and linter findings
+> recomputed. `design-system` corrected (DESIGN.md is an export; stored `wcag` is data, not
+> evidence). `web-builder` told plainly not to trust that endpoint as its gate.
+> `tools/test-brand-book.js` recomputes all 27 claims, pins book-vs-server hexes, and checks each
+> finding quotes the ratio it computes — proven red on all three.
+>
+> **NOT verified: the page's visual rendering.** `localhost` is blocked by the browser policy here
+> and `file://` renders as a static snapshot that does not execute the script, so there is no
+> screenshot. The arithmetic is verified by executing the page's own token table in the suite; the
+> *layout* is unconfirmed. Per this repo's own rule that existence is not usability, **open it once
+> before relying on it.**
+
 ### 3.5 Rely on automatic memory
 
 **Ask:** stop forcing explicit memory hotkeys; the system saves what's relevant.

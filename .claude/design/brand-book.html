@@ -1,0 +1,192 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AI OS — Brand Book</title>
+<!--
+  THE DESIGN INTERFACE. Phase 3 of .magent/vault/wiki/model-fit-2026-design.md.
+
+  This replaces "here are some examples" with "here are the boundaries" — an agent designing a
+  surface reads the roles, the reasoning, and the constraints, and is free inside them.
+
+  EVERY CONTRAST RATIO ON THIS PAGE IS COMPUTED AT RENDER TIME from the hex values below, by the
+  WCAG 2.1 relative-luminance formula in the script at the bottom. Nothing here is a remembered or
+  copied number. That is the whole point: the design system's token object used to CARRY hardcoded
+  wcag figures and 8 of 9 were wrong, three of them wrong in the direction that matters (marked
+  passing while failing AA). A page that computes cannot drift from the values it displays.
+
+  Tokens mirror `designSystem.tokens` in server.js. tools/test-brand-book.js asserts the two agree
+  AND that every claimed ratio is arithmetically correct.
+-->
+<style>
+  :root{
+    --bg:#0f1419; --surface:#1a2332; --primary:#3b82f6; --secondary:#8b5cf6; --tertiary:#06b6d4;
+    --success:#10b981; --warning:#f59e0b; --error:#ef4444; --neutral:#6b7280;
+    --r-sm:4px; --r-md:8px; --r-lg:12px; --r-xl:16px;
+    --s-xs:4px; --s-sm:8px; --s-md:12px; --s-lg:16px; --s-xl:20px; --s-2xl:24px; --s-3xl:32px;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:#e6edf3;font:13px/20px Inter,system-ui,-apple-system,sans-serif;padding:var(--s-3xl)}
+  main{max-width:1080px;margin:0 auto}
+  h1{font-size:28px;line-height:36px;margin:0 0 var(--s-sm)}
+  h2{font-size:18px;line-height:28px;margin:var(--s-3xl) 0 var(--s-md);padding-bottom:var(--s-sm);border-bottom:1px solid #2a3444}
+  h3{font-size:14px;line-height:22px;margin:var(--s-lg) 0 var(--s-sm);color:#9aa7b8}
+  p{margin:0 0 var(--s-md);max-width:70ch;color:#b8c4d4}
+  code,.mono{font-family:'JetBrains Mono',ui-monospace,monospace;font-size:12px}
+  .lede{color:#8b98a9;font-size:12px}
+  .grid{display:grid;gap:var(--s-md);grid-template-columns:repeat(auto-fill,minmax(240px,1fr))}
+  .card{background:var(--surface);border:1px solid #2a3444;border-radius:var(--r-lg);padding:var(--s-lg)}
+  .swatch{height:56px;border-radius:var(--r-md);margin-bottom:var(--s-md);border:1px solid rgba(255,255,255,.08)}
+  .name{font-weight:600;font-size:14px;display:flex;justify-content:space-between;align-items:baseline;gap:var(--s-sm)}
+  .role{color:#8b98a9;font-size:12px;line-height:18px;margin:var(--s-xs) 0 var(--s-sm)}
+  .ratios{border-top:1px solid #2a3444;padding-top:var(--s-sm);margin-top:var(--s-sm);display:grid;gap:var(--s-xs)}
+  .row{display:flex;justify-content:space-between;align-items:center;font-size:11px;line-height:16px}
+  .badge{border-radius:var(--r-sm);padding:1px 6px;font-size:11px;font-weight:600}
+  .pass{background:rgba(16,185,129,.15);color:#34d399}
+  .fail{background:rgba(239,68,68,.15);color:#f87171}
+  .warn{background:rgba(245,158,11,.15);color:#fbbf24}
+  table{width:100%;border-collapse:collapse;font-size:12px}
+  th,td{text-align:left;padding:var(--s-sm) var(--s-md);border-bottom:1px solid #2a3444;vertical-align:baseline}
+  th{color:#8b98a9;font-weight:600;font-size:11px;text-transform:uppercase;letter-spacing:.04em}
+  .bar{background:var(--primary);height:10px;border-radius:2px;display:inline-block;vertical-align:middle}
+  .radius-demo{width:64px;height:44px;background:var(--surface);border:1px solid #3a4658;display:inline-flex;align-items:center;justify-content:center;font-size:11px;color:#8b98a9;margin-right:var(--s-sm)}
+  .note{background:rgba(59,130,246,.08);border-left:3px solid var(--primary);border-radius:0 var(--r-md) var(--r-md) 0;padding:var(--s-md) var(--s-lg);margin:var(--s-lg) 0}
+  .note strong{color:#93c5fd}
+  .scroll{overflow-x:auto}
+  @media (max-width:640px){body{padding:var(--s-lg)}}
+</style>
+</head>
+<body>
+<main>
+
+  <h1>AI OS — Brand Book</h1>
+  <p class="lede">The design interface. Roles and boundaries, not examples — design freely inside them.
+  Every contrast ratio below is <strong>computed in this page</strong> from the hex values, never copied.</p>
+
+  <div class="note">
+    <strong>How to use this.</strong> Reference tokens by <em>role</em> (<code>primary</code>,
+    <code>surface</code>, <code>error</code>), never by hex. A component that hardcodes
+    <code>#3b82f6</code> breaks the moment the brand moves. If a needed role does not exist, propose
+    adding one — do not improvise a value.
+  </div>
+
+  <h2>Voice and intent</h2>
+  <table>
+    <tr><th style="width:130px">Brand</th><td>Technical precision meets approachable intelligence — the system should feel like a capable expert who speaks plainly.</td></tr>
+    <tr><th>Colour</th><td>Cool blue-purple spectrum signals trust and innovation. Warm accents (amber, green) carry semantic meaning without competing with primary actions.</td></tr>
+    <tr><th>Type</th><td>Inter for neutral clarity in data-dense interfaces; JetBrains Mono signals code-awareness without being intimidating.</td></tr>
+    <tr><th>Shape</th><td>Medium radius (8px) balances professional and friendly — not so sharp it feels cold, not so round it feels playful.</td></tr>
+    <tr><th>Space</th><td>4px base grid for mathematical consistency; generous whitespace prevents cognitive overload in data-rich views.</td></tr>
+  </table>
+
+  <h2>Palette</h2>
+  <p>Ratios are computed against white (<code>#ffffff</code>) and against the page background
+  (<code>#0f1419</code>). <strong>AA needs 4.5:1</strong> for body text, 3:1 for large text and UI
+  boundaries. Several accents fail on white — that is a real constraint, stated rather than hidden:
+  <em>use them on the dark surface, or pair them with a darker shade for text on light.</em></p>
+  <div class="grid" id="palette"></div>
+
+  <h2>Typography</h2>
+  <p><code>Inter, system-ui, sans-serif</code> · <code>JetBrains Mono, monospace</code> — every stack
+  ends in a system fallback.</p>
+  <div class="scroll"><table id="type"><thead><tr><th>Token</th><th>Size / line</th><th>Use</th><th>Sample</th></tr></thead><tbody></tbody></table></div>
+
+  <h2>Spacing — 4px grid</h2>
+  <div class="scroll"><table id="space"><thead><tr><th style="width:80px">Token</th><th style="width:80px">Value</th><th>Scale</th></tr></thead><tbody></tbody></table></div>
+
+  <h2>Radius</h2>
+  <p id="radii"></p>
+  <p class="lede">Medium (8px) is the default. Hard edges read stationary and formal; fully round reads playful.</p>
+
+  <h2>Components</h2>
+  <p>Recipes reference roles, never hex. This is the full component vocabulary — anything outside it
+  is a proposal, not a variant.</p>
+  <div class="scroll"><table id="components"><thead><tr><th>Component</th><th>Background</th><th>Text</th><th>Border</th><th>Radius</th><th>Padding</th></tr></thead><tbody></tbody></table></div>
+
+  <h2>Non-negotiable</h2>
+  <table>
+    <tr><th style="width:200px">Touch targets</th><td>44×44px minimum for anything interactive.</td></tr>
+    <tr><th>Contrast</th><td>WCAG AA. Compute it from the hex values — never eyeball, never quote from memory of a similar palette.</td></tr>
+    <tr><th>Spacing</th><td>Multiples of 4px. A one-off <code>13px</code> is a defect, not a refinement.</td></tr>
+    <tr><th>Font fallbacks</th><td>Every stack ends in a system family.</td></tr>
+    <tr><th>Colour by role</th><td>Semantic colours carry meaning: <code>error</code> is never decorative, <code>success</code> never merely green.</td></tr>
+  </table>
+
+  <p class="lede" style="margin-top:32px;border-top:1px solid #2a3444;padding-top:16px">
+    Computed at render by the WCAG 2.1 relative-luminance formula. Tokens mirror
+    <code>designSystem.tokens</code> in <code>server.js</code>;
+    <code>tools/test-brand-book.js</code> asserts they agree and that every ratio is arithmetically
+    correct. If a number here disagrees with one quoted elsewhere, this page is right — it did the arithmetic.
+  </p>
+
+</main>
+<script>
+const TOKENS = {
+  colors: {
+    primary:   { hex:'#3b82f6', role:'Primary actions, links, focus states', usage:'Main CTA, active nav, links — the interface’s primary ink', pct:'10-15%' },
+    secondary: { hex:'#8b5cf6', role:'Secondary actions, accents, badges',   usage:'Secondary buttons, accent highlights, category badges', pct:'5-8%' },
+    tertiary:  { hex:'#06b6d4', role:'Tertiary highlights, attention CTAs',  usage:'Loud CTAs, promotional badges, new-feature indicators', pct:'2-5%' },
+    success:   { hex:'#10b981', role:'Success, confirmation, positive',      usage:'Confirmations, positive trends, completed states', pct:'3-5%' },
+    warning:   { hex:'#f59e0b', role:'Warning, caution, pending',            usage:'Caution alerts, pending actions, attention needed', pct:'2-4%' },
+    error:     { hex:'#ef4444', role:'Error, destructive, critical',         usage:'Error messages, destructive buttons, critical alerts', pct:'1-3%' },
+    neutral:   { hex:'#6b7280', role:'Canvas — borders, muted text, disabled', usage:'Borders, disabled states, placeholders — the canvas', pct:'80-90%' },
+    background:{ hex:'#0f1419', role:'Page background',                      usage:'Root background, deepest layer', pct:'base' },
+    surface:   { hex:'#1a2332', role:'Elevated surfaces',                    usage:'Cards, modals, elevated panels', pct:'20-40%' }
+  },
+  scale: [
+    ['xs','11px','16px','Labels, badges, metadata'], ['sm','12px','18px','Secondary text, timestamps'],
+    ['base','13px','20px','Body text, descriptions'], ['md','14px','22px','Primary UI text'],
+    ['lg','18px','28px','Section titles'], ['xl','22px','32px','Page titles'], ['2xl','28px','36px','Hero headings']
+  ],
+  spacing: { xs:'4px', sm:'8px', md:'12px', lg:'16px', xl:'20px', '2xl':'24px', '3xl':'32px' },
+  radius: { sm:'4px', md:'8px', lg:'12px', xl:'16px', full:'9999px' },
+  components: [
+    ['Primary Button','primary','neutral-background','—','md','sm lg'],
+    ['Secondary Button','surface','primary','neutral','md','sm lg'],
+    ['CTA Button','tertiary','neutral-background','—','lg','md xl'],
+    ['Card','surface','—','neutral','lg','lg'],
+    ['Success Badge','success-dim','success','—','sm','xs sm'],
+    ['Warning Badge','warning-dim','warning','—','sm','xs sm'],
+    ['Input Field','background','primary-ink','neutral','md','sm md'],
+    ['Nav Item (Active)','primary-dim','primary','—','md','sm lg']
+  ]
+};
+
+// WCAG 2.1 relative luminance + contrast ratio. The only arithmetic on this page, deliberately.
+const lum = h => { const c=[1,3,5].map(i=>parseInt(h.substr(i,2),16)/255)
+  .map(v=> v<=0.03928 ? v/12.92 : Math.pow((v+0.055)/1.055,2.4));
+  return 0.2126*c[0]+0.7152*c[1]+0.0722*c[2]; };
+const ratio = (a,b) => { const [x,y]=[lum(a),lum(b)].sort((p,q)=>q-p); return (x+0.05)/(y+0.05); };
+const badge = r => r>=7 ? '<span class="badge pass">AAA '+r.toFixed(2)+'</span>'
+                : r>=4.5 ? '<span class="badge pass">AA '+r.toFixed(2)+'</span>'
+                : r>=3   ? '<span class="badge warn">Large only '+r.toFixed(2)+'</span>'
+                         : '<span class="badge fail">Fails '+r.toFixed(2)+'</span>';
+
+document.getElementById('palette').innerHTML = Object.entries(TOKENS.colors).map(([k,t]) => `
+  <div class="card">
+    <div class="swatch" style="background:${t.hex}"></div>
+    <div class="name"><span>${k}</span><code>${t.hex}</code></div>
+    <div class="role">${t.role}<br><span style="color:#6b7280">${t.usage} · ~${t.pct} of screen</span></div>
+    <div class="ratios">
+      <div class="row"><span>on white</span>${badge(ratio(t.hex,'#ffffff'))}</div>
+      <div class="row"><span>on background</span>${badge(ratio(t.hex,'#0f1419'))}</div>
+    </div>
+  </div>`).join('');
+
+document.querySelector('#type tbody').innerHTML = TOKENS.scale.map(([n,s,lh,use]) => `
+  <tr><td><code>${n}</code></td><td class="mono">${s} / ${lh}</td><td>${use}</td>
+  <td style="font-size:${s};line-height:${lh}">Capable expert, plainly</td></tr>`).join('');
+
+document.querySelector('#space tbody').innerHTML = Object.entries(TOKENS.spacing).map(([n,v]) => `
+  <tr><td><code>${n}</code></td><td class="mono">${v}</td>
+  <td><span class="bar" style="width:${parseInt(v)*4}px"></span></td></tr>`).join('');
+
+document.getElementById('radii').innerHTML = Object.entries(TOKENS.radius).map(([n,v]) =>
+  `<span class="radius-demo" style="border-radius:${v}">${n}</span>`).join('');
+
+document.querySelector('#components tbody').innerHTML = TOKENS.components.map(c =>
+  '<tr>' + c.map((v,i) => i===0 ? `<td><strong>${v}</strong></td>` : `<td><code>${v}</code></td>`).join('') + '</tr>').join('');
+</script>
+</body>
+</html>
