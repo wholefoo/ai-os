@@ -51,10 +51,10 @@ assert(schema.parseFrontmatter('description: Use when X; do NOT use for Y: see Z
 
 // An empty list's trailing comment is the most valuable part of it: it records that the question
 // was CONSIDERED. So lists tolerate one, while scalars keep every character.
-// Multi-line YAML lists. 23 of the 68 agents write `tools:` this way and 33 write it inline;
-// reading only the inline form reported those 23 as having no tools and under-counted key 4 by a
-// third of the corpus. A wrong number in the report that plans the next phase is worse than no
-// report, so both forms are pinned here.
+// Multi-line YAML lists. Reading only the inline form under-counted key 4 by a third of the corpus,
+// and a wrong number in the report that plans the next phase is worse than no report, so both forms
+// are pinned here. Still load-bearing after §9 item 13 moved every `tools:` to the inline form: 18
+// agents write `triggers:` this way, so this branch is exercised by the corpus and not just here.
 const multi = schema.parseFrontmatter('name: x\ntools:\n  - file-write\n  - content-creation\ntrigger: manual');
 assert(Array.isArray(multi.tools) && multi.tools.length === 2 && multi.tools[0] === 'file-write',
   'a multi-line YAML list parses into an array');
@@ -188,6 +188,36 @@ const memResult = schema.validate(withMemory, ctx);
 assert(!('allowed' in memResult) && !('access' in memResult) && Array.isArray(memResult.meta.memory),
   'validate() reports declared memory and makes NO access decision — a handbook cannot widen its own reads');
 
+// --- key 4: tools must name a tool that exists ------------------------------------------------------
+// Design doc §9 item 13. The corpus ran two vocabularies and only one was true anywhere: 45 agents
+// named real Claude Code tools, 23 named invented capability labels. Blocking rather than warning,
+// because Claude Code SURFACES this field in its agent roster — an invented label is advertised to
+// whoever picks the agent and then silently not granted, which is the decorative-promise failure
+// this schema exists to prevent, one level further out than `gates:`.
+const withTools = good.replace('rubric: default', 'rubric: default\ntools: [Read, Write, Bash]');
+assert(schema.validate(withTools, ctx).ok, 'a handbook may declare the Claude Code tools it needs');
+const badTool = schema.validate(good.replace('rubric: default', 'rubric: default\ntools: [Read, file-write]'), ctx);
+assert(!badTool.ok && badTool.errors.some((e) => /not a Claude Code tool/.test(e)),
+  'an invented capability label is refused — one real name alongside it does not launder the list');
+
+// The specific fictions that were in the corpus. Kept as standing assertions for the same reason
+// `content.publish`/`email.send` are: prose about capability drifts from capability, and these were
+// not hypothetical. `social-post` is the sharpest — §9 item 12 caught `marketing-hub` believing it
+// could publish to platforms this instance has NO integration for, and the tool list said so too.
+for (const fiction of ['file-write', 'file-read', 'content-creation', 'social-post', 'code-execute', 'embedding-search', 'skill-execute', 'browser-automation']) {
+  assert(!schema.RUNTIME_TOOLS.includes(fiction),
+    `"${fiction}" is not in the vocabulary — it named nothing in either runtime and must not come back`);
+}
+assert(schema.RUNTIME_TOOLS.includes('Read') && schema.RUNTIME_TOOLS.includes('WebSearch') && Object.isFrozen(schema.RUNTIME_TOOLS),
+  'the vocabulary is Claude Code\'s own tool names, frozen — one authority, not a scratchpad');
+
+// Same safety property asserted for `memory:`: this field reports, it does not grant. `executeAgent`
+// hands out no per-agent tools at all — the only runtime tool surface is buildMcpToolset(), whose
+// names are generated per integration and can never match a token here.
+const toolResult = schema.validate(withTools, ctx);
+assert(Array.isArray(toolResult.meta.tools) && !('granted' in toolResult) && !('allowed' in toolResult),
+  'validate() reports declared tools and grants nothing — a handbook cannot widen its own capability');
+
 const thin = bad((s) => s.replace('- No section is left empty.\n', ''));
 assert(!thin.ok && thin.errors.some((e) => /at least/.test(e)),
   'a "What good looks like" section with one criterion is refused — a standard of one is decoration');
@@ -285,6 +315,19 @@ assert(maintainersWithShell.length >= 5,
 const ungatedMaintainers = maintainersWithShell.filter((x) => x.r.meta.gates.length === 0);
 assert(ungatedMaintainers.length === 0,
   `every maintainer holding Bash declares at least one gate${ungatedMaintainers.length ? ` — ungated: ${ungatedMaintainers.map((x) => x.file).join(', ')}` : ''}`);
+
+// --- one vocabulary, corpus-wide ----------------------------------------------------------------------
+// The §9 item 13 reconciliation, asserted rather than assumed. Before it: 45 agents inline with real
+// tool names, 23 multi-line with invented labels. The multi-line FORM is fine and still parses (it is
+// pinned above); what is gone is the second vocabulary that rode in on it.
+const allTools = new Set(results.flatMap((x) => x.r.meta.tools));
+const foreign = [...allTools].filter((t) => !schema.RUNTIME_TOOLS.includes(t));
+assert(foreign.length === 0,
+  `the whole corpus speaks one tool vocabulary${foreign.length ? ` — foreign tokens: ${foreign.join(', ')}` : ` (${allTools.size} distinct: ${[...allTools].sort().join(', ')})`}`);
+
+const toolless = results.filter((x) => x.r.meta.tools.length === 0).map((x) => x.file);
+assert(toolless.length === 0,
+  `every agent names at least one tool${toolless.length ? ` — silent: ${toolless.join(', ')}` : ''}`);
 
 // Reported, not enforced: how much of the corpus states a guardrail it can actually point at.
 // `gates: []` is a legitimate answer for most agents, so this is a fact about the platform's shape

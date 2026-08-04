@@ -6,11 +6,7 @@ effort: high
 tier: professional
 escalates_to: orchestrator
 group: seo-agency
-tools:
-  - dataforseo_onpage
-  - firecrawl_scrape
-  - firecrawl_crawl
-  - vault_write
+tools: [Read, Write, WebFetch]
 department: marketing
 archetype: [sweeper]
 rubric: marketing

@@ -3,7 +3,7 @@ name: research-architect
 description: Designs the research methodology, outline, and evidence requirements that other agents execute. Use at the START of a substantial inquiry to produce the blueprint; do NOT use to actually gather sources (researcher), monitor tech news (scout), or assemble the final document (report-compiler).
 model: claude-opus-4-8
 effort: high
-tools: [Read, Write, WebSearch, WebFetch, firecrawl_search, firecrawl_deep_research]
+tools: [Read, Write, WebSearch, WebFetch]
 trigger: dispatched
 source: https://github.com/wholefoo/academic-research-skills
 department: board

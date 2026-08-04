@@ -3,7 +3,7 @@ name: scout
 description: Lightweight scheduled sweeps of AI/tech sources producing tech-radar reports and stack update proposals. Use for recurring landscape monitoring and "what changed this week" intelligence; do NOT use for deep mission-specific research with verified citations (researcher) or for designing a research plan (research-architect).
 model: claude-opus-4-8
 effort: low
-tools: [WebSearch, WebFetch, Read, Write, firecrawl_scrape, firecrawl_search, firecrawl_crawl, firecrawl_extract, firecrawl_deep_research]
+tools: [WebSearch, WebFetch, Read, Write]
 trigger: scheduled
 schedule: daily
 department: operations

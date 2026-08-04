@@ -3,11 +3,7 @@ name: grok-realtime
 description: "Live intelligence via xAI Grok — real-time web search, X/Twitter pulse, breaking news, and fact-checking against current sources. Use only when the answer depends on data from roughly the last 24 hours; do NOT use for code generation, long-form writing, or anything answerable from static knowledge — route those to Claude/Codex agents to save the rate-limited realtime budget."
 model: grok-3
 engine: xai-api
-tools:
-  - web-search
-  - real-time-lookup
-  - social-monitor
-  - fact-check
+tools: [WebSearch, WebFetch, Read]
 department: operations
 archetype: [sweeper]
 rubric: research

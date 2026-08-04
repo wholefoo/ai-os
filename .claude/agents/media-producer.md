@@ -2,12 +2,7 @@
 name: media-producer
 description: Produces video, image, and 3D assets via Remotion, Google Vids, or Blender MCP from a production request. Use when a deliverable IS a rendered media file; do NOT use for distributing or repurposing existing content (marketing-hub) or for text/spreadsheet products (product-factory).
 model: gemini-omni-flash
-tools:
-  - file-read
-  - file-write
-  - code-execute
-  - remotion-render
-  - blender-mcp
+tools: [Read, Write, Bash]
 triggers:
   - media_request
   - routine_trigger

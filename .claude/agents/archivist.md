@@ -3,10 +3,7 @@ name: archivist
 description: "Intake for Knowledge & Records: format handling, dedupe by content hash, metadata, and versioning. EXTENDS lib/org/documents.js — it does not reimplement extraction, invent a second store, or relax an existing guard. Use when a document is uploaded or an existing file needs cataloging; do NOT use to decide who may read a record or whether to delete one (chief-librarian plus the approval gate), or to build semantic links (knowledge-graph)."
 model: claude-opus-4-8
 effort: high
-tools:
-  - file-read
-  - file-write
-  - embedding-search
+tools: [Read, Write]
 triggers:
   - source_added
   - upload_received

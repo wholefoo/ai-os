@@ -9,7 +9,9 @@ keys. The coverage report is now a GATE: a new agent without a handbook fails `t
 things about the platform that nobody could see by reading the code**:*
 - *three agents hold destructive power no gate enforces (§9 item 10) — **resolved 2026-08-02**, and
   the finding was half wrong: see the resolution note there before repeating its framing*
-- *`marketing-hub` believed it could publish to social platforms that have no integration (§9 item 12)*
+- *`marketing-hub` believed it could publish to social platforms that have no integration (§9 item 12)
+  — its `tools:` said `social-post` too; **both gone, and now unrepresentable**, see item 13's
+  resolution*
 - *only **4 of 68** agents hold an enforced gate at all — `automator`, `browser-agent`,
   `chief-librarian`, `hosting-ops`. Every other guardrail in this corpus is prose. (As observed at
   P1. **7 of 68 as of 2026-08-02**, `devops`/`sysadmin`/`it-director` having joined via §9 item 10 —
@@ -346,6 +348,38 @@ verifier must be a different agent with the criteria and the artifact but not th
     that `tools:` is documentation of intent in this codebase — `executeAgent` grants no per-agent
     tools — so this is a truthfulness problem, not a privilege one. **Candidate for P4**, where the
     orchestrator starts routing on frontmatter and the difference begins to matter.
+
+    **RESOLVED 2026-08-03. One vocabulary, validated, corpus-wide: Claude Code's own tool names**
+    (`RUNTIME_TOOLS` in `lib/handbooks/schema.js`, blocking, 9 distinct tokens in use). 25 agents
+    converted; `social-post`, `file-write`, `content-creation`, `code-execute`, `embedding-search`
+    and the rest are gone, with standing assertions that they cannot return.
+
+    **Why the Claude Code names won, and it is not a coin toss.** A handbook IS a
+    `.claude/agents/<name>.md` file — that is Claude Code's agent-definition format, and when one of
+    these agents is dispatched THERE the harness grants exactly the tools named and nothing else. So
+    that vocabulary is true in a real runtime with a real authority. The capability labels were true
+    in none.
+
+    **This item understated the harm by calling it documentation.** Claude Code SURFACES `tools:` in
+    its agent roster — the 23 were advertising `file-read, file-write, embedding-search` to whoever
+    picked them, and those would silently not be granted. A decorative promise one level further out
+    than a fake `gates:` id, because the reader is a dispatcher rather than a reviewer.
+
+    **And the split was never clean by FORM, which is what the item implied.** `scout` and
+    `research-architect` wrote the INLINE form and mixed `firecrawl_*` tokens into it. The rule had
+    to be about the vocabulary, not the syntax — the multi-line form itself was never the problem
+    and is still load-bearing, with 18 agents writing `triggers:` that way.
+
+    **Nothing real was lost, and this was checked rather than assumed.** All 23 already named their
+    service dependency (DataForSEO, Firecrawl, Omni, Blender, openpyxl, the vault) in their
+    `## What good looks like` standard — prose the model actually reads, and the right home for
+    intent. Not one agent needed a compensating line, and the body budget was untouched.
+
+    **Still true, and now the ONLY thing this field means:** it is a declaration, not a grant.
+    `executeAgent` hands out no per-agent tools; the sole runtime tool surface is
+    `buildMcpToolset()`, whose names are generated per connected integration (`mcpSafeName`) and can
+    never match a token here. The three consumers — the `agentConcepts` display string, key-4
+    coverage, and the maintainer-with-a-shell rule — grant nothing between them.
 
 **P1 batch 4 (Product + Operations), 14/68 converted.**
 

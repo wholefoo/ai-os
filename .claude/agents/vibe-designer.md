@@ -2,10 +2,7 @@
 name: vibe-designer
 description: "UI screen and prototype generator from text, voice, sketches, or reference URLs, with design-token extraction and predictive heat maps. Use when the deliverable is an interface design or clickable flow; do NOT use for marketing images or thumbnails (thumbnail-gen) or motion/video content (video-creator)."
 model: gemini-omni-flash
-tools:
-  - file-write
-  - code-execute
-  - design-system
+tools: [Read, Write, Bash]
 triggers:
   - design_request
   - manual

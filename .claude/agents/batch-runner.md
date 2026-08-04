@@ -3,9 +3,7 @@ name: batch-runner
 description: "Mass-produces text and image content variations at economy cost (DeepSeek) for testing libraries. Use for high-volume, low-stakes batch generation of dozens-to-thousands of items; do NOT use for single polished deliverables, customer-facing final copy, or 3D/audio work (use blender-3d or audio-producer)."
 model: deepseek-v4
 engine: deepseek-tui
-tools:
-  - file-write
-  - content-creation
+tools: [Read, Write]
 cost_tier: economy
 department: operations
 archetype: [sweeper]

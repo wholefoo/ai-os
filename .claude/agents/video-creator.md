@@ -5,10 +5,7 @@ model: gemini-omni-flash
 tier: creative
 escalates_to: media-producer
 group: creative
-tools:
-  - omni_generate_video
-  - omni_edit_video
-  - vault_write
+tools: [Read, Write]
 department: creative
 archetype: [builder]
 rubric: default
