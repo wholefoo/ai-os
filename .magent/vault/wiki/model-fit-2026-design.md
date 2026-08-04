@@ -188,10 +188,30 @@ likely to be skipped: **`CLAUDE_CODE_SIMPLE=1`**, an ablation switch that strips
 prompts so the raw model can be measured. Anthropic reportedly uses it to decide whether a prompt
 earns its place.
 
-**Unverified.** The document renders it as "claude code simple=1" and I have not confirmed the exact
-variable name, that it exists in this version, or what it strips. **Confirm it before any plan
-depends on it**, and if it doesn't exist, the fallback is a manual A/B: run the same task with the
-section present and removed, and compare.
+**VERIFIED 2026-08-03, and it is not what the source document implies.** `CLAUDE_CODE_SIMPLE=1` is
+real, but the documented interface is the **`claude --bare`** flag, and its scope is far wider than
+"strips system prompts". Straight from `claude --help`:
+
+> Minimal mode: skip hooks, LSP, plugin sync, attribution, auto-memory, background prefetches,
+> keychain reads, and **CLAUDE.md auto-discovery**. Sets `CLAUDE_CODE_SIMPLE=1`. Anthropic auth is
+> strictly `ANTHROPIC_API_KEY` or `apiKeyHelper` via `--settings` (OAuth and keychain are never
+> read). Skills still resolve via `/skill-name`.
+
+**Three consequences, and the second one matters most:**
+
+1. It is an **all-or-nothing harness ablation**, not a prompt ablation. A difference observed under
+   `--bare` cannot be attributed to any particular file — hooks, LSP and auto-memory went too.
+2. **It disables CLAUDE.md auto-discovery entirely**, so it *cannot* answer "does this section earn
+   its place". It removes every section at once, plus memory. Using it to justify a targeted
+   deletion would be measuring one thing and concluding another.
+3. It needs `ANTHROPIC_API_KEY` in the environment — OAuth and keychain are not read. Neither
+   `~/.claude/settings.json` nor `ai-os/.claude/settings.json` carries a key today, so a `--bare`
+   run needs one supplied deliberately.
+
+**So `--bare` answers "is the harness helping at all?" and nothing finer.** For §3.2 and §3.3, which
+are per-section decisions, the method is the manual A/B in the numbered list below — remove one
+candidate, re-measure the same thing, keep the deletion only if quality held. That was always the
+fallback; it is now the primary.
 
 **Why it matters here:** §3.2 and §3.3 both propose deleting text that *looks* useful. The honest
 order of operations for every deletion in this blueprint is:
@@ -255,6 +275,28 @@ Smaller than expected, because the memory system already implements progressive 
   session started, and is a known recurring trap. The router should carry only what is true across
   every project (verification posture, irreversible-action posture, commit≠push) and point at
   per-project files for the rest.
+
+  > **SHIPPED 2026-08-03 — `~/.claude/CLAUDE.md`, 26 lines.** Postures only: verification-by-breaking,
+  > the adversarial self-review pass, and the three standing postures. Two deliberate exclusions,
+  > both checked rather than assumed:
+  >
+  > - **Nothing that restates a memory.** Five of the 38 memories are cross-project discipline
+  >   (`assert-on-values-not-counts`, `boundary-guard-enumeration`, `live-system-facts-have-an-age`,
+  >   `ui-existence-is-not-usability`, `engineering-workflow-mechanics`). Verified zero keyword
+  >   overlap. **The division to keep: this file is postures, memory is what went wrong and when.**
+  > - **Nothing AI-OS-specific.** The codebase invariants stay in the repo.
+  >
+  > **Accepted duplication, with a reason:** ai-os's root `CLAUDE.md` keeps its own discipline copy
+  > even though the global now covers it. `wholefoo/ai-os` is a PUBLIC repo — stripping the
+  > discipline would leave an external contributor without it, since they do not have this machine's
+  > `~/.claude`. ~24 lines loaded twice in ai-os sessions is the right trade against a degraded
+  > public repo. Also noted: `~/.claude/fable-handover.md` and `ai-os/docs/fable-handover.md` are
+  > **byte-identical** (117 lines) — same trade, already being made.
+  >
+  > **NOT YET VERIFIED:** that a newly created `~/.claude/CLAUDE.md` actually loads. It is read at
+  > session start, so this session cannot see its own. **The check is the next session's context —
+  > confirm it appears before relying on it.** Unlike the AI OS router, this file has no test
+  > guarding it: `~/.claude` is not a git repo and has no suite.
 - **Do not migrate memories into it.** The index-plus-files pattern is already the recommended
   architecture; folding 1,225 lines into a always-loaded file would be a straight regression.
 - **Port the maintenance-verb loops** (§1's last gap): `/loop` and the scheduling skills exist, so
