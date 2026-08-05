@@ -1517,6 +1517,7 @@ const shareOfModel = require('./lib/aeo/share-of-model');
 const approvalPolicy = require('./lib/safety/approval');
 const designLint = require('./lib/design-lint');
 const pipelineGraph = require('./lib/pipeline-graph');
+const pipelinePatterns = require('./lib/pipeline-patterns');
 const provenanceLib = require('./lib/provenance');
 const mythos = require('./lib/security/mythos');
 const clonePersona = require('./lib/business-clone/persona');
@@ -7827,7 +7828,12 @@ function loadPipelines() {
         // in the pipeline list and refused by /execute before it spends a token — rather than
         // discovered mid-run. Same reasoning as checking `gates:` against ACTION_RISK.
         const check = pipelineGraph.validateGraph(pipeline && pipeline.stages);
-        return { filename: f, ...pipeline, graphValid: check.ok, graphErrors: check.errors };
+        // Pattern config is validated in the same breath: a `pattern: skeptic` with nothing to
+        // refute, or an unknown pattern name, is refused here rather than failing on the stage.
+        const patternErrors = ((pipeline && pipeline.stages) || [])
+          .flatMap((s) => pipelinePatterns.validatePatternStage(s));
+        const errors = [...check.errors, ...patternErrors];
+        return { filename: f, ...pipeline, graphValid: errors.length === 0, graphErrors: errors };
       } catch { return null; }
     })
     .filter(Boolean);
@@ -7880,7 +7886,7 @@ function executePipeline(pipelineName, params) {
 async function runPipelineStage(run, stage) {
   stage.status = 'running';
   stage.startedAt = new Date().toISOString();
-  broadcast({ event: 'fleet_update', data: { agent: stage.agent, status: 'running' } });
+  if (stage.agent) broadcast({ event: 'fleet_update', data: { agent: stage.agent, status: 'running' } });
   broadcast({ event: 'pipeline_update', data: run });
 
   // ONLY this stage's declared dependencies — not everything that happened earlier. On an edgeless
@@ -7900,9 +7906,46 @@ async function runPipelineStage(run, stage) {
   // down to a couple of characters (same failure mode the Web Studio plan call hit before its
   // budget was raised to 16000).
   let r = null;
-  try { r = await executeAgent(stage.agent, task, { useMcpTools: true, maxTokens: 12000 }); }
-  catch (e) { r = { ok: false, error: (e && e.message) || String(e) }; }
-  broadcast({ event: 'fleet_update', data: { agent: stage.agent, status: 'idle' } });
+
+  if (stage.pattern) {
+    // A PATTERN stage reaches lib/orchestrator.js — the kernel whose fan-out, skeptic, tournament,
+    // generate-filter and classify primitives had no consumer at all before G2. Cost is accumulated
+    // inside the injected runner because a pattern makes several agent calls and the kernel's return
+    // shape keeps content, not tokens.
+    const patternDeps = {
+      runAgent: async (agent, t, opts) => {
+        const res = await executeAgent(agent, t, { useMcpTools: true, maxTokens: 12000, ...(opts || {}) });
+        if (res && res.ok) {
+          const rt = costRateFor(res.model);
+          run.cost = Math.round((((run.cost || 0) + ((res.inputTokens || 0) / 1e6) * rt.input + ((res.outputTokens || 0) / 1e6) * rt.output)) * 10000) / 10000;
+        }
+        return res;
+      },
+      broadcast,
+      log: (m) => appendLog(m),
+    };
+    const inputs = pipelineGraph.inputsFor(stage, run.stages).filter((s) => s.output);
+    const pr = await pipelinePatterns.runPattern(stage,
+      { task, subject: prior, candidates: inputs.map((s) => s.output) }, patternDeps);
+
+    stage.patternMeta = pr.meta;
+    if (pr.verdict === 'gated') {
+      // A refuted panel escalating to a human, per .claude/rules/adversarial-verification.md.
+      stage.status = 'completed';
+      stage.output = pr.output;
+      stage.completedAt = new Date().toISOString();
+      stage.status = 'awaiting_approval';
+      sendNotification(`Pipeline gate: skeptic refuted "${stage.id}"`,
+        `The adversarial panel refuted stage "${stage.id}" in "${run.pipeline}". Review the findings before continuing.`, 'critical');
+      broadcast({ event: 'pipeline_update', data: run });
+      return 'gated';
+    }
+    r = { ok: pr.ok, content: pr.output, error: pr.ok ? undefined : (pr.output || 'pattern stage failed') };
+  } else {
+    try { r = await executeAgent(stage.agent, task, { useMcpTools: true, maxTokens: 12000 }); }
+    catch (e) { r = { ok: false, error: (e && e.message) || String(e) }; }
+  }
+  if (stage.agent) broadcast({ event: 'fleet_update', data: { agent: stage.agent, status: 'idle' } });
 
   if (!r || !r.ok) {
     stage.status = 'failed';
@@ -7916,10 +7959,14 @@ async function runPipelineStage(run, stage) {
   stage.status = 'completed';
   stage.completedAt = new Date().toISOString();
   stage.output = String(r.content || '');
-  stage.model = r.model;
-  const rates = costRateFor(r.model);
-  run.cost = Math.round((((run.cost || 0) + ((r.inputTokens || 0) / 1e6) * rates.input + ((r.outputTokens || 0) / 1e6) * rates.output)) * 10000) / 10000;
-  logActivity('pipeline', `Stage completed: ${stage.id} (${stage.agent} → ${stage.skill}) [${r.model}]`, { runId: run.id });
+  if (!stage.pattern) {
+    // Pattern stages already accumulated their cost inside patternDeps.runAgent, one entry per
+    // sub-call. Re-costing here would ask costRateFor() to price an undefined model.
+    stage.model = r.model;
+    const rates = costRateFor(r.model);
+    run.cost = Math.round((((run.cost || 0) + ((r.inputTokens || 0) / 1e6) * rates.input + ((r.outputTokens || 0) / 1e6) * rates.output)) * 10000) / 10000;
+  }
+  logActivity('pipeline', `Stage completed: ${stage.id} (${stage.pattern ? `pattern:${stage.pattern}` : `${stage.agent} → ${stage.skill}`})${r.model ? ` [${r.model}]` : ''}`, { runId: run.id });
   broadcast({ event: 'pipeline_update', data: run });
 
   // Gate: the stage produced its output, then pauses for a human.
