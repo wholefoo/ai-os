@@ -1518,6 +1518,7 @@ const approvalPolicy = require('./lib/safety/approval');
 const designLint = require('./lib/design-lint');
 const pipelineGraph = require('./lib/pipeline-graph');
 const pipelinePatterns = require('./lib/pipeline-patterns');
+const pipelineTrail = require('./lib/pipeline-trail');
 const provenanceLib = require('./lib/provenance');
 const mythos = require('./lib/security/mythos');
 const clonePersona = require('./lib/business-clone/persona');
@@ -7773,6 +7774,10 @@ const pipelineRuns = new Map();
 // results survive regardless of what happens to this process afterward. See completePipelineRun.
 const pipelineReports = require('./lib/pipeline-reports');
 const PIPELINE_REPORTS_DIR = path.join(BASE, 'data', 'pipeline-reports');
+// The run-scoped paper trail (G4). One directory per run, one .md per completed stage, written AS
+// each stage finishes — `pipelineRuns` is an in-memory Map, so before this a restart lost every run
+// and a failed run threw away the stages that had already succeeded.
+const PIPELINE_RUNS_DIR = path.join(MAGENT_DIR, 'runs');
 
 // Real Veo video generation (Gemini Developer API) — used by the Creative Studio commercial
 // module's Omni "video" generation type, which previously only faked results. See lib/omni-video.js.
@@ -7801,9 +7806,17 @@ const PRODUCTS_DIR = path.join(MAGENT_DIR, 'artifacts', 'products');
 // approve route finishing the last gated stage) — bookkeeping + the docx export. Fire-and-forget
 // from the caller's perspective (matches the existing fire-and-forget style of pipeline execution
 // itself); a failed export never fails the pipeline run, it just gets logged.
+// Refresh the on-disk manifest. Never throws: a disk problem must not turn a finished run into a
+// failed one, and the run record in memory is unaffected either way.
+function savePipelineManifest(run) {
+  try { pipelineTrail.writeManifest(PIPELINE_RUNS_DIR, run, run.layers || []); }
+  catch (e) { appendLog(`[pipeline-trail] manifest ${run && run.id}: ${e.message}`); }
+}
+
 async function completePipelineRun(run) {
   run.status = 'completed';
   run.completedAt = new Date().toISOString();
+  savePipelineManifest(run);
   logActivity('pipeline', `Pipeline completed: ${run.pipeline} ($${run.cost || 0})`, { runId: run.id });
   appendLog(`PIPELINE_COMPLETE: ${run.pipeline} -> ${run.id} ($${run.cost || 0})`);
   try {
@@ -7883,7 +7896,7 @@ function executePipeline(pipelineName, params) {
 
 // One stage: build its task from ONLY its declared inputs, call its agent, record the result.
 // Returns 'ok' | 'failed' | 'gated'. Never throws — the layer runner needs every sibling's verdict.
-async function runPipelineStage(run, stage) {
+async function runPipelineStage(run, stage, layer = 0) {
   stage.status = 'running';
   stage.startedAt = new Date().toISOString();
   if (stage.agent) broadcast({ event: 'fleet_update', data: { agent: stage.agent, status: 'running' } });
@@ -7967,6 +7980,15 @@ async function runPipelineStage(run, stage) {
     run.cost = Math.round((((run.cost || 0) + ((r.inputTokens || 0) / 1e6) * rates.input + ((r.outputTokens || 0) / 1e6) * rates.output)) * 10000) / 10000;
   }
   logActivity('pipeline', `Stage completed: ${stage.id} (${stage.pattern ? `pattern:${stage.pattern}` : `${stage.agent} → ${stage.skill}`})${r.model ? ` [${r.model}]` : ''}`, { runId: run.id });
+
+  // Paper trail: write the deliverable NOW, not at the end of the run. A pipeline that dies at
+  // stage 4 keeps the three that succeeded — the work a rerun does not need to redo. Never let a
+  // disk problem fail an otherwise-good stage; the output is still in the run record either way.
+  try {
+    stage.trailFile = pipelineTrail.writeStage(PIPELINE_RUNS_DIR, run, stage, layer);
+    pipelineTrail.writeManifest(PIPELINE_RUNS_DIR, run, run.layers || []);
+  } catch (e) { appendLog(`[pipeline-trail] ${run.id}/${stage.id}: ${e.message}`); }
+
   broadcast({ event: 'pipeline_update', data: run });
 
   // Gate: the stage produced its output, then pauses for a human.
@@ -8003,7 +8025,12 @@ async function runPipelineStages(run) {
     return;
   }
 
-  for (const layer of layers) {
+  // The schedule itself goes in the manifest: two stages sharing a layer ran concurrently, which is
+  // the one thing a directory of files cannot otherwise tell you about a graph run.
+  run.layers = layers;
+
+  for (let li = 0; li < layers.length; li++) {
+    const layer = layers[li];
     const todo = layer.map((id) => run.stages.find((s) => s.id === id))
       .filter((s) => s && s.status !== 'completed');
     if (!todo.length) continue;   // already done on a resume
@@ -8011,18 +8038,20 @@ async function runPipelineStages(run) {
     run.status = 'running';
     run.currentStage = run.stages.findIndex((s) => s.status !== 'completed');
     const verdicts = await pipelineGraph.mapLimited(todo, pipelineGraph.MAX_CONCURRENT_STAGES,
-      (stage) => runPipelineStage(run, stage));
+      (stage) => runPipelineStage(run, stage, li + 1));
 
     // A sibling's failure does not un-run the ones that succeeded; their output is kept and the run
     // stops here, because everything downstream declared a dependency on this layer.
     if (verdicts.includes('failed')) {
       run.status = 'failed';
       run.completedAt = new Date().toISOString();
+      savePipelineManifest(run);
       broadcast({ event: 'pipeline_update', data: run });
       return;
     }
     if (verdicts.includes('gated')) {
       run.status = 'awaiting_approval';
+      savePipelineManifest(run);
       broadcast({ event: 'pipeline_update', data: run });
       return;   // resumed by POST /api/pipelines/runs/:id/approve
     }
@@ -8035,11 +8064,27 @@ app.get('/api/pipelines', (req, res) => {
   res.json(loadPipelines());
 });
 
+// Live runs first, then any on disk that this process never saw. `pipelineRuns` is an in-memory Map,
+// so before the G4 paper trail a restart erased the history entirely; the manifests put it back.
+// Disk entries carry no stage OUTPUT — that is in the per-stage .md files — so they are marked
+// `fromTrail` and a caller knows to read the directory for the deliverables.
 app.get('/api/pipelines/runs', (req, res) => {
-  const runs = [...pipelineRuns.values()]
-    .sort((a, b) => new Date(b.startedAt) - new Date(a.startedAt))
+  const live = [...pipelineRuns.values()];
+  const seen = new Set(live.map((r) => r.id));
+  const archived = pipelineTrail.listRuns(PIPELINE_RUNS_DIR)
+    .filter((m) => m && !seen.has(m.id))
+    .map((m) => ({ ...m, fromTrail: true }));
+  const runs = [...live, ...archived]
+    .sort((a, b) => new Date(b.startedAt || 0) - new Date(a.startedAt || 0))
     .slice(0, 50);
   res.json(runs);
+});
+
+// One run's manifest from disk — the schedule, timings and per-stage status that survive a restart.
+app.get('/api/pipelines/runs/:id/trail', requireAdmin, (req, res) => {
+  const manifest = pipelineTrail.readManifest(PIPELINE_RUNS_DIR, req.params.id);
+  if (!manifest) return res.status(404).json({ error: 'No trail on disk for that run' });
+  res.json(manifest);
 });
 
 app.get('/api/pipelines/runs/:id', (req, res) => {

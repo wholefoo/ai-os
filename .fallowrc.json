@@ -66,6 +66,7 @@
     "tools/test-employee-clone-path.js",
     "tools/test-pipeline-graph.js",
     "tools/test-pipeline-patterns.js",
+    "tools/test-pipeline-trail.js",
     "tools/verify-clone-live.js",
     "ecosystem.config.js",
     "deploy/n8n-ecosystem.config.example.js",
