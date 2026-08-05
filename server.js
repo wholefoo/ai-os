@@ -1516,6 +1516,7 @@ const aeoCrawlers = require('./lib/aeo/crawlers');
 const shareOfModel = require('./lib/aeo/share-of-model');
 const approvalPolicy = require('./lib/safety/approval');
 const designLint = require('./lib/design-lint');
+const pipelineGraph = require('./lib/pipeline-graph');
 const provenanceLib = require('./lib/provenance');
 const mythos = require('./lib/security/mythos');
 const clonePersona = require('./lib/business-clone/persona');
@@ -7822,7 +7823,11 @@ function loadPipelines() {
       try {
         const content = fs.readFileSync(path.join(PIPELINE_DIR, f), 'utf-8');
         const pipeline = yaml.load(content);
-        return { filename: f, ...pipeline };
+        // Validate the dependency graph at LOAD time, so a typo'd or cyclic `depends_on` is visible
+        // in the pipeline list and refused by /execute before it spends a token — rather than
+        // discovered mid-run. Same reasoning as checking `gates:` against ACTION_RISK.
+        const check = pipelineGraph.validateGraph(pipeline && pipeline.stages);
+        return { filename: f, ...pipeline, graphValid: check.ok, graphErrors: check.errors };
       } catch { return null; }
     })
     .filter(Boolean);
@@ -7860,8 +7865,8 @@ function executePipeline(pipelineName, params) {
 
   broadcast({ event: 'pipeline_update', data: run });
 
-  // Real sequential stage execution (fire-and-forget; streams over the WebSocket).
-  runPipelineStages(run, 0).catch((e) => {
+  // Graph execution (fire-and-forget; streams over the WebSocket).
+  runPipelineStages(run).catch((e) => {
     run.status = 'failed'; run.error = e.message;
     appendLog(`PIPELINE_ERR: ${run.pipeline} -> ${e.message}`);
     broadcast({ event: 'pipeline_update', data: run });
@@ -7870,73 +7875,109 @@ function executePipeline(pipelineName, params) {
   return run;
 }
 
-// REAL sequential pipeline runner — each stage actually calls its agent via executeAgent,
-// threading earlier stages' outputs forward. Cost comes from real token usage (executeAgent
-// already logs the ledger entry; we total it onto run.cost). Blocking gates pause AFTER a
-// stage produces its output and resume from /approve. Fire-and-forget (async); the route has
-// already responded, and progress streams over the existing pipeline_update WebSocket.
-async function runPipelineStages(run, startIdx = 0) {
-  for (let i = startIdx; i < run.stages.length; i++) {
-    const stage = run.stages[i];
-    if (stage.status === 'completed') continue; // already done (pre-gate stages, on resume)
+// One stage: build its task from ONLY its declared inputs, call its agent, record the result.
+// Returns 'ok' | 'failed' | 'gated'. Never throws — the layer runner needs every sibling's verdict.
+async function runPipelineStage(run, stage) {
+  stage.status = 'running';
+  stage.startedAt = new Date().toISOString();
+  broadcast({ event: 'fleet_update', data: { agent: stage.agent, status: 'running' } });
+  broadcast({ event: 'pipeline_update', data: run });
 
-    stage.status = 'running';
-    stage.startedAt = new Date().toISOString();
-    run.currentStage = i;
-    run.status = 'running';
-    broadcast({ event: 'fleet_update', data: { agent: stage.agent, status: 'running' } });
+  // ONLY this stage's declared dependencies — not everything that happened earlier. On an edgeless
+  // pipeline inputsFor() returns all prior stages, which is the pre-2026-08-03 behaviour exactly.
+  const prior = pipelineGraph.inputsFor(stage, run.stages).filter((s) => s.output)
+    .map((s) => `### From stage "${s.id}" (${s.agent})\n${String(s.output).slice(0, 4000)}`).join('\n\n');
+  const paramsLine = run.params && Object.keys(run.params).length ? `Pipeline inputs: ${JSON.stringify(run.params)}\n` : '';
+  const task = `You are the "${stage.id}" stage of the "${run.pipeline}" pipeline.\n`
+    + `Objective (skill): ${stage.skill || stage.id}.\n${paramsLine}`
+    + (prior ? `\nDeliverables from earlier stages (build on these):\n${prior}\n` : '')
+    + '\nProduce this stage\'s deliverable directly and concisely.';
+
+  // useMcpTools: stages like "researcher" need real web-search/fetch access to produce grounded
+  // output instead of correctly refusing to fabricate. maxTokens: 12000 — Opus adaptive thinking
+  // shares max_tokens with the visible answer, and stage agents can run at xhigh effort (reviewer,
+  // architect, orchestrator per the "strategic" routing tier); 4000 let thinking starve the answer
+  // down to a couple of characters (same failure mode the Web Studio plan call hit before its
+  // budget was raised to 16000).
+  let r = null;
+  try { r = await executeAgent(stage.agent, task, { useMcpTools: true, maxTokens: 12000 }); }
+  catch (e) { r = { ok: false, error: (e && e.message) || String(e) }; }
+  broadcast({ event: 'fleet_update', data: { agent: stage.agent, status: 'idle' } });
+
+  if (!r || !r.ok) {
+    stage.status = 'failed';
+    stage.error = (r && r.error) || 'agent failed';
+    stage.completedAt = new Date().toISOString();
+    logActivity('pipeline', `Stage failed: ${stage.id} (${stage.agent}) — ${stage.error}`, { runId: run.id });
+    appendLog(`PIPELINE_FAIL: ${run.pipeline}/${stage.id} -> ${stage.error}`);
+    return 'failed';
+  }
+
+  stage.status = 'completed';
+  stage.completedAt = new Date().toISOString();
+  stage.output = String(r.content || '');
+  stage.model = r.model;
+  const rates = costRateFor(r.model);
+  run.cost = Math.round((((run.cost || 0) + ((r.inputTokens || 0) / 1e6) * rates.input + ((r.outputTokens || 0) / 1e6) * rates.output)) * 10000) / 10000;
+  logActivity('pipeline', `Stage completed: ${stage.id} (${stage.agent} → ${stage.skill}) [${r.model}]`, { runId: run.id });
+  broadcast({ event: 'pipeline_update', data: run });
+
+  // Gate: the stage produced its output, then pauses for a human.
+  if (stage.gate) {
+    stage.status = 'awaiting_approval';
+    sendNotification(
+      `Pipeline gate: ${stage.gate}`,
+      `Stage "${stage.id}" in pipeline "${run.pipeline}" produced its result and needs ${stage.gate} approval to continue.`,
+      stage.gate === 'blocking' ? 'critical' : 'normal'
+    );
+    return 'gated';
+  }
+  return 'ok';
+}
+
+// GRAPH pipeline runner — executes the `depends_on` edges the YAML has always declared.
+//
+// Until 2026-08-03 this was `for (let i = startIdx; i < run.stages.length; i++)`: array order, with
+// every prior stage's output threaded into every later stage. `depends_on` was read by nothing.
+// Now stages run in dependency layers, everything in a layer concurrently (capped), and a stage sees
+// only what it declared. `security-sweep` has two roots and genuinely parallelises.
+//
+// Resume is index-free: completed stages are skipped, so /approve just calls this again. That is
+// simpler AND more robust than the old `nextIdx` arithmetic, which assumed file order was run order.
+async function runPipelineStages(run) {
+  const layers = pipelineGraph.layersOf(run.stages);
+  if (!layers.length) {
+    const errs = pipelineGraph.validateGraph(run.stages).errors;
+    run.status = 'failed';
+    run.error = `invalid dependency graph: ${errs.join('; ')}`;
+    run.completedAt = new Date().toISOString();
+    appendLog(`PIPELINE_ERR: ${run.pipeline} -> ${run.error}`);
     broadcast({ event: 'pipeline_update', data: run });
+    return;
+  }
 
-    // Build the stage task from its skill objective + pipeline params + earlier outputs.
-    const prior = run.stages.slice(0, i).filter((s) => s.output)
-      .map((s) => `### From stage "${s.id}" (${s.agent})\n${String(s.output).slice(0, 4000)}`).join('\n\n');
-    const paramsLine = run.params && Object.keys(run.params).length ? `Pipeline inputs: ${JSON.stringify(run.params)}\n` : '';
-    const task = `You are the "${stage.id}" stage of the "${run.pipeline}" pipeline.\n`
-      + `Objective (skill): ${stage.skill || stage.id}.\n${paramsLine}`
-      + (prior ? `\nDeliverables from earlier stages (build on these):\n${prior}\n` : '')
-      + '\nProduce this stage\'s deliverable directly and concisely.';
+  for (const layer of layers) {
+    const todo = layer.map((id) => run.stages.find((s) => s.id === id))
+      .filter((s) => s && s.status !== 'completed');
+    if (!todo.length) continue;   // already done on a resume
 
-    // useMcpTools: stages like "researcher" need real web-search/fetch access to produce grounded
-    // output instead of correctly refusing to fabricate. maxTokens: 12000 — Opus adaptive thinking
-    // shares max_tokens with the visible answer, and stage agents can run at xhigh effort (reviewer,
-    // architect, orchestrator per the "strategic" routing tier); 4000 let thinking starve the answer
-    // down to a couple of characters (same failure mode the Web Studio plan call hit before its
-    // budget was raised to 16000).
-    const r = await executeAgent(stage.agent, task, { useMcpTools: true, maxTokens: 12000 });
-    broadcast({ event: 'fleet_update', data: { agent: stage.agent, status: 'idle' } });
+    run.status = 'running';
+    run.currentStage = run.stages.findIndex((s) => s.status !== 'completed');
+    const verdicts = await pipelineGraph.mapLimited(todo, pipelineGraph.MAX_CONCURRENT_STAGES,
+      (stage) => runPipelineStage(run, stage));
 
-    if (!r || !r.ok) {
-      stage.status = 'failed';
-      stage.error = (r && r.error) || 'agent failed';
-      stage.completedAt = new Date().toISOString();
+    // A sibling's failure does not un-run the ones that succeeded; their output is kept and the run
+    // stops here, because everything downstream declared a dependency on this layer.
+    if (verdicts.includes('failed')) {
       run.status = 'failed';
       run.completedAt = new Date().toISOString();
-      logActivity('pipeline', `Stage failed: ${stage.id} (${stage.agent}) — ${stage.error}`, { runId: run.id });
-      appendLog(`PIPELINE_FAIL: ${run.pipeline}/${stage.id} -> ${stage.error}`);
       broadcast({ event: 'pipeline_update', data: run });
       return;
     }
-
-    stage.status = 'completed';
-    stage.completedAt = new Date().toISOString();
-    stage.output = String(r.content || '');
-    stage.model = r.model;
-    const rates = costRateFor(r.model);
-    run.cost = Math.round((((run.cost || 0) + ((r.inputTokens || 0) / 1e6) * rates.input + ((r.outputTokens || 0) / 1e6) * rates.output)) * 10000) / 10000;
-    logActivity('pipeline', `Stage completed: ${stage.id} (${stage.agent} → ${stage.skill}) [${r.model}]`, { runId: run.id });
-    broadcast({ event: 'pipeline_update', data: run });
-
-    // Blocking gate: pause AFTER producing the output; await human approval to continue.
-    if (stage.gate) {
-      stage.status = 'awaiting_approval';
+    if (verdicts.includes('gated')) {
       run.status = 'awaiting_approval';
       broadcast({ event: 'pipeline_update', data: run });
-      sendNotification(
-        `Pipeline gate: ${stage.gate}`,
-        `Stage "${stage.id}" in pipeline "${run.pipeline}" produced its result and needs ${stage.gate} approval to continue.`,
-        stage.gate === 'blocking' ? 'critical' : 'normal'
-      );
-      return; // resumed by POST /api/pipelines/runs/:id/approve
+      return;   // resumed by POST /api/pipelines/runs/:id/approve
     }
   }
 
@@ -7961,6 +8002,11 @@ app.get('/api/pipelines/runs/:id', (req, res) => {
 });
 
 app.post('/api/pipelines/:name/execute', requireAdmin, (req, res) => {
+  // Refuse a malformed graph before spending a token, rather than failing mid-run.
+  const def = loadPipelines().find(p => p.name === req.params.name);
+  if (def && def.graphValid === false) {
+    return res.status(400).json({ error: `pipeline "${req.params.name}" has an invalid dependency graph: ${def.graphErrors.join('; ')}` });
+  }
   const run = executePipeline(req.params.name, req.body.params || {});
   if (!run) return res.status(404).json({ error: 'Pipeline not found' });
   res.json(run);
@@ -7976,24 +8022,25 @@ app.post('/api/pipelines/runs/:id/approve', requireAdmin, (req, res) => {
     gateStage.status = 'completed';
     gateStage.completedAt = new Date().toISOString();
   }
-  run.status = 'running';
   logActivity('pipeline', `Gate approved in pipeline: ${run.pipeline}`);
+
+  // A layer can contain more than one gate. Approving one does not release the run.
+  if (run.stages.some(s => s.status === 'awaiting_approval')) {
+    broadcast({ event: 'pipeline_update', data: run });
+    return res.json(run);
+  }
+
+  run.status = 'running';
   broadcast({ event: 'pipeline_update', data: run });
 
-  // Resume real execution from the next stage
-  const nextIdx = run.stages.indexOf(gateStage) + 1;
-  if (nextIdx < run.stages.length) {
-    run.currentStage = nextIdx;
-    runPipelineStages(run, nextIdx).catch((e) => {
-      run.status = 'failed'; run.error = e.message;
-      appendLog(`PIPELINE_ERR: ${run.pipeline} -> ${e.message}`);
-      broadcast({ event: 'pipeline_update', data: run });
-    });
-  } else {
-    // The approved stage was the last one — fire-and-forget completion (same style as
-    // runPipelineStages' own callers): don't make the HTTP response wait on the docx export.
-    completePipelineRun(run).catch((e) => appendLog(`[pipeline] completion error: ${e.message}`));
-  }
+  // Resume is index-free: runPipelineStages skips completed stages and recomputes the layers, so
+  // there is no `nextIdx` arithmetic to get wrong. It also completes the run itself when every
+  // stage is done, which is why the old "was that the last stage?" branch is gone.
+  runPipelineStages(run).catch((e) => {
+    run.status = 'failed'; run.error = e.message;
+    appendLog(`PIPELINE_ERR: ${run.pipeline} -> ${e.message}`);
+    broadcast({ event: 'pipeline_update', data: run });
+  });
 
   res.json(run);
 });

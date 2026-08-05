@@ -64,6 +64,7 @@
     "tools/test-brand-book.js",
     "tools/test-design-lint.js",
     "tools/test-employee-clone-path.js",
+    "tools/test-pipeline-graph.js",
     "tools/verify-clone-live.js",
     "ecosystem.config.js",
     "deploy/n8n-ecosystem.config.example.js",
