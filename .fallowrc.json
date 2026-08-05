@@ -67,6 +67,7 @@
     "tools/test-pipeline-graph.js",
     "tools/test-pipeline-patterns.js",
     "tools/test-pipeline-trail.js",
+    "tools/test-knowledge-context.js",
     "tools/verify-clone-live.js",
     "ecosystem.config.js",
     "deploy/n8n-ecosystem.config.example.js",

@@ -1519,6 +1519,23 @@ const designLint = require('./lib/design-lint');
 const pipelineGraph = require('./lib/pipeline-graph');
 const pipelinePatterns = require('./lib/pipeline-patterns');
 const pipelineTrail = require('./lib/pipeline-trail');
+const knowledgeContext = require('./lib/knowledge-context');
+
+// How many files the knowledge graph COULD cover. Mirrors the commercial module's
+// KNOWLEDGE_SOURCE_DIRS so the coverage line an agent is shown matches what the categoriser scans —
+// a "10 of 14" that counted a different set of directories would be worse than saying nothing.
+const KNOWLEDGE_SOURCE_DIRS = ['vault/wiki', 'vault/raw', 'vault/outputs', 'artifacts/docs', 'artifacts/research'];
+function knowledgeSourceCount() {
+  let n = 0;
+  for (const rel of KNOWLEDGE_SOURCE_DIRS) {
+    const dir = path.join(MAGENT_DIR, ...rel.split('/'));
+    try {
+      if (!fs.existsSync(dir)) continue;
+      n += fs.readdirSync(dir).filter((f) => !f.startsWith('.') && fs.statSync(path.join(dir, f)).isFile()).length;
+    } catch { /* an unreadable directory just does not count */ }
+  }
+  return n;
+}
 const provenanceLib = require('./lib/provenance');
 const mythos = require('./lib/security/mythos');
 const clonePersona = require('./lib/business-clone/persona');
@@ -3802,6 +3819,26 @@ async function executeAgent(agentName, task, options = {}) {
 
   // Build the full system message
   let fullSystem = systemPrompt;
+
+  // G5: pointers from the knowledge graph for whatever this task is about. OFF BY DEFAULT, and that
+  // is deliberate rather than timid — this changes what every agent KNOWS, and the graph-engineering
+  // evaluation recorded that such a change needs the criterion instrumentation producing data before
+  // anyone can say whether it helps. Off by default means it is A/B-able the moment that data
+  // arrives, instead of having silently altered the baseline it would be measured against.
+  //
+  // Relationships only: labels, tags and connections, never node excerpts. `vault/raw/` is web
+  // clippings by definition, and pasting those into a system prompt is a prompt-injection vector.
+  // See lib/knowledge-context.js.
+  if ((settings.ai && settings.ai.knowledge_context === 'true') || process.env.AIOS_KNOWLEDGE_CONTEXT === 'true') {
+    try {
+      const block = knowledgeContext.contextFor(knowledgeGraph, task, {
+        limit: 5,
+        coverage: knowledgeContext.coverage(knowledgeGraph, knowledgeSourceCount()),
+      });
+      if (block) fullSystem += `\n\n${block}`;
+    } catch (e) { appendLog(`[knowledge-context] ${agentName}: ${e.message}`); }
+  }
+
   if (context) fullSystem += `\n\n--- Current Context ---\n${context}`;
 
   // Operator-external ("untrusted") content (scraped pages, imported sites, model answers,
