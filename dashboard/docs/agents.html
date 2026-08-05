@@ -40,7 +40,7 @@
       {
         "@type": "Question",
         "name": "What determines which model an agent uses?",
-        "acceptedAnswer": { "@type": "Answer", "text": "The agent's tier frontmatter field. Strategic, Professional, and Scout all run Claude Opus 5 at different effort levels (xhigh, high, low); Specialized routes to Gemini Omni, DeepSeek, Grok, or Grok Build depending on the job." }
+        "acceptedAnswer": { "@type": "Answer", "text": "The agent's tier frontmatter field. Under the default balanced reasoning mode, Strategic runs Claude Opus 5 at xhigh effort while Professional and Scout run Claude Sonnet 5 at high and low effort; Specialized routes to Gemini Omni, DeepSeek, Grok, or Grok Build depending on the job. Switching the reasoning mode in Settings puts every reasoning tier on Opus 5 or on Sonnet 5." }
       },
       {
         "@type": "Question",
@@ -102,8 +102,8 @@
           </table>
           <p class="docs-lead" style="font-size:14px;">Chief Librarian (Athena), the Knowledge &amp; Records department head, is also Strategic tier — see <a href="#knowledge-records">Knowledge &amp; Records</a> below.</p>
 
-          <h2 id="professional-tier">Professional Tier — Opus 5 (effort: high)</h2>
-          <p>The workhorse tier handles the majority of tasks with balanced quality and speed. Opus 5 at high effort provides the same model quality with optimized thinking depth.</p>
+          <h2 id="professional-tier">Professional Tier — Sonnet 5 (effort: high)</h2>
+          <p>The workhorse tier handles the majority of tasks with balanced quality and speed. Under the default <code>balanced</code> reasoning mode it runs Claude Sonnet 5 at high effort, which is what keeps the bulk of agent work affordable; switching the mode to <code>opus</code> in Settings moves this tier onto Opus 5 instead.</p>
 
           <table class="docs-table">
             <thead>
@@ -133,8 +133,8 @@
             </tbody>
           </table>
 
-          <h2 id="scout-tier">Scout Tier — Opus 5 (effort: low)</h2>
-          <p>Fast agents for quick lookups and lightweight tasks. Low effort minimizes thinking time while retaining Opus 5's full capability when needed.</p>
+          <h2 id="scout-tier">Scout Tier — Sonnet 5 (effort: low)</h2>
+          <p>Fast agents for quick lookups and lightweight tasks. Under the default <code>balanced</code> reasoning mode this tier runs Claude Sonnet 5 at low effort, which minimizes thinking time while retaining the model's full capability when a task needs it.</p>
 
           <table class="docs-table">
             <thead>
@@ -347,7 +347,7 @@ You are a deep research specialist. Your role is to...
           </div>
           <div class="docs-callout info">
             <strong>What determines which model an agent uses?</strong>
-            <p>The agent's <code>tier</code> frontmatter field. Strategic, Professional, and Scout all run Claude Opus 5 at different effort levels (xhigh, high, low); Specialized routes to Gemini Omni, DeepSeek, Grok, or Grok Build depending on the job.</p>
+            <p>The agent's <code>tier</code> frontmatter field. Under the default balanced reasoning mode, Strategic runs Claude Opus 5 at xhigh effort while Professional and Scout run Claude Sonnet 5 at high and low effort; Specialized routes to Gemini Omni, DeepSeek, Grok, or Grok Build depending on the job. Switching the reasoning mode in Settings puts every reasoning tier on Opus 5 or on Sonnet 5.</p>
           </div>
           <div class="docs-callout info">
             <strong>Can I add my own agent?</strong>
