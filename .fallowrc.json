@@ -63,6 +63,7 @@
     "tools/test-rules-canon.js",
     "tools/test-brand-book.js",
     "tools/test-design-lint.js",
+    "tools/test-employee-clone-path.js",
     "tools/verify-clone-live.js",
     "ecosystem.config.js",
     "deploy/n8n-ecosystem.config.example.js",
