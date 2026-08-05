@@ -1007,7 +1007,7 @@ async function loadAgents() {
   container.innerHTML = state.agents.map(a => {
     const tools = a.meta?.tools || [];
     const routing = a.routing || {};
-    const modelLabel = routing.label || a.meta?.model || 'Opus 4.8';
+    const modelLabel = routing.label || a.meta?.model || 'Opus 5';
     const modelCls = routing.provider || 'sonnet';
     const status = state.fleetStatus[a.meta?.name] || 'idle';
     return `
@@ -2513,7 +2513,7 @@ function renderCostModelBreakdown(summary) {
   if (!container) return;
   const totalCost = summary.monthly.cost || 1;
   const pretty = (m) => String(m)
-    .replace('opus-4.8', 'Opus 4.8').replace('sonnet-5', 'Sonnet 5')
+    .replace('opus-5', 'Opus 5').replace('sonnet-5', 'Sonnet 5')
     .replace('deepseek-v4', 'DeepSeek').replace('gemini-omni', 'Gemini')
     .replace('grok-3', 'Grok').replace('glm-5.2', 'GLM')
     .replace(/-(xhigh|high|low)\b/, ' · $1');
@@ -2593,7 +2593,7 @@ function renderCostLedger(entries) {
         ${entries.map(e => `
           <tr>
             <td class="ledger-agent">${escapeHtml(e.agent)}</td>
-            <td><span class="ledger-model ${modelClass(e.model)}">${e.model.replace('opus-4.8-', 'Opus 4.8 ').replace('claude-4.7-', '')}</span></td>
+            <td><span class="ledger-model ${modelClass(e.model)}">${e.model.replace('opus-5-', 'Opus 5 ').replace('claude-4.7-', '')}</span></td>
             <td>${escapeHtml(e.skill)}</td>
             <td class="ledger-tokens">${formatTokenCount(e.inputTokens)}</td>
             <td class="ledger-tokens">${formatTokenCount(e.outputTokens)}</td>
@@ -8845,7 +8845,7 @@ async function showEmployee(empId, el) {
   const modal = document.getElementById('hqEmployeeModal');
   const detail = document.getElementById('hqEmployeeDetail');
   const tierClass = data.tier === 'strategic' ? 'opus' : data.tier === 'creative' ? 'omni' : data.tier === 'scout' ? 'haiku' : data.tier === 'persistent' ? 'hermes' : 'sonnet';
-  const routing = data.routing?.label || (data.tier === 'strategic' ? 'Opus 4.8 xhigh' : data.tier === 'creative' ? 'Gemini Omni' : data.tier === 'scout' ? 'Sonnet 5 low' : data.tier === 'persistent' ? 'Hermes MCP' : data.tier === 'economy' ? 'DeepSeek V4' : data.tier === 'realtime' ? 'Grok-3' : 'Sonnet 5 high');
+  const routing = data.routing?.label || (data.tier === 'strategic' ? 'Opus 5 xhigh' : data.tier === 'creative' ? 'Gemini Omni' : data.tier === 'scout' ? 'Sonnet 5 low' : data.tier === 'persistent' ? 'Hermes MCP' : data.tier === 'economy' ? 'DeepSeek V4' : data.tier === 'realtime' ? 'Grok-3' : 'Sonnet 5 high');
 
   detail.innerHTML = `
     <div class="hq-modal-header">

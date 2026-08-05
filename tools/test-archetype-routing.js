@@ -127,7 +127,7 @@ for (const f of files) {
   efforts.add(arch.routeArchetype(archOf(n), base).effort);
 }
 for (const e of efforts) {
-  for (const family of ['opus-4.8', 'sonnet-5']) {
+  for (const family of ['opus-5', 'sonnet-5']) {
     assert(rates.includes(`'${family}-${e}'`), `COST_RATES prices ${family}-${e} — an unpriced effort bills at the fallback rate and misreports spend`);
   }
 }

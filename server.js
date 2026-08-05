@@ -3557,10 +3557,16 @@ const updateProposals = loadState('update_proposals', []);
 
 // --- Cost Tracking State ---
 // --- Model Configuration ---
-const OPUS_MODEL = 'claude-opus-4-8';
+// Opus 5 (2026-08-04, was Opus 4.8). A drop-in upgrade: identical $5/$25 per 1M, identical request
+// surface to the one buildOpusRequest already sends. Neither of Opus 5's two breaking changes bites
+// here — thinking-on-by-default is moot because `thinking: {type:'adaptive'}` is always explicit, and
+// the 400 on `xhigh`/`max` + disabled thinking needs thinking DISABLED, which this platform never does.
+// KEEP THAT TRUE: if a caller ever adds `thinking: {type:'disabled'}`, it must also drop effort to
+// `high` or below, and the strategic tier runs at xhigh.
+const OPUS_MODEL = 'claude-opus-5';
 const SONNET_MODEL = 'claude-sonnet-5';
 // Anthropic's most capable model — an opt-in premium option (e.g. the Web Studio design flow). Same
-// request surface as Opus 4.8 (adaptive thinking, output_config.effort, no sampling params), so
+// request surface as Opus 5 (adaptive thinking, output_config.effort, no sampling params), so
 // callAnthropic needs no special handling; it only needs to be a permitted per-call model override.
 // $10/$50 per 1M (above Opus-tier) — NOT a default; requires 30-day data retention (not ZDR-eligible).
 const FABLE_MODEL = 'claude-fable-5';
@@ -3574,7 +3580,7 @@ const GEMINI_OMNI_MODEL = 'gemini-omni-flash';
 // matches docs.x.ai's published rate for this model.
 const GROK_BUILD_MODEL = 'grok-build-0.1';
 
-// Effort-level routing: maps agent tiers to Opus 4.8 effort levels
+// Effort-level routing: maps agent tiers to Opus 5 effort levels
 const EFFORT_ROUTING = {
   // Strategic tier — full reasoning power, complex planning, architecture decisions
   // `safety` joined the strategic tier in P4. It was `professional` by omission, which cost nothing
@@ -3666,7 +3672,7 @@ function getAgentEffort(agentName) {
   return {
     ...base,
     effort: arch.effort,
-    model: `opus-4.8-${arch.effort}`,
+    model: `opus-5-${arch.effort}`,
     archetype: arch.archetype,
     effortFloored: arch.floored,
     effortHeldByGate: arch.gateHeld,
@@ -3678,14 +3684,14 @@ function baseTierFor(agentName) {
   for (const [tier, config] of Object.entries(EFFORT_ROUTING)) {
     if (config.agents.includes(agentName)) {
       if (tier === 'creative') return { tier, effort: null, model: 'gemini-omni' };
-      return { tier, effort: config.effort, model: `opus-4.8-${config.effort}` };
+      return { tier, effort: config.effort, model: `opus-5-${config.effort}` };
     }
   }
-  return { tier: 'professional', effort: 'high', model: 'opus-4.8-high' };
+  return { tier: 'professional', effort: 'high', model: 'opus-5-high' };
 }
 
 // Choose the Anthropic model + effort + ledger string for a reasoning tier, honoring the operator's
-// reasoning_mode: 'opus' (all Opus 4.8), 'sonnet' (all Sonnet 5), or 'balanced' (DEFAULT — Opus 4.8 for
+// reasoning_mode: 'opus' (all Opus 5), 'sonnet' (all Sonnet 5), or 'balanced' (DEFAULT — Opus 5 for
 // the strategic tier, Sonnet 5 for professional/scout to cut cost on the bulk of agent work).
 // creative/realtime/economy tiers are unaffected (they route to Gemini/Grok/DeepSeek).
 function resolveAnthropicModel(routing) {
@@ -3696,25 +3702,27 @@ function resolveAnthropicModel(routing) {
     if (effort === 'xhigh') effort = 'high'; // Sonnet 5 may not expose Opus's 'xhigh' tier — clamp. (Verify via the Models API.)
     return { apiModel: SONNET_MODEL, effort, modelString: `sonnet-5-${effort}` };
   }
-  return { apiModel: OPUS_MODEL, effort, modelString: `opus-4.8-${effort}` };
+  return { apiModel: OPUS_MODEL, effort, modelString: `opus-5-${effort}` };
 }
 
 // Ledger model string for an Anthropic API model at a given effort (e.g. FABLE_MODEL + 'high' ->
 // 'fable-5-high'). Mirrors resolveAnthropicModel's `${family}-${effort}` convention so cost lookup and
 // the pretty label work uniformly for an overridden model.
 function anthropicLedgerString(apiModel, effort) {
-  const family = apiModel === FABLE_MODEL ? 'fable-5' : apiModel === SONNET_MODEL ? 'sonnet-5' : 'opus-4.8';
+  const family = apiModel === FABLE_MODEL ? 'fable-5' : apiModel === SONNET_MODEL ? 'sonnet-5' : 'opus-5';
   return `${family}-${effort || 'high'}`;
 }
 
 // Human-readable label for a resolved ledger model string (e.g. 'sonnet-5-high' -> 'Sonnet 5 high').
 function prettyModelString(m) {
-  return m.replace('opus-4.8-', 'Opus 4.8 ').replace('sonnet-5-', 'Sonnet 5 ').replace('fable-5-', 'Fable 5 ');
+  // `opus-4.8-` stays mapped: the live ledger holds months of entries under the previous family, and a
+  // cost report that renders them as a raw slug is a report that looks broken for its own history.
+  return m.replace('opus-5-', 'Opus 5 ').replace('opus-4.8-', 'Opus 4.8 ').replace('sonnet-5-', 'Sonnet 5 ').replace('fable-5-', 'Fable 5 ');
 }
 
 // Effective routing (CSS provider class + display label) for a reasoning tier, honoring reasoning_mode.
 // Single source of truth for the Agents tab and HQ org chart so both reflect Sonnet 5 in balanced/sonnet
-// mode instead of a hardcoded "Opus 4.8". Non-Anthropic tiers have fixed providers.
+// mode instead of a hardcoded "Opus 5". Non-Anthropic tiers have fixed providers.
 function tierRoutingLabel(tier) {
   const fixed = {
     creative: { provider: 'omni', label: 'Gemini Omni' },
@@ -3752,12 +3760,13 @@ function agentRoutingLabel(name, declaredModel) {
   };
 }
 
-// Build Anthropic API request body with Opus 4.8 features
+// Build Anthropic API request body with Opus 5 features
 function buildOpusRequest(messages, { effort = 'high', systemMessages = [], maxTokens = 4096 } = {}) {
   const body = {
     model: OPUS_MODEL,
     max_tokens: maxTokens,
-    // Adaptive thinking — Opus 4.8 decides when to reason deeply
+    // Adaptive thinking — Opus 5 decides when to reason deeply. Sent EXPLICITLY, not left to the
+    // model default, which is also what keeps the Opus 5 `xhigh` + disabled-thinking 400 unreachable.
     thinking: { type: 'adaptive' },
     messages,
   };
@@ -3882,7 +3891,7 @@ async function executeAgent(agentName, task, options = {}) {
       result = await callDeepSeek(fullSystem, fullTask, maxTokens);
       model = 'deepseek-v4';
     } else {
-      // Default: Anthropic — Opus 4.8 or Sonnet 5 per the operator's reasoning_mode (balanced by default:
+      // Default: Anthropic — Opus 5 or Sonnet 5 per the operator's reasoning_mode (balanced by default:
       // Opus for strategic, Sonnet 5 for professional/scout). Optionally with the operator's connected MCP
       // tools (opt-in); side-effectful tool calls route through the Auto-Mode approval gate below.
       const picked = resolveAnthropicModel(routing);
@@ -4322,7 +4331,7 @@ async function callPerplexity(systemPrompt, task, maxTokens) {
 
 // Z.ai — Zhipu AI's GLM models over their OpenAI-compatible endpoint (BYOK). Default flagship is
 // GLM-5.2 (1M context). Available provider: wired into the multi-model consensus / Share-of-Model
-// AEO check; not in the default agent routing (Opus 4.8 stays the default).
+// AEO check; not in the default agent routing (Opus 5 stays the default).
 async function callZai(systemPrompt, task, maxTokens) {
   const { content, inputTokens, outputTokens } = await callChatCompletions({
     provider: 'GLM (Z.ai)', keyName: 'Z.ai', url: 'https://api.z.ai/api/paas/v4/chat/completions', model: 'glm-5.2',
@@ -4404,14 +4413,23 @@ app.post('/api/chat', requireAdmin, async (req, res) => {
 });
 
 const COST_RATES = {
-  // Opus 4.8 — effort-based routing (single model, three tiers)
-  'opus-4.8-xhigh':    { input: 5.00,  output: 25.00 },   // per 1M — flat Opus 4.8 rate; xhigh spends more TOKENS (deeper thinking), not a higher per-token rate
-  'opus-4.8-high':     { input: 5.00,  output: 25.00 },   // standard — professional work
+  // Opus 5 — effort-based routing (single model, four rungs). Verified against docs.claude.com/pricing
+  // 2026-08-04: $5/$25 per 1M, the SAME rate Opus 4.8 charged, so the upgrade moved no cost line.
+  'opus-5-xhigh':      { input: 5.00,  output: 25.00 },   // per 1M — flat Opus 5 rate; xhigh spends more TOKENS (deeper thinking), not a higher per-token rate
+  'opus-5-high':       { input: 5.00,  output: 25.00 },   // standard — professional work
   // P4 added the `medium` rung. Without it the ladder was low/high/xhigh, so an archetype's one-rung
   // shift fell off a cliff (high -> low) and, worse, any 'medium' string would have missed COST_RATES
   // and billed at the fallback Opus rate. Flat per family: effort changes TOKENS, not price.
+  'opus-5-medium':     { input: 5.00,  output: 25.00 },
+  'opus-5-low':        { input: 5.00,  output: 25.00 },   // standard — scout/quick tasks (fewer tokens, same flat rate)
+  // Opus 4.8 — SUPERSEDED as a routing target on 2026-08-04, retained as a price. Nothing resolves to
+  // these strings any more, but the persisted ledger is full of them; deleting the rows would make
+  // every historical entry miss the table and re-bill at the fallback, silently rewriting past spend.
+  // Same $5/$25, so history stays exact rather than approximated.
+  'opus-4.8-xhigh':    { input: 5.00,  output: 25.00 },
+  'opus-4.8-high':     { input: 5.00,  output: 25.00 },
   'opus-4.8-medium':   { input: 5.00,  output: 25.00 },
-  'opus-4.8-low':      { input: 5.00,  output: 25.00 },   // standard — scout/quick tasks (fewer tokens, same flat rate)
+  'opus-4.8-low':      { input: 5.00,  output: 25.00 },
   // Sonnet 5 — the cost-efficient reasoning tier (settings.ai.reasoning_mode). Verified against
   // docs.claude.com/pricing on 2026-07-01: INTRODUCTORY $2/$10 per 1M through 2026-08-31, then reverts to
   // $3/$15 on 2026-09-01 — bump these to 3.00/15.00 on that date. (Sonnet 5's newer tokenizer emits ~30%
@@ -4465,16 +4483,16 @@ const COST_RATES = {
 };
 
 // Look up a per-1M-token rate, warning ONCE per unknown model so a new/typo'd model string surfaces
-// in the logs instead of silently billing at the priciest Opus rate (the old `|| opus-4.8-high` masked it).
+// in the logs instead of silently billing at the priciest Opus rate (the old `|| opus-5-high` masked it).
 const _warnedRateModels = new Set();
 function costRateFor(model) {
   const r = COST_RATES[model];
   if (r) return r;
   if (!_warnedRateModels.has(model)) {
     _warnedRateModels.add(model);
-    console.warn(`[COST] no rate for model "${model}" — falling back to opus-4.8-high ($5/$25). Add it to COST_RATES.`);
+    console.warn(`[COST] no rate for model "${model}" — falling back to opus-5-high ($5/$25). Add it to COST_RATES.`);
   }
-  return COST_RATES['opus-4.8-high'];
+  return COST_RATES['opus-5-high'];
 }
 
 const costLedger = loadState('cost-ledger', []);   // individual cost entries
@@ -4487,21 +4505,21 @@ const costBudget = {
 function seedCostLedger() {
   const now = Date.now();
   const entries = [
-    { agent: 'orchestrator', model: 'opus-4.8-xhigh', skill: 'task-routing', effort: 'xhigh', inputTokens: 12400, outputTokens: 3200, timestamp: new Date(now - 3600000).toISOString() },
-    { agent: 'researcher', model: 'opus-4.8-high', skill: 'research-brief', effort: 'high', inputTokens: 45000, outputTokens: 8500, timestamp: new Date(now - 7200000).toISOString() },
-    { agent: 'scout', model: 'opus-4.8-low', skill: 'tech-radar', effort: 'low', inputTokens: 28000, outputTokens: 4200, timestamp: new Date(now - 10800000).toISOString() },
+    { agent: 'orchestrator', model: 'opus-5-xhigh', skill: 'task-routing', effort: 'xhigh', inputTokens: 12400, outputTokens: 3200, timestamp: new Date(now - 3600000).toISOString() },
+    { agent: 'researcher', model: 'opus-5-high', skill: 'research-brief', effort: 'high', inputTokens: 45000, outputTokens: 8500, timestamp: new Date(now - 7200000).toISOString() },
+    { agent: 'scout', model: 'opus-5-low', skill: 'tech-radar', effort: 'low', inputTokens: 28000, outputTokens: 4200, timestamp: new Date(now - 10800000).toISOString() },
     { agent: 'deepseek-worker', model: 'deepseek-v4', skill: 'content-creation', inputTokens: 62000, outputTokens: 18000, timestamp: new Date(now - 14400000).toISOString() },
-    { agent: 'coder', model: 'opus-4.8-high', skill: 'implementation', effort: 'high', inputTokens: 38000, outputTokens: 12000, timestamp: new Date(now - 18000000).toISOString() },
-    { agent: 'writer', model: 'opus-4.8-high', skill: 'content-creation', effort: 'high', inputTokens: 22000, outputTokens: 9500, timestamp: new Date(now - 21600000).toISOString() },
-    { agent: 'security-auditor', model: 'opus-4.8-xhigh', skill: 'security-audit', effort: 'xhigh', inputTokens: 55000, outputTokens: 14000, timestamp: new Date(now - 25200000).toISOString() },
-    { agent: 'synthesis', model: 'opus-4.8-high', skill: 'deep-research', effort: 'high', inputTokens: 34000, outputTokens: 7800, timestamp: new Date(now - 28800000).toISOString() },
-    { agent: 'research-architect', model: 'opus-4.8-high', skill: 'deep-research', effort: 'high', inputTokens: 18000, outputTokens: 5200, timestamp: new Date(now - 32400000).toISOString() },
-    { agent: 'report-compiler', model: 'opus-4.8-high', skill: 'academic-paper', effort: 'high', inputTokens: 41000, outputTokens: 16000, timestamp: new Date(now - 36000000).toISOString() },
-    { agent: 'reviewer', model: 'opus-4.8-xhigh', skill: 'review', effort: 'xhigh', inputTokens: 32000, outputTokens: 6400, timestamp: new Date(now - 43200000).toISOString() },
-    { agent: 'data-wrangler', model: 'opus-4.8-high', skill: 'lead-enrichment', effort: 'high', inputTokens: 29000, outputTokens: 11000, timestamp: new Date(now - 50400000).toISOString() },
+    { agent: 'coder', model: 'opus-5-high', skill: 'implementation', effort: 'high', inputTokens: 38000, outputTokens: 12000, timestamp: new Date(now - 18000000).toISOString() },
+    { agent: 'writer', model: 'opus-5-high', skill: 'content-creation', effort: 'high', inputTokens: 22000, outputTokens: 9500, timestamp: new Date(now - 21600000).toISOString() },
+    { agent: 'security-auditor', model: 'opus-5-xhigh', skill: 'security-audit', effort: 'xhigh', inputTokens: 55000, outputTokens: 14000, timestamp: new Date(now - 25200000).toISOString() },
+    { agent: 'synthesis', model: 'opus-5-high', skill: 'deep-research', effort: 'high', inputTokens: 34000, outputTokens: 7800, timestamp: new Date(now - 28800000).toISOString() },
+    { agent: 'research-architect', model: 'opus-5-high', skill: 'deep-research', effort: 'high', inputTokens: 18000, outputTokens: 5200, timestamp: new Date(now - 32400000).toISOString() },
+    { agent: 'report-compiler', model: 'opus-5-high', skill: 'academic-paper', effort: 'high', inputTokens: 41000, outputTokens: 16000, timestamp: new Date(now - 36000000).toISOString() },
+    { agent: 'reviewer', model: 'opus-5-xhigh', skill: 'review', effort: 'xhigh', inputTokens: 32000, outputTokens: 6400, timestamp: new Date(now - 43200000).toISOString() },
+    { agent: 'data-wrangler', model: 'opus-5-high', skill: 'lead-enrichment', effort: 'high', inputTokens: 29000, outputTokens: 11000, timestamp: new Date(now - 50400000).toISOString() },
     { agent: 'deepseek-worker', model: 'deepseek-v4', skill: 'seo-audit', inputTokens: 85000, outputTokens: 24000, timestamp: new Date(now - 57600000).toISOString() },
-    { agent: 'scout', model: 'opus-4.8-low', skill: 'tech-radar', effort: 'low', inputTokens: 31000, outputTokens: 5100, timestamp: new Date(now - 86400000).toISOString() },
-    { agent: 'researcher', model: 'opus-4.8-high', skill: 'research-brief', effort: 'high', inputTokens: 52000, outputTokens: 9800, timestamp: new Date(now - 90000000).toISOString() },
+    { agent: 'scout', model: 'opus-5-low', skill: 'tech-radar', effort: 'low', inputTokens: 31000, outputTokens: 5100, timestamp: new Date(now - 86400000).toISOString() },
+    { agent: 'researcher', model: 'opus-5-high', skill: 'research-brief', effort: 'high', inputTokens: 52000, outputTokens: 9800, timestamp: new Date(now - 90000000).toISOString() },
   ];
 
   entries.forEach(e => {
@@ -4553,14 +4571,24 @@ function getCostSummary() {
   // Per-tier breakdown
   const tierMap = {
     // Current effort-tier model strings — what the ledger actually records
-    'opus-4.8-xhigh': 'strategic',
-    'opus-4.8-high': 'professional',
-    'opus-4.8-low': 'scout',
+    'opus-5-xhigh': 'strategic',
+    'opus-5-high': 'professional',
+    // `medium` is a real resolved effort (P4's archetype shift produces it) and was missing from this
+    // map for both families, so those entries fell out of the per-tier breakdown while still counting
+    // in the totals — a tier report that quietly under-reports itself. Added for both.
+    'opus-5-medium': 'professional',
+    'opus-5-low': 'scout',
     'sonnet-5-xhigh': 'strategic',
     'sonnet-5-high': 'professional',
+    'sonnet-5-medium': 'professional',
     'sonnet-5-low': 'scout',
     'deepseek-v4': 'economy',
     'gemini-omni': 'creative',
+    // Superseded 2026-08-04 by Opus 5 — kept so ledger history still resolves to a tier
+    'opus-4.8-xhigh': 'strategic',
+    'opus-4.8-high': 'professional',
+    'opus-4.8-medium': 'professional',
+    'opus-4.8-low': 'scout',
     // Legacy aliases — map ledger entries persisted before the Opus 4.8 consolidation
     'claude-4.7-opus': 'strategic',
     'claude-4.7-sonnet': 'professional',
@@ -9622,7 +9650,7 @@ app.post('/api/settings/test/:service', requireAdmin, async (req, res) => {
           'anthropic-version': '2023-06-01',
           'content-type': 'application/json',
         },
-        body: JSON.stringify({ model: 'claude-opus-4-8', max_tokens: 10, messages: [{ role: 'user', content: 'ping' }] }),
+        body: JSON.stringify({ model: OPUS_MODEL, max_tokens: 10, messages: [{ role: 'user', content: 'ping' }] }),
       });
       const ok = r.ok;
       res.json({ ok, message: ok ? 'Anthropic API key is valid' : await httpErrorDetail(r) });
@@ -10599,7 +10627,7 @@ async function runRealYouTubeAnalysis(analysis, analysisId, interval, type) {
   // Track cost
   const frameCost = (analysis.visualAnalysis?.length || 0) * 0.01; // ~$0.01 per frame
   costLedger.push({
-    id: uuidv4(), agent: 'youtube-analyzer', model: 'opus-4.8-high', skill: 'video-analysis',
+    id: uuidv4(), agent: 'youtube-analyzer', model: 'opus-5-high', skill: 'video-analysis',
     inputTokens: 5000 + (analysis.visualAnalysis?.length || 0) * 1500,
     outputTokens: 2000 + (analysis.visualAnalysis?.length || 0) * 300,
     cost: Math.round((0.05 + frameCost) * 10000) / 10000,
@@ -10679,7 +10707,7 @@ function generateYTVisualAnalysis(frames) {
     { scene: 'Speaker at desk with monitor showing code editor', elements: ['person', 'monitor', 'code editor', 'terminal'], onScreenText: 'server.js — line 524' },
     { scene: 'Dashboard view showing agent fleet status panel', elements: ['dashboard UI', 'agent cards', 'status indicators', 'charts'], onScreenText: '68 Active Agents | 6 AI Models' },
     { scene: 'Terminal showing PM2 process list with running services', elements: ['terminal', 'process table', 'CPU/memory stats'], onScreenText: 'pm2 status — ai-os online' },
-    { scene: 'Architecture diagram with model routing flow', elements: ['flowchart', 'arrows', 'model tier boxes'], onScreenText: 'Opus 4.8 xhigh → high → low' },
+    { scene: 'Architecture diagram with model routing flow', elements: ['flowchart', 'arrows', 'model tier boxes'], onScreenText: 'Opus 5 xhigh → high → low' },
     { scene: 'SEO audit results showing composite score and findings', elements: ['score badge', 'findings list', 'severity indicators'], onScreenText: 'Composite Score: 67/100' },
     { scene: 'Split screen comparing before/after meta tags', elements: ['comparison table', 'old values', 'new values', 'change badges'], onScreenText: 'Optimized: +3 changes per page' },
     { scene: 'Cost dashboard showing spending by model tier', elements: ['bar chart', 'tier breakdown', 'daily spend'], onScreenText: 'Daily: $3.42 | Monthly: $89.50' },
@@ -10707,7 +10735,7 @@ function generateYTSummary(analysis) {
       `and ${analysis.visualAnalysis.filter(v => v.elements.includes('dashboard UI') || v.elements.includes('charts')).length} dashboard demonstrations.`,
     keyTopics: [
       'Multi-agent orchestration architecture',
-      'Effort-based model routing (Opus 4.8)',
+      'Effort-based model routing (Opus 5)',
       'SEO agency with parallel sub-agents',
       'VPS deployment with PM2 + Nginx',
       'Real-time dashboard with WebSocket updates',

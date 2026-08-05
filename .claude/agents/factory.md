@@ -1,7 +1,7 @@
 ---
 name: factory
 description: "Materializes .claude/agents/<role>.md definition files from .magent/team.yaml during the orchestrator's materialization phase. Use only when the team roster changes and agent files need (re)generation; do NOT use to execute any role's actual work — dispatch the generated agent instead."
-model: claude-opus-4-8
+model: claude-opus-5
 effort: high
 tools: [Read, Write]
 trigger: Called by orchestrator during materialization phase.

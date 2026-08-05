@@ -50,7 +50,7 @@ sudo -u aios git -C /opt/ai-os pull origin master && sudo -u aios pm2 restart ai
 - If `commercial/` changed, the VPS needs **both** repos pulled.
 
 ## Model routing (don't hardcode "Opus")
-Agent `.md` frontmatter says `claude-opus-4-8`, but the effective model is chosen at run time by
+Agent `.md` frontmatter says `claude-opus-5`, but the effective model is chosen at run time by
 `resolveAnthropicModel()` from `settings.ai.reasoning_mode` (`balanced` default = Opus for the
 strategic tier, **Sonnet 5** for professional/scout). Any UI/ledger surface that shows "the model"
 must derive it from the routing, not the frontmatter. See memory `product-canon-and-content`.

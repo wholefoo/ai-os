@@ -12,7 +12,7 @@ const STATEMENT = [
   '## Executive Summary',
   'All providers **stable**. One pricing change detected.',
   '## Latest Provider Updates',
-  '- Anthropic: Opus 4.8 unchanged',
+  '- Anthropic: Opus 5 unchanged',
   '- OpenAI: new mini tier',
   '## Suggested Implementations',
   '- Bump COST_RATES for the new tier',

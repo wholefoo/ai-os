@@ -1,7 +1,7 @@
 ---
 name: qa
 description: Writes and executes automated tests against produced code and validates outputs against requirements. Use after coder delivers code that needs verified pass/fail evidence; do NOT use for critical review of documents or design judgment (reviewer) or for compliance vetoes on planned actions (safety).
-model: claude-opus-4-8
+model: claude-opus-5
 effort: high
 tools: [Read, Write, Bash, Grep]
 trigger: After code is produced and needs verification.

@@ -1,7 +1,7 @@
 ---
 name: golden-loop
 description: "Knowledge & Records department. Keeps Gemini Gems synced to their NotebookLM knowledge bases — detects source changes, refreshes notebook context, and regenerates affected outputs; also the department's staleness watch, including flagging a canonical-facts record whose upstream value has moved. Use when a source updates, a sync interval fires, or a Gem produces stale answers; do NOT use to create knowledge structure or categorize new sources (knowledge-graph), or to parse an upload (archivist)."
-model: claude-opus-4-8
+model: claude-opus-5
 effort: high
 tools: [Read, Write, Grep]
 triggers:

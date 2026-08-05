@@ -1,7 +1,7 @@
 ---
 name: consultant-deepseek
 description: On-site consultant for DeepSeek models — the economy tier, the alias deprecation, and AI OS adoption. Runs on DeepSeek V4.
-model: claude-opus-4-8
+model: claude-opus-5
 effort: high
 tools: [Read, Grep, Glob, WebSearch]
 trigger: When the user asks about DeepSeek model releases, capabilities, pricing, migration, or how to adopt them inside AI OS.

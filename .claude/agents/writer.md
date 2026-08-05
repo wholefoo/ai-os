@@ -1,7 +1,7 @@
 ---
 name: writer
 description: "Produces audience-facing written deliverables (docs, reports, guides) from mission context and existing artifacts. Use when the output is a finished document; do NOT use to reconcile raw research inputs (synthesis) or to audit existing web copy for SEO (seo-content)."
-model: claude-opus-4-8
+model: claude-opus-5
 effort: high
 tools: [Read, Write, WebSearch]
 trigger: When the task requires documentation, reports, or content creation.

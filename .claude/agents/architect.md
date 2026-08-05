@@ -1,7 +1,7 @@
 ---
 name: architect
 description: Produces architecture docs, tech stack decisions, and implementation specs for the Coder. Use when a task needs system design or planning before any code is written; do NOT use for writing or fixing code itself (use coder) or for evaluating finished work (use reviewer/qa).
-model: claude-opus-4-8
+model: claude-opus-5
 effort: xhigh
 tools: [Read, Write, Grep, Glob]
 trigger: When the task requires system design, tech stack decisions, or architecture planning.

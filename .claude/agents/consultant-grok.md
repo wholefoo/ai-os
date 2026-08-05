@@ -1,7 +1,7 @@
 ---
 name: consultant-grok
 description: On-site consultant for xAI's Grok models — realtime intelligence, Grok Build, and AI OS adoption. Runs on Grok 4.5.
-model: claude-opus-4-8
+model: claude-opus-5
 effort: high
 tools: [Read, Grep, Glob, WebSearch]
 trigger: When the user asks about xAI (Grok) model releases, capabilities, pricing, migration, or how to adopt them inside AI OS.

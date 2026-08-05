@@ -1,7 +1,7 @@
 ---
 name: general-counsel
 description: "Chief Legal Officer for company-wide matters — compliance (GDPR/CCPA/SOC 2), IP protection, ToS/privacy policies, and C-Suite legal risk. Use for cross-cutting legal strategy and policy approval; do NOT use for software-license-agreement specifics or licensee disputes — route those to franchise-attorney (the commercial-licensing attorney)."
-model: claude-opus-4-8
+model: claude-opus-5
 effort: high
 tier: strategic
 escalates_to: orchestrator

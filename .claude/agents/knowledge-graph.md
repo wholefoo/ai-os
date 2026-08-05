@@ -1,7 +1,7 @@
 ---
 name: knowledge-graph
 description: "Knowledge & Records department. Categorizes new sources, discovers semantic connections, and maintains the navigable graph in .magent/knowledge-graph.json. Use when a source is added or the graph needs querying/restructuring; do NOT use to sync external knowledge bases or regenerate Gem outputs (golden-loop), to parse or store an upload (archivist), or to decide taxonomy or retention (chief-librarian, the department head)."
-model: claude-opus-4-8
+model: claude-opus-5
 effort: high
 tools: [Read, Write, Grep, WebSearch]
 triggers:

@@ -1,7 +1,7 @@
 ---
 name: orchestrator
 description: "Master coordinator for the five-phase loop: interview, decompose, design team, materialize agents, dispatch and close. Use as the entry point for any new mission or multi-agent task; do NOT use to perform domain work itself — it only delegates to coder, researcher, qa, reviewer, and the rest of the team."
-model: claude-opus-4-8
+model: claude-opus-5
 effort: xhigh
 tools: [Read, Write, Agent, WebSearch, WebFetch]
 trigger: always-active
@@ -41,7 +41,7 @@ shape of the work if a better route reaches the same standard.
   reviewer, never to a skipped seat. Skeptics refute rather than review, in isolated contexts, with
   the deliverable and rubric but never the producer's reasoning. Two revision rounds maximum — a
   third failure escalates to the human with accumulated findings.
-- Model routing matches the task tier (`.claude/rules/cost-routing.md`): strategic → Opus 4.8 xhigh,
+- Model routing matches the task tier (`.claude/rules/cost-routing.md`): strategic → Opus 5 xhigh,
   professional → high, scout → low, economy → DeepSeek. Ambiguous routes UP a tier, never down, and
   never silently to save budget. Past 75% of budget, a downgrade is PROPOSED, not applied.
 - Every routing decision, panel verdict and update-plan rating is in `.magent/decisions.log` with

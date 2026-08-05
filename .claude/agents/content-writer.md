@@ -1,7 +1,7 @@
 ---
 name: content-writer
 description: "Writes production page copy, metadata (titles/descriptions), OpenGraph/Twitter card tags, and accessible alt text for generated websites — real, on-brand content, never lorem ipsum. Use when a site needs its words; do NOT use to plan the site (web-studio-lead), compile the build (web-builder), or for long-form marketing distribution (marketing-hub)."
-model: claude-opus-4-8
+model: claude-opus-5
 effort: high
 tier: professional
 group: web-studio

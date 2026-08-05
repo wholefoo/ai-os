@@ -2,7 +2,7 @@
 description: Cross-model review of staged changes (read-only)
 allowed-tools: Bash(git diff:*), Read, Grep, Glob
 argument-hint: [optional focus area]
-model: claude-opus-4-8
+model: claude-opus-5
 ---
 Staged changes to review:
 

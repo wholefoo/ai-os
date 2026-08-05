@@ -1,7 +1,7 @@
 ---
 name: web-builder
 description: "Compiles a site's design + tokens + copy + assets into a static Astro + Tailwind build (plain HTML/CSS/JS), then runs the WCAG design-lint gate and refuses to report 'ready' on error-severity findings. Use to turn an approved plan + copy into built, deployable output; do NOT use to plan the site (web-studio-lead), write the copy (content-writer), or deploy/host it (hosting-ops)."
-model: claude-opus-4-8
+model: claude-opus-5
 effort: high
 tier: professional
 group: web-studio

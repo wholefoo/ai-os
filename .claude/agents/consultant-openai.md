@@ -1,7 +1,7 @@
 ---
 name: consultant-openai
 description: On-site consultant for OpenAI's GPT models — release facts, API breaking changes, and AI OS adoption. Runs on GPT-5.6.
-model: claude-opus-4-8
+model: claude-opus-5
 effort: high
 tools: [Read, Grep, Glob, WebSearch]
 trigger: When the user asks about OpenAI (GPT) model releases, capabilities, pricing, migration, or how to adopt them inside AI OS.

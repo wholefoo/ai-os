@@ -1,7 +1,7 @@
 ---
 name: product-factory
 description: Builds sellable digital products — styled spreadsheets via openpyxl, Notion templates, toolkit bundles — plus their marketplace listing copy. Use when the deliverable is a product file for Etsy/Gumroad; do NOT use for rendered video or 3D assets (media-producer) or for promoting/distributing the product after creation (marketing-hub).
-model: claude-opus-4-8
+model: claude-opus-5
 effort: high
 tools: [Read, Write, Bash]
 triggers:

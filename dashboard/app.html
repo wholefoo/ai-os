@@ -564,7 +564,7 @@
 
           <div class="costs-layout">
             <section class="panel">
-              <h3 class="panel-title">Spend by Model <span style="font-size:11px;font-weight:400;color:var(--text-muted);">— Opus 4.8 vs. Sonnet 5</span></h3>
+              <h3 class="panel-title">Spend by Model <span style="font-size:11px;font-weight:400;color:var(--text-muted);">— Opus 5 vs. Sonnet 5</span></h3>
               <div class="costs-model-breakdown" id="costsModelBreakdown"><!-- JS --></div>
             </section>
             <section class="panel">
@@ -2375,17 +2375,17 @@
               <p class="settings-desc">Configure API keys and reasoning-model routing. Keys are masked in the browser and stored server-side with restrictive file permissions; at-rest encryption is the host operator's responsibility.</p>
               <div class="settings-fields">
                 <div class="settings-field">
-                  <label class="settings-label">Reasoning model <span class="settings-tier">Opus 4.8 vs. Sonnet 5 — cost/quality</span></label>
+                  <label class="settings-label">Reasoning model <span class="settings-tier">Opus 5 vs. Sonnet 5 — cost/quality</span></label>
                   <div class="settings-input-row">
                     <select class="settings-input" id="set-reasoning_mode">
-                      <option value="balanced">Balanced — Opus 4.8 for strategic agents, Sonnet 5 for the rest (default)</option>
-                      <option value="opus">Max quality — every reasoning agent on Opus 4.8</option>
+                      <option value="balanced">Balanced — Opus 5 for strategic agents, Sonnet 5 for the rest (default)</option>
+                      <option value="opus">Max quality — every reasoning agent on Opus 5</option>
                       <option value="sonnet">Cost saver — every reasoning agent on Sonnet 5</option>
                     </select>
                   </div>
                 </div>
                 <div class="settings-field">
-                  <label class="settings-label">Anthropic API Key <span class="settings-tier">Opus 4.8 + Sonnet 5 — all reasoning tiers</span></label>
+                  <label class="settings-label">Anthropic API Key <span class="settings-tier">Opus 5 + Sonnet 5 — all reasoning tiers</span></label>
                   <div class="settings-input-row">
                     <input type="text" class="settings-input settings-secret" id="set-anthropic_api_key" placeholder="sk-ant-..." autocomplete="new-password" data-lpignore="true" data-1p-ignore spellcheck="false">
                     <button type="button" class="btn btn-sm settings-eye" onclick="toggleKeyVisibility(this)" title="Show/hide">&#128065;</button>
@@ -2997,7 +2997,7 @@
     </div>
   </div>
 
-  <script src="js/app.js?v=72"></script>
+  <script src="js/app.js?v=73"></script>
   <script src="https://cdn.jsdelivr.net/npm/monaco-editor@0.52.2/min/vs/loader.js"></script>
   <script src="js/web-studio.js?v=16"></script>
   <script src="js/crm.js?v=9"></script>

@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Agent Fleet — AI OS Docs</title>
-  <meta name="description" content="Complete guide to all 68 AI agents, powered by 6 AI models across 4 routing tiers — Claude Opus 4.8, OpenAI/GPT, Gemini Omni, DeepSeek, Grok (xAI), and Perplexity. Includes SEO &amp; AEO Agency sub-agents, AI Web Studio crew, and Legal department.">
+  <meta name="description" content="Complete guide to all 68 AI agents, powered by 6 AI models across 4 routing tiers — Claude Opus 5, OpenAI/GPT, Gemini Omni, DeepSeek, Grok (xAI), and Perplexity. Includes SEO &amp; AEO Agency sub-agents, AI Web Studio crew, and Legal department.">
   <link rel="canonical" href="https://aiosorchestrationlab.com/docs/agents">
   <meta property="og:title" content="Agent Fleet — AI OS Docs">
   <meta property="og:description" content="All 68 AI agents powered by 6 AI models across 4 routing tiers — Strategic, Professional, Scout, and Specialized. SEO &amp; AEO, Web Studio, and Legal included.">
@@ -20,7 +20,7 @@
     "@context": "https://schema.org",
     "@type": "TechArticle",
     "headline": "Agent Fleet — AI OS Docs",
-    "description": "Complete guide to all 68 AI agents, powered by 6 AI models across 4 routing tiers — Claude Opus 4.8, OpenAI/GPT, Gemini Omni, DeepSeek, Grok (xAI), and Perplexity. Includes SEO & AEO Agency sub-agents, AI Web Studio crew, and Legal department.",
+    "description": "Complete guide to all 68 AI agents, powered by 6 AI models across 4 routing tiers — Claude Opus 5, OpenAI/GPT, Gemini Omni, DeepSeek, Grok (xAI), and Perplexity. Includes SEO & AEO Agency sub-agents, AI Web Studio crew, and Legal department.",
     "url": "https://aiosorchestrationlab.com/docs/agents",
     "author": { "@type": "Organization", "name": "AI OS Orchestration Lab" },
     "publisher": { "@type": "Organization", "name": "AI OS Orchestration Lab", "url": "https://aiosorchestrationlab.com" }
@@ -40,7 +40,7 @@
       {
         "@type": "Question",
         "name": "What determines which model an agent uses?",
-        "acceptedAnswer": { "@type": "Answer", "text": "The agent's tier frontmatter field. Strategic, Professional, and Scout all run Claude Opus 4.8 at different effort levels (xhigh, high, low); Specialized routes to Gemini Omni, DeepSeek, Grok, or Grok Build depending on the job." }
+        "acceptedAnswer": { "@type": "Answer", "text": "The agent's tier frontmatter field. Strategic, Professional, and Scout all run Claude Opus 5 at different effort levels (xhigh, high, low); Specialized routes to Gemini Omni, DeepSeek, Grok, or Grok Build depending on the job." }
       },
       {
         "@type": "Question",
@@ -81,11 +81,11 @@
           </div>
 
           <h1>Agent Fleet</h1>
-          <p class="docs-lead">AI OS orchestrates <strong>68 specialized agents</strong> powered by <strong>6 AI models across 4 routing tiers</strong>. Claude Opus 4.8 is the default brain and powers the three reasoning tiers — Strategic (effort: xhigh), Professional (high), and Scout (low) — while the Specialized tier routes to the right model for the job: Gemini Omni for creative generation, DeepSeek for economy batch work, Grok (xAI) for real-time intelligence, OpenAI/GPT for alternate reasoning, and Perplexity for grounded search. Each agent has a defined role, capabilities, and escalation path managed through Markdown files with YAML frontmatter in <code>.claude/agents/</code>.</p>
+          <p class="docs-lead">AI OS orchestrates <strong>68 specialized agents</strong> powered by <strong>6 AI models across 4 routing tiers</strong>. Claude Opus 5 is the default brain and powers the three reasoning tiers — Strategic (effort: xhigh), Professional (high), and Scout (low) — while the Specialized tier routes to the right model for the job: Gemini Omni for creative generation, DeepSeek for economy batch work, Grok (xAI) for real-time intelligence, OpenAI/GPT for alternate reasoning, and Perplexity for grounded search. Each agent has a defined role, capabilities, and escalation path managed through Markdown files with YAML frontmatter in <code>.claude/agents/</code>.</p>
 
           <p>The fleet breaks down as <strong>48 named employees</strong> on the <a href="/docs/getting-started#step-4-explore-your-virtual-hq">Virtual HQ org chart</a> (11 departments, including the new Knowledge &amp; Records department) plus <strong>11 system &amp; orchestration agents</strong> that power the platform behind the scenes — the SEO Agency sub-agents, the AI Web Studio crew, and the orchestration kernel.</p>
 
-          <h2 id="strategic-tier">Strategic Tier — Claude Opus 4.8 (effort: xhigh)</h2>
+          <h2 id="strategic-tier">Strategic Tier — Claude Opus 5 (effort: xhigh)</h2>
           <p>Maximum reasoning depth for decisions requiring deep analysis, architectural judgment, and cross-system awareness. Uses adaptive thinking for complex multi-step planning.</p>
 
           <table class="docs-table">
@@ -102,8 +102,8 @@
           </table>
           <p class="docs-lead" style="font-size:14px;">Chief Librarian (Athena), the Knowledge &amp; Records department head, is also Strategic tier — see <a href="#knowledge-records">Knowledge &amp; Records</a> below.</p>
 
-          <h2 id="professional-tier">Professional Tier — Opus 4.8 (effort: high)</h2>
-          <p>The workhorse tier handles the majority of tasks with balanced quality and speed. Opus 4.8 at high effort provides the same model quality with optimized thinking depth.</p>
+          <h2 id="professional-tier">Professional Tier — Opus 5 (effort: high)</h2>
+          <p>The workhorse tier handles the majority of tasks with balanced quality and speed. Opus 5 at high effort provides the same model quality with optimized thinking depth.</p>
 
           <table class="docs-table">
             <thead>
@@ -133,8 +133,8 @@
             </tbody>
           </table>
 
-          <h2 id="scout-tier">Scout Tier — Opus 4.8 (effort: low)</h2>
-          <p>Fast agents for quick lookups and lightweight tasks. Low effort minimizes thinking time while retaining Opus 4.8's full capability when needed.</p>
+          <h2 id="scout-tier">Scout Tier — Opus 5 (effort: low)</h2>
+          <p>Fast agents for quick lookups and lightweight tasks. Low effort minimizes thinking time while retaining Opus 5's full capability when needed.</p>
 
           <table class="docs-table">
             <thead>
@@ -209,7 +209,7 @@
           <p>Each agent is defined as a Markdown file in <code>.claude/agents/</code> with YAML frontmatter specifying its metadata:</p>
           <pre><code>---
 name: researcher
-model: opus-4.8
+model: opus-5
 effort: high
 tier: professional
 escalates_to: orchestrator
@@ -227,8 +227,8 @@ You are a deep research specialist. Your role is to...
           <h3>Frontmatter Fields</h3>
           <ul>
             <li><strong>name</strong> — Unique identifier used in API calls and routing</li>
-            <li><strong>model</strong> — AI model to use; one of the 6 supported models (claude-opus-4-8, gemini-omni-flash, deepseek, grok, openai/gpt, perplexity)</li>
-            <li><strong>effort</strong> — Opus 4.8 effort level: xhigh (strategic), high (professional), low (scout)</li>
+            <li><strong>model</strong> — AI model to use; one of the 6 supported models (claude-opus-5, gemini-omni-flash, deepseek, grok, openai/gpt, perplexity)</li>
+            <li><strong>effort</strong> — Opus 5 effort level: xhigh (strategic), high (professional), low (scout)</li>
             <li><strong>tier</strong> — Cost/capability tier for routing decisions</li>
             <li><strong>escalates_to</strong> — Agent to escalate to when confidence is low</li>
             <li><strong>tools</strong> — List of tools/capabilities available to this agent</li>
@@ -347,7 +347,7 @@ You are a deep research specialist. Your role is to...
           </div>
           <div class="docs-callout info">
             <strong>What determines which model an agent uses?</strong>
-            <p>The agent's <code>tier</code> frontmatter field. Strategic, Professional, and Scout all run Claude Opus 4.8 at different effort levels (xhigh, high, low); Specialized routes to Gemini Omni, DeepSeek, Grok, or Grok Build depending on the job.</p>
+            <p>The agent's <code>tier</code> frontmatter field. Strategic, Professional, and Scout all run Claude Opus 5 at different effort levels (xhigh, high, low); Specialized routes to Gemini Omni, DeepSeek, Grok, or Grok Build depending on the job.</p>
           </div>
           <div class="docs-callout info">
             <strong>Can I add my own agent?</strong>

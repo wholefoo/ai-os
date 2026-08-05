@@ -4,69 +4,69 @@ created: 2026-05-17
 
 roles:
   - name: orchestrator
-    model: claude-opus-4-8
+    model: claude-opus-5
     description: Master coordinator — interviews users, spawns teams, reviews outputs
     always_active: true
 
   - name: researcher
-    model: claude-opus-4-8
+    model: claude-opus-5
     description: Gathers external information with citations
     skills: [research-brief, lead-enrichment]
 
   - name: architect
-    model: claude-opus-4-8
+    model: claude-opus-5
     description: System design and technical planning
     skills: []
 
   - name: coder
-    model: claude-opus-4-8
+    model: claude-opus-5
     description: Implements code from specifications
     skills: []
 
   - name: reviewer
-    model: claude-opus-4-8
+    model: claude-opus-5
     description: Critical analysis — read-only, veto power
     read_only: true
     skills: []
 
   - name: qa
-    model: claude-opus-4-8
+    model: claude-opus-5
     description: Testing and verification
     skills: []
 
   - name: writer
-    model: claude-opus-4-8
+    model: claude-opus-5
     description: Documentation and content creation
     skills: [content-creation]
 
   - name: data-wrangler
-    model: claude-opus-4-8
+    model: claude-opus-5
     description: Data processing and analysis
     skills: [lead-enrichment]
 
   - name: scout
-    model: claude-opus-4-8
+    model: claude-opus-5
     description: Lightweight intelligence gatherer — monitors AI/tech advancements and proposes stack updates
     skills: [tech-radar]
     schedule: daily
 
   - name: research-architect
-    model: claude-opus-4-8
+    model: claude-opus-5
     description: Designs research methodology and structures investigations
     skills: [academic-paper, deep-research]
 
   - name: synthesis
-    model: claude-opus-4-8
+    model: claude-opus-5
     description: Cross-source synthesis — identifies patterns, conflicts, and consensus
     skills: [deep-research]
 
   - name: report-compiler
-    model: claude-opus-4-8
+    model: claude-opus-5
     description: Compiles research findings into polished final deliverables
     skills: [academic-paper]
 
   - name: security-auditor
-    model: claude-opus-4-8
+    model: claude-opus-5
     description: AI-powered security assessment — vulnerabilities, dependencies, hardening
     skills: [security-audit]
 
@@ -78,18 +78,18 @@ roles:
     skills: [content-creation, seo-audit, lead-enrichment]
 
   - name: automator
-    model: claude-opus-4-8
+    model: claude-opus-5
     description: Automation bridge — triggers N8N workflows, Zapier zaps, and webhook integrations
     skills: [automation-bridge]
 
   - name: social-intel
-    model: claude-opus-4-8
+    model: claude-opus-5
     description: Social intelligence — monitors X/Twitter, LinkedIn, Bluesky, HN, Reddit for AI/tech trends
     skills: [social-listening]
     schedule: daily
 
   - name: browser-agent
-    model: claude-opus-4-8
+    model: claude-opus-5
     description: Playwright-powered browser automation — navigates websites, fills forms, takes screenshots, extracts data
     skills: [browser-automation]
 
@@ -102,63 +102,63 @@ roles:
 
   # --- Knowledge & Records department (governed company library over the existing stores) ---
   - name: chief-librarian
-    model: claude-opus-4-8
+    model: claude-opus-5
     description: Department head — taxonomy, cross-department lookup, routing, retention decisions; reads the catalog, never ingests
     skills: []
 
   - name: archivist
-    model: claude-opus-4-8
+    model: claude-opus-5
     description: Intake — format handling, dedupe by content hash, metadata, versioning; extends lib/org/documents.js
     skills: []
 
   - name: knowledge-graph
-    model: claude-opus-4-8
+    model: claude-opus-5
     description: Auto-organizing knowledge base — categorizes sources, builds semantic connections, generates mind maps (Knowledge & Records)
     skills: [knowledge-categorize]
 
   - name: design-system
-    model: claude-opus-4-8
+    model: claude-opus-5
     description: DESIGN.md protocol — manages tokens, lints WCAG accessibility, enforces brand consistency
     skills: [design-lint]
 
   - name: media-producer
-    model: claude-opus-4-8
+    model: claude-opus-5
     description: Multi-engine media production — Remotion video, Google Vids, Blender 3D from prompts
     skills: [media-produce]
 
   - name: routine-runner
-    model: claude-opus-4-8
+    model: claude-opus-5
     description: CRON-scheduled continuous loop executor — manages autonomous routines with rate limiting
     skills: [media-produce, content-creation, browser-automation]
     cost_tier: batch
 
   - name: product-factory
-    model: claude-opus-4-8
+    model: claude-opus-5
     description: AI-generated digital products — spreadsheets, Notion templates, toolkits for Etsy & Gumroad
     skills: [content-creation]
 
   - name: lead-gen
-    model: claude-opus-4-8
+    model: claude-opus-5
     description: Automated lead generation — scraping, enrichment, achievement discovery, personalized outreach
     skills: [lead-enrichment, browser-automation]
 
   - name: marketing-hub
-    model: claude-opus-4-8
+    model: claude-opus-5
     description: End-to-end marketing — content pipelines, cross-platform distribution, voice-trained AI
     skills: [content-creation, social-listening]
 
   - name: golden-loop
-    model: claude-opus-4-8
+    model: claude-opus-5
     description: Gem ↔ NotebookLM sync — connects custom AI personas to dynamically-updated knowledge bases
     skills: [knowledge-categorize]
 
   - name: vibe-designer
-    model: claude-opus-4-8
+    model: claude-opus-5
     description: Prompt-driven UI generation — natural language, voice, sketches & URL extraction with heat maps
     skills: [design-lint]
 
   - name: blender-3d
-    model: claude-opus-4-8
+    model: claude-opus-5
     description: Text-to-3D via Blender MCP — environments, product renders, scene generation
     skills: [media-produce]
 
@@ -171,22 +171,22 @@ roles:
 
   # --- Web Studio department (static site studio + on-box hosting) ---
   - name: web-studio-lead
-    model: claude-opus-4-8
+    model: claude-opus-5
     description: AI Web Studio lead — turns a brief into a built, deployed static site by planning IA and sequencing the studio team
     skills: []
 
   - name: web-builder
-    model: claude-opus-4-8
+    model: claude-opus-5
     description: Compiles design + tokens + copy into a static Astro + Tailwind build and runs the WCAG gate
     skills: [design-lint]
 
   - name: content-writer
-    model: claude-opus-4-8
+    model: claude-opus-5
     description: Production page copy, metadata, OpenGraph/Twitter tags, and accessible alt text for generated sites
     skills: [content-creation]
 
   - name: hosting-ops
-    model: claude-opus-4-8
+    model: claude-opus-5
     description: Deploys + hosts generated sites — nginx vhost, certbot TLS, custom domains, tier site-count, rollback
     skills: []
 

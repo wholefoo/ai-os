@@ -19,13 +19,13 @@ A multi-agentic AI operating system built as a Virtual Corporate Headquarters, o
           │                      │                      │
    ┌──────▼──────┐      ┌───────▼───────┐      ┌───────▼───────┐
    │  CEO Atlas   │      │  Agent Fleet  │      │  Memory Vault │
-   │(Opus 4.8 xh)│──────│  68 agents    │──────│  .magent/     │
+   │(Opus 5 xh)│──────│  68 agents    │──────│  .magent/     │
    └──────────────┘      └───────────────┘      └───────────────┘
           │                      │
    ┌──────▼──────────────────────▼──────┐
    │     Effort-Based Model Routing     │
    ├──────────┬─────────┬──────┬────────┤
-   │ Opus 4.8 │ Opus4.8 │Opus  │Gemini  │
+   │ Opus 5 │ Opus4.8 │Opus  │Gemini  │
    │  xhigh   │  high   │ low  │ Omni   │
    │Strategic  │  Pro    │Scout │Creative│
    ├──────────┼─────────┼──────┼────────┤
@@ -224,7 +224,7 @@ All tiers are self-hosted — you run on your own infrastructure with your own d
 |-------|-----------|
 | Runtime | Node.js 24 + Express |
 | Dashboard | Vanilla HTML/CSS/JS with WebSocket live updates |
-| AI Models | 6 providers: Claude Opus 4.8 (default, effort routing), OpenAI GPT, Gemini Omni Flash, DeepSeek V4, Grok-3 (xAI), Perplexity — across 4 routing tiers; plus opt-in Z.ai GLM (GLM-5.2) in the multi-model consensus |
+| AI Models | 6 providers: Claude Opus 5 (default, effort routing), OpenAI GPT, Gemini Omni Flash, DeepSeek V4, Grok-3 (xAI), Perplexity — across 4 routing tiers; plus opt-in Z.ai GLM (GLM-5.2) in the multi-model consensus |
 | Web Scraping | Firecrawl, Apify (25K+ actors), Tavily (AI search) |
 | Video Analysis | yt-dlp + ffmpeg + Claude Vision API |
 | SEO Data | DataForSEO API |
@@ -308,7 +308,7 @@ ssh root@your-vps-ip 'sudo -u aios git -C /opt/ai-os pull origin master && sudo 
 | `API_TOKEN` | Prod | Bearer token for API auth — grants **admin** (service principal) on protected routes; keep it secret and rotate on exposure |
 | `ADMIN_EMAIL` | Yes | Admin login email |
 | `ADMIN_PASSWORD_HASH` | Yes | bcrypt hash of admin password |
-| `ANTHROPIC_API_KEY` | For AI | Claude Opus 4.8 API key (all effort tiers) |
+| `ANTHROPIC_API_KEY` | For AI | Claude Opus 5 API key (all effort tiers) |
 | `GEMINI_API_KEY` | For AI | Google Gemini API key (Omni creative tier) |
 | `DEEPSEEK_API_KEY` | For AI | DeepSeek V4 economy tier |
 | `ZAI_API_KEY` | For AI | Z.ai GLM (default GLM-5.2) — opt-in provider in the multi-model consensus |
@@ -365,9 +365,9 @@ DeepSeek V4, Grok (xAI), and Perplexity.
 
 | Routing Tier | Model(s) | Effort | Count | Role |
 |------|-------|--------|-------|------|
-| Strategic | Claude Opus 4.8 | xhigh | 6 | Orchestration, architecture, critical review, security audit, Web Studio lead, knowledge taxonomy |
-| Professional | Claude Opus 4.8 | high | 42 | Research, coding, writing, SEO/AEO, marketing, support, IT, legal, compliance, hosting ops, creative direction, communications, document archiving |
-| Scout | Claude Opus 4.8 | low | 3 | Fast lookups, triage, scheduled monitoring, social intel |
+| Strategic | Claude Opus 5 | xhigh | 6 | Orchestration, architecture, critical review, security audit, Web Studio lead, knowledge taxonomy |
+| Professional | Claude Opus 5 | high | 42 | Research, coding, writing, SEO/AEO, marketing, support, IT, legal, compliance, hosting ops, creative direction, communications, document archiving |
+| Scout | Claude Opus 5 | low | 3 | Fast lookups, triage, scheduled monitoring, social intel |
 | Specialized | Gemini Omni / DeepSeek V4 / Grok 4.5 / Grok Build | — | 9 | Creative media (5, Gemini Omni), bulk economy processing (2, DeepSeek V4), realtime web search (1, Grok 4.5), platform-upgrade planning (1, Grok Build) |
 | LLM Consultants | Each provider's own model | high | 7 | On-site provider consultants (Anthropic, OpenAI, Gemini, DeepSeek, Grok, Perplexity, Manus) — release intelligence + AI OS adoption guidance, each answering on its own provider's model |
 | **Total** | | | **68** | |
@@ -379,7 +379,7 @@ infrastructure, not a separate model or agent count.
 
 **Z.ai (GLM)** is wired as an opt-in, bring-your-own-key provider (OpenAI-compatible; default
 model GLM-5.2). Add a `ZAI_API_KEY` in Settings and it joins the **multi-model consensus /
-Share-of-Model** AEO checks — it is not part of the default agent routing, so Claude Opus 4.8
+Share-of-Model** AEO checks — it is not part of the default agent routing, so Claude Opus 5
 remains the default for all agent work.
 
 ### SEO Agency Sub-Agents

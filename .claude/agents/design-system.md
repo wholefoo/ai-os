@@ -1,7 +1,7 @@
 ---
 name: design-system
 description: "Owns the design system's tokens and lints UI output for WCAG contrast, spacing-grid, and brand-token compliance. Use when defining/updating design tokens or auditing generated components against the design system; do NOT use for writing application code or general UX research — route those to engineering or research agents."
-model: claude-opus-4-8
+model: claude-opus-5
 effort: high
 tools: [Read, Write, Edit, Grep]
 triggers:

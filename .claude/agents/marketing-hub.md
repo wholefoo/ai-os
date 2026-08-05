@@ -1,7 +1,7 @@
 ---
 name: marketing-hub
 description: Atomizes long-form content (YouTube, blog, podcast) into platform-native posts and manages the draft-to-published queue. Use when a finished piece of content needs distribution, repurposing, or channel scheduling; do NOT use for producing the source video/3D assets (media-producer), sellable digital products (product-factory), or unattended scheduled loops (routine-runner).
-model: claude-opus-4-8
+model: claude-opus-5
 effort: high
 tools: [Read, Write]
 triggers:

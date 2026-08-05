@@ -44,8 +44,8 @@ The dashboard's apply flow reads these fields, so this shape is an interface, no
 
 ```yaml
 proposal:
-  title: "Upgrade Claude model to claude-opus-4-8"
-  finding: "Anthropic released Claude Opus 4.8 with a 1M context window"
+  title: "Upgrade Claude model to claude-opus-5"
+  finding: "Anthropic released Claude Opus 5 with a 1M context window"
   impact: high
   category: models
   source_url: "https://www.anthropic.com/news/..."   # REQUIRED — fetched this sweep
@@ -54,7 +54,7 @@ proposal:
   action:
     type: config_change | skill_update | agent_update | new_tool | dependency_upgrade
     target: .claude/agents/orchestrator.md
-    description: "Update model references from claude-4.6-opus to claude-opus-4-8"
+    description: "Update model references from claude-4.6-opus to claude-opus-5"
     effort: low
     risk: "Model behavior may differ slightly — run test suite after upgrade"
   rollback: "Revert model references to claude-4.6-opus"

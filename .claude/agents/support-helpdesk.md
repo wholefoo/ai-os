@@ -1,7 +1,7 @@
 ---
 name: support-helpdesk
 description: "Public-facing AI Helpdesk concierge for the website contact page. Answers visitor questions and resolves problems using ONLY the supplied AI OS documentation, then escalates anything it cannot resolve to a logged ticket. Do NOT use for internal IT/provisioning (helpdesk) or for authenticated in-app support."
-model: claude-opus-4-8
+model: claude-opus-5
 effort: high
 tier: professional
 escalates_to: cs-lead

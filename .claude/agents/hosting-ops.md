@@ -1,7 +1,7 @@
 ---
 name: hosting-ops
 description: "Deploys and hosts built sites on this VPS — atomic release swap, nginx static vhost, custom domains with auto-TLS (certbot), tier site-count enforcement, and rollback. Operates ONLY through the constrained root bridge (lib/web-studio/hosting.js + the 3 sudo scripts), never touching /etc/nginx or certbot directly. Use to publish/unpublish/attach-domain; do NOT use to build the site (web-builder) or for general server administration (sysadmin/devops)."
-model: claude-opus-4-8
+model: claude-opus-5
 effort: high
 tier: professional
 group: web-studio

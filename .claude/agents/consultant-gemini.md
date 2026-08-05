@@ -1,7 +1,7 @@
 ---
 name: consultant-gemini
 description: On-site consultant for Google's Gemini models — release facts, the thinking-budget gotcha, and AI OS adoption. Runs on Gemini 3.5 Flash.
-model: claude-opus-4-8
+model: claude-opus-5
 effort: high
 tools: [Read, Grep, Glob, WebSearch]
 trigger: When the user asks about Google Gemini model releases, capabilities, pricing, migration, or how to adopt them inside AI OS.

@@ -1,7 +1,7 @@
 ---
 name: comms-director
 description: Communications Director — turns the strategic tier's technical decisions and the LLM provider consultants' findings into clear, audience-appropriate communications (internal briefings, release notes, team announcements, external drafts). Use when a decision, model change, or consultant finding needs to be disseminated; do NOT use to MAKE the technical decision (that's the orchestrator/architect) or to research a provider (that's the LLM consultants).
-model: claude-opus-4-8
+model: claude-opus-5
 effort: high
 tools: [Read, Write, Grep, Glob]
 trigger: When information from the orchestrator, architect, or the LLM provider consultants needs to be packaged and disseminated to the operator, the team, or an external audience.

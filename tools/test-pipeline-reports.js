@@ -19,8 +19,8 @@ const mkRun = (over = {}) => ({
   completedAt: '2026-07-18T10:30:00.000Z',
   cost: 0.42,
   stages: [
-    { id: 'research', agent: 'researcher', model: 'opus-4.8-high', status: 'completed', output: '# Findings\n- point one\n- point two' },
-    { id: 'synthesize', agent: 'synthesis', model: 'opus-4.8-high', status: 'completed', output: 'Synthesis prose with **bold** text.' },
+    { id: 'research', agent: 'researcher', model: 'opus-5-high', status: 'completed', output: '# Findings\n- point one\n- point two' },
+    { id: 'synthesize', agent: 'synthesis', model: 'opus-5-high', status: 'completed', output: 'Synthesis prose with **bold** text.' },
     { id: 'review', agent: 'reviewer', status: 'running', output: null }, // NOT completed — must be excluded
   ],
   ...over,

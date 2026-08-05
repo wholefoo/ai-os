@@ -63,7 +63,7 @@ The Orchestrator evaluates each task against these criteria:
 
 1. **Budget Caps**: Each mission defines a max API spend. The orchestrator tracks cumulative cost.
 2. **Auto-downgrade**: If budget is >75% consumed, non-critical tasks auto-route to DeepSeek V4.
-3. **Quality Gate**: DeepSeek outputs on `high` quality tasks get spot-checked by the Reviewer (Opus 4.8, xhigh effort).
+3. **Quality Gate**: DeepSeek outputs on `high` quality tasks get spot-checked by the Reviewer (Opus 5, xhigh effort).
 4. **Cost Logging**: Every agent execution logs estimated cost to `.magent/decisions.log`.
 5. **Monthly Report**: Scout generates a monthly cost efficiency report comparing engines.
 
