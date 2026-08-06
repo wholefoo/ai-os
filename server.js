@@ -3904,9 +3904,27 @@ async function executeAgent(agentName, task, options = {}) {
         apiModel = options.modelOverride;
         model = anthropicLedgerString(apiModel, effort);
       }
-      const toolset = options.useMcpTools ? buildMcpToolset() : null;
-      if (toolset && toolset.tools.length) {
+      const mcpSet = options.useMcpTools ? buildMcpToolset() : { tools: [], map: {} };
+      const repoSet = options.useRepoTools ? buildRepoToolset() : { tools: [], names: new Set() };
+      // Repo tool names are RESERVED. An operator-connected MCP server can expose its own "Read", and
+      // letting a remote tool shadow the denylist-gated local reader would swap an audited read for an
+      // unaudited one under the same name. Local wins; the shadowed remote tool is dropped and logged.
+      const shadowed = mcpSet.tools.filter((t) => repoSet.names.has(t.name)).map((t) => t.name);
+      if (shadowed.length) appendLog(`[repo-tools] ignored MCP tool(s) shadowing reserved repo names: ${shadowed.join(', ')}`);
+      const toolset = {
+        tools: [...repoSet.tools, ...mcpSet.tools.filter((t) => !repoSet.names.has(t.name))],
+        map: mcpSet.map,
+      };
+      if (toolset.tools.length) {
         result = await callAnthropicWithTools(fullSystem, fullTask, effort, maxTokens, toolset.tools, async (toolName, input) => {
+          // Read-only repo access is served here, BEFORE the MCP approval gate below. Deliberate:
+          // gateAction exists for outward/side-effectful calls, and queuing a human approval for every
+          // file an auditor opens would make the pipeline unusable while protecting nothing — the
+          // security boundary for these is the denylist inside runReadOnlyRepoTool, not the gate.
+          if (repoSet.names.has(toolName)) {
+            appendLog(`[repo-tools] ${agentName} -> ${toolName}(${JSON.stringify(input).slice(0, 120)})`);
+            return await runReadOnlyRepoTool(toolName, input);
+          }
           const entry = toolset.map[toolName];
           if (!entry) return `Error: unknown tool ${toolName}`;
           // A 'trusted' integration is pre-approved by the operator — run it directly (still audit-logged),
@@ -4215,6 +4233,31 @@ async function runReadOnlyRepoTool(name, args) {
   } catch (e) {
     return `Error: ${e.message}`;
   }
+}
+
+// The same three read-only tools in ANTHROPIC shape, for executeAgent's tool-use path. The Grok
+// planner's defs above are OpenAI-shaped (`{type:'function', function:{...}}`); Anthropic wants
+// `{name, description, input_schema}`. Same three names, same executor, same denylist — only the
+// envelope differs, so there is exactly one implementation of "what may be read".
+//
+// WHY THIS EXISTS. security-sweep could not audit anything even when handed `target: /opt/ai-os`:
+// every stage answered "BLOCKED — no evidence access. I have no filesystem, shell, or repo tooling in
+// this stage invocation." The agent handbooks declare `tools: Read, Grep, Glob, Bash`, but in this
+// platform `tools:` is a DECLARATION, not a grant — the pipeline path only ever passed useMcpTools
+// (web search/fetch). This closes that specific gap and nothing wider: read-only, repo-root
+// contained, gated by the self-improve denylist (.env, .magent/state, vault/raw, commercial/, .git,
+// node_modules), and no shell-out — Grep/Glob are a directory walk plus a JS RegExp.
+const REPO_TOOL_NAMES = new Set(['Read', 'Grep', 'Glob']);
+
+function buildRepoToolset() {
+  return {
+    names: REPO_TOOL_NAMES,
+    tools: [
+      { name: 'Read', description: 'Read a file from this instance\'s repo (read-only, repo-root-contained). Returns the full content, or an error if the path is denied or missing.', input_schema: { type: 'object', properties: { path: { type: 'string', description: 'Path relative to the repo root, e.g. "server.js" or "lib/foo.js"' } }, required: ['path'] } },
+      { name: 'Grep', description: 'Search file contents by regex across the repo (or a subdirectory).', input_schema: { type: 'object', properties: { pattern: { type: 'string', description: 'JS-flavored regex' }, path: { type: 'string', description: 'Optional file or subdirectory to scope the search to' } }, required: ['pattern'] } },
+      { name: 'Glob', description: 'List repo files matching a glob pattern, e.g. "lib/**/*.js".', input_schema: { type: 'object', properties: { pattern: { type: 'string' } }, required: ['pattern'] } },
+    ],
+  };
 }
 
 // grok-build-0.1 — xAI's dev-planning-tuned model, reached via the SAME OpenAI-compatible
@@ -8014,7 +8057,7 @@ async function runPipelineStage(run, stage, layer = 0) {
     // shape keeps content, not tokens.
     const patternDeps = {
       runAgent: async (agent, t, opts) => {
-        const res = await executeAgent(agent, t, { useMcpTools: true, maxTokens: 12000, ...(opts || {}) });
+        const res = await executeAgent(agent, t, { useMcpTools: true, useRepoTools: true, maxTokens: 12000, ...(opts || {}) });
         if (res && res.ok) {
           const rt = costRateFor(res.model);
           run.cost = Math.round((((run.cost || 0) + ((res.inputTokens || 0) / 1e6) * rt.input + ((res.outputTokens || 0) / 1e6) * rt.output)) * 10000) / 10000;
@@ -8042,7 +8085,7 @@ async function runPipelineStage(run, stage, layer = 0) {
     }
     r = { ok: pr.ok, content: pr.output, error: pr.ok ? undefined : (pr.output || 'pattern stage failed') };
   } else {
-    try { r = await executeAgent(stage.agent, task, { useMcpTools: true, maxTokens: 12000 }); }
+    try { r = await executeAgent(stage.agent, task, { useMcpTools: true, useRepoTools: true, maxTokens: 12000 }); }
     catch (e) { r = { ok: false, error: (e && e.message) || String(e) }; }
   }
   if (stage.agent) broadcast({ event: 'fleet_update', data: { agent: stage.agent, status: 'idle' } });
