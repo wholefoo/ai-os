@@ -7922,6 +7922,24 @@ function executePipeline(pipelineName, params) {
   const pipeline = pipelines.find(p => p.name === pipelineName);
   if (!pipeline) return null;
 
+  // INPUT-PRESENCE PRECONDITION — stage 0, before anything is commissioned.
+  //
+  // Every pipeline YAML declares `parameters: <name>: required: true`, and until now nothing read it.
+  // security-sweep ran twice on production with `{}`: three security-auditor stages each
+  // independently rediscovered that no target existed, a fourth compiled their identical blockers, a
+  // fifth escalated. ~$0.31 and five Opus calls for a fact that was free to check. The gate on that
+  // run asked for exactly this ("validated once at dispatch, before any stage is commissioned").
+  //
+  // It lives HERE rather than in the /execute route on purpose: the route is one caller today, and a
+  // future scheduled or Hermes-driven dispatch would route straight past a check placed there. It
+  // also returns BEFORE the run is registered — a blocked dispatch must leave no run record, or it
+  // reproduces the "completed run for work that never happened" trap this gate exists to prevent.
+  const missingParams = pipelineGraph.missingRequiredParams(pipeline, params);
+  if (missingParams.length) {
+    appendLog(`PIPELINE_BLOCKED: ${pipelineName} -> missing required input(s): ${missingParams.map((p) => p.name).join(', ')}`);
+    return { blocked: true, pipeline: pipelineName, missing: missingParams };
+  }
+
   const runId = `run-${Date.now()}`;
   const stages = pipeline.stages.map(s => ({
     ...s,
@@ -8170,6 +8188,15 @@ app.post('/api/pipelines/:name/execute', requireAdmin, (req, res) => {
   }
   const run = executePipeline(req.params.name, req.body.params || {});
   if (!run) return res.status(404).json({ error: 'Pipeline not found' });
+  // Refused at stage 0 for missing inputs — a 400 with what to supply, not a run that will discover
+  // the same gap once per stage. Named WITH its description so the operator can act on the message.
+  if (run.blocked) {
+    return res.status(400).json({
+      error: `pipeline "${run.pipeline}" needs input(s) that were not supplied: `
+        + run.missing.map((p) => `${p.name}${p.description ? ` (${p.description})` : ''}`).join('; '),
+      missing: run.missing,
+    });
+  }
   res.json(run);
 });
 
