@@ -65,6 +65,7 @@
     "tools/test-design-lint.js",
     "tools/test-employee-clone-path.js",
     "tools/test-pipeline-graph.js",
+    "tools/test-stage-input.js",
     "tools/test-pipeline-patterns.js",
     "tools/test-pipeline-trail.js",
     "tools/test-knowledge-context.js",

@@ -7969,8 +7969,12 @@ async function runPipelineStage(run, stage, layer = 0) {
 
   // ONLY this stage's declared dependencies — not everything that happened earlier. On an edgeless
   // pipeline inputsFor() returns all prior stages, which is the pre-2026-08-03 behaviour exactly.
+  // clipStageOutput, NOT an inline slice. The inline `slice(0, 4000)` that used to be here silently
+  // fed `human-review` 4000 of compile-report's 7302 chars on run-1785910485579; it lost the report's
+  // last five sections and filed a defect against work that was actually complete. The rule now lives
+  // in lib/pipeline-graph.js with a test, keeps the END of an output, and announces any cut.
   const prior = pipelineGraph.inputsFor(stage, run.stages).filter((s) => s.output)
-    .map((s) => `### From stage "${s.id}" (${s.agent})\n${String(s.output).slice(0, 4000)}`).join('\n\n');
+    .map((s) => `### From stage "${s.id}" (${s.agent})\n${pipelineGraph.clipStageOutput(s.output)}`).join('\n\n');
   const paramsLine = run.params && Object.keys(run.params).length ? `Pipeline inputs: ${JSON.stringify(run.params)}\n` : '';
   const task = `You are the "${stage.id}" stage of the "${run.pipeline}" pipeline.\n`
     + `Objective (skill): ${stage.skill || stage.id}.\n${paramsLine}`
