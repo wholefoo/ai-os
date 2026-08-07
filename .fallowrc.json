@@ -67,6 +67,7 @@
     "tools/test-pipeline-graph.js",
     "tools/test-stage-input.js",
     "tools/test-pipeline-preconditions.js",
+    "tools/test-repo-tools.js",
     "tools/test-pipeline-patterns.js",
     "tools/test-pipeline-trail.js",
     "tools/test-knowledge-context.js",

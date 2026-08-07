@@ -1517,6 +1517,7 @@ const shareOfModel = require('./lib/aeo/share-of-model');
 const approvalPolicy = require('./lib/safety/approval');
 const designLint = require('./lib/design-lint');
 const pipelineGraph = require('./lib/pipeline-graph');
+const repoToolsLib = require('./lib/repo-tools');
 const pipelinePatterns = require('./lib/pipeline-patterns');
 const pipelineTrail = require('./lib/pipeline-trail');
 const knowledgeContext = require('./lib/knowledge-context');
@@ -3904,9 +3905,30 @@ async function executeAgent(agentName, task, options = {}) {
         apiModel = options.modelOverride;
         model = anthropicLedgerString(apiModel, effort);
       }
-      const toolset = options.useMcpTools ? buildMcpToolset() : null;
-      if (toolset && toolset.tools.length) {
+      const mcpSet = options.useMcpTools ? buildMcpToolset() : { tools: [], map: {} };
+      const repoSet = options.useRepoTools ? buildRepoToolset() : { tools: [], names: new Set() };
+      // Repo tool names are RESERVED. An operator-connected MCP server can expose its own "Read", and
+      // letting a remote tool shadow the denylist-gated local reader would swap an audited read for an
+      // unaudited one under the same name. Local wins; the shadowed remote tool is dropped and logged.
+      const shadowed = mcpSet.tools.filter((t) => repoSet.names.has(t.name)).map((t) => t.name);
+      if (shadowed.length) appendLog(`[repo-tools] ignored MCP tool(s) shadowing reserved repo names: ${shadowed.join(', ')}`);
+      const toolset = {
+        tools: [...repoSet.tools, ...mcpSet.tools.filter((t) => !repoSet.names.has(t.name))],
+        map: mcpSet.map,
+      };
+      if (toolset.tools.length) {
         result = await callAnthropicWithTools(fullSystem, fullTask, effort, maxTokens, toolset.tools, async (toolName, input) => {
+          // Read-only repo access is served BEFORE the MCP approval gate below. Deliberate: gateAction
+          // exists for outward/side-effectful calls, and queuing a human approval for every file an
+          // auditor opens would make the pipeline unusable while protecting nothing — the boundary for
+          // these is the injected denylist, not the gate.
+          if (repoSet.names.has(toolName)) {
+            // `?? ''` because JSON.stringify returns the VALUE undefined for undefined input; .slice on
+            // that throws. callAnthropicWithTools already passes `tu.input || {}` and catches executor
+            // throws, so this is belt-and-braces — but a log line must never be the thing that fails.
+            appendLog(`[repo-tools] ${agentName} -> ${toolName} ${String(JSON.stringify(input) ?? '').slice(0, 120)}`);
+            return await runReadOnlyRepoTool(toolName, input);
+          }
           const entry = toolset.map[toolName];
           if (!entry) return `Error: unknown tool ${toolName}`;
           // A 'trusted' integration is pre-approved by the operator — run it directly (still audit-logged),
@@ -4132,89 +4154,40 @@ async function callGrok(systemPrompt, task, maxTokens) {
 // writing: letting the planner read .env/commercial/.magent-vault would risk it quoting a real
 // secret into a public distribution-PR body. No shell-out — Grep/Glob are a plain directory walk +
 // JS RegExp, not a spawned grep/find process, so there's no command-injection surface either.
-const REPO_TOOL_SKIP_DIRS = new Set(['node_modules', '.git', 'commercial']);
-const REPO_TOOL_MAX_OUTPUT = 150_000; // generous — a truncated Read (e.g. mid-README) silently starves grounding
-const REPO_TOOL_MAX_HITS = 200;
+// Read-only Read/Grep/Glob over THIS instance's repo — dev-architect-grok's planning loop, and
+// pipeline stages via executeAgent's useRepoTools opt-in.
+//
+// The implementation moved to lib/repo-tools.js on 2026-08-06 after the unbounded version took
+// production down: its walk counted HITS rather than files visited, so a search that matched
+// NOTHING never incremented the counter and crossed the whole tree, reading every file. See that
+// file's header for the full account and the bounds that replaced it.
+//
+// The denylist is INJECTED from lib/self-improve/plan-store, never copied — one implementation of
+// "what may be read", or there are two lists to forget to update.
+const repoTools = repoToolsLib.createRepoTools({
+  base: BASE,
+  isPathAllowed: selfImprovePlanStore.isPathAllowed,
+});
+const runReadOnlyRepoTool = (name, args) => repoTools.run(name, args);
 
-function repoToolRel(absPath) { return path.relative(BASE, absPath).replace(/\\/g, '/'); }
-
-function walkRepoFiles(startDir, onFile, limit) {
-  const stack = [startDir];
-  let count = 0;
-  while (stack.length && count < limit) {
-    const dir = stack.pop();
-    let entries;
-    try { entries = fs.readdirSync(dir, { withFileTypes: true }); } catch { continue; }
-    for (const e of entries) {
-      if (count >= limit) break;
-      const abs = path.join(dir, e.name);
-      if (e.isDirectory()) {
-        if (!REPO_TOOL_SKIP_DIRS.has(e.name)) stack.push(abs);
-        continue;
-      }
-      if (!e.isFile()) continue;
-      const rel = repoToolRel(abs);
-      if (!selfImprovePlanStore.isPathAllowed(rel)) continue;
-      if (onFile(abs, rel)) count++;
-    }
-  }
-}
-
-async function runReadOnlyRepoTool(name, args) {
-  try {
-    if (name === 'Read') {
-      const rel = String(args.path || '');
-      if (!selfImprovePlanStore.isPathAllowed(rel)) return `Error: reading "${rel}" is not allowed.`;
-      const abs = path.join(BASE, rel);
-      if (!fs.existsSync(abs) || !fs.statSync(abs).isFile()) return `Error: no such file: ${rel}`;
-      const content = fs.readFileSync(abs, 'utf-8');
-      return content.length > REPO_TOOL_MAX_OUTPUT ? content.slice(0, REPO_TOOL_MAX_OUTPUT) + '\n...[truncated]' : content;
-    }
-    if (name === 'Grep') {
-      let re;
-      try { re = new RegExp(String(args.pattern || '')); } catch { return 'Error: invalid regex pattern.'; }
-      const hits = [];
-      const grepOneFile = (abs, rel) => {
-        let text; try { text = fs.readFileSync(abs, 'utf-8'); } catch { return; }
-        text.split('\n').forEach((line, i) => {
-          if (hits.length < REPO_TOOL_MAX_HITS && re.test(line)) hits.push(`${rel}:${i + 1}: ${line.slice(0, 200)}`);
-        });
-      };
-      if (args.path) {
-        // args.path may name a single FILE (the natural thing to pass right after Reading it) or a
-        // directory to scope a broader search — support both instead of only the directory case.
-        const rel = String(args.path);
-        if (!selfImprovePlanStore.isPathAllowed(rel)) return `Error: reading "${rel}" is not allowed.`;
-        const abs = path.join(BASE, rel);
-        if (!abs.startsWith(BASE)) return 'Error: path escapes the repo root.';
-        if (fs.existsSync(abs) && fs.statSync(abs).isFile()) {
-          grepOneFile(abs, rel);
-        } else if (fs.existsSync(abs) && fs.statSync(abs).isDirectory()) {
-          walkRepoFiles(abs, (a, r) => { grepOneFile(a, r); return hits.length > 0; }, REPO_TOOL_MAX_HITS);
-        } else {
-          return `Error: no such file or directory: ${rel}`;
-        }
-      } else {
-        walkRepoFiles(BASE, (a, r) => { grepOneFile(a, r); return hits.length > 0; }, REPO_TOOL_MAX_HITS);
-      }
-      return hits.length ? hits.join('\n') : 'No matches.';
-    }
-    if (name === 'Glob') {
-      // Minimal glob (no dependency): '**' -> any depth, '*' -> any run of non-slash chars.
-      const pattern = String(args.pattern || '*');
-      const reSrc = '^' + pattern.replace(/[.+^${}()|[\]\\]/g, '\\$&').replace(/\*\*/g, '§§').replace(/\*/g, '[^/]*').replace(/§§/g, '.*') + '$';
-      const re = new RegExp(reSrc);
-      const matches = [];
-      walkRepoFiles(BASE, (abs, rel) => {
-        if (matches.length < REPO_TOOL_MAX_HITS && re.test(rel)) { matches.push(rel); return true; }
-        return false;
-      }, REPO_TOOL_MAX_HITS);
-      return matches.length ? matches.join('\n') : 'No files matched.';
-    }
-    return `Error: unknown tool "${name}"`;
-  } catch (e) {
-    return `Error: ${e.message}`;
-  }
+// The same three tools in ANTHROPIC shape, for executeAgent's tool-use path. The Grok planner's defs
+// below are OpenAI-shaped (`{type:'function', function:{...}}`); Anthropic wants
+// `{name, description, input_schema}`. Same names, same executor, same denylist — only the envelope
+// differs, so there remains exactly one implementation of "what may be read".
+//
+// WHY PIPELINE STAGES NEED THIS: security-sweep could not audit anything even when handed
+// `target: /opt/ai-os` — every stage answered "BLOCKED, no evidence access". The agent handbooks
+// declare `tools: Read, Grep, Glob, Bash`, but in this platform `tools:` is a DECLARATION, not a
+// grant; the pipeline path passed only useMcpTools (web search/fetch).
+function buildRepoToolset() {
+  return {
+    names: repoTools.NAMES,
+    tools: [
+      { name: 'Read', description: 'Read a file from this instance\'s repo (read-only, repo-root-contained). Returns the full content, or an error if the path is denied or missing.', input_schema: { type: 'object', properties: { path: { type: 'string', description: 'Path relative to the repo root, e.g. "server.js" or "lib/foo.js"' } }, required: ['path'] } },
+      { name: 'Grep', description: 'Search file contents by regex across the repo (or a subdirectory). Bounded: if the result says SEARCH INCOMPLETE, narrow it with `path` rather than treating the absence of a match as proof.', input_schema: { type: 'object', properties: { pattern: { type: 'string', description: 'JS-flavored regex' }, path: { type: 'string', description: 'Optional file or subdirectory to scope the search to' } }, required: ['pattern'] } },
+      { name: 'Glob', description: 'List repo files matching a glob pattern, e.g. "lib/**/*.js".', input_schema: { type: 'object', properties: { pattern: { type: 'string' } }, required: ['pattern'] } },
+    ],
+  };
 }
 
 // grok-build-0.1 — xAI's dev-planning-tuned model, reached via the SAME OpenAI-compatible
@@ -8014,7 +7987,7 @@ async function runPipelineStage(run, stage, layer = 0) {
     // shape keeps content, not tokens.
     const patternDeps = {
       runAgent: async (agent, t, opts) => {
-        const res = await executeAgent(agent, t, { useMcpTools: true, maxTokens: 12000, ...(opts || {}) });
+        const res = await executeAgent(agent, t, { useMcpTools: true, useRepoTools: true, maxTokens: 12000, ...(opts || {}) });
         if (res && res.ok) {
           const rt = costRateFor(res.model);
           run.cost = Math.round((((run.cost || 0) + ((res.inputTokens || 0) / 1e6) * rt.input + ((res.outputTokens || 0) / 1e6) * rt.output)) * 10000) / 10000;
@@ -8042,7 +8015,7 @@ async function runPipelineStage(run, stage, layer = 0) {
     }
     r = { ok: pr.ok, content: pr.output, error: pr.ok ? undefined : (pr.output || 'pattern stage failed') };
   } else {
-    try { r = await executeAgent(stage.agent, task, { useMcpTools: true, maxTokens: 12000 }); }
+    try { r = await executeAgent(stage.agent, task, { useMcpTools: true, useRepoTools: true, maxTokens: 12000 }); }
     catch (e) { r = { ok: false, error: (e && e.message) || String(e) }; }
   }
   if (stage.agent) broadcast({ event: 'fleet_update', data: { agent: stage.agent, status: 'idle' } });
