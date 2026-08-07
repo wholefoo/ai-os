@@ -30,7 +30,9 @@ const write = (rel, body) => {
 };
 for (let i = 0; i < 60; i++) write(`src/d${i % 6}/file${i}.js`, `// file ${i}\nconst x = ${i};\n`);
 write('needle.js', 'const FINDME_UNIQUE = 1;\n');
-write('big.js', 'x'.repeat(2 * 1024 * 1024));          // over maxFileBytes
+// Deliberately over the per-file cap AND containing a searchable token: the point is that a grep for
+// that token must not answer "No matches." as though the file had been read and found wanting.
+write('big.js', 'UNIQUE_TOKEN_ONLY_IN_BIG\n' + 'x'.repeat(3 * 1024 * 1024));
 write('image.webp', Buffer.alloc(300 * 1024, 7));       // binary
 write('secret.env.js', 'ok');
 write('node_modules/pkg/index.js', 'SHOULD_NEVER_BE_SCANNED');
@@ -81,10 +83,27 @@ const tiny = createRepoTools({ base: root, isPathAllowed: allowAll, limits: { ..
   assert(/FINDME_UNIQUE/.test(r), 'Read returns file content');
 
   // --- 3. cost bounds -----------------------------------------------------------------------------------
-  const binaryHit = await tools.run('Grep', { pattern: '.' });          // matches every text line
-  assert(!/image\.webp/.test(binaryHit),
+  const binaryHit = await tools.run('Grep', { pattern: 'const x' });
+  assert(!/image\.webp:/.test(binaryHit),
     `a .webp is never read as text (${BINARY_EXT.size} extensions skipped) — megabytes of mojibake for zero useful hits`);
-  assert(!/big\.js/.test(binaryHit), 'nor is a file above maxFileBytes — that size is a bundle or artifact, not source');
+
+  // THE DEFECT THE FIRST REAL AUDIT FOUND (run-1786080073868, 2026-08-07). A file skipped for size
+  // used to return null with NOTHING recorded, so the scan reported a confident "No matches." while
+  // never having opened it. server.js is 716KB against a then-512KB cap: grepping for
+  // `buildRepoToolset` — defined in server.js — answered "No matches." The security-auditor
+  // reproduced this first-hand and filed it as CS-01. A skip that reads like an absence is the same
+  // defect as an unannounced truncation, in the one tool an audit depends on most.
+  const oversize = await tools.run('Grep', { pattern: 'UNIQUE_TOKEN_ONLY_IN_BIG' });
+  assert(/NOT SEARCHED/.test(oversize),
+    'a file skipped for SIZE is reported — "No matches" must never mean "I did not open it"');
+  assert(/big\.js/.test(oversize), '...naming the file, so the caller can Read it directly');
+  assert(/would NOT appear above/.test(oversize),
+    '...and saying plainly that a match inside it would not have shown — the caller must not read absence as evidence');
+  assert(!/SEARCH INCOMPLETE/.test(oversize),
+    'and it is NOT reported as budget exhaustion — different cause, different remedy (Read that file vs narrow the search)');
+
+  assert(LIMITS.maxFileBytes >= 716 * 1024,
+    `the per-file cap (${Math.round(LIMITS.maxFileBytes / 1024)}KB) clears server.js at 716KB — a repo tool that cannot read this repo's largest source file is not an audit tool`);
 
   const byteCapped = createRepoTools({ base: root, isPathAllowed: allowAll, limits: { ...LIMITS, maxBytesRead: 200 } });
   const bytes = await byteCapped.run('Grep', { pattern: 'ZZZ_NOT_PRESENT' });
