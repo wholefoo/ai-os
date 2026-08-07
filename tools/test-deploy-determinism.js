@@ -53,5 +53,37 @@ for (const line of printed) {
   assert(/npm ci/.test(line), `printed instruction uses npm ci, not npm install — found: ${line.trim()}`);
 }
 
-console.log(`  info: lockfileVersion ${lock.lockfileVersion}, ${Object.keys(lock.packages || {}).length} packages pinned`);
+// --- DEP-02: no unbounded version specifier, in ANY manifest ---------------------------------------------
+// Written as a derived CATEGORY, not a list of the five packages that were wrong. `latest` and `*`
+// have no upper bound at all — not even semver-major — so a breaking release installs silently on the
+// next fresh box. agent-worker had all five @livekit/* deps on `latest` and no lockfile of its own.
+// An enumerated guard here would pass the moment someone adds a sixth.
+const UNBOUNDED = new Set(['latest', '*', '', 'x', 'X', 'next']);
+const manifests = ['package.json', 'agent-worker/package.json'].filter((p) => fs.existsSync(path.join(ROOT, p)));
+assert(manifests.length >= 2, `both manifests present (${manifests.join(', ')})`);
+
+for (const m of manifests) {
+  const pkg = JSON.parse(read(m));
+  const deps = { ...(pkg.dependencies || {}), ...(pkg.devDependencies || {}) };
+  const unbounded = Object.entries(deps).filter(([, range]) => UNBOUNDED.has(String(range).trim()));
+  assert(unbounded.length === 0,
+    `${m} has no unbounded version specifier${unbounded.length ? ` — found: ${unbounded.map(([k, v]) => `${k}@${v}`).join(', ')}` : ''}`);
+
+  // Every manifest that declares dependencies needs its own lockfile, or `npm ci` cannot run there.
+  if (Object.keys(pkg.dependencies || {}).length) {
+    const lockPath = path.join(path.dirname(m), 'package-lock.json').replace(/\\/g, '/');
+    assert(fs.existsSync(path.join(ROOT, lockPath)), `${m} has a committed lockfile at ${lockPath}`);
+  }
+}
+
+// The optional voice worker is installed by hand, so its INSTRUCTIONS are the only thing enforcing
+// determinism there — the deploy scripts never touch it.
+const eco = read('ecosystem.config.js');
+assert(/agent-worker && npm ci/.test(eco),
+  'ecosystem.config.js tells the operator to use npm ci for agent-worker — those instructions are the only guard on a manually-installed component');
+assert(!/agent-worker && npm install\b/.test(eco), 'and no longer says npm install');
+
+const awLock = JSON.parse(read('agent-worker/package-lock.json'));
+console.log(`  info: root lockfileVersion ${lock.lockfileVersion} (${Object.keys(lock.packages || {}).length} pkgs);`
+  + ` agent-worker v${awLock.lockfileVersion} (${Object.keys(awLock.packages || {}).length} pkgs)`);
 done();

@@ -36,7 +36,10 @@ const apps = [
 
 // --- LiveKit Voice Agent Worker (optional) ---
 // Real-time avatar pipeline: Deepgram STT → LLM → Cartesia TTS.
-// Requires its own npm install (cd agent-worker && npm install) plus API keys.
+// Requires its own install (cd agent-worker && npm ci --omit=dev) plus API keys.
+// `npm ci`, not `npm install`: agent-worker has had a committed package-lock.json since DEP-02, and
+// its five @livekit/* deps used to be pinned to `latest` — no upper bound at all, so a major
+// breaking release would install silently on any fresh box. ci installs exactly the pinned tree.
 const voiceKeysConfigured = process.env.LIVEKIT_URL
   && process.env.LIVEKIT_API_KEY && process.env.LIVEKIT_API_SECRET
   && process.env.DEEPGRAM_API_KEY && process.env.CARTESIA_API_KEY;
@@ -66,7 +69,7 @@ if (voiceKeysConfigured && voiceDepsInstalled) {
 } else {
   const missing = [];
   if (!voiceKeysConfigured) missing.push('LIVEKIT_URL + LiveKit/Deepgram/Cartesia keys in .env');
-  if (!voiceDepsInstalled) missing.push('agent-worker dependencies (cd agent-worker && npm install)');
+  if (!voiceDepsInstalled) missing.push('agent-worker dependencies (cd agent-worker && npm ci --omit=dev)');
   console.log(`[PM2] agent-worker skipped — missing: ${missing.join(' + ')}`);
 }
 
