@@ -78,3 +78,7 @@ data/media-audio/
 
 # Scheduled intel-brief output — generated daily, like the media dirs above
 data/intel-briefs/
+
+# scratch: run ids written by tools/dispatch helpers
+.last-run-id
+.sweep-*-runid
