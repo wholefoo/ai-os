@@ -336,9 +336,15 @@ else
 fi
 
 # Install dependencies
+# `npm ci`, NOT `npm install`: ci installs EXACTLY what package-lock.json pins and fails loudly if the
+# lock and package.json disagree. `npm install` re-resolves semver ranges at deploy time, so two
+# deploys of the same commit could install different transitive versions — an unpinned supply chain on
+# a box holding live API keys. (`--omit=dev` replaces the deprecated `--production`.)
+# If this step ever fails with EUSAGE, the lockfile is out of date: run `npm install` locally, commit
+# the updated package-lock.json, and redeploy. Do NOT "fix" it by reverting to `npm install` here.
 cd "${APP_DIR}"
-sudo -u ${APP_USER} npm install --production --quiet
-log "Dependencies installed"
+sudo -u ${APP_USER} npm ci --omit=dev --quiet
+log "Dependencies installed from lockfile"
 
 # ============================================================
 step "[13/${TOTAL_STEPS}] Nginx Configuration"
@@ -772,6 +778,6 @@ echo -e "     tail -f ${APP_DIR}/logs/healthcheck.log  # Health log"
 echo ""
 echo -e "  ${CYAN}━━━ Update from GitHub ━━━${NC}"
 echo -e "     cd ${APP_DIR} && sudo -u ${APP_USER} git pull origin master"
-echo -e "     sudo -u ${APP_USER} npm install --production"
+echo -e "     sudo -u ${APP_USER} npm ci --omit=dev"
 echo -e "     sudo -u ${APP_USER} pm2 restart ai-os --update-env"
 echo ""

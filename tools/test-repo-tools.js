@@ -117,7 +117,37 @@ const tiny = createRepoTools({ base: root, isPathAllowed: allowAll, limits: { ..
   const gated = createRepoTools({ base: root, isPathAllowed: (p) => !/secret/.test(p) });
   assert(/not allowed/.test(await gated.run('Read', { path: 'secret.env.js' })), 'a denied Read is refused');
   assert(!/secret\.env\.js/.test(await gated.run('Glob', { pattern: '**/*.js' })), 'and a denied file never appears in Glob output');
-  assert(!/secret/.test(await gated.run('Grep', { pattern: 'ok' })), 'nor is it grepped');
+  // Match the HIT shape (`path:line: text`), not the bare word: the policy note now legitimately
+  // contains "secrets", and a loose /secret/ would fail on the very disclosure that fixes the bug.
+  assert(!/secret\.env\.js:\d+:/.test(await gated.run('Grep', { pattern: 'ok' })), 'nor is it grepped');
+
+  // --- 4b. READ allowance vs WRITE allowance ------------------------------------------------------------
+  // DEP-01 (run-1786080073868) was a FALSE HIGH: the security-auditor reported "no root lockfile;
+  // deploys resolve live" for a package-lock.json committed since July. Cause: the read tools reused
+  // the WRITE denylist, which denies package-lock.json so a self-improve plan cannot rewrite it — a
+  // supply-chain guard that is right for writes and wrong for reads. The dependencies stage was
+  // therefore structurally unable to read the one file it exists to analyse, and the denial was
+  // invisible, so "not permitted" arrived as "not present".
+  assert(planStore.isReadPathAllowed('package-lock.json') === true,
+    'a dependency audit CAN read the lockfile — denying it made the dependencies stage unable to do its job');
+  assert(planStore.isPathAllowed('package-lock.json') === false,
+    'but the WRITE path still refuses it — an agent rewriting a lockfile could pin a malicious version, and that guard must not be widened by this change');
+  assert(planStore.isReadPathAllowed('.env') === false,
+    '.env is denied for BOTH — the exception list is for write-only denials, never for secrets');
+  assert(planStore.isReadPathAllowed('commercial/package-lock.json') === false,
+    'and a prefix denial still wins over the exception: the open-core boundary is not exempted by an exact-path allowance');
+  for (const p of ['.magent/state/settings.json', '.magent/vault/raw/x.md', '../../etc/passwd']) {
+    assert(planStore.isReadPathAllowed(p) === false, `read allowance did not widen "${p}"`);
+  }
+  assert(planStore.READ_ONLY_EXCEPTIONS.size <= 2,
+    'the write-only exception list stays tiny — every entry is a file an agent may read but must never rewrite, and it should be argued for one at a time');
+
+  // A denial must be COUNTED, or absence and prohibition are indistinguishable.
+  const denied = await createRepoTools({ base: root, isPathAllowed: (p) => !/secret/.test(p) })
+    .run('Grep', { pattern: 'ZZZ_NOT_PRESENT_ANYWHERE_ZZZ' });
+  assert(/EXCLUDED BY POLICY/.test(denied), 'policy-excluded paths are reported, not silently dropped');
+  assert(/says nothing about/.test(denied),
+    '...and the note states that their absence implies nothing — the inference that produced the false HIGH');
 
   // The real denylist, unchanged and still the boundary for the production wiring.
   for (const denied of ['.env', '.magent/state/settings.json', '.magent/vault/raw/x.md', 'commercial/a.js', '.git/config', '../../etc/passwd']) {
@@ -141,8 +171,10 @@ const tiny = createRepoTools({ base: root, isPathAllowed: allowAll, limits: { ..
   assert(/require\('\.\/lib\/repo-tools'\)/.test(src), 'server.js uses the module');
   assert(!/function walkRepoFiles/.test(src),
     'and the inline implementation is GONE — a second copy would be a second unbounded walk to forget about');
-  assert(/createRepoTools\(\{[\s\S]{0,200}isPathAllowed: selfImprovePlanStore\.isPathAllowed/.test(src),
-    'the denylist is INJECTED from plan-store, not re-declared');
+  assert(/createRepoTools\(\{[\s\S]{0,900}isPathAllowed: selfImprovePlanStore\.isReadPathAllowed/.test(src),
+    'the denylist is INJECTED from plan-store — and it is the READ predicate, not the write one (using isPathAllowed here is what hid package-lock.json and produced the false DEP-01)');
+  assert(!/isPathAllowed: selfImprovePlanStore\.isPathAllowed\b/.test(src),
+    'the write predicate is NOT wired to the read tools');
   assert(/options\.useRepoTools/.test(src),
     'executeAgent exposes useRepoTools as an explicit opt-in — no other caller silently gains repo read');
 

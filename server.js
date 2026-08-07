@@ -4201,7 +4201,12 @@ async function callGrok(systemPrompt, task, maxTokens) {
 // "what may be read", or there are two lists to forget to update.
 const repoTools = repoToolsLib.createRepoTools({
   base: BASE,
-  isPathAllowed: selfImprovePlanStore.isPathAllowed,
+  // isReadPathAllowed, NOT isPathAllowed. The latter gates WRITES and additionally denies
+  // package-lock.json — correct for writes (an AI rewriting a lockfile is a supply-chain risk),
+  // wrong for reads, and it made the `dependencies` audit stage structurally unable to read the one
+  // file it exists to analyse. It then reported the lockfile as ABSENT (DEP-01). Same prefixes, same
+  // secrets denied; only the write-only exact entries differ.
+  isPathAllowed: selfImprovePlanStore.isReadPathAllowed,
 });
 const runReadOnlyRepoTool = (name, args) => repoTools.run(name, args);
 

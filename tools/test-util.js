@@ -17,4 +17,16 @@ const cleanupAndFinish = (dir) => { if (dir) fs.rmSync(dir, { recursive: true, f
 const serverSource = () =>
   fs.readFileSync(require('path').join(__dirname, '..', 'server.js'), 'utf8').replace(/\r\n?/g, '\n');
 
-module.exports = { assert, done, cleanupAndFinish, serverSource };
+// The repo root, and any repo file as CRLF-normalised text. Three suites had grown the identical
+// six-line preamble (fs/path require + ROOT + a normalising read); adding a fourth tripped the
+// duplication gate, which was right — the fix is one helper, not four copies. Accepts a repo-relative
+// path or an absolute one, so existing `read(path.join(ROOT, x))` call sites keep working.
+//
+// Normalisation is NOT cosmetic here: this repo checks out with mixed line endings, and a suite that
+// matches a multi-line pattern against a raw read fails in a way that looks like a code regression.
+const repoRoot = require('path').join(__dirname, '..');
+const readRepoFile = (p) =>
+  fs.readFileSync(require('path').isAbsolute(p) ? p : require('path').join(repoRoot, p), 'utf8')
+    .replace(/\r\n?/g, '\n');
+
+module.exports = { assert, done, cleanupAndFinish, serverSource, repoRoot, readRepoFile };

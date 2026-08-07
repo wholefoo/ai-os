@@ -43,9 +43,11 @@ ssh "${VPS}" "cd ${APP_DIR} && sudo -u ${APP_USER} git pull origin master"
 echo "[3/5] Pulling commercial modules (skipped if Community)..."
 ssh "${VPS}" "if [ -d ${APP_DIR}/commercial/.git ]; then cd ${APP_DIR}/commercial && sudo -u ${APP_USER} git pull origin master; else echo 'no commercial/ mount — Community tier, skipping'; fi"
 
-# Step 4: Install any new dependencies
-echo "[4/5] Installing dependencies..."
-ssh "${VPS}" "cd ${APP_DIR} && sudo -u ${APP_USER} npm install --production --quiet"
+# Step 4: Install dependencies EXACTLY as pinned
+# npm ci, not npm install — see the matching comment in install-vps.sh. ci is reproducible and fails
+# loudly when the lockfile is stale; npm install silently re-resolves semver ranges on every deploy.
+echo "[4/5] Installing dependencies (npm ci — exact lockfile versions)..."
+ssh "${VPS}" "cd ${APP_DIR} && sudo -u ${APP_USER} npm ci --omit=dev --quiet"
 
 # Step 5: Restart PM2
 #
