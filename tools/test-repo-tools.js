@@ -146,6 +146,31 @@ const tiny = createRepoTools({ base: root, isPathAllowed: allowAll, limits: { ..
   assert(!/useRepoTools/.test(sched[0]),
     'and does NOT pass useRepoTools — unattended cron jobs stay repo-blind');
 
+  // --- 6b. tool-call budget --------------------------------------------------------------------------
+  // run-1786078508128: three stages spent all 6 turns reading /opt/ai-os and returned a 62-char
+  // placeholder — $1.29 of real investigation discarded because nothing asked for a write-up.
+  assert(/const PIPELINE_STAGE_TOOL_ITERS = 30;/.test(src),
+    'pipeline stages get 30 tool-calling turns — 6 cannot explore a repo AND synthesise');
+  for (const c of stageCalls) {
+    assert(/maxToolIters: PIPELINE_STAGE_TOOL_ITERS/.test(c), 'and every stage dispatch passes it');
+  }
+  assert(/\{ maxIters = 6, model = OPUS_MODEL \}/.test(src),
+    'while the DEFAULT stays 6 — a chat turn reaching for one lookup must not silently gain a 30-turn budget');
+  assert(/TOOL BUDGET[\s\S]{0,200}at most \$\{maxIters\} tool-calling turns/.test(src),
+    'the model is TOLD its budget, so it can stop and write while it still has room instead of being cut off');
+
+  // The recovery call is the part that matters more than the number: everything read is still in
+  // `messages`, so one call with the tool surface REMOVED forces an answer instead of another tool use.
+  const exhausted = src.slice(src.indexOf('BUDGET EXHAUSTED'), src.indexOf('BUDGET EXHAUSTED') + 2200);
+  assert(exhausted.length > 100, 'the exhaustion branch is present');
+  assert(/const body = \{ model, max_tokens: maxTokens, system: guardedSystem, messages \};/.test(exhausted),
+    'the final call omits `tools` ENTIRELY — leaving the tool surface in place would let the model spend a turn it does not have');
+  assert(/budgetExhausted: true/.test(exhausted), 'and the result is flagged');
+  assert(/tool budget was exhausted/.test(exhausted),
+    '...and the text SAYS it was budget-limited, so a downstream stage can tell a partial answer from a complete one — same reason a truncated stage input announces itself');
+  assert(/catch \(e\) \{[\s\S]{0,120}final-answer call failed/.test(exhausted),
+    'and a failure of the recovery call degrades to the old placeholder rather than throwing');
+
   assert(/repoSet\.names\.has\(/.test(src), 'repo tool names are reserved against an MCP tool of the same name');
   const execBlock = src.slice(src.indexOf('const mcpSet ='), src.indexOf('const mcpSet =') + 4000);
   const iRepo = execBlock.search(/runReadOnlyRepoTool/);
