@@ -3028,6 +3028,35 @@ body {
   padding: 16px 20px;
 }
 
+/* Provider-access banner. Spans the whole grid so it reads as a statement about ALL the spend cards
+   rather than a fourth card competing with them — the spend figures can be entirely accurate while
+   this makes them irrelevant. */
+.budget-provider-limit {
+  grid-column: 1 / -1;
+  background: color-mix(in srgb, var(--danger) 12%, var(--bg-card));
+  border: 1px solid var(--danger);
+  border-radius: var(--radius-lg);
+  padding: 14px 18px;
+}
+.budget-provider-limit-title {
+  font-weight: 600;
+  color: var(--danger);
+  margin-bottom: 8px;
+}
+.budget-provider-limit-row { font-size: 0.9rem; line-height: 1.5; }
+.budget-provider-limit-msg {
+  font-family: var(--font-mono, monospace);
+  font-size: 0.8rem;
+  opacity: 0.85;
+  margin-top: 4px;
+  word-break: break-word;
+}
+.budget-provider-limit-note {
+  font-size: 0.8rem;
+  opacity: 0.8;
+  margin-top: 8px;
+}
+
 .budget-card-header {
   display: flex;
   align-items: center;

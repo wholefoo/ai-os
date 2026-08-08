@@ -1355,6 +1355,9 @@ function getHealthSnapshot() {
     };
   } catch { /* statfsSync unsupported on this platform/Node version — omit, don't fake it */ }
 
+  // Computed ONCE: hardBudgetTrippedPeriod() walks the whole cost ledger, and /api/health is polled.
+  const trippedPeriod = hardBudgetTrippedPeriod();
+
   return {
     status: 'ok',
     uptime: Math.floor((Date.now() - startTime) / 1000),
@@ -1371,8 +1374,33 @@ function getHealthSnapshot() {
     activeUsers: users.filter(u => u.plan && u.plan !== 'free').length,
     activeSessions: sessions.size,
     missionActive: workflows.size > 0,
-    hardBudgetTripped: (settings.security && settings.security.hard_budget === 'true') || process.env.AIOS_HARD_BUDGET === 'true',
+    // `hardBudgetTripped` USED TO REPORT ENABLEMENT, NOT TRIPPING. It was
+    // `settings.security.hard_budget === 'true'`, so a box with the kill-switch switched off
+    // reported `hardBudgetTripped:false` — which reads as "spending is fine" but actually means
+    // "nothing is guarding spend at all", the exact opposite reassurance. Production read false on
+    // 2026-08-08 while the provider had already cut us off. Both facts are now reported separately
+    // and each says what it means.
+    hardBudgetEnabled: hardBudgetEnabled(),
+    hardBudgetTripped: trippedPeriod !== null,
+    hardBudgetTrippedPeriod: trippedPeriod,
+    // The constraint AI OS cannot see from its own ledger: the provider's own account ceiling.
+    // Empty array = no provider has refused us on budget grounds since the last successful call.
+    providerLimits: providerLimits.all(),
   };
+}
+
+// One definition of "is the kill-switch on", used by the health snapshot and by executeAgent, so the
+// dashboard cannot report a different answer from the code that enforces it.
+function hardBudgetEnabled() {
+  return (settings.security && settings.security.hard_budget === 'true') || process.env.AIOS_HARD_BUDGET === 'true';
+}
+
+// Which budget period, if any, is actually over. Returns null when nothing is over OR when the
+// kill-switch is off — because with it off, no period can trip anything.
+function hardBudgetTrippedPeriod() {
+  if (!hardBudgetEnabled()) return null;
+  const cs = getCostSummary();
+  return ['daily', 'weekly', 'monthly'].find((p) => cs[p] && cs[p].budget && cs[p].cost >= cs[p].budget) || null;
 }
 
 app.get('/api/health', (req, res) => {
@@ -1519,6 +1547,10 @@ const designLint = require('./lib/design-lint');
 const pipelineGraph = require('./lib/pipeline-graph');
 const repoToolsLib = require('./lib/repo-tools');
 const transientErrors = require('./lib/transient-errors');
+const providerLimitLib = require('./lib/provider-limit');
+// Remembers when a PROVIDER has cut us off, so the cost dashboard cannot read healthy while every
+// call 400s. Advisory only — it never blocks a request. See lib/provider-limit.js.
+const providerLimits = providerLimitLib.createTracker();
 const pipelinePatterns = require('./lib/pipeline-patterns');
 const pipelineTrail = require('./lib/pipeline-trail');
 const knowledgeContext = require('./lib/knowledge-context');
@@ -3803,10 +3835,13 @@ async function executeAgent(agentName, task, options = {}) {
   // Hard cost ceiling (opt-in via settings.security.hard_budget or AIOS_HARD_BUDGET=true). Off by
   // default = no behavior change (the advisory >=75% alert path is unchanged). When on, this is a
   // kill-switch: once a period's spend reaches its configured budget, refuse further model calls.
-  if ((settings.security && settings.security.hard_budget === 'true') || process.env.AIOS_HARD_BUDGET === 'true') {
+  // Uses the SAME predicate the health snapshot reports, so "is the budget tripped" cannot have two
+  // answers depending on who asks. They were separate copies of the same expression before, which is
+  // how the health field drifted into reporting enablement instead of tripping.
+  const overPeriod = hardBudgetTrippedPeriod();
+  if (overPeriod) {
     const cs = getCostSummary();
-    const over = ['daily', 'weekly', 'monthly'].find((p) => cs[p] && cs[p].budget && cs[p].cost >= cs[p].budget);
-    if (over) return { ok: false, error: `cost budget exceeded — ${over} spend $${cs[over].cost} ≥ budget $${cs[over].budget}`, model: routing.model, budgetExceeded: true };
+    return { ok: false, error: `cost budget exceeded — ${overPeriod} spend $${cs[overPeriod].cost} ≥ budget $${cs[overPeriod].budget}`, model: routing.model, budgetExceeded: true };
   }
 
   // Load the built-in agent prompt from its .md file.
@@ -4091,6 +4126,27 @@ async function anthropicMessagesAttempt(apiKey, body, timeoutMs) {
 // NOT retried: HTTP 400/401/403/404 (re-sending an identical bad body reproduces it exactly) and a
 // caller-initiated abort. See lib/transient-errors.js for the full policy and its reasoning.
 async function anthropicMessagesFetch(apiKey, body, { timeoutMs = AGENT_FETCH_TIMEOUT_MS, label = 'anthropic' } = {}) {
+  let data;
+  try {
+    data = await anthropicMessagesFetchInner(apiKey, body, { timeoutMs, label });
+  } catch (e) {
+    // Record an account-level cutoff so /api/health and /api/costs stop reporting headroom we do not
+    // have. Never rethrows anything of its own — a bookkeeping helper must not change what the
+    // caller sees fail.
+    const d = providerLimits.note('anthropic', e);
+    if (d.limited) {
+      appendLog(`[provider-limit] anthropic has cut us off${d.resetsAt ? ` until ${d.resetsAt}` : ''}: ${d.message}`);
+    }
+    throw e;
+  }
+  // A success is the only trustworthy evidence access is back. Clearing here — rather than waiting
+  // for the parsed reset time — means a limit lifted early, or one we detected wrongly, corrects
+  // itself on the next working call.
+  if (providerLimits.clear('anthropic')) appendLog('[provider-limit] anthropic access restored — a call succeeded');
+  return data;
+}
+
+async function anthropicMessagesFetchInner(apiKey, body, { timeoutMs, label }) {
   return transientErrors.withRetry(() => anthropicMessagesAttempt(apiKey, body, timeoutMs), {
     maxTotalMs: AGENT_CALL_MAX_TOTAL_MS,
     nextTimeoutMs: timeoutMs,
@@ -4737,6 +4793,12 @@ function getCostSummary() {
     latency,
     reliability,
     hardBudget,
+    // The ceiling AI OS cannot compute from its own ledger. Every number above is spend WE recorded
+    // against a budget a human typed in; this is the provider saying it has stopped serving us. On
+    // 2026-08-08 the two disagreed completely — $18.49 of a $1000 budget, and no access at all — and
+    // nothing on this payload showed it. An empty array means no provider has refused us on budget
+    // grounds since its last successful call, NOT that headroom has been confirmed with anyone.
+    providerLimits: providerLimits.all(),
     entries: costLedger.slice().sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp)).slice(0, 50),
   };
 }

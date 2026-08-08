@@ -2396,7 +2396,24 @@ function renderCostBudgetBar(summary) {
     { label: 'Monthly', data: summary.monthly },
   ];
 
-  container.innerHTML = periods.map(p => {
+  // The provider's own ceiling, shown ABOVE the spend cards and not as one of them. On 2026-08-08
+  // these cards read "$18.49 of $1000" — every figure correct — while Anthropic was refusing every
+  // call. Spend against our budget and access to the API are different facts, and the second one
+  // wins; putting it first is the point of this banner rather than another percentage.
+  const limits = summary.providerLimits || [];
+  const limitBanner = limits.length ? `
+    <div class="budget-provider-limit">
+      <div class="budget-provider-limit-title">⛔ Provider access blocked — the figures below are NOT the binding constraint</div>
+      ${limits.map((l) => `
+        <div class="budget-provider-limit-row">
+          <strong>${escapeHtml(l.provider)}</strong> has stopped serving requests${l.resetsAt ? ` until <strong>${escapeHtml(new Date(l.resetsAt).toUTCString())}</strong>` : ''}
+          — since ${timeAgo(l.since)}, ${l.failures} failed call${l.failures === 1 ? '' : 's'}.
+          <div class="budget-provider-limit-msg">${escapeHtml(l.message || '')}</div>
+        </div>`).join('')}
+      <div class="budget-provider-limit-note">This is set with the provider, not in AI OS — no budget change here will lift it. Clears automatically when a call succeeds.</div>
+    </div>` : '';
+
+  container.innerHTML = limitBanner + periods.map(p => {
     const pct = Math.min(100, Math.round((p.data.cost / p.data.budget) * 100));
     const status = pct < 50 ? 'under' : pct < 75 ? 'warn' : 'over';
     return `

@@ -77,7 +77,8 @@
     "dashboard/js/*.js",
     "tools/test-deploy-determinism.js",
     "tools/test-transient-retry.js",
-    "tools/test-pipeline-resume.js"
+    "tools/test-pipeline-resume.js",
+    "tools/test-provider-limit.js"
   ],
   "ignorePatterns": [
     "docs-export/**",

@@ -231,12 +231,21 @@ assert(/transientErrors\.withRetry\(/.test(src), 'server.js actually calls withR
 
 // The retry must sit at the shared choke point, so a tool-loop TURN retries without discarding the
 // turns already banked in `messages`. Retrying one layer up would re-pay for every tool call so far.
-const retryFn = (src.match(/async function anthropicMessagesFetch[\s\S]*?\n\}/) || [''])[0];
+// The property is "the retry sits at the ONE call site both callers share", not "it sits in a
+// function of a particular name". anthropicMessagesFetch later gained a thin wrapper for
+// provider-limit bookkeeping and delegates to ...Inner; an assertion pinned to the outer function's
+// body went red although nothing about the sharing had changed. Pin the property: both callers go
+// through anthropicMessagesFetch, and the retry is in what it delegates to.
+assert((src.match(/await anthropicMessagesFetch\(apiKey, body/g) || []).length === 3,
+  'callAnthropic and both callAnthropicWithTools call sites go through anthropicMessagesFetch');
+const retryFn = (src.match(/async function anthropicMessagesFetchInner[\s\S]*?\n\}/) || [''])[0];
 assert(retryFn.length > 0 && /withRetry/.test(retryFn),
-  'the retry wraps anthropicMessagesFetch, the one call site callAnthropic and callAnthropicWithTools share');
+  'and the retry lives in the single function they all reach — so a retried tool-loop TURN keeps the turns already banked in `messages`');
 assert(/maxTotalMs: AGENT_CALL_MAX_TOTAL_MS/.test(retryFn), 'and it passes the wall-clock ceiling');
 assert(/nextTimeoutMs: timeoutMs/.test(retryFn),
   'and the per-attempt timeout, so the deadline check knows what the next attempt would cost');
+assert(/anthropicMessagesFetchInner\(apiKey, body, \{ timeoutMs, label \}\)/.test(src),
+  'and the outer wrapper really delegates to it — a wrapper that swallowed the call would leave the retry unreachable');
 
 // --- the longer ceiling is opt-in, exactly like maxToolIters ---------------------------------------------
 assert(/const PIPELINE_STAGE_FETCH_TIMEOUT_MS = parseInt\(process\.env\.PIPELINE_STAGE_FETCH_TIMEOUT_MS, 10\) \|\| 300000;/.test(src),
