@@ -2879,6 +2879,17 @@ function renderPipelineRuns(runs) {
     const hasCompletedStage = stages.some((s) => s.status === 'completed' && s.output);
     const runActions = [];
     if (run.status === 'awaiting_approval') runActions.push(`<button class="btn btn-sm btn-success" onclick="approvePipelineGate('${run.id}')">Approve Gate</button>`);
+    // A failed run keeps every stage that succeeded, and resuming retries only the rest. The button
+    // SAYS how many it will skip, because "Resume" alone gives no way to tell it apart from a
+    // re-dispatch that pays for the whole graph again — which is what everyone did before this
+    // existed. Counted from the stage list the server sent, not assumed.
+    if (run.status === 'failed') {
+      const keep = stages.filter((s) => s.status === 'completed').length;
+      const redo = stages.length - keep;
+      if (redo > 0) {
+        runActions.push(`<button class="btn btn-sm btn-warning" onclick="resumePipelineRun('${run.id}')" title="Retries only the stages that did not complete. The ${keep} completed stage(s) are kept as-is and not re-run or re-billed.">↻ Resume (keep ${keep}, retry ${redo})</button>`);
+      }
+    }
     if (run.reportFile) runActions.push(`<a class="btn btn-sm btn-primary" href="/api/pipelines/reports/${encodeURIComponent(run.reportFile)}/download" download>⬇ Download Report</a>`);
     else if (hasCompletedStage) runActions.push(`<button class="btn btn-sm" onclick="exportPipelineRun('${run.id}')">Export Report</button>`);
     const runActionsHtml = runActions.length ? `<div class="pipeline-run-actions">${runActions.join('')}</div>` : '';
@@ -2979,6 +2990,16 @@ async function launchPipeline(name) {
       loadPipelineRuns();
     } },
   ]);
+}
+
+async function resumePipelineRun(runId) {
+  const r = await fetchJSON(`/api/pipelines/runs/${runId}/resume`, { method: 'POST' });
+  // Surface the refusal instead of swallowing it: the run may have been rebuilt from disk and found
+  // to belong to a pipeline whose stages have since changed, which is a real answer the operator
+  // needs, not a no-op button.
+  if (r && r.error) { alert(r.error); return; }
+  loadPipelineRuns();
+  addTimelineEvent('pipeline', `Pipeline resumed — kept ${(r.kept || []).length} stage(s), retrying ${(r.retrying || []).join(', ')}`);
 }
 
 async function approvePipelineGate(runId) {

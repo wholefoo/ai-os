@@ -8235,6 +8235,113 @@ async function runPipelineStages(run) {
   await completePipelineRun(run);
 }
 
+// Rebuild a run object from its trail so a FAILED run can be resumed after a restart.
+//
+// `pipelineRuns` is in-memory, so a restart erases every live run. The manifest has each stage's
+// status but deliberately not its output, and the YAML has the task templates, gates and edges the
+// manifest never stored — so a faithful run is the two merged, with the deliverables read back from
+// the per-stage .md files.
+//
+// Returns { run } or { error } — never a partially-populated run. A resume that quietly proceeds
+// with a stage marked completed but holding no output would feed emptiness downstream and produce a
+// confident report derived from nothing, which is the failure mode this whole repo keeps hitting.
+function rehydrateRunFromTrail(runId) {
+  const manifest = pipelineTrail.readManifest(PIPELINE_RUNS_DIR, runId);
+  if (!manifest) return { error: `no trail on disk for run "${runId}"` };
+
+  const def = loadPipelines().find((p) => p.name === manifest.pipeline);
+  if (!def) return { error: `pipeline "${manifest.pipeline}" no longer exists, so its stages cannot be rebuilt` };
+
+  // The YAML is the authority on HOW a stage runs; the manifest is the authority on WHETHER it did.
+  // If the definition has changed shape since the run, refuse rather than guess — resuming half of
+  // an old graph into half of a new one produces a result that matches neither.
+  const byId = new Map(def.stages.map((s) => [s.id, s]));
+  const missing = manifest.stages.filter((s) => !byId.has(s.id)).map((s) => s.id);
+  if (missing.length) {
+    return { error: `pipeline "${manifest.pipeline}" no longer defines stage(s) ${missing.join(', ')} — it has changed since this run, so resuming it would mix two different graphs` };
+  }
+
+  const stages = def.stages.map((s) => {
+    const m = manifest.stages.find((x) => x.id === s.id);
+    const stage = { ...s, status: 'pending', startedAt: null, completedAt: null, outputs: {} };
+    if (!m || m.status !== 'completed') return stage;
+    const output = m.hasOutput ? pipelineTrail.readStageOutput(PIPELINE_RUNS_DIR, runId, s.id) : '';
+    // Recorded as completed but its deliverable cannot be read back: re-run it rather than resume
+    // with a hole. Cheaper to redo one stage than to trust a report built on a blank.
+    if (m.hasOutput && !output) return stage;
+    return { ...stage, status: 'completed', model: m.model || null, startedAt: m.startedAt, completedAt: m.completedAt, output: output || '' };
+  });
+
+  return {
+    run: {
+      id: manifest.id,
+      pipeline: manifest.pipeline,
+      description: manifest.description || def.description,
+      params: manifest.params || {},
+      stages,
+      status: manifest.status,
+      currentStage: 0,
+      startedAt: manifest.startedAt,
+      completedAt: manifest.completedAt,
+      cost: manifest.cost || 0,
+      error: manifest.error || null,
+      rehydrated: true,
+    },
+  };
+}
+
+// Resume a FAILED run, keeping the stages that already succeeded.
+//
+// The pieces for this existed and were unreachable: runPipelineStages already skips completed
+// stages ("Resume is index-free"), and writeStage already persists each deliverable as it lands,
+// with a comment promising "a pipeline that dies at stage 4 keeps the three that succeeded — the
+// work a rerun does not need to redo". Nothing could act on that promise: /approve is the only
+// re-entry point and it requires status 'awaiting_approval'. A failed run could be READ but not
+// CONTINUED, so recovering meant re-dispatching and paying for the completed stages again.
+//
+// It cost real work twice in two days: run-1786085226550 (a 120s timeout) and run-1786158988267 (an
+// account limit) each died beside a stage that had finished properly. Neither failure was the
+// stage's fault, and in both cases the fix was to retry one stage, not five.
+app.post('/api/pipelines/runs/:id/resume', requireAdmin, (req, res) => {
+  let run = pipelineRuns.get(req.params.id);
+  if (!run) {
+    const { run: rebuilt, error } = rehydrateRunFromTrail(req.params.id);
+    if (error) return res.status(404).json({ error });
+    run = rebuilt;
+    pipelineRuns.set(run.id, run);
+  }
+
+  // Only a FAILED run. 'completed' has nothing to do; 'running' would double-execute stages;
+  // 'awaiting_approval' has its own resume path (/approve) which also records the human decision —
+  // routing around that would skip the gate rather than satisfy it.
+  if (run.status !== 'failed') {
+    return res.status(400).json({ error: `run is "${run.status}", not "failed" — ${run.status === 'awaiting_approval' ? 'use /approve' : 'nothing to resume'}` });
+  }
+
+  const done = run.stages.filter((s) => s.status === 'completed');
+  const retry = run.stages.filter((s) => s.status !== 'completed');
+  if (!retry.length) return res.status(400).json({ error: 'every stage already completed — nothing to resume' });
+
+  // Clear the previous failure off the stages being retried, so a stale error cannot survive into a
+  // run that goes on to succeed.
+  for (const s of retry) { s.status = 'pending'; s.error = undefined; s.startedAt = null; s.completedAt = null; }
+  run.error = null;
+  run.completedAt = null;
+  run.status = 'running';
+
+  logActivity('pipeline', `Pipeline resumed: ${run.pipeline} — keeping ${done.length} completed stage(s), retrying ${retry.length}`, { runId: run.id });
+  appendLog(`PIPELINE_RESUME: ${run.pipeline} -> ${run.id} (kept: ${done.map((s) => s.id).join(', ') || 'none'}; retrying: ${retry.map((s) => s.id).join(', ')})`);
+  broadcast({ event: 'pipeline_update', data: run });
+
+  runPipelineStages(run).catch((e) => {
+    run.status = 'failed'; run.error = e.message;
+    appendLog(`PIPELINE_ERR: ${run.pipeline} -> ${e.message}`);
+    broadcast({ event: 'pipeline_update', data: run });
+  });
+
+  res.json({ ok: true, id: run.id, rehydrated: !!run.rehydrated, kept: done.map((s) => s.id), retrying: retry.map((s) => s.id), run });
+});
+
 app.get('/api/pipelines', (req, res) => {
   res.json(loadPipelines());
 });
