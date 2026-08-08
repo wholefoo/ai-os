@@ -234,6 +234,74 @@ const tiny = createRepoTools({ base: root, isPathAllowed: allowAll, limits: { ..
     'a repo read is served BEFORE the MCP approval gate — read-only work must not queue a human approval per file');
   assert(/UNTRUSTED TOOL OUTPUT/.test(src), 'and tool output is still fenced as untrusted — a repo file can carry adversarial text');
 
+  // --- GLOB PATTERN SEMANTICS -----------------------------------------------------------------------
+  // Found by run-1786158988267 (2026-08-08): its `architecture` stage declared every application
+  // source file "excluded by policy" and marked the whole stage NOT ASSESSABLE. That was FALSE. It
+  // had globbed `*.{js,ts,py}`, braces were unsupported, and the bare "No files matched." landed in
+  // the same response as an unrelated EXCLUDED-BY-POLICY note. Two independent facts read as one.
+  // Investigating it turned up three more matcher defects, all silent-wrong-answer, all pinned here.
+  const globNames = async (pattern) =>
+    String(await tools.run('Glob', { pattern })).split('\n').filter((l) => l && !l.startsWith('['));
+
+  // 1. BRACES. Previously escaped into literals, so this could never match anything.
+  const braced = await globNames('*.{js,ts}');
+  assert(braced.includes('needle.js'), '`*.{js,ts}` expands braces and matches — it used to be a literal, so it matched nothing');
+  const multi = await globNames('**/*.{js,webp}');
+  assert(multi.includes('image.webp') && multi.some((f) => f.startsWith('src/')),
+    'brace alternatives are matched independently, at depth');
+
+  // 2. `**` MUST MATCH ZERO SEGMENTS. This is the severe one: `**/*.js` used to compile to a regex
+  //    REQUIRING a slash, so it returned a long, confident list with every root-level file missing.
+  //    In the real repo that silently omitted server.js — the 716KB monolith most of the code is in.
+  const deep = await globNames('**/*.js');
+  assert(deep.includes('needle.js'),
+    '`**/*.js` includes ROOT-level files — `**` matches zero or more segments, not "at least one"');
+  assert(deep.some((f) => f.startsWith('src/')), 'and still matches nested ones');
+
+  // 3. `*` MUST NOT CROSS `/`. The counterpart to the above: if `*` leaked across separators, the
+  //    root-only form would silently become recursive and the two patterns would be indistinguishable.
+  const shallow = await globNames('*.js');
+  assert(shallow.includes('needle.js') && !shallow.some((f) => f.includes('/')),
+    '`*.js` matches ONLY the repo root — `*` does not cross a path separator');
+
+  // 4. `?` IS ONE CHARACTER. It used to fall through to the regex as a quantifier, so `needl?.js`
+  //    quietly meant "need, optional l" instead of "one character here".
+  assert((await globNames('needl?.js')).includes('needle.js'), '`?` matches exactly one character');
+
+  // 5. A ZERO MATCH MUST EXPLAIN ITSELF — the defect that started this.
+  const empty = String(await tools.run('Glob', { pattern: '*.{nope,nada}' }));
+  assert(/No files matched/.test(empty), 'a genuinely unmatched pattern still says so');
+  assert(/interpreted as 2 alternatives: \*\.nope, \*\.nada/.test(empty),
+    'and REPORTS HOW IT WAS INTERPRETED, so a misunderstood pattern is visible instead of looking like a refusal');
+  assert(/NOT the same as "they were withheld"/.test(empty),
+    'and explicitly separates "matched nothing" from "was withheld" — the exact conflation that blocked the audit stage');
+
+  // Unbalanced braces must not throw or vanish — a caller may legitimately search for a `{`.
+  assert(!/Error/.test(String(await tools.run('Glob', { pattern: '*.{js' }))), 'an unbalanced brace is treated literally, not as an error');
+
+  // Expansion is capped: `{a,b}` repeated multiplies, and an unbounded expansion is exponential work
+  // from one tool argument.
+  const bomb = '{a,b}{c,d}{e,f}{g,h}{i,j}{k,l}{m,n}'.repeat(2);
+  const t0 = Date.now();
+  await tools.run('Glob', { pattern: bomb });
+  assert(Date.now() - t0 < 5000, `a brace bomb is capped and returns promptly (${Date.now() - t0}ms)`);
+
+  // --- THE RESULT CAP MUST ANNOUNCE ITSELF ------------------------------------------------------------
+  // The one bound that did NOT. `walk` returns early on a 'stop' from its callback without setting
+  // budget.stopped, so a search finding exactly maxHits looked identical to an exhaustive one. This
+  // module's header promises the opposite. A capped list is the most dangerous incomplete result:
+  // long enough to look complete.
+  const capped = createRepoTools({ base: root, isPathAllowed: allowAll, limits: { ...LIMITS, maxHits: 5 } });
+  const cg = String(await capped.run('Glob', { pattern: '**/*.js' }));
+  assert(cg.split('\n').filter((l) => l && !l.startsWith('[')).length === 5, 'Glob stops at the result cap');
+  assert(/SEARCH INCOMPLETE[\s\S]*result cap/.test(cg), 'and SAYS it hit the result cap');
+  const cr = String(await capped.run('Grep', { pattern: 'const' }));
+  assert(cr.split('\n').filter((l) => l && !l.startsWith('[')).length === 5, 'Grep stops at the result cap');
+  assert(/SEARCH INCOMPLETE[\s\S]*result cap/.test(cr), 'and SAYS it hit the result cap too');
+  // The counterpart, or the note is just noise: a search that genuinely finished must NOT be marked.
+  const complete = String(await tools.run('Grep', { pattern: 'FINDME_UNIQUE' }));
+  assert(!/result cap/.test(complete), 'a search that finished within the cap is NOT marked incomplete');
+
   fs.rmSync(root, { recursive: true, force: true });
   console.log(`  info: bounds — ${LIMITS.maxFilesScanned} files, ${Math.round(LIMITS.maxBytesRead / 1048576)}MB, ${LIMITS.maxFileBytes / 1024}KB/file, ${LIMITS.timeBudgetMs / 1000}s`);
   done();
