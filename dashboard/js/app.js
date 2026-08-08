@@ -2413,7 +2413,18 @@ function renderCostBudgetBar(summary) {
       <div class="budget-provider-limit-note">This is set with the provider, not in AI OS — no budget change here will lift it. Clears automatically when a call succeeds.</div>
     </div>` : '';
 
-  container.innerHTML = limitBanner + periods.map(p => {
+  // Spend that exists but could not be measured. Without this the totals below read as exact, and
+  // they are not: every discarded attempt was a billed request that returned no usage. Shown as a
+  // count of real events with no dollar figure attached, deliberately — an estimate here would be
+  // indistinguishable from a measurement.
+  const un = summary.unmeasured;
+  const unmeasuredHtml = un && un.discardedAttempts ? `
+    <div class="budget-unmeasured">
+      ⚠️ Figures below are a <strong>lower bound</strong>: ${un.discardedAttempts} billed attempt${un.discardedAttempts === 1 ? '' : 's'}
+      across ${un.calls} call${un.calls === 1 ? '' : 's'} were discarded (timeout or retry) and returned no usage to measure.
+    </div>` : '';
+
+  container.innerHTML = limitBanner + unmeasuredHtml + periods.map(p => {
     const pct = Math.min(100, Math.round((p.data.cost / p.data.budget) * 100));
     const status = pct < 50 ? 'under' : pct < 75 ? 'warn' : 'over';
     return `

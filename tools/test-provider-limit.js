@@ -13,7 +13,7 @@
 //      reads as "spending is fine" and actually means "nothing is guarding spend at all". Reading it
 //      the obvious way gives you the opposite of the truth.
 const pl = require('../lib/provider-limit');
-const { assert, done, serverSource } = require('./test-util');
+const { assert, done, serverSource, readRepoFile } = require('./test-util');
 
 const err = (message, status) => Object.assign(new Error(message), status === null ? {} : { status });
 const REAL = 'You have reached your specified API usage limits. You will regain access on 2026-09-01 at 00:00 UTC.';
@@ -136,13 +136,17 @@ assert(/const trippedPeriod = hardBudgetTrippedPeriod\(\);/.test(src),
   'health computes it ONCE — it walks the whole cost ledger and /api/health is polled');
 
 // --- the operator can actually see it -----------------------------------------------------------------
-const ui = require('fs').readFileSync(require('path').join(__dirname, '..', 'dashboard', 'js', 'app.js'), 'utf8').replace(/\r\n?/g, '\n');
+const ui = readRepoFile('dashboard/js/app.js');
 assert(/summary\.providerLimits \|\| \[\]/.test(ui), 'the dashboard reads providerLimits off the cost summary');
 assert(/Provider access blocked/.test(ui), 'and renders a banner when a provider has cut us off');
 assert(/NOT the binding constraint/.test(ui),
   'which says the spend figures are not the binding constraint — the whole failure was believing accurate numbers that did not matter');
 assert(/no budget change here will lift it/.test(ui),
   'and that changing an AI OS budget will not lift it, since the limit lives with the provider');
-assert(/limitBanner \+ periods\.map/.test(ui), 'the banner renders ABOVE the spend cards, not as a fourth card among them');
+// The property is "the banner precedes the spend cards", not "it is the only thing preceding them".
+// A second banner (unmeasured spend) was later inserted between them, and an assertion pinned to the
+// exact concatenation went red although the ordering was unchanged.
+assert(/container\.innerHTML = limitBanner \+ [\s\S]{0,60}periods\.map/.test(ui),
+  'the banner renders ABOVE the spend cards, not as a fourth card among them');
 
 done();

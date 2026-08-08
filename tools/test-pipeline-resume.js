@@ -19,7 +19,7 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const trail = require('../lib/pipeline-trail');
-const { assert, done, serverSource } = require('./test-util');
+const { assert, done, serverSource, readRepoFile } = require('./test-util');
 
 const base = fs.mkdtempSync(path.join(os.tmpdir(), 'resume-'));
 const run = { id: 'run-1786158988267', pipeline: 'security-sweep' };
@@ -102,7 +102,7 @@ assert(/pipelineRuns\.set\(run\.id, run\)/.test(route), 'a rehydrated run is put
 // The bug this whole commit fixes was a capability that existed and could not be invoked. Shipping
 // the fix as an endpoint with no caller would reproduce it one layer up. See the standing lesson
 // that a thing existing is not the same as a user being able to use it.
-const ui = require('fs').readFileSync(require('path').join(__dirname, '..', 'dashboard', 'js', 'app.js'), 'utf8').replace(/\r\n?/g, '\n');
+const ui = readRepoFile('dashboard/js/app.js');
 assert(/async function resumePipelineRun\(runId\)/.test(ui), 'the dashboard defines resumePipelineRun');
 assert(/\/api\/pipelines\/runs\/\$\{runId\}\/resume`, \{ method: 'POST' \}/.test(ui), 'and POSTs to the resume route');
 assert(/onclick="resumePipelineRun\('\$\{run\.id\}'\)"/.test(ui), 'and a button actually calls it');

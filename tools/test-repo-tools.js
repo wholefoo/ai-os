@@ -216,8 +216,13 @@ const tiny = createRepoTools({ base: root, isPathAllowed: allowAll, limits: { ..
 
   // The recovery call is the part that matters more than the number: everything read is still in
   // `messages`, so one call with the tool surface REMOVED forces an answer instead of another tool use.
-  const exhausted = src.slice(src.indexOf('BUDGET EXHAUSTED'), src.indexOf('BUDGET EXHAUSTED') + 2200);
-  assert(exhausted.length > 100, 'the exhaustion branch is present');
+  // Bounded by the END OF THE FUNCTION, not a fixed character count. It used to be a 2200-char
+  // window, and adding two lines of cost metering above pushed the recovery-call assertion outside
+  // it — a false failure about code that had not changed. A source window sized in characters is a
+  // tripwire on unrelated edits.
+  const exhaustedStart = src.indexOf('BUDGET EXHAUSTED');
+  const exhausted = src.slice(exhaustedStart, src.indexOf('\n}', exhaustedStart));
+  assert(exhaustedStart > -1 && exhausted.length > 100, 'the exhaustion branch is present');
   assert(/const body = \{ model, max_tokens: maxTokens, system: guardedSystem, messages \};/.test(exhausted),
     'the final call omits `tools` ENTIRELY — leaving the tool surface in place would let the model spend a turn it does not have');
   assert(/budgetExhausted: true/.test(exhausted), 'and the result is flagged');

@@ -78,7 +78,8 @@
     "tools/test-deploy-determinism.js",
     "tools/test-transient-retry.js",
     "tools/test-pipeline-resume.js",
-    "tools/test-provider-limit.js"
+    "tools/test-provider-limit.js",
+    "tools/test-cost-metering.js"
   ],
   "ignorePatterns": [
     "docs-export/**",

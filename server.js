@@ -4008,6 +4008,12 @@ async function executeAgent(agentName, task, options = {}) {
       id: uuidv4(), agent: agentName, model, skill: options.skill || 'dispatch',
       inputTokens, outputTokens, cost: Math.round(cost * 10000) / 10000,
       elapsed, ok: true,
+      // Attempts that were billed and thrown away. `costIsLowerBound` is the honest label: we know
+      // this row cost AT LEAST `cost`, and we cannot know by how much more, because a failed
+      // response carries no usage and a client-side timeout carries no response at all. Recorded
+      // rather than estimated — a fabricated number here would be indistinguishable from a
+      // measurement, which is worse than a visible gap.
+      ...(result.discardedAttempts ? { discardedAttempts: result.discardedAttempts, costIsLowerBound: true } : {}),
       timestamp: new Date().toISOString(),
     });
 
@@ -4021,10 +4027,21 @@ async function executeAgent(agentName, task, options = {}) {
     console.error(`[AGENT] ${agentName} execution failed:`, e.message);
     logActivity('agent', `${agentName} failed: ${e.message}`, { agentName, model });
     // Record the failed run so reliability/latency observability reflects errors, not only successes.
+    // A FAILED call is the case that under-reported worst: it writes a zero-token, $0.0000 row while
+    // having made up to three billed requests. The row still cannot state a cost — nothing came back
+    // to measure — but it can stop implying the call was free.
+    const failedAttempts = (e && e.aiosDiscarded) || 0;
+    const recovered = (e && e.aiosRecoveredUsage) || null;
+    const recoveredCost = recovered
+      ? (recovered.input_tokens / 1e6) * costRateFor(model).input + (recovered.output_tokens / 1e6) * costRateFor(model).output
+      : 0;
     costLedger.push({
       id: uuidv4(), agent: agentName, model, skill: options.skill || 'dispatch',
-      inputTokens: 0, outputTokens: 0, cost: 0,
+      inputTokens: recovered ? recovered.input_tokens : 0,
+      outputTokens: recovered ? recovered.output_tokens : 0,
+      cost: Math.round(recoveredCost * 10000) / 10000,
       elapsed, ok: false, error: String(e.message || e).slice(0, 200),
+      ...(failedAttempts ? { discardedAttempts: failedAttempts, costIsLowerBound: true } : {}),
       timestamp: new Date().toISOString(),
     });
     return { ok: false, error: e.message, model };
@@ -4125,10 +4142,31 @@ async function anthropicMessagesAttempt(apiKey, body, timeoutMs) {
 //
 // NOT retried: HTTP 400/401/403/404 (re-sending an identical bad body reproduces it exactly) and a
 // caller-initiated abort. See lib/transient-errors.js for the full policy and its reasoning.
+// A failed attempt is usually still BILLED — the request reached Anthropic and produced tokens; we
+// simply threw the answer away, or never received it because our own timeout fired. Until now those
+// attempts contributed ZERO to the ledger, so /api/costs under-reported real spend, and retry made
+// that happen more often rather than less.
+//
+// We cannot know what a discarded attempt cost: an error response carries no usage block, and a
+// client-side timeout has no response at all. So this records what is TRUE — how many attempts were
+// thrown away — and marks the row's cost as a lower bound. It never estimates. A fabricated number
+// in a cost ledger is worse than a visible gap, because it is indistinguishable from a measurement.
 async function anthropicMessagesFetch(apiKey, body, { timeoutMs = AGENT_FETCH_TIMEOUT_MS, label = 'anthropic' } = {}) {
+  let discarded = 0;
+  let recovered = null;   // real usage from a failed response, on the rare provider that reports it
+  const bank = (err) => {
+    discarded++;
+    const u = err && err.usage;
+    if (u && (u.input_tokens || u.output_tokens)) {
+      recovered = recovered || { input_tokens: 0, output_tokens: 0 };
+      recovered.input_tokens += u.input_tokens || 0;
+      recovered.output_tokens += u.output_tokens || 0;
+    }
+  };
+
   let data;
   try {
-    data = await anthropicMessagesFetchInner(apiKey, body, { timeoutMs, label });
+    data = await anthropicMessagesFetchInner(apiKey, body, { timeoutMs, label, onAttemptFailed: bank });
   } catch (e) {
     // Record an account-level cutoff so /api/health and /api/costs stop reporting headroom we do not
     // have. Never rethrows anything of its own — a bookkeeping helper must not change what the
@@ -4137,19 +4175,29 @@ async function anthropicMessagesFetch(apiKey, body, { timeoutMs = AGENT_FETCH_TI
     if (d.limited) {
       appendLog(`[provider-limit] anthropic has cut us off${d.resetsAt ? ` until ${d.resetsAt}` : ''}: ${d.message}`);
     }
+    // Carried on the error so the FAILED-call ledger row can record the attempts too. A call that
+    // died after three tries cost three times as much as its zero-token row implies.
+    e.aiosDiscarded = discarded;
+    if (recovered) e.aiosRecoveredUsage = recovered;
     throw e;
   }
   // A success is the only trustworthy evidence access is back. Clearing here — rather than waiting
   // for the parsed reset time — means a limit lifted early, or one we detected wrongly, corrects
   // itself on the next working call.
   if (providerLimits.clear('anthropic')) appendLog('[provider-limit] anthropic access restored — a call succeeded');
+  // Namespaced so it cannot collide with a field Anthropic adds to the response later.
+  if (discarded) {
+    data.aiosDiscarded = discarded;
+    if (recovered) data.aiosRecoveredUsage = recovered;
+  }
   return data;
 }
 
-async function anthropicMessagesFetchInner(apiKey, body, { timeoutMs, label }) {
+async function anthropicMessagesFetchInner(apiKey, body, { timeoutMs, label, onAttemptFailed }) {
   return transientErrors.withRetry(() => anthropicMessagesAttempt(apiKey, body, timeoutMs), {
     maxTotalMs: AGENT_CALL_MAX_TOTAL_MS,
     nextTimeoutMs: timeoutMs,
+    onAttemptFailed,
     onRetry: (d) => appendLog(`[${label}] ${d.reason} (attempt ${d.attempt} failed: ${d.error.message})`),
     // Log the give-up REASON, not just the error. "3/3 attempts used" and "not a transient failure"
     // demand completely different responses from whoever reads the log, and the error message alone
@@ -4185,8 +4233,12 @@ async function callAnthropic(systemPrompt, task, effort, maxTokens, model = OPUS
   const textBlock = data.content?.find(b => b.type === 'text');
   return {
     content: textBlock?.text || '',
-    inputTokens: data.usage?.input_tokens || 0,
-    outputTokens: data.usage?.output_tokens || 0,
+    // Any usage recovered from a FAILED attempt is added here — those tokens were really generated.
+    // Attempts that reported no usage contribute nothing but are counted in discardedAttempts, which
+    // is what marks the total as a lower bound rather than a measurement.
+    inputTokens: (data.usage?.input_tokens || 0) + (data.aiosRecoveredUsage?.input_tokens || 0),
+    outputTokens: (data.usage?.output_tokens || 0) + (data.aiosRecoveredUsage?.output_tokens || 0),
+    discardedAttempts: data.aiosDiscarded || 0,
   };
 }
 
@@ -4206,18 +4258,22 @@ async function callAnthropicWithTools(systemPrompt, task, effort, maxTokens, too
     `\n\n--- TOOL BUDGET ---\nYou have at most ${maxIters} tool-calling turns for this task. Spend them deliberately: gather what you need, then STOP calling tools and write your deliverable while you still have room. Running out mid-investigation and producing nothing is the worst outcome available to you — a partial answer that names what it could not reach is far better.`;
   const messages = [{ role: 'user', content: task }];
   let inputTokens = 0, outputTokens = 0;
+  // Attempts thrown away across ALL turns of this loop. A 30-turn stage that retried twice on three
+  // separate turns discarded six billed requests; the ledger row must not imply it discarded none.
+  let discardedAttempts = 0;
   const toolInvocations = [];
   for (let iter = 0; iter < maxIters; iter++) {
     const body = { model, max_tokens: maxTokens, system: guardedSystem, messages, tools };
     if (effort) body.output_config = { effort };
     const data = await anthropicMessagesFetch(apiKey, body, { timeoutMs, label });
-    inputTokens += data.usage?.input_tokens || 0;
-    outputTokens += data.usage?.output_tokens || 0;
+    inputTokens += (data.usage?.input_tokens || 0) + (data.aiosRecoveredUsage?.input_tokens || 0);
+    outputTokens += (data.usage?.output_tokens || 0) + (data.aiosRecoveredUsage?.output_tokens || 0);
+    discardedAttempts += data.aiosDiscarded || 0;
     const content = data.content || [];
     const toolUses = content.filter(b => b.type === 'tool_use');
     if (data.stop_reason !== 'tool_use' || !toolUses.length) {
       const text = content.filter(b => b.type === 'text').map(b => b.text).join('\n').trim();
-      return { content: text, inputTokens, outputTokens, toolInvocations };
+      return { content: text, inputTokens, outputTokens, toolInvocations, discardedAttempts };
     }
     messages.push({ role: 'assistant', content });
     const toolResults = [];
@@ -4248,21 +4304,22 @@ async function callAnthropicWithTools(systemPrompt, task, effort, maxTokens, too
     const body = { model, max_tokens: maxTokens, system: guardedSystem, messages };
     if (effort) body.output_config = { effort };
     const data = await anthropicMessagesFetch(apiKey, body, { timeoutMs, label });
-    inputTokens += data.usage?.input_tokens || 0;
-    outputTokens += data.usage?.output_tokens || 0;
+    inputTokens += (data.usage?.input_tokens || 0) + (data.aiosRecoveredUsage?.input_tokens || 0);
+    outputTokens += (data.usage?.output_tokens || 0) + (data.aiosRecoveredUsage?.output_tokens || 0);
+    discardedAttempts += data.aiosDiscarded || 0;
     const text = (data.content || []).filter((b) => b.type === 'text').map((b) => b.text).join('\n').trim();
     if (text) {
       // Marked, because a downstream stage must be able to tell a budget-limited answer from a
       // complete one — the same reason a truncated stage input announces itself.
       return {
         content: `${text}\n\n[Produced after the ${maxIters}-turn tool budget was exhausted — the investigation behind this may be incomplete.]`,
-        inputTokens, outputTokens, toolInvocations, budgetExhausted: true,
+        inputTokens, outputTokens, toolInvocations, discardedAttempts, budgetExhausted: true,
       };
     }
   } catch (e) {
     appendLog(`[tool-loop] final-answer call failed after budget exhaustion: ${e.message}`);
   }
-  return { content: '(tool loop reached its iteration limit without a final answer)', inputTokens, outputTokens, toolInvocations, budgetExhausted: true };
+  return { content: '(tool loop reached its iteration limit without a final answer)', inputTokens, outputTokens, toolInvocations, discardedAttempts, budgetExhausted: true };
 }
 
 // Shared caller for OpenAI-compatible chat-completions providers (Grok, DeepSeek, OpenAI, Perplexity).
@@ -4799,6 +4856,15 @@ function getCostSummary() {
     // nothing on this payload showed it. An empty array means no provider has refused us on budget
     // grounds since its last successful call, NOT that headroom has been confirmed with anyone.
     providerLimits: providerLimits.all(),
+    // How much of the figures above is unmeasurable. Every discarded attempt was a billed request
+    // whose usage we never received, so the period totals are LOWER BOUNDS whenever this is
+    // non-zero. Reported as a count of real events, never as an estimated dollar amount — see the
+    // ledger-row comment for why estimating here would be worse than the gap.
+    unmeasured: {
+      calls: monthly.filter((e) => e.discardedAttempts).length,
+      discardedAttempts: monthly.reduce((s, e) => s + num(e.discardedAttempts), 0),
+      note: 'Attempts that were billed by the provider but returned no usage (failed responses carry none; client-side timeouts carry no response). Period costs above are lower bounds when this is non-zero.',
+    },
     entries: costLedger.slice().sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp)).slice(0, 50),
   };
 }

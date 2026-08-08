@@ -244,7 +244,10 @@ assert(retryFn.length > 0 && /withRetry/.test(retryFn),
 assert(/maxTotalMs: AGENT_CALL_MAX_TOTAL_MS/.test(retryFn), 'and it passes the wall-clock ceiling');
 assert(/nextTimeoutMs: timeoutMs/.test(retryFn),
   'and the per-attempt timeout, so the deadline check knows what the next attempt would cost');
-assert(/anthropicMessagesFetchInner\(apiKey, body, \{ timeoutMs, label \}\)/.test(src),
+// Matched on the CALL, not on its exact argument object — the wrapper later gained an
+// `onAttemptFailed` hook for cost metering and an assertion pinned to the old two-key literal went
+// red although the delegation was unchanged.
+assert(/await anthropicMessagesFetchInner\(apiKey, body, \{[^}]*timeoutMs[^}]*\}\)/.test(src),
   'and the outer wrapper really delegates to it — a wrapper that swallowed the call would leave the retry unreachable');
 
 // --- the longer ceiling is opt-in, exactly like maxToolIters ---------------------------------------------

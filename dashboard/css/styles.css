@@ -3028,6 +3028,15 @@ body {
   padding: 16px 20px;
 }
 
+.budget-unmeasured {
+  grid-column: 1 / -1;
+  background: color-mix(in srgb, var(--warning) 10%, var(--bg-card));
+  border: 1px solid var(--warning);
+  border-radius: var(--radius-lg);
+  padding: 10px 16px;
+  font-size: 0.85rem;
+}
+
 /* Provider-access banner. Spans the whole grid so it reads as a statement about ALL the spend cards
    rather than a fourth card competing with them — the spend figures can be entirely accurate while
    this makes them irrelevant. */
