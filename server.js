@@ -1518,6 +1518,7 @@ const approvalPolicy = require('./lib/safety/approval');
 const designLint = require('./lib/design-lint');
 const pipelineGraph = require('./lib/pipeline-graph');
 const repoToolsLib = require('./lib/repo-tools');
+const transientErrors = require('./lib/transient-errors');
 const pipelinePatterns = require('./lib/pipeline-patterns');
 const pipelineTrail = require('./lib/pipeline-trail');
 const knowledgeContext = require('./lib/knowledge-context');
@@ -3953,9 +3954,11 @@ async function executeAgent(agentName, task, options = {}) {
           return (gate.result && gate.result.content) || 'Tool executed (no content returned).';
           // Tool-call budget. Default 6 suits a chat turn that reaches for one lookup; a pipeline
           // stage exploring a codebase needs an order of magnitude more (see PIPELINE_STAGE_TOOL_ITERS).
-        }, { model: apiModel, maxIters: options.maxToolIters || 6 });
+          // Per-request wall-clock ceiling, same opt-in shape and same reason as maxToolIters above:
+          // a pipeline stage gets a longer one, a chat turn keeps the default.
+        }, { model: apiModel, maxIters: options.maxToolIters || 6, timeoutMs: options.timeoutMs, label: `tool-loop:${agentName}` });
       } else {
-        result = await callAnthropic(fullSystem, fullTask, effort, maxTokens, apiModel);
+        result = await callAnthropic(fullSystem, fullTask, effort, maxTokens, apiModel, { timeoutMs: options.timeoutMs, label: `agent:${agentName}` });
       }
     }
 
@@ -4001,6 +4004,21 @@ async function executeAgent(agentName, task, options = {}) {
 // silent), a process-wide concurrency cap (bounds paid-call fan-out + socket/event-loop pressure),
 // and an output-token ceiling (defense against a fat-fingered/abusive maxTokens). All env-tunable.
 const AGENT_FETCH_TIMEOUT_MS = parseInt(process.env.AGENT_FETCH_TIMEOUT_MS, 10) || 120000;
+// A pipeline stage gets a LONGER per-request ceiling than a chat turn, and this is a per-call option
+// rather than a raised global for exactly the reason PIPELINE_STAGE_TOOL_ITERS is: a chat turn that
+// reaches for one lookup must not silently inherit a five-minute patience. Raising
+// AGENT_FETCH_TIMEOUT_MS instead would hand every caller on the box the same ceiling, including the
+// interactive ones where a hung request should surface fast.
+//
+// 120s was not an unreasonable default; it was a default applied to the wrong workload. A strategic
+// stage sends Opus 5 at `xhigh` with max_tokens 12000 — adaptive thinking plus 12k of generation can
+// legitimately exceed two minutes, and run-1786085226550's `architecture` stage was aborted at the
+// boundary while the SAME stage on the previous run finished at 240s across several turns. This is a
+// ceiling for ONE request in the tool loop, not for the stage as a whole.
+const PIPELINE_STAGE_FETCH_TIMEOUT_MS = parseInt(process.env.PIPELINE_STAGE_FETCH_TIMEOUT_MS, 10) || 300000;
+// Hard wall-clock ceiling for one provider call INCLUDING its retries, so a retry policy can never
+// outlive the thing it is retrying for. See lib/transient-errors.js.
+const AGENT_CALL_MAX_TOTAL_MS = parseInt(process.env.AGENT_CALL_MAX_TOTAL_MS, 10) || 900000;
 const AGENT_MAX_CONCURRENCY = parseInt(process.env.AGENT_MAX_CONCURRENCY, 10) || 8;
 const AGENT_MAX_TOKENS_CEILING = parseInt(process.env.AGENT_MAX_TOKENS_CEILING, 10) || 200000;
 let _agentInFlight = 0; const _agentQueue = [];
@@ -4015,30 +4033,79 @@ function releaseAgentSlot() {
 }
 async function fetchWithTimeout(url, opts = {}, ms = AGENT_FETCH_TIMEOUT_MS) {
   const ctrl = new AbortController();
-  const t = setTimeout(() => ctrl.abort(), ms);
+  let timedOut = false;
+  const t = setTimeout(() => { timedOut = true; ctrl.abort(); }, ms);
   try { return await fetch(url, { ...opts, signal: ctrl.signal }); }
+  catch (e) {
+    // Mark OUR timeout so the retry classifier can tell it from a caller-initiated abort. Without
+    // this flag the only evidence is the message "This operation was aborted", and classifying a
+    // retry decision on provider prose is exactly the fragility lib/transient-errors.js refuses.
+    // A deliberate cancel must NOT be retried against the canceller's wishes; a timeout should be.
+    if (timedOut && e && e.name === 'AbortError') {
+      // A NEW Error rather than mutating `e`: undici raises a DOMException here, whose `message` is a
+      // getter-only accessor — assigning to it fails SILENTLY in sloppy mode and throws in strict, so
+      // the "improved" message would have been a no-op nobody noticed. Re-wrapping also lets the
+      // message name its own cause: "This operation was aborted" gave no hint it was ours, and cost a
+      // diagnostic round trip looking for an Anthropic incident that never happened.
+      const err = new Error(`request exceeded the ${Math.round(ms / 1000)}s client timeout (${e.message})`);
+      err.timedOut = true;
+      err.timeoutMs = ms;
+      err.cause = e;
+      throw err;
+    }
+    throw e;
+  }
   finally { clearTimeout(t); }
 }
 
 // Override the API base (e.g. a local mock or proxy) via ANTHROPIC_BASE_URL; defaults to the real API.
 const ANTHROPIC_API_BASE = process.env.ANTHROPIC_BASE_URL || 'https://api.anthropic.com';
 
-// Shared by callAnthropic and callAnthropicWithTools — same endpoint, same request/error shape,
-// just a different `body` (single-shot vs a tool-use loop turn).
-async function anthropicMessagesFetch(apiKey, body) {
+// ONE attempt at the Messages endpoint. Separated from the retry wrapper below so the wrapper has
+// nothing to do but decide, and so a retry can never accidentally re-enter request construction.
+async function anthropicMessagesAttempt(apiKey, body, timeoutMs) {
   const res = await fetchWithTimeout(`${ANTHROPIC_API_BASE}/v1/messages`, {
     method: 'POST',
     headers: { 'x-api-key': apiKey, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
     body: JSON.stringify(body),
-  });
+  }, timeoutMs);
   if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
-    throw new Error(err.error?.message || `Anthropic HTTP ${res.status}`);
+    // transientErrors.httpError attaches the STATUS and any Retry-After. This used to be a bare
+    // `new Error(message)` which dropped res.status on the floor — the reason a 529 `Overloaded` was
+    // indistinguishable from a 400 by the time any caller saw it, and why neither could be retried
+    // without string-matching provider prose.
+    throw transientErrors.httpError(res, await res.json().catch(() => ({})), 'Anthropic');
   }
   return res.json();
 }
 
-async function callAnthropic(systemPrompt, task, effort, maxTokens, model = OPUS_MODEL) {
+// Shared by callAnthropic and callAnthropicWithTools — same endpoint, same request/error shape,
+// just a different `body` (single-shot vs a tool-use loop turn). Retries transient failures.
+//
+// The retry lives HERE, at the one choke point both callers share, rather than in each of them. In
+// the tool loop that means an overloaded or timed-out TURN is retried without losing the turns
+// already banked in `messages` — the alternative (retrying the whole stage) would re-pay for every
+// tool call made so far. Safe to retry because these requests are non-streaming and stateless: a
+// retried turn re-sends the identical conversation and Anthropic has no partial state to reconcile.
+//
+// NOT retried: HTTP 400/401/403/404 (re-sending an identical bad body reproduces it exactly) and a
+// caller-initiated abort. See lib/transient-errors.js for the full policy and its reasoning.
+async function anthropicMessagesFetch(apiKey, body, { timeoutMs = AGENT_FETCH_TIMEOUT_MS, label = 'anthropic' } = {}) {
+  return transientErrors.withRetry(() => anthropicMessagesAttempt(apiKey, body, timeoutMs), {
+    maxTotalMs: AGENT_CALL_MAX_TOTAL_MS,
+    nextTimeoutMs: timeoutMs,
+    onRetry: (d) => appendLog(`[${label}] ${d.reason} (attempt ${d.attempt} failed: ${d.error.message})`),
+    // Log the give-up REASON, not just the error. "3/3 attempts used" and "not a transient failure"
+    // demand completely different responses from whoever reads the log, and the error message alone
+    // distinguishes neither. Only logged when the failure WAS transient — a plain 400 is the caller's
+    // to report, and a line here would just be noise on every bad request.
+    onGiveUp: (d) => { if (d.kind) appendLog(`[${label}] giving up after attempt ${d.attempt} — ${d.reason}: ${d.error.message}`); },
+  });
+}
+
+// `opts` is appended as a trailing options object so every existing positional call site keeps
+// working unchanged — there are a dozen of them and none should have to care about timeouts.
+async function callAnthropic(systemPrompt, task, effort, maxTokens, model = OPUS_MODEL, opts = {}) {
   const apiKey = settings.ai.anthropic_api_key;
   if (!apiKey) throw new Error('Anthropic API key not configured — add it in Settings');
 
@@ -4051,7 +4118,7 @@ async function callAnthropic(systemPrompt, task, effort, maxTokens, model = OPUS
   };
   if (effort) body.output_config = { effort };
 
-  const data = await anthropicMessagesFetch(apiKey, body);
+  const data = await anthropicMessagesFetch(apiKey, body, { timeoutMs: opts.timeoutMs, label: opts.label || 'anthropic' });
   // Fable 5 (and future models) can decline with HTTP 200 + stop_reason:"refusal" and an empty/partial
   // content array. Surface it as a real error so callers see "why" instead of silently getting an empty
   // result (e.g. a blank generated page). No-op for models that never emit this stop reason.
@@ -4070,7 +4137,7 @@ async function callAnthropic(systemPrompt, task, effort, maxTokens, model = OPUS
 // Anthropic tool-use loop (P1): exposes MCP tools to the model and runs tool_use -> tool_result rounds
 // until a final answer. Thinking is omitted here to avoid thinking-block-signature plumbing across
 // rounds. `executor(name, input)` runs a tool and returns its result text. Iterations are capped.
-async function callAnthropicWithTools(systemPrompt, task, effort, maxTokens, tools, executor, { maxIters = 6, model = OPUS_MODEL } = {}) {
+async function callAnthropicWithTools(systemPrompt, task, effort, maxTokens, tools, executor, { maxIters = 6, model = OPUS_MODEL, timeoutMs, label = 'tool-loop' } = {}) {
   const apiKey = settings.ai.anthropic_api_key;
   if (!apiKey) throw new Error('Anthropic API key not configured — add it in Settings');
   // Tool results come from remote MCP servers = untrusted content. Append a standing guard so the model
@@ -4087,7 +4154,7 @@ async function callAnthropicWithTools(systemPrompt, task, effort, maxTokens, too
   for (let iter = 0; iter < maxIters; iter++) {
     const body = { model, max_tokens: maxTokens, system: guardedSystem, messages, tools };
     if (effort) body.output_config = { effort };
-    const data = await anthropicMessagesFetch(apiKey, body);
+    const data = await anthropicMessagesFetch(apiKey, body, { timeoutMs, label });
     inputTokens += data.usage?.input_tokens || 0;
     outputTokens += data.usage?.output_tokens || 0;
     const content = data.content || [];
@@ -4124,7 +4191,7 @@ async function callAnthropicWithTools(systemPrompt, task, effort, maxTokens, too
     // No `tools` key at all: with the tool surface removed the model cannot spend another turn.
     const body = { model, max_tokens: maxTokens, system: guardedSystem, messages };
     if (effort) body.output_config = { effort };
-    const data = await anthropicMessagesFetch(apiKey, body);
+    const data = await anthropicMessagesFetch(apiKey, body, { timeoutMs, label });
     inputTokens += data.usage?.input_tokens || 0;
     outputTokens += data.usage?.output_tokens || 0;
     const text = (data.content || []).filter((b) => b.type === 'text').map((b) => b.text).join('\n').trim();
@@ -8035,7 +8102,7 @@ async function runPipelineStage(run, stage, layer = 0) {
     // shape keeps content, not tokens.
     const patternDeps = {
       runAgent: async (agent, t, opts) => {
-        const res = await executeAgent(agent, t, { useMcpTools: true, useRepoTools: true, maxTokens: 12000, maxToolIters: PIPELINE_STAGE_TOOL_ITERS, ...(opts || {}) });
+        const res = await executeAgent(agent, t, { useMcpTools: true, useRepoTools: true, maxTokens: 12000, maxToolIters: PIPELINE_STAGE_TOOL_ITERS, timeoutMs: PIPELINE_STAGE_FETCH_TIMEOUT_MS, ...(opts || {}) });
         if (res && res.ok) {
           const rt = costRateFor(res.model);
           run.cost = Math.round((((run.cost || 0) + ((res.inputTokens || 0) / 1e6) * rt.input + ((res.outputTokens || 0) / 1e6) * rt.output)) * 10000) / 10000;
@@ -8063,7 +8130,7 @@ async function runPipelineStage(run, stage, layer = 0) {
     }
     r = { ok: pr.ok, content: pr.output, error: pr.ok ? undefined : (pr.output || 'pattern stage failed') };
   } else {
-    try { r = await executeAgent(stage.agent, task, { useMcpTools: true, useRepoTools: true, maxTokens: 12000, maxToolIters: PIPELINE_STAGE_TOOL_ITERS }); }
+    try { r = await executeAgent(stage.agent, task, { useMcpTools: true, useRepoTools: true, maxTokens: 12000, maxToolIters: PIPELINE_STAGE_TOOL_ITERS, timeoutMs: PIPELINE_STAGE_FETCH_TIMEOUT_MS }); }
     catch (e) { r = { ok: false, error: (e && e.message) || String(e) }; }
   }
   if (stage.agent) broadcast({ event: 'fleet_update', data: { agent: stage.agent, status: 'idle' } });

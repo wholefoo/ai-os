@@ -205,7 +205,11 @@ const tiny = createRepoTools({ base: root, isPathAllowed: allowAll, limits: { ..
   for (const c of stageCalls) {
     assert(/maxToolIters: PIPELINE_STAGE_TOOL_ITERS/.test(c), 'and every stage dispatch passes it');
   }
-  assert(/\{ maxIters = 6, model = OPUS_MODEL \}/.test(src),
+  // Pin the DEFAULT, not the whole parameter list. This originally matched the entire destructuring
+  // literal `{ maxIters = 6, model = OPUS_MODEL }` and went red the moment a fourth option
+  // (timeoutMs) was added beside it — a false alarm about a default that had not moved. An assertion
+  // should fail when its subject changes, not when its neighbours do.
+  assert(/async function callAnthropicWithTools\([^)]*\{[^}]*maxIters = 6\b/.test(src),
     'while the DEFAULT stays 6 — a chat turn reaching for one lookup must not silently gain a 30-turn budget');
   assert(/TOOL BUDGET[\s\S]{0,200}at most \$\{maxIters\} tool-calling turns/.test(src),
     'the model is TOLD its budget, so it can stop and write while it still has room instead of being cut off');

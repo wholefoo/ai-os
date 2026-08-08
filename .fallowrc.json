@@ -75,7 +75,8 @@
     "ecosystem.config.js",
     "deploy/n8n-ecosystem.config.example.js",
     "dashboard/js/*.js",
-    "tools/test-deploy-determinism.js"
+    "tools/test-deploy-determinism.js",
+    "tools/test-transient-retry.js"
   ],
   "ignorePatterns": [
     "docs-export/**",
