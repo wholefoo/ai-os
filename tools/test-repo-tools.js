@@ -223,7 +223,13 @@ const tiny = createRepoTools({ base: root, isPathAllowed: allowAll, limits: { ..
   const exhaustedStart = src.indexOf('BUDGET EXHAUSTED');
   const exhausted = src.slice(exhaustedStart, src.indexOf('\n}', exhaustedStart));
   assert(exhaustedStart > -1 && exhausted.length > 100, 'the exhaustion branch is present');
-  assert(/const body = \{ model, max_tokens: maxTokens, system: guardedSystem, messages \};/.test(exhausted),
+  // Pin the ABSENCE of `tools`, not the whole body literal. The previous form spelled out every
+  // field including `system: guardedSystem`, so it went red when prompt caching swapped that for a
+  // cache-marked `systemField` — a change to a neighbouring field, not to the property being
+  // protected. Match the recovery body and assert what must not be in it.
+  const recoveryBody = (exhausted.match(/const body = \{ model, max_tokens: maxTokens,[^}]*\};/) || [''])[0];
+  assert(recoveryBody.length > 0, 'the recovery request body was located');
+  assert(!/\btools\b/.test(recoveryBody),
     'the final call omits `tools` ENTIRELY — leaving the tool surface in place would let the model spend a turn it does not have');
   assert(/budgetExhausted: true/.test(exhausted), 'and the result is flagged');
   assert(/tool budget was exhausted/.test(exhausted),

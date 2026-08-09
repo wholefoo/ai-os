@@ -1547,6 +1547,7 @@ const designLint = require('./lib/design-lint');
 const pipelineGraph = require('./lib/pipeline-graph');
 const repoToolsLib = require('./lib/repo-tools');
 const transientErrors = require('./lib/transient-errors');
+const promptCache = require('./lib/prompt-cache');
 const providerLimitLib = require('./lib/provider-limit');
 // Remembers when a PROVIDER has cut us off, so the cost dashboard cannot read healthy while every
 // call 400s. Advisory only — it never blocks a request. See lib/provider-limit.js.
@@ -3885,7 +3886,13 @@ async function executeAgent(agentName, task, options = {}) {
     } catch (e) { appendLog(`[knowledge-context] ${agentName}: ${e.message}`); }
   }
 
-  if (context) fullSystem += `\n\n--- Current Context ---\n${context}`;
+  // PROMPT CACHE SPLIT. Everything above this line is stable for one agent and forms the cacheable
+  // prefix; everything appended to `volatileSystem` below differs per call and must sit AFTER the
+  // cache breakpoint. Getting this backwards is not a missed optimisation — it is a guaranteed
+  // cache miss on every request, reported by nothing. See lib/prompt-cache.js.
+  let volatileSystem = '';
+
+  if (context) volatileSystem += `\n\n--- Current Context ---\n${context}`;
 
   // Operator-external ("untrusted") content (scraped pages, imported sites, model answers,
   // feed titles) is fenced as DATA with a per-call nonce + a system guard — prompt-injection
@@ -3893,7 +3900,12 @@ async function executeAgent(agentName, task, options = {}) {
   let fullTask = task;
   if (untrusted) {
     const { blocks, guard } = fenceUntrusted(untrusted);
-    if (blocks) { fullSystem += guard; fullTask = `${task}\n\n${blocks}`; }
+    // The guard goes in volatileSystem, NOT fullSystem. fenceUntrusted mints a fresh random nonce
+    // per call and that nonce is inside the guard text — appending it to the cacheable prefix made
+    // every request byte-unique, so before this split no call carrying untrusted content could ever
+    // hit the cache. It stays in the system role (the injection-safe channel); it just sits after
+    // the breakpoint, where changing it every call is free.
+    if (blocks) { volatileSystem += guard; fullTask = `${task}\n\n${blocks}`; }
   }
 
   let result, inputTokens = 0, outputTokens = 0, model = routing.model;
@@ -3991,18 +4003,28 @@ async function executeAgent(agentName, task, options = {}) {
           // stage exploring a codebase needs an order of magnitude more (see PIPELINE_STAGE_TOOL_ITERS).
           // Per-request wall-clock ceiling, same opt-in shape and same reason as maxToolIters above:
           // a pipeline stage gets a longer one, a chat turn keeps the default.
-        }, { model: apiModel, maxIters: options.maxToolIters || 6, timeoutMs: options.timeoutMs, label: `tool-loop:${agentName}` });
+        }, { model: apiModel, maxIters: options.maxToolIters || 6, timeoutMs: options.timeoutMs, label: `tool-loop:${agentName}`, volatileSystem });
       } else {
-        result = await callAnthropic(fullSystem, fullTask, effort, maxTokens, apiModel, { timeoutMs: options.timeoutMs, label: `agent:${agentName}` });
+        result = await callAnthropic(fullSystem, fullTask, effort, maxTokens, apiModel, { timeoutMs: options.timeoutMs, label: `agent:${agentName}`, volatileSystem });
       }
     }
 
-    inputTokens = result.inputTokens || 0;
-    outputTokens = result.outputTokens || 0;
-
-    // Track cost
+    // Priced through promptCache so cache reads bill at 10% and writes at 125% of the input rate.
+    // `input_tokens` from the API is the UNCACHED remainder, so priceUsage re-adds the cached spans
+    // to report a total prompt size — otherwise a well-cached 45K-token stage would ledger as if it
+    // had sent a few hundred tokens, and the token column would silently stop meaning anything.
     const rates = costRateFor(model);
-    const cost = (inputTokens / 1_000_000) * rates.input + (outputTokens / 1_000_000) * rates.output;
+    const priced = promptCache.priceUsage({
+      // Both callers accumulate `inputTokens` from the API's `input_tokens`, which is already the
+      // uncached remainder — the cached spans arrive in the two fields below.
+      input_tokens: result.inputTokens || 0,
+      output_tokens: result.outputTokens || 0,
+      cache_read_input_tokens: result.cacheReadTokens || 0,
+      cache_creation_input_tokens: result.cacheWriteTokens || 0,
+    }, rates);
+    inputTokens = priced.inputTokens;
+    outputTokens = priced.outputTokens;
+    const cost = priced.cost;
     const elapsed = Date.now() - startTime;
     costLedger.push({
       id: uuidv4(), agent: agentName, model, skill: options.skill || 'dispatch',
@@ -4015,6 +4037,12 @@ async function executeAgent(agentName, task, options = {}) {
       // outage proved that flagging everything makes the flag worthless.
       ...(result.discardedAttempts ? { discardedAttempts: result.discardedAttempts } : {}),
       ...(result.unmeasuredAttempts ? { unmeasuredAttempts: result.unmeasuredAttempts, costIsLowerBound: true } : {}),
+      // Recorded only when caching actually engaged, so a zero here means "no cache activity" and
+      // never "the field was not populated". `inputTokens` above is the total; these say how much
+      // of it was served cheaply.
+      ...(priced.cacheReadTokens || priced.cacheWriteTokens
+        ? { cacheReadTokens: priced.cacheReadTokens, cacheWriteTokens: priced.cacheWriteTokens }
+        : {}),
       timestamp: new Date().toISOString(),
     });
 
@@ -4228,7 +4256,9 @@ async function callAnthropic(systemPrompt, task, effort, maxTokens, model = OPUS
     model,
     max_tokens: maxTokens,
     thinking: { type: 'adaptive' },
-    system: systemPrompt,
+    // Cache the stable prefix (tools render first, so a breakpoint on the last system block covers
+    // both). One-shot calls still benefit whenever the same agent is dispatched repeatedly.
+    system: promptCache.systemBlocks(systemPrompt, opts.volatileSystem),
     messages: [{ role: 'user', content: task }],
   };
   if (effort) body.output_config = { effort };
@@ -4249,6 +4279,11 @@ async function callAnthropic(systemPrompt, task, effort, maxTokens, model = OPUS
     // is what marks the total as a lower bound rather than a measurement.
     inputTokens: (data.usage?.input_tokens || 0) + (data.aiosRecoveredUsage?.input_tokens || 0),
     outputTokens: (data.usage?.output_tokens || 0) + (data.aiosRecoveredUsage?.output_tokens || 0),
+    // Disjoint from input_tokens, which is the UNCACHED remainder only — not the total. Carried
+    // separately so executeAgent can price cache reads at 10% and writes at 125% instead of
+    // treating a cached call as a call that barely had a prompt.
+    cacheReadTokens: data.usage?.cache_read_input_tokens || 0,
+    cacheWriteTokens: data.usage?.cache_creation_input_tokens || 0,
     discardedAttempts: data.aiosDiscarded || 0,
     unmeasuredAttempts: data.aiosUnmeasured || 0,
   };
@@ -4257,7 +4292,7 @@ async function callAnthropic(systemPrompt, task, effort, maxTokens, model = OPUS
 // Anthropic tool-use loop (P1): exposes MCP tools to the model and runs tool_use -> tool_result rounds
 // until a final answer. Thinking is omitted here to avoid thinking-block-signature plumbing across
 // rounds. `executor(name, input)` runs a tool and returns its result text. Iterations are capped.
-async function callAnthropicWithTools(systemPrompt, task, effort, maxTokens, tools, executor, { maxIters = 6, model = OPUS_MODEL, timeoutMs, label = 'tool-loop' } = {}) {
+async function callAnthropicWithTools(systemPrompt, task, effort, maxTokens, tools, executor, { maxIters = 6, model = OPUS_MODEL, timeoutMs, label = 'tool-loop', volatileSystem } = {}) {
   const apiKey = settings.ai.anthropic_api_key;
   if (!apiKey) throw new Error('Anthropic API key not configured — add it in Settings');
   // Tool results come from remote MCP servers = untrusted content. Append a standing guard so the model
@@ -4268,26 +4303,32 @@ async function callAnthropicWithTools(systemPrompt, task, effort, maxTokens, too
     // mid-exploration — which is exactly what happened on run-1786078508128: three stages spent the
     // whole loop reading and never wrote anything down.
     `\n\n--- TOOL BUDGET ---\nYou have at most ${maxIters} tool-calling turns for this task. Spend them deliberately: gather what you need, then STOP calling tools and write your deliverable while you still have room. Running out mid-investigation and producing nothing is the worst outcome available to you — a partial answer that names what it could not reach is far better.`;
+  // Built once: identical on every turn, which is the entire point — one breakpoint here covers
+  // tools + system, and turns 2..N read it instead of re-paying for it.
+  const systemField = promptCache.systemBlocks(guardedSystem, volatileSystem);
   const messages = [{ role: 'user', content: task }];
   let inputTokens = 0, outputTokens = 0;
+  let cacheReadTokens = 0, cacheWriteTokens = 0;
   // Attempts thrown away across ALL turns of this loop. A 30-turn stage that retried twice on three
   // separate turns discarded six billed requests; the ledger row must not imply it discarded none.
   let discardedAttempts = 0;
   let unmeasuredAttempts = 0;
   const toolInvocations = [];
   for (let iter = 0; iter < maxIters; iter++) {
-    const body = { model, max_tokens: maxTokens, system: guardedSystem, messages, tools };
+    const body = { model, max_tokens: maxTokens, system: systemField, messages, tools };
     if (effort) body.output_config = { effort };
     const data = await anthropicMessagesFetch(apiKey, body, { timeoutMs, label });
     inputTokens += (data.usage?.input_tokens || 0) + (data.aiosRecoveredUsage?.input_tokens || 0);
     outputTokens += (data.usage?.output_tokens || 0) + (data.aiosRecoveredUsage?.output_tokens || 0);
     discardedAttempts += data.aiosDiscarded || 0;
     unmeasuredAttempts += data.aiosUnmeasured || 0;
+    cacheReadTokens += data.usage?.cache_read_input_tokens || 0;
+    cacheWriteTokens += data.usage?.cache_creation_input_tokens || 0;
     const content = data.content || [];
     const toolUses = content.filter(b => b.type === 'tool_use');
     if (data.stop_reason !== 'tool_use' || !toolUses.length) {
       const text = content.filter(b => b.type === 'text').map(b => b.text).join('\n').trim();
-      return { content: text, inputTokens, outputTokens, toolInvocations, discardedAttempts, unmeasuredAttempts };
+      return { content: text, inputTokens, outputTokens, cacheReadTokens, cacheWriteTokens, toolInvocations, discardedAttempts, unmeasuredAttempts };
     }
     messages.push({ role: 'assistant', content });
     const toolResults = [];
@@ -4302,6 +4343,12 @@ async function callAnthropicWithTools(systemPrompt, task, effort, maxTokens, too
       toolResults.push({ type: 'tool_result', tool_use_id: tu.id, content, is_error: isError });
     }
     messages.push({ role: 'user', content: toolResults });
+    // Re-place the rolling conversation breakpoints now that this turn is on the array. Must run
+    // AFTER the push and on EVERY turn: the newest mark is the write that the next request reads,
+    // and the spacing rule keeps older marks inside the API's 20-block lookback. A single mark that
+    // never moves would fall out of that window a few turns into a 30-turn loop and silently stop
+    // matching — re-billing the whole conversation with nothing to show it. See lib/prompt-cache.js.
+    promptCache.markConversation(messages);
   }
   // BUDGET EXHAUSTED — but everything the model read is still sitting in `messages`. This used to
   // return a 62-char placeholder and throw all of it away: run-1786078508128 spent $1.29 having three
@@ -4315,26 +4362,28 @@ async function callAnthropicWithTools(systemPrompt, task, effort, maxTokens, too
   });
   try {
     // No `tools` key at all: with the tool surface removed the model cannot spend another turn.
-    const body = { model, max_tokens: maxTokens, system: guardedSystem, messages };
+    const body = { model, max_tokens: maxTokens, system: systemField, messages };
     if (effort) body.output_config = { effort };
     const data = await anthropicMessagesFetch(apiKey, body, { timeoutMs, label });
     inputTokens += (data.usage?.input_tokens || 0) + (data.aiosRecoveredUsage?.input_tokens || 0);
     outputTokens += (data.usage?.output_tokens || 0) + (data.aiosRecoveredUsage?.output_tokens || 0);
     discardedAttempts += data.aiosDiscarded || 0;
     unmeasuredAttempts += data.aiosUnmeasured || 0;
+    cacheReadTokens += data.usage?.cache_read_input_tokens || 0;
+    cacheWriteTokens += data.usage?.cache_creation_input_tokens || 0;
     const text = (data.content || []).filter((b) => b.type === 'text').map((b) => b.text).join('\n').trim();
     if (text) {
       // Marked, because a downstream stage must be able to tell a budget-limited answer from a
       // complete one — the same reason a truncated stage input announces itself.
       return {
         content: `${text}\n\n[Produced after the ${maxIters}-turn tool budget was exhausted — the investigation behind this may be incomplete.]`,
-        inputTokens, outputTokens, toolInvocations, discardedAttempts, unmeasuredAttempts, budgetExhausted: true,
+        inputTokens, outputTokens, cacheReadTokens, cacheWriteTokens, toolInvocations, discardedAttempts, unmeasuredAttempts, budgetExhausted: true,
       };
     }
   } catch (e) {
     appendLog(`[tool-loop] final-answer call failed after budget exhaustion: ${e.message}`);
   }
-  return { content: '(tool loop reached its iteration limit without a final answer)', inputTokens, outputTokens, toolInvocations, discardedAttempts, unmeasuredAttempts, budgetExhausted: true };
+  return { content: '(tool loop reached its iteration limit without a final answer)', inputTokens, outputTokens, cacheReadTokens, cacheWriteTokens, toolInvocations, discardedAttempts, unmeasuredAttempts, budgetExhausted: true };
 }
 
 // Shared caller for OpenAI-compatible chat-completions providers (Grok, DeepSeek, OpenAI, Perplexity).
@@ -4871,6 +4920,26 @@ function getCostSummary() {
     // nothing on this payload showed it. An empty array means no provider has refused us on budget
     // grounds since its last successful call, NOT that headroom has been confirmed with anyone.
     providerLimits: providerLimits.all(),
+    // Prompt-cache effectiveness. This is the ONLY way to tell a working cache from a broken one:
+    // every failure mode is silent — a volatile byte in the prefix, a breakpoint that drifts outside
+    // the 20-block lookback, or a prefix under the model's minimum all produce correct answers at
+    // full price, with nothing in the response saying so. A hitRate stuck near zero across repeated
+    // similar work means an invalidator in the prefix, NOT an absence of cacheable content.
+    promptCache: (() => {
+      const read = monthly.reduce((s, e) => s + num(e.cacheReadTokens), 0);
+      const write = monthly.reduce((s, e) => s + num(e.cacheWriteTokens), 0);
+      return {
+        cacheReadTokens: read,
+        cacheWriteTokens: write,
+        // Denominator is INPUT tokens only — sumTokens() folds in output, which caching cannot
+        // touch, and would understate the hit rate by whatever share of spend is generation.
+        hitRate: promptCache.hitRate({
+          cacheReadTokens: read,
+          inputTokens: monthly.reduce((s, e) => s + num(e.inputTokens), 0),
+        }),
+        note: 'hitRate is cache-read tokens as a percentage of total input tokens. Near-zero across repeated similar work means a silent invalidator in the cached prefix (a timestamp, a per-call nonce, a reordered tool list), not a lack of cacheable content.',
+      };
+    })(),
     // How much of the figures above is unmeasurable. Every discarded attempt was a billed request
     // whose usage we never received, so the period totals are LOWER BOUNDS whenever this is
     // non-zero. Reported as a count of real events, never as an estimated dollar amount — see the
