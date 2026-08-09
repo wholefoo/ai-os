@@ -79,7 +79,8 @@
     "tools/test-transient-retry.js",
     "tools/test-pipeline-resume.js",
     "tools/test-provider-limit.js",
-    "tools/test-cost-metering.js"
+    "tools/test-cost-metering.js",
+    "tools/test-schedule-toggles.js"
   ],
   "ignorePatterns": [
     "docs-export/**",

@@ -6305,6 +6305,14 @@ function getNextRun(cronExpr) {
   }
 }
 
+// Persist ONLY {id: enabled}. See the restore block after the schedule definitions for why the
+// definitions themselves are deliberately not written to disk.
+function saveScheduleToggles() {
+  const map = {};
+  for (const s of schedules.values()) map[s.id] = !!s.enabled;
+  saveState('schedule_toggles', map);
+}
+
 function createSchedule(id, config) {
   const schedule = {
     id,
@@ -6363,6 +6371,30 @@ createSchedule('sched-intel-brief-daily', {
   description: 'Daily Intelligence Statement — 7 LLM consultants report to the Orchestrator, Architect & Communications Director; the statement is published as a downloadable .docx',
 });
 
+// Re-apply the operator's enable/disable toggles, which are the only part of a schedule that is
+// user state — the cron expression, agent, skill and description are code, defined above.
+//
+// PERSIST ONLY THE FLAG, never the whole schedule. Restoring a full definition from disk would
+// resurrect a stale cron or a renamed skill after the code had moved on, which is the same
+// "half of an old graph, half of a new one" hazard that pipeline resume refuses. An id that no
+// longer exists is ignored for the same reason.
+//
+// Why this exists: the toggle route flipped `enabled` in memory and nothing wrote it down, so every
+// deploy silently re-enabled everything an operator had paused. That was found on 2026-08-09 while
+// pausing all four schedules for the duration of the Anthropic account limit — a three-week pause
+// that the next restart would have quietly undone.
+(() => {
+  const saved = loadState('schedule_toggles', {});
+  for (const [id, enabled] of Object.entries(saved || {})) {
+    const sched = schedules.get(id);
+    if (!sched || typeof enabled !== 'boolean' || sched.enabled === enabled) continue;
+    sched.enabled = enabled;
+    if (sched._job) { enabled ? sched._job.start() : sched._job.stop(); }
+    sched.nextRun = enabled ? getNextRun(sched.cron) : null;
+    console.log(`[SCHEDULE] restored ${id} -> ${enabled ? 'enabled' : 'paused'}`);
+  }
+})();
+
 // --- Intel Brief API (list + download the daily .docx statements) ---
 app.get('/api/intel-brief/list', requireAdmin, (req, res) => {
   res.json({ ok: true, briefs: intelBrief.listBriefs(INTEL_BRIEF_DIR), running: intelBriefRunning });
@@ -6416,6 +6448,11 @@ app.put('/api/schedules/:id/toggle', requireAdmin, (req, res) => {
     sched.enabled ? sched._job.start() : sched._job.stop();
   }
   sched.nextRun = sched.enabled ? getNextRun(sched.cron) : null;
+
+  // Written HERE, not left to persistAllState on shutdown: that only runs on a graceful SIGTERM, so
+  // a crash or a hard restart would silently undo a deliberate pause. A toggle the operator made is
+  // durable the moment they make it.
+  saveScheduleToggles();
 
   logActivity('schedule', `Schedule ${sched.enabled ? 'enabled' : 'paused'}: ${sched.agent} → ${sched.skill}`);
   broadcast({ event: 'schedule_update', data: { ...sched, _job: undefined } });
