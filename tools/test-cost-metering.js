@@ -59,6 +59,47 @@ async function behaviour() {
   assert(survived === 'ok', 'a throwing onAttemptFailed does NOT break the call');
 }
 
+// --- REFUSED vs INTERRUPTED: only one of them means we lost money we cannot count ---------------------
+// The first version of this feature flagged EVERY discarded attempt as making a row's cost a lower
+// bound. Its first real production sample — 46 rows from the 2026-08-08 account-usage-limit outage —
+// was 100% false positives: a usage-limit 400 is refused at the gate, so those attempts cost exactly
+// $0. The flag meant to raise an alarm was firing constantly about nothing, which is the failure its
+// own comment warned about. The distinction is not 4xx-vs-5xx; it is refused-vs-interrupted.
+const REFUSED = [
+  ['usage limit (the real one, 46 rows of it)', err({ status: 400, message: 'You have reached your specified API usage limits.' })],
+  ['bad request', err({ status: 400, message: 'messages.0.content is required' })],
+  ['auth', err({ status: 401 })],
+  ['rate limit', err({ status: 429 })],
+  ['overloaded (5xx by number, refusal by meaning)', err({ status: 529 })],
+  ['service unavailable', err({ status: 503 })],
+];
+for (const [label, e] of REFUSED) {
+  assert(T.isBillableUncertain(e) === false, `REFUSED, so its cost IS known: ${label}`);
+}
+// 529 and 503 are the load-bearing ones: grouping by numeric range would file the single most common
+// transient failure this platform sees as unmeasured spend.
+assert(T.REFUSED_STATUSES.has(529) && T.REFUSED_STATUSES.has(503),
+  '529/503 are classified by MEANING (turned away at the gate), not by being 5xx');
+
+const INTERRUPTED = [
+  ['our own client timeout — the request was in flight when we abandoned it', err({ timedOut: true, name: 'AbortError' })],
+  ['gateway timeout — upstream was almost certainly working', err({ status: 504 })],
+  ['internal server error', err({ status: 500 })],
+  ['bad gateway', err({ status: 502 })],
+  ['connection reset mid-flight', err({ code: 'ECONNRESET' })],
+];
+for (const [label, e] of INTERRUPTED) {
+  assert(T.isBillableUncertain(e) === true, `INTERRUPTED, so its cost is UNKNOWN: ${label}`);
+}
+// A request that never reached the provider cannot have been billed.
+for (const code of ['ENOTFOUND', 'ECONNREFUSED', 'EAI_AGAIN']) {
+  assert(T.isBillableUncertain(err({ code })) === false, `${code} never reached the provider, so nothing was billed`);
+}
+assert(T.isBillableUncertain(null) === false, 'a missing error is not evidence of unmeasured spend');
+// The timeout is the case the whole feature exists for — assert it directly, not just as part of a list.
+assert(T.isBillableUncertain(err({ timedOut: true, status: 400 })) === true,
+  'a client timeout counts even if a stale status is attached — timedOut is checked FIRST');
+
 // --- usage recovered from a failed response is REAL, and absence is not zero -------------------------
 const res = (status, headers = {}) => ({ status, headers: { get: (k) => headers[k.toLowerCase()] || null } });
 const withUsage = T.httpError(res(429), { error: { message: 'slow down' }, usage: { input_tokens: 7, output_tokens: 3 } }, 'Anthropic');
@@ -82,15 +123,37 @@ assert(/discardedAttempts: data\.aiosDiscarded \|\| 0,/.test(src), 'callAnthropi
 assert(/discardedAttempts \+= data\.aiosDiscarded \|\| 0;/.test(src), 'and the tool loop accumulates it across turns');
 assert((src.match(/discardedAttempts \+= data\.aiosDiscarded \|\| 0;/g) || []).length === 2,
   'at BOTH turn sites — the loop turns and the budget-exhaustion recovery call');
-assert((src.match(/toolInvocations, discardedAttempts/g) || []).length >= 2
-  && /toolInvocations, discardedAttempts \};/.test(src),
-  'and every exit from the tool loop returns it, including the budget-exhausted ones');
+// Every exit from callAnthropicWithTools must carry BOTH counts. Matched by counting the exits
+// rather than by their exact trailing text — a previous version pinned `discardedAttempts };` and
+// broke the moment a second field was added after it, which is a change to its neighbour, not to
+// the property. There are three exits: the normal answer, the budget-exhausted recovery, and the
+// placeholder when even that produces nothing.
+const toolLoop = (src.match(/async function callAnthropicWithTools[\s\S]*?\n\}/) || [''])[0];
+assert(toolLoop.length > 0, 'callAnthropicWithTools located');
+// `[^}]*` cannot be used here: the budget-exhausted exit interpolates `${text}` and `${maxIters}`
+// into its content string, so a brace-excluding match stops inside the template literal and misses
+// that exit entirely — silently reporting 2 of 3 and passing the per-exit checks on the two it saw.
+const exits = (toolLoop.match(/return \{[\s\S]{0,500}?\};/g) || []).filter((r) => /toolInvocations/.test(r));
+assert(exits.length === 3, `all three exits from the tool loop found (${exits.length})`);
+for (const e of exits) {
+  assert(/discardedAttempts/.test(e) && /unmeasuredAttempts/.test(e),
+    `an exit returns both counts: ${e.slice(0, 58)}…`);
+}
 
 // --- the ledger rows ---------------------------------------------------------------------------------
-assert(/\.\.\.\(result\.discardedAttempts \? \{ discardedAttempts: result\.discardedAttempts, costIsLowerBound: true \} : \{\}\)/.test(src),
-  'a successful row records discardedAttempts and flags its cost as a LOWER BOUND');
-assert(/\.\.\.\(failedAttempts \? \{ discardedAttempts: failedAttempts, costIsLowerBound: true \} : \{\}\)/.test(src),
-  'and so does a failed row');
+assert(/\.\.\.\(result\.discardedAttempts \? \{ discardedAttempts: result\.discardedAttempts \} : \{\}\)/.test(src),
+  'a successful row records discardedAttempts');
+assert(/\.\.\.\(result\.unmeasuredAttempts \? \{ unmeasuredAttempts: result\.unmeasuredAttempts, costIsLowerBound: true \} : \{\}\)/.test(src),
+  'and flags costIsLowerBound ONLY from the unmeasured subset');
+assert(/\.\.\.\(failedAttempts \? \{ discardedAttempts: failedAttempts \} : \{\}\)/.test(src), 'and so does a failed row');
+assert(/\.\.\.\(failedUnmeasured \? \{ unmeasuredAttempts: failedUnmeasured, costIsLowerBound: true \} : \{\}\)/.test(src),
+  'with the same split');
+// THE REGRESSION GUARD. If costIsLowerBound is ever set from the discard count again, the 46-false-
+// positive outage repeats and the flag stops meaning anything.
+assert(!/discardedAttempts: (result\.discardedAttempts|failedAttempts), costIsLowerBound: true/.test(src),
+  'costIsLowerBound is NEVER set from the raw discard count — a refused attempt cost nothing and must not flag the row');
+assert(/transientErrors\.isBillableUncertain\(err\)/.test(src),
+  'and the split is decided by isBillableUncertain, not re-derived inline');
 
 // THE ANTI-FABRICATION ASSERTION. A failed row's cost may come only from usage the provider actually
 // reported. If this ever fails, someone has started estimating, and the ledger stops being evidence.
@@ -117,16 +180,21 @@ assert(!/failedAttempts/.test(recoveredCostDef) && !/discardedAttempts/.test(rec
 assert(/unmeasured: \{/.test(src), 'getCostSummary reports an `unmeasured` block');
 assert(/discardedAttempts: monthly\.reduce\(\(s, e\) => s \+ num\(e\.discardedAttempts\), 0\)/.test(src),
   'summing real recorded events');
-assert(/lower bounds when this is non-zero/.test(src),
-  'and says plainly that the period costs are lower bounds — a number without that caveat reads as exact');
+assert(/unmeasuredAttempts: monthly\.reduce\(\(s, e\) => s \+ num\(e\.unmeasuredAttempts\), 0\)/.test(src),
+  'and reporting the unmeasured subset SEPARATELY from the total discarded');
+assert(/calls: monthly\.filter\(\(e\) => e\.unmeasuredAttempts\)\.length/.test(src),
+  'the affected-call count is driven by the unmeasured subset too — during the outage 55 calls were discarded and 0 were unmeasured');
+assert(/those never reached inference and cost nothing/.test(src),
+  'and the note explains that refused attempts are free, so the two numbers are not interchangeable');
 
 // --- and the operator sees it ------------------------------------------------------------------------------
 const ui = readRepoFile('dashboard/js/app.js');
 assert(/summary\.unmeasured/.test(ui), 'the dashboard reads the unmeasured block');
 assert(/lower bound/.test(ui), 'and labels the spend figures as a lower bound');
 assert(/limitBanner \+ unmeasuredHtml \+ periods\.map/.test(ui), 'rendering it above the spend cards');
-assert(/un && un\.discardedAttempts \?/.test(ui),
-  'and only when something was actually discarded — a permanent caveat would train everyone to ignore it');
+assert(/un && un\.unmeasuredAttempts \?/.test(ui),
+  'and only when spend was actually UNMEASURED — gating on discards showed a permanent warning about $0 during the outage, which is how a caveat becomes wallpaper');
+assert(!/un\.discardedAttempts \?/.test(ui), 'the banner is not gated on the raw discard count');
 assert(!/\$\{[^}]*discardedAttempts[^}]*\* /.test(ui), 'the UI does not invent a dollar figure for it either');
 
 behaviour().then(done, (e) => { console.error('FAIL: behaviour suite threw:', e); process.exitCode = 1; done(); });

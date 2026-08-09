@@ -4008,12 +4008,13 @@ async function executeAgent(agentName, task, options = {}) {
       id: uuidv4(), agent: agentName, model, skill: options.skill || 'dispatch',
       inputTokens, outputTokens, cost: Math.round(cost * 10000) / 10000,
       elapsed, ok: true,
-      // Attempts that were billed and thrown away. `costIsLowerBound` is the honest label: we know
-      // this row cost AT LEAST `cost`, and we cannot know by how much more, because a failed
-      // response carries no usage and a client-side timeout carries no response at all. Recorded
-      // rather than estimated — a fabricated number here would be indistinguishable from a
-      // measurement, which is worse than a visible gap.
-      ...(result.discardedAttempts ? { discardedAttempts: result.discardedAttempts, costIsLowerBound: true } : {}),
+      // `discardedAttempts` = attempts thrown away (a reliability signal, free or not).
+      // `costIsLowerBound` = set ONLY when at least one of them was INTERRUPTED rather than refused,
+      // because only then could tokens have been generated that we never received. A refused attempt
+      // costs nothing and must not flag the row — 46 consecutive false positives in the first real
+      // outage proved that flagging everything makes the flag worthless.
+      ...(result.discardedAttempts ? { discardedAttempts: result.discardedAttempts } : {}),
+      ...(result.unmeasuredAttempts ? { unmeasuredAttempts: result.unmeasuredAttempts, costIsLowerBound: true } : {}),
       timestamp: new Date().toISOString(),
     });
 
@@ -4031,6 +4032,7 @@ async function executeAgent(agentName, task, options = {}) {
     // having made up to three billed requests. The row still cannot state a cost — nothing came back
     // to measure — but it can stop implying the call was free.
     const failedAttempts = (e && e.aiosDiscarded) || 0;
+    const failedUnmeasured = (e && e.aiosUnmeasured) || 0;
     const recovered = (e && e.aiosRecoveredUsage) || null;
     const recoveredCost = recovered
       ? (recovered.input_tokens / 1e6) * costRateFor(model).input + (recovered.output_tokens / 1e6) * costRateFor(model).output
@@ -4041,7 +4043,8 @@ async function executeAgent(agentName, task, options = {}) {
       outputTokens: recovered ? recovered.output_tokens : 0,
       cost: Math.round(recoveredCost * 10000) / 10000,
       elapsed, ok: false, error: String(e.message || e).slice(0, 200),
-      ...(failedAttempts ? { discardedAttempts: failedAttempts, costIsLowerBound: true } : {}),
+      ...(failedAttempts ? { discardedAttempts: failedAttempts } : {}),
+      ...(failedUnmeasured ? { unmeasuredAttempts: failedUnmeasured, costIsLowerBound: true } : {}),
       timestamp: new Date().toISOString(),
     });
     return { ok: false, error: e.message, model };
@@ -4152,10 +4155,16 @@ async function anthropicMessagesAttempt(apiKey, body, timeoutMs) {
 // thrown away — and marks the row's cost as a lower bound. It never estimates. A fabricated number
 // in a cost ledger is worse than a visible gap, because it is indistinguishable from a measurement.
 async function anthropicMessagesFetch(apiKey, body, { timeoutMs = AGENT_FETCH_TIMEOUT_MS, label = 'anthropic' } = {}) {
-  let discarded = 0;
+  let discarded = 0;      // attempts thrown away — a reliability signal, free or not
+  let unmeasured = 0;     // the subset whose COST we cannot know (see isBillableUncertain)
   let recovered = null;   // real usage from a failed response, on the rare provider that reports it
   const bank = (err) => {
     discarded++;
+    // Only an INTERRUPTED attempt makes the row's cost a lower bound. A refusal (usage limit, bad
+    // request, rate limit, overloaded) never reached inference and cost nothing — counting those as
+    // unmeasured produced 46 consecutive false positives in the first real outage and buried the
+    // signal it exists to raise.
+    if (transientErrors.isBillableUncertain(err)) unmeasured++;
     const u = err && err.usage;
     if (u && (u.input_tokens || u.output_tokens)) {
       recovered = recovered || { input_tokens: 0, output_tokens: 0 };
@@ -4178,6 +4187,7 @@ async function anthropicMessagesFetch(apiKey, body, { timeoutMs = AGENT_FETCH_TI
     // Carried on the error so the FAILED-call ledger row can record the attempts too. A call that
     // died after three tries cost three times as much as its zero-token row implies.
     e.aiosDiscarded = discarded;
+    e.aiosUnmeasured = unmeasured;
     if (recovered) e.aiosRecoveredUsage = recovered;
     throw e;
   }
@@ -4188,6 +4198,7 @@ async function anthropicMessagesFetch(apiKey, body, { timeoutMs = AGENT_FETCH_TI
   // Namespaced so it cannot collide with a field Anthropic adds to the response later.
   if (discarded) {
     data.aiosDiscarded = discarded;
+    data.aiosUnmeasured = unmeasured;
     if (recovered) data.aiosRecoveredUsage = recovered;
   }
   return data;
@@ -4239,6 +4250,7 @@ async function callAnthropic(systemPrompt, task, effort, maxTokens, model = OPUS
     inputTokens: (data.usage?.input_tokens || 0) + (data.aiosRecoveredUsage?.input_tokens || 0),
     outputTokens: (data.usage?.output_tokens || 0) + (data.aiosRecoveredUsage?.output_tokens || 0),
     discardedAttempts: data.aiosDiscarded || 0,
+    unmeasuredAttempts: data.aiosUnmeasured || 0,
   };
 }
 
@@ -4261,6 +4273,7 @@ async function callAnthropicWithTools(systemPrompt, task, effort, maxTokens, too
   // Attempts thrown away across ALL turns of this loop. A 30-turn stage that retried twice on three
   // separate turns discarded six billed requests; the ledger row must not imply it discarded none.
   let discardedAttempts = 0;
+  let unmeasuredAttempts = 0;
   const toolInvocations = [];
   for (let iter = 0; iter < maxIters; iter++) {
     const body = { model, max_tokens: maxTokens, system: guardedSystem, messages, tools };
@@ -4269,11 +4282,12 @@ async function callAnthropicWithTools(systemPrompt, task, effort, maxTokens, too
     inputTokens += (data.usage?.input_tokens || 0) + (data.aiosRecoveredUsage?.input_tokens || 0);
     outputTokens += (data.usage?.output_tokens || 0) + (data.aiosRecoveredUsage?.output_tokens || 0);
     discardedAttempts += data.aiosDiscarded || 0;
+    unmeasuredAttempts += data.aiosUnmeasured || 0;
     const content = data.content || [];
     const toolUses = content.filter(b => b.type === 'tool_use');
     if (data.stop_reason !== 'tool_use' || !toolUses.length) {
       const text = content.filter(b => b.type === 'text').map(b => b.text).join('\n').trim();
-      return { content: text, inputTokens, outputTokens, toolInvocations, discardedAttempts };
+      return { content: text, inputTokens, outputTokens, toolInvocations, discardedAttempts, unmeasuredAttempts };
     }
     messages.push({ role: 'assistant', content });
     const toolResults = [];
@@ -4307,19 +4321,20 @@ async function callAnthropicWithTools(systemPrompt, task, effort, maxTokens, too
     inputTokens += (data.usage?.input_tokens || 0) + (data.aiosRecoveredUsage?.input_tokens || 0);
     outputTokens += (data.usage?.output_tokens || 0) + (data.aiosRecoveredUsage?.output_tokens || 0);
     discardedAttempts += data.aiosDiscarded || 0;
+    unmeasuredAttempts += data.aiosUnmeasured || 0;
     const text = (data.content || []).filter((b) => b.type === 'text').map((b) => b.text).join('\n').trim();
     if (text) {
       // Marked, because a downstream stage must be able to tell a budget-limited answer from a
       // complete one — the same reason a truncated stage input announces itself.
       return {
         content: `${text}\n\n[Produced after the ${maxIters}-turn tool budget was exhausted — the investigation behind this may be incomplete.]`,
-        inputTokens, outputTokens, toolInvocations, discardedAttempts, budgetExhausted: true,
+        inputTokens, outputTokens, toolInvocations, discardedAttempts, unmeasuredAttempts, budgetExhausted: true,
       };
     }
   } catch (e) {
     appendLog(`[tool-loop] final-answer call failed after budget exhaustion: ${e.message}`);
   }
-  return { content: '(tool loop reached its iteration limit without a final answer)', inputTokens, outputTokens, toolInvocations, discardedAttempts, budgetExhausted: true };
+  return { content: '(tool loop reached its iteration limit without a final answer)', inputTokens, outputTokens, toolInvocations, discardedAttempts, unmeasuredAttempts, budgetExhausted: true };
 }
 
 // Shared caller for OpenAI-compatible chat-completions providers (Grok, DeepSeek, OpenAI, Perplexity).
@@ -4861,9 +4876,15 @@ function getCostSummary() {
     // non-zero. Reported as a count of real events, never as an estimated dollar amount — see the
     // ledger-row comment for why estimating here would be worse than the gap.
     unmeasured: {
-      calls: monthly.filter((e) => e.discardedAttempts).length,
+      // Two different facts, deliberately separate. `discardedAttempts` counts everything thrown
+      // away — a reliability signal, and mostly free. `unmeasuredAttempts` counts only the subset
+      // that could have been billed without us learning the cost, and it alone makes the period
+      // totals lower bounds. Merging them (as the first version did) meant a provider outage of 55
+      // refusals — every one of them free — reported as 55 units of unmeasured spend.
+      calls: monthly.filter((e) => e.unmeasuredAttempts).length,
       discardedAttempts: monthly.reduce((s, e) => s + num(e.discardedAttempts), 0),
-      note: 'Attempts that were billed by the provider but returned no usage (failed responses carry none; client-side timeouts carry no response). Period costs above are lower bounds when this is non-zero.',
+      unmeasuredAttempts: monthly.reduce((s, e) => s + num(e.unmeasuredAttempts), 0),
+      note: 'unmeasuredAttempts were interrupted mid-flight (client timeout, or a 5xx that was not a refusal) — the provider may have generated and billed tokens we never received, so period costs above are lower bounds when it is non-zero. discardedAttempts additionally counts attempts the provider REFUSED (usage limit, rate limit, bad request, overloaded); those never reached inference and cost nothing.',
     },
     entries: costLedger.slice().sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp)).slice(0, 50),
   };

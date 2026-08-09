@@ -2417,11 +2417,16 @@ function renderCostBudgetBar(summary) {
   // they are not: every discarded attempt was a billed request that returned no usage. Shown as a
   // count of real events with no dollar figure attached, deliberately — an estimate here would be
   // indistinguishable from a measurement.
+  // Gated on unmeasuredAttempts, NOT on discardedAttempts. During the 2026-08-08 account-limit
+  // outage the two differed by 55 to 0: every attempt was refused at the gate and cost nothing, so
+  // banner-on-discards would have shown a permanent "lower bound" warning about $0 of missing spend
+  // and taught everyone to scroll past it.
   const un = summary.unmeasured;
-  const unmeasuredHtml = un && un.discardedAttempts ? `
+  const unmeasuredHtml = un && un.unmeasuredAttempts ? `
     <div class="budget-unmeasured">
-      ⚠️ Figures below are a <strong>lower bound</strong>: ${un.discardedAttempts} billed attempt${un.discardedAttempts === 1 ? '' : 's'}
-      across ${un.calls} call${un.calls === 1 ? '' : 's'} were discarded (timeout or retry) and returned no usage to measure.
+      ⚠️ Figures below are a <strong>lower bound</strong>: ${un.unmeasuredAttempts} attempt${un.unmeasuredAttempts === 1 ? '' : 's'}
+      across ${un.calls} call${un.calls === 1 ? '' : 's'} were interrupted mid-flight (client timeout or server error)
+      and may have been billed without returning any usage to measure.
     </div>` : '';
 
   container.innerHTML = limitBanner + unmeasuredHtml + periods.map(p => {
