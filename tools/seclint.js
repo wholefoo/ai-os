@@ -33,6 +33,34 @@ const PUBLIC_ROUTES = [
   '/api/seo/free-audit', '/api/support/contact', '/api/stripe/webhook', '/api/webhooks/stripe',
 ];
 
+/**
+ * Every `${...}` in a line, at EVERY nesting depth, with braces matched properly.
+ *
+ * A regex cannot do this: `\$\{([^}]*)\}` stops at the first `}`, so a nested interpolation both
+ * truncates its parent and never appears in its own right. Scanning from every index means an inner
+ * `${...}` is reported alongside the outer one rather than swallowed by it — which is the whole
+ * point, since the inner one is where the unescaped value usually lives.
+ *
+ * Unterminated interpolations are dropped: a template literal continuing onto the next line cannot
+ * be judged from this line alone, and guessing would invent findings. That IS a known blind spot of
+ * a line-based linter — multi-line templates are not covered by this rule at all.
+ */
+function interpolations(line) {
+  const out = [];
+  for (let i = 0; i + 1 < line.length; i++) {
+    if (line[i] !== '$' || line[i + 1] !== '{') continue;
+    let depth = 1, j = i + 2;
+    while (j < line.length && depth > 0) {
+      if (line[j] === '{') depth++;
+      else if (line[j] === '}') depth--;
+      if (depth === 0) break;
+      j++;
+    }
+    if (depth === 0) out.push(line.slice(i + 2, j).trim());
+  }
+  return out;
+}
+
 const rules = [
   {
     id: 'route-no-auth',
@@ -82,12 +110,28 @@ const rules = [
     test(line) {
       if (!/\.innerHTML\s*(\+?=)/.test(line)) return null;
       if (!line.includes('${')) return null;
-      // Pull each ${...} and flag if any interpolation isn't obviously escaped or a safe literal.
-      const exprs = [...line.matchAll(/\$\{([^}]*)\}/g)].map(x => x[1].trim());
+
+      // THIS RULE USED TO SKIP THE MOST DANGEROUS SHAPE THERE IS. Two defects compounded:
+      //   1. `/\.map\(/` was in the safe() list, so ANY expression containing `.map(` was waved
+      //      through — and a row builder is the single likeliest place for unescaped user data.
+      //   2. Interpolations were pulled with /\$\{([^}]*)\}/, whose `[^}]*` stops at the FIRST `}`.
+      //      For `${rows.map(r => `<li>${r.name}</li>`).join('')}` that captures the fragment
+      //      "rows.map(r => `<li>${r.name" — one expression, containing `.map(`, therefore "safe".
+      //      The inner `${r.name}` was never seen as an expression at all.
+      // Net effect: `el.innerHTML = \`${rows.map(r => \`<li>${r.name}</li>\`).join('')}\`` passed
+      // clean. Verified against the real linter on 2026-08-10 before changing it — the flat
+      // `${u.name}` was flagged while both nested cases were not.
+      //
+      // Now every `${...}` is brace-matched at EVERY depth, and an expression that itself contains
+      // a nested template literal is treated as a CONTAINER: not flagged on its own (its value is
+      // assembled HTML, not a leaf value), because its inner interpolations are checked separately
+      // by the same scan. The `.map(` exemption is gone — `${ids.map(i => i.raw).join(',')}` is a
+      // real injection vector and now reports. Use `// seclint-ok: <reason>` where it truly is not.
+      const exprs = interpolations(line);
       const safe = e =>
         /^escapeHtml\(/.test(e) || /^esc\(/.test(e) || /^escapeAttr\(/.test(e) ||
-        /\.map\(/.test(e) || /^\s*['"`]/.test(e) || /^[\d.]+$/.test(e) || e === '';
-      const bad = exprs.filter(e => !safe(e));
+        /^\s*['"`]/.test(e) || /^[\d.]+$/.test(e) || e === '';
+      const bad = exprs.filter(e => !e.includes('`') && !safe(e));
       if (!bad.length) return null;
       return `innerHTML interpolates possibly-unescaped value(s): ${bad.slice(0, 2).map(e => e.slice(0, 40)).join(', ')} — wrap in escapeHtml()`;
     },
