@@ -46,6 +46,55 @@ AVAIL="/etc/nginx/sites-available/aios-site-${DOMAIN}"
 ENABLED="/etc/nginx/sites-enabled/aios-site-${DOMAIN}"
 CERT_DIR="/etc/letsencrypt/live/${DOMAIN}"
 
+# --- Security headers, emitted at the server level AND repeated inside every location block that
+# declares an add_header of its own. ---
+# nginx does NOT inherit add_header into a block that sets any add_header: one
+# `add_header Cache-Control` in a child REPLACES the entire parent set rather than adding to it.
+# The static-asset location below sets Cache-Control, so before this every .css/.js/.woff2 on
+# EVERY hosted client site was served without nosniff — on the path that serves JavaScript.
+# Same defect class as AS-03 in deploy/nginx.conf; found here by `nginx -t` on 2026-08-10, in the
+# customer-facing generator rather than the admin dashboard.
+# The repetition is required by nginx semantics. Do not de-duplicate it, and if you add another
+# location block that sets any header, call this there too.
+sec_headers() {
+  local ind="${1:-    }"
+  echo "${ind}add_header X-Content-Type-Options \"nosniff\" always;"
+  echo "${ind}add_header Referrer-Policy \"strict-origin-when-cross-origin\" always;"
+  # HSTS only on the TLS vhost: sending it over plain HTTP is ignored by browsers by spec, and
+  # emitting it there would be a claim the server cannot honour.
+  if [ "$TLS" = "--tls" ]; then
+    echo "${ind}add_header Strict-Transport-Security \"max-age=31536000; includeSubDomains\" always;"
+  fi
+}
+
+# --- HTTP/2 directive form, chosen from the LOCAL nginx version. ---
+# nginx 1.25.1 deprecated `listen ... ssl http2` in favour of a separate `http2` directive. The
+# modern form is a HARD ERROR on older builds — and this script writes configs for LIVE CLIENT
+# SITES, so the fallback must be the form that is valid everywhere. Deprecated-but-working beats
+# modern-but-fatal: an unparseable vhost takes nginx's whole reload down, not just one site.
+# If the version cannot be determined, we assume old. Failing safe here means failing deprecated.
+# The probe must not be able to KILL this script. `set -euo pipefail` is on and PATH is pinned
+# above, so a bare `VER="$(nginx -v | ...)"` exits the whole run when nginx is absent from the
+# pinned PATH — which would abort a site deploy rather than fall back, the exact opposite of the
+# intent stated above. Guard the lookup and swallow the status explicitly.
+NGINX_VER=""
+if command -v nginx >/dev/null 2>&1; then
+  NGINX_VER="$(nginx -v 2>&1 | sed -n 's#.*nginx/\([0-9][0-9.]*\).*#\1#p' || true)"
+fi
+ver_ge() { [ "$(printf '%s\n%s\n' "$2" "$1" | sort -V | head -n1)" = "$2" ]; }
+if [ -n "$NGINX_VER" ] && ver_ge "$NGINX_VER" "1.25.1"; then HTTP2_MODERN=1; else HTTP2_MODERN=0; fi
+
+listen_tls() {
+  if [ "$HTTP2_MODERN" = "1" ]; then
+    echo "    listen 443 ssl;"
+    echo "    listen [::]:443 ssl;"
+    echo "    http2 on;"
+  else
+    echo "    listen 443 ssl http2;"
+    echo "    listen [::]:443 ssl http2;"
+  fi
+}
+
 static_body() {
   cat <<EOF
     root ${SITE_ROOT};
@@ -63,11 +112,11 @@ static_body() {
     location ~* \\.(css|js|svg|png|jpg|jpeg|gif|webp|woff2?|ico)\$ {
         expires 7d;
         add_header Cache-Control "public";
+$(sec_headers "        ")
         access_log off;
     }
 
-    add_header X-Content-Type-Options "nosniff" always;
-    add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+$(sec_headers "    ")
     location ~ /\\. { deny all; return 404; }
     client_max_body_size 2M;
 EOF
@@ -85,15 +134,16 @@ render() {
     echo "    location / { return 301 https://\$host\$request_uri; }"
     echo "}"
     echo "server {"
-    echo "    listen 443 ssl http2;"
-    echo "    listen [::]:443 ssl http2;"
+    listen_tls
     echo "    server_name ${DOMAIN};"
     echo "    ssl_certificate ${CERT_DIR}/fullchain.pem;"
     echo "    ssl_certificate_key ${CERT_DIR}/privkey.pem;"
     echo "    ssl_protocols TLSv1.2 TLSv1.3;"
     echo "    ssl_prefer_server_ciphers on;"
     echo "    ssl_session_cache shared:SSL:10m;"
-    echo "    add_header Strict-Transport-Security \"max-age=31536000; includeSubDomains\" always;"
+    # HSTS is emitted by sec_headers() inside static_body — at the server level AND inside the
+    # asset location, which is the whole point. It was previously here only, and therefore absent
+    # from every static asset.
     static_body
     echo "}"
   else
