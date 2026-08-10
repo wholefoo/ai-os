@@ -81,7 +81,8 @@
     "tools/test-provider-limit.js",
     "tools/test-cost-metering.js",
     "tools/test-schedule-toggles.js",
-    "tools/test-prompt-cache.js"
+    "tools/test-prompt-cache.js",
+    "tools/test-crm-sort.js"
   ],
   "ignorePatterns": [
     "docs-export/**",

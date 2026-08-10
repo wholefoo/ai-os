@@ -1,0 +1,56 @@
+# DEP-08 (security-sweep run-1786080073868): there was no automated dependency monitoring at all.
+# Both lockfiles are now committed (DEP-01/DEP-02), which is the prerequisite — Dependabot needs a
+# resolved tree to diff against, so this could not have worked before those landed.
+#
+# Two ecosystems, because they are genuinely separate installs with separate lockfiles: the root app
+# and agent-worker. agent-worker is the one that was pinned to `latest` across five voice/LLM
+# packages, so it is the one most likely to drift.
+#
+# Grouped, weekly, and PR-capped ON PURPOSE. The failure mode of dependency automation is a queue of
+# single-package PRs nobody reviews, which trains everyone to rubber-stamp — worse than no
+# automation, because it looks like coverage. Security updates are deliberately NOT grouped: those
+# should arrive alone and legible.
+version: 2
+updates:
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 5
+    groups:
+      production-minor-patch:
+        applies-to: version-updates
+        dependency-type: "production"
+        update-types: ["minor", "patch"]
+      development:
+        applies-to: version-updates
+        dependency-type: "development"
+    commit-message:
+      prefix: "chore(deps)"
+      prefix-development: "chore(deps-dev)"
+
+  - package-ecosystem: "npm"
+    directory: "/agent-worker"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 5
+    groups:
+      livekit:
+        applies-to: version-updates
+        patterns: ["@livekit/*", "livekit-*"]
+      other-minor-patch:
+        applies-to: version-updates
+        update-types: ["minor", "patch"]
+    commit-message:
+      prefix: "chore(deps)"
+
+  # The workflow files themselves pin actions by tag; keep those current too.
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "monthly"
+    open-pull-requests-limit: 3
+    commit-message:
+      prefix: "chore(ci)"
