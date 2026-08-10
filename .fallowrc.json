@@ -83,7 +83,9 @@
     "tools/test-schedule-toggles.js",
     "tools/test-prompt-cache.js",
     "tools/test-crm-sort.js",
-    "tools/test-vhost-scheme-guard.js"
+    "tools/test-vhost-scheme-guard.js",
+    "tools/test-nginx-headers.js",
+    "tools/check-nginx-headers.js"
   ],
   "ignorePatterns": [
     "docs-export/**",

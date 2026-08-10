@@ -20,11 +20,11 @@ fi
 echo "━━━ AI OS — Deploying to ${VPS} ━━━"
 
 # Step 1: Push latest to GitHub
-echo "[1/4] Pushing to GitHub..."
+echo "[1/7] Pushing to GitHub..."
 git push origin master
 
 # Step 2: Pull on VPS
-echo "[2/5] Pulling latest core on VPS..."
+echo "[2/7] Pulling latest core on VPS..."
 ssh "${VPS}" "cd ${APP_DIR} && sudo -u ${APP_USER} git pull origin master"
 
 # Step 3: Pull the PRIVATE commercial repo too.
@@ -40,22 +40,73 @@ ssh "${VPS}" "cd ${APP_DIR} && sudo -u ${APP_USER} git pull origin master"
 # Guarded on the directory existing, so Community installs (which have no commercial/ mount) skip it
 # silently rather than failing. Run as APP_USER, matching install-vps.sh — a root pull here leaves
 # root-owned objects in a tree the app user has to write to later.
-echo "[3/5] Pulling commercial modules (skipped if Community)..."
+echo "[3/7] Pulling commercial modules (skipped if Community)..."
 ssh "${VPS}" "if [ -d ${APP_DIR}/commercial/.git ]; then cd ${APP_DIR}/commercial && sudo -u ${APP_USER} git pull origin master; else echo 'no commercial/ mount — Community tier, skipping'; fi"
 
 # Step 4: Install dependencies EXACTLY as pinned
 # npm ci, not npm install — see the matching comment in install-vps.sh. ci is reproducible and fails
 # loudly when the lockfile is stale; npm install silently re-resolves semver ranges on every deploy.
-echo "[4/5] Installing dependencies (npm ci — exact lockfile versions)..."
+echo "[4/7] Installing dependencies (npm ci — exact lockfile versions)..."
 ssh "${VPS}" "cd ${APP_DIR} && sudo -u ${APP_USER} npm ci --omit=dev --quiet"
 
-# Step 5: Restart PM2
+# Step 5: Install the root-owned hosting scripts.
 #
-# pm2 runs as APP_USER (systemd unit pm2-aios.service), so this MUST go through sudo -u: root has its
-# own empty pm2 registry and `pm2 restart ai-os` as root fails with "Process or Namespace not found"
-# while looking like a name problem.
-echo "[5/5] Restarting AI OS..."
-ssh "${VPS}" "sudo -u ${APP_USER} pm2 restart ai-os --update-env"
+# ANOTHER SILENT-DRIFT GAP, same shape as the commercial-pull one above and found the same way — by
+# it going wrong. install-vps.sh (:426-446) installs the three privilege-boundary scripts to
+# /usr/local/sbin, and nobody re-runs the installer for a routine deploy. So a fix to
+# deploy/hosting/*.sh landed in the repo and NEVER reached the binary that actually runs: on
+# 2026-08-10 a re-render used the stale generator, regenerated the OLD config, and reported `ok`.
+# Nothing failed. The fix simply had no effect, which is indistinguishable from a fix that did not
+# work.
+#
+# SECURITY INVARIANT: root:root 755, NOT writable by APP_USER — otherwise the sudoers grant becomes
+# a root escalation. `install` enforces owner and mode on every deploy, so a hand-chmod drifts back.
+# The sudoers file is validated as a STAGED copy before being moved into place; a malformed
+# /etc/sudoers.d entry can lock the box out of sudo entirely.
+echo "[5/7] Installing hosting scripts (root-owned privilege boundary)..."
+ssh "${VPS}" "set -e
+  if [ -d ${APP_DIR}/deploy/hosting ]; then
+    sudo install -o root -g root -m 755 ${APP_DIR}/deploy/hosting/site-vhost.sh  /usr/local/sbin/aios-site-vhost
+    sudo install -o root -g root -m 755 ${APP_DIR}/deploy/hosting/site-cert.sh   /usr/local/sbin/aios-site-cert
+    sudo install -o root -g root -m 755 ${APP_DIR}/deploy/hosting/site-remove.sh /usr/local/sbin/aios-site-remove
+    sudo install -o root -g root -m 440 ${APP_DIR}/deploy/hosting/aios-hosting.sudoers /etc/sudoers.d/aios-hosting.tmp
+    if sudo visudo -cf /etc/sudoers.d/aios-hosting.tmp >/dev/null 2>&1; then
+      sudo mv -f /etc/sudoers.d/aios-hosting.tmp /etc/sudoers.d/aios-hosting
+      echo '  hosting scripts + sudoers installed'
+    else
+      sudo rm -f /etc/sudoers.d/aios-hosting.tmp
+      echo '  WARNING: aios-hosting.sudoers failed visudo -c — NOT installed' >&2
+    fi
+  else
+    echo '  no deploy/hosting — skipping'
+  fi"
+
+# Step 6: Audit the LIVE nginx config. Report only — never overwritten.
+#
+# Deliberately NOT a copy of deploy/nginx.conf. The live file is legitimately not the template:
+# install-vps.sh seds the domain in (:353) and conditionally appends an n8n block (:364-381), and it
+# accumulates local hardening besides. On 2026-08-10 the live vhost was 124 diff lines from the
+# template. Copying that over on every deploy would destroy real configuration; a textual diff would
+# differ every time and be ignored within a week.
+#
+# So this checks the PROPERTY that actually broke instead. nginx drops the inherited add_header set
+# in any block that declares one of its own, which left /css/, /js/ and /docs/ serving no nosniff
+# while the config read as if it were global. `nginx -t` cannot see that — it is valid config.
+#
+# Non-fatal on purpose: a header regression must not block shipping an unrelated hotfix. It is loud
+# instead, and `|| true` is what keeps a report-only step from failing the deploy under `set -e`.
+echo "[6/7] Auditing live nginx security headers (report only)..."
+ssh "${VPS}" "sudo cat /etc/nginx/sites-available/ai-os 2>/dev/null | sudo -u ${APP_USER} node ${APP_DIR}/tools/check-nginx-headers.js" || true
+
+# Step 7: Restart PM2
+#
+# `sudo -iu`, NOT `sudo -u`. pm2 locates its daemon via \$HOME, and plain `sudo -u` leaves HOME as
+# the CALLING user's (root's) unless sudoers sets always_set_home — so pm2 reads /root/.pm2, finds an
+# empty registry, and reports "Process or Namespace not found" as though the app name were wrong.
+# `-iu` runs a login shell and sets HOME correctly. Same trap as running pm2 as root outright, which
+# has already cost a diagnostic round trip on this box.
+echo "[7/7] Restarting AI OS..."
+ssh "${VPS}" "sudo -iu ${APP_USER} pm2 restart ai-os --update-env"
 
 echo ""
 echo "━━━ Deployment complete! ━━━"
