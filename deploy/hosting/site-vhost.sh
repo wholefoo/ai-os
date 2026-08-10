@@ -22,7 +22,17 @@ IFS=$' \t\n'
 unset BASH_ENV ENV CDPATH 2>/dev/null || true
 
 DOMAIN="${1:-}"
-TLS="${2:-}"
+TLS=""
+ALLOW_SCHEME_CHANGE=0
+shift 2>/dev/null || true
+for a in "$@"; do
+  case "$a" in
+    --tls)                  TLS="--tls" ;;
+    --allow-scheme-change)  ALLOW_SCHEME_CHANGE=1 ;;
+    '')                     ;;
+    *) echo "aios-site-vhost: bad flag '$a'" >&2; exit 2 ;;
+  esac
+done
 
 # --- Strict domain validation (defense in depth; the REAL gate — a compromised app
 # can invoke this binary via sudo directly, bypassing the Node-side check). ---
@@ -38,13 +48,47 @@ DOMAIN_RE='^([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$'
 # bash [[ =~ ]] matches the WHOLE string (not per line like grep) — ^/$ are string anchors.
 [[ "$DOMAIN" =~ $DOMAIN_RE ]] || { echo "aios-site-vhost: invalid domain '$DOMAIN'" >&2; exit 2; }
 [ "${#DOMAIN}" -le 253 ] || { echo "aios-site-vhost: domain too long" >&2; exit 2; }
-[ "$TLS" = "" ] || [ "$TLS" = "--tls" ] || { echo "aios-site-vhost: bad flag '$TLS'" >&2; exit 2; }
 
 SITE_ROOT="/opt/ai-os/sites/${DOMAIN}/current"
 ACME_WEBROOT="/var/www/aios-acme"
 AVAIL="/etc/nginx/sites-available/aios-site-${DOMAIN}"
 ENABLED="/etc/nginx/sites-enabled/aios-site-${DOMAIN}"
 CERT_DIR="/etc/letsencrypt/live/${DOMAIN}"
+
+# --- SCHEME-CHANGE GUARD (added 2026-08-10 after this script took a live site down) ---
+#
+# Re-rendering an EXISTING site with the opposite scheme silently rewrites what port 80 does, and
+# for a site behind a CDN in flexible-TLS mode that is an outage, not a config tweak. Concretely:
+# aiserp.org served HTTP-only at the origin because Cloudflare terminated TLS and connected back
+# over port 80. Re-rendering it with --tls replaced the port-80 content block with
+# `return 301 https://...`, so the CDN fetched over HTTP, got a redirect to HTTPS, handed it to the
+# browser, and the browser came back through the CDN over HTTP again. Infinite loop, whole site
+# down. `nginx -t` passed and this script reported `ok` — nothing in the machinery could see it.
+#
+# The promotion in attachDomainWithTls() is a LEGITIMATE scheme change (render HTTP, issue cert,
+# re-render TLS), so this cannot simply forbid them. The difference is intent: that flow knows it is
+# promoting and passes --allow-scheme-change. A human re-rendering an established site does not, and
+# is exactly who needs stopping.
+#
+# Only fires when a vhost ALREADY exists, so first-time renders are unaffected, and a re-render at
+# the SAME scheme — the routine case, e.g. picking up a template fix — is never blocked.
+if [ -f "$AVAIL" ]; then
+  if grep -qE '^[[:space:]]*listen[[:space:]]+443' "$AVAIL"; then CURRENT_SCHEME=tls; else CURRENT_SCHEME=http; fi
+  if [ "$TLS" = "--tls" ]; then WANTED_SCHEME=tls; else WANTED_SCHEME=http; fi
+  if [ "$CURRENT_SCHEME" != "$WANTED_SCHEME" ] && [ "$ALLOW_SCHEME_CHANGE" != "1" ]; then
+    echo "aios-site-vhost: REFUSING to change ${DOMAIN} from ${CURRENT_SCHEME} to ${WANTED_SCHEME}." >&2
+    echo "  The existing vhost serves ${CURRENT_SCHEME} at the origin. Changing that rewrites what" >&2
+    echo "  port 80 does and can take the site down — a CDN terminating TLS in flexible mode will" >&2
+    echo "  loop on the resulting redirect. This script cannot see your CDN's TLS mode." >&2
+    if [ "$WANTED_SCHEME" = "tls" ]; then
+      echo "  If you only meant to re-apply the template, drop --tls and re-run." >&2
+    else
+      echo "  If you only meant to re-apply the template, add --tls and re-run." >&2
+    fi
+    echo "  If you REALLY mean to change the scheme, pass --allow-scheme-change." >&2
+    exit 5
+  fi
+fi
 
 # --- Security headers, emitted at the server level AND repeated inside every location block that
 # declares an add_header of its own. ---
