@@ -13,7 +13,20 @@
     body.client-mode .admin-only,
     body.client-mode .seo-post-actions { display: none !important; }
   </style>
-  <script src="https://cdn.jsdelivr.net/npm/livekit-client@2/dist/livekit-client.umd.js" defer></script>
+  <!-- DEP-03: pinned EXACTLY and integrity-checked. Was `@2` — a floating major, so jsDelivr could
+       serve any 2.x it liked and a compromised or simply changed publish would execute here with no
+       check at all. ORDER MATTERS AND IS NOT NEGOTIABLE: pin first, then hash. An integrity hash on
+       a floating specifier breaks the moment upstream publishes, because the tag then resolves to
+       bytes the hash does not match — that is a self-inflicted outage, not a security control.
+       `crossorigin="anonymous"` is REQUIRED: without it the browser will not perform the integrity
+       check on a cross-origin script and refuses to execute it.
+       TO UPGRADE: fetch the new exact URL, recompute with
+         openssl dgst -sha384 -binary <file> | openssl base64 -A
+       and change BOTH the version and the hash in the same edit. Dependabot does NOT watch CDN tags
+       (it reads manifests), so nothing will remind you — this pin is now a manual review item. -->
+  <script src="https://cdn.jsdelivr.net/npm/livekit-client@2.21.0/dist/livekit-client.umd.js"
+          integrity="sha384-gDU80RlmAnHKgj4uOWIhnTIb6vAUef/+NqGPuIEfbEQYGfqzyeJDwC2XElesqctC"
+          crossorigin="anonymous" defer></script>
   <!-- Video avatar: HeyGen retired the legacy Streaming Avatar API (Mar 2026). We use the LiveAvatar
        SDK, vendored (pinned 0.0.18, no runtime CDN) as a native ES module. Its one bare `events`
        import resolves through the import map to a vendored Node EventEmitter shim; livekit is bundled
@@ -2998,7 +3011,15 @@
   </div>
 
   <script src="js/app.js?v=73"></script>
-  <script src="https://cdn.jsdelivr.net/npm/monaco-editor@0.52.2/min/vs/loader.js"></script>
+  <!-- DEP-03: already pinned exactly; integrity + crossorigin added. See the livekit tag near the
+       top of this file for the upgrade procedure.
+       HONEST LIMIT: this covers the LOADER only. Monaco's loader fetches vs/editor/*.js at runtime
+       from the same CDN, and those requests carry no integrity of their own — SRI cannot reach
+       assets a script decides to load later. Closing that would mean self-hosting the whole monaco
+       bundle, which is a much larger change and is NOT what this finding asked for. -->
+  <script src="https://cdn.jsdelivr.net/npm/monaco-editor@0.52.2/min/vs/loader.js"
+          integrity="sha384-pHG02SG8pId94Np3AbPmBEJ1yPqaH0IkJGLSNGXYmuGhkazT8Lr/57WYpbkGjJtu"
+          crossorigin="anonymous"></script>
   <script src="js/web-studio.js?v=16"></script>
   <script src="js/crm.js?v=9"></script>
   <script src="js/analytics.js?v=2"></script>
