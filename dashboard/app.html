@@ -3016,10 +3016,27 @@
        HONEST LIMIT: this covers the LOADER only. Monaco's loader fetches vs/editor/*.js at runtime
        from the same CDN, and those requests carry no integrity of their own — SRI cannot reach
        assets a script decides to load later. Closing that would mean self-hosting the whole monaco
-       bundle, which is a much larger change and is NOT what this finding asked for. -->
+       bundle, which is a much larger change and is NOT what this finding asked for.
+
+       `defer` IS LOAD-BEARING — DO NOT REMOVE IT. This loader installs an AMD `define` with
+       `define.amd` set. livekit-client ships a UMD bundle whose wrapper prefers AMD:
+
+         "function"==typeof define && define.amd ? define(["exports"],t) : (globalThis).LivekitClient={}
+
+       Without `defer` here, this script ran during parsing while the livekit tag (deferred, near the
+       top of this file) ran afterwards — so livekit always saw AMD, registered as an anonymous
+       module, and NEVER set `window.LivekitClient`. `connectLiveKit()` in app.js guards on
+       `typeof LivekitClient === 'undefined'` and returned false at its first line, so the LiveKit
+       room silently never connected. No error, on every dashboard load.
+
+       Deferring BOTH makes them execute in document order — livekit first, so it takes the global
+       branch, then this loader installs AMD for monaco. Safe because monaco's consumer already
+       tolerates a late loader: web-studio.js polls for `window.require`, retries ~25 times over ~4s,
+       and degrades to a plain textarea if it never arrives. Nothing calls `require` at parse time.
+       If you ever add code that does, it must poll the same way rather than assume. -->
   <script src="https://cdn.jsdelivr.net/npm/monaco-editor@0.52.2/min/vs/loader.js"
           integrity="sha384-pHG02SG8pId94Np3AbPmBEJ1yPqaH0IkJGLSNGXYmuGhkazT8Lr/57WYpbkGjJtu"
-          crossorigin="anonymous"></script>
+          crossorigin="anonymous" defer></script>
   <script src="js/web-studio.js?v=16"></script>
   <script src="js/crm.js?v=9"></script>
   <script src="js/analytics.js?v=2"></script>
