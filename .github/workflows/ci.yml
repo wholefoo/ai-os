@@ -112,9 +112,23 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      # DEP-04: this carried `continue-on-error: true`, so it reported findings and passed anyway.
+      # It was not theoretical — the gate exited 1 inside a GREEN build on every run for months
+      # while four HIGH advisories sat in the tree (adm-zip, brace-expansion, ip-address, js-yaml).
+      # A gate that cannot fail is worse than no gate: it produces a green tick that means nothing
+      # and trains everyone to trust it.
+      #
+      # The flag could only come off once the tree was actually clean, which is what this commit
+      # did. It is now a REAL gate — a new HIGH advisory fails the build.
+      #
+      # `--audit-level=high` is deliberate, not laziness. Two moderates remain (exceljs -> uuid) and
+      # their only fix is `npm audit fix --force`, which DOWNGRADES exceljs to 3.4.0 — a breaking
+      # change to xlsx generation to resolve a bounds check in a UUID path this codebase does not
+      # take. Raising the bar to `moderate` today would fail the build and invite someone to add
+      # `continue-on-error` back, which is the exact failure this commit exists to end. Revisit when
+      # exceljs ships a fix.
       - name: Audit dependencies
         run: npm audit --audit-level=high
-        continue-on-error: true
 
       - name: Check for secrets in code
         run: |

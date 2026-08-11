@@ -86,7 +86,8 @@
     "tools/test-vhost-scheme-guard.js",
     "tools/test-nginx-headers.js",
     "tools/check-nginx-headers.js",
-    "tools/test-seclint-innerhtml.js"
+    "tools/test-seclint-innerhtml.js",
+    "tools/test-zip-import.js"
   ],
   "ignorePatterns": [
     "docs-export/**",

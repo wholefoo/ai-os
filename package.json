@@ -22,7 +22,7 @@
     "audit": "npm audit"
   },
   "dependencies": {
-    "adm-zip": "^0.5.17",
+    "adm-zip": "0.6.0",
     "bcryptjs": "^3.0.3",
     "compression": "^1.8.1",
     "cookie-parser": "^1.4.7",
