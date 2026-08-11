@@ -11,7 +11,7 @@ const wsState = {
   currentId: null, currentSite: null, files: [], currentFile: null,
   plan: null, tab: 'content',
   editor: null, dirty: false, wired: false, aiEditing: false,
-  _monacoConfigured: false, _monacoTries: 0,
+
 };
 
 const WS_PUBLISH_PHASES = {
@@ -22,7 +22,7 @@ const WS_PUBLISH_PHASES = {
   tls: 'Enabling HTTPS…',
 };
 
-const WS_MONACO_VS = 'https://cdn.jsdelivr.net/npm/monaco-editor@0.52.2/min/vs';
+
 
 // ---------- entry / list mode ----------
 function loadWebStudio() {
@@ -495,9 +495,6 @@ async function wsLoadFile(p) {
     : (data && data.error ? `/* ${data.error} */` : '');
   document.getElementById('wsCurrentFile').textContent = p;
   wsGetEditor((ed) => {
-    if (!ed._fallback && window.monaco) {
-      const m = ed.getModel(); if (m) window.monaco.editor.setModelLanguage(m, wsLangForFile(p));
-    }
     ed.setValue(content);
     wsState.currentFile = p;
     wsState.dirty = false;
@@ -742,7 +739,7 @@ function wsSwitchTab(tab) {
   const isCode = tab === 'code';
   const isManage = tab === 'manage';
   const pane = document.getElementById('wsContentPane');
-  const mon = document.getElementById('wsMonaco');
+  const mon = document.getElementById('wsEditorHost');
   const mgr = document.getElementById('wsManagePane');
   const saveBtn = document.getElementById('wsSaveContentBtn');
   const cur = document.getElementById('wsCurrentFile');
@@ -756,8 +753,10 @@ function wsSwitchTab(tab) {
   const tm = document.getElementById('wsTabManage'); if (tm) tm.classList.toggle('ws-tab-active', isManage);
   if (isManage) { wsLoadManage(); return; }
   if (isCode) {
-    // Code tab: open a file if none is loaded, then force Monaco to remeasure now that its
-    // container is visible (creating Monaco in a hidden/zero-height box leaves it blank).
+    // Code tab: open a file if none is loaded. The layout() call below was for Monaco, which
+    // needed a remeasure when its container became visible; the textarea editor sizes itself with
+    // CSS and exposes no layout(), so the guard makes this a no-op. Kept because a future editor
+    // (e.g. CodeMirror) may need it again.
     if (!wsState.currentFile) { const sel = document.getElementById('wsFileList'); if (sel && sel.value) wsLoadFile(sel.value); }
     setTimeout(() => { if (wsState.editor && wsState.editor.layout) wsState.editor.layout(); }, 60);
   }
@@ -932,7 +931,7 @@ async function wsSaveContent() {
   wsRefreshPreview();
 }
 
-// ---------- Monaco (lazy) with a textarea fallback ----------
+// ---------- file-type helper ----------
 function wsLangForFile(p) {
   if (/\.astro$/.test(p)) return 'html';
   if (/\.css$/.test(p)) return 'css';
@@ -943,47 +942,42 @@ function wsLangForFile(p) {
   return 'plaintext';
 }
 
-function wsEnsureMonaco(cb) {
-  if (window.monaco && window.monaco.editor) { cb(); return; }
-  if (window.require && typeof window.require.config === 'function') {
-    if (!wsState._monacoConfigured) {
-      window.require.config({ paths: { vs: WS_MONACO_VS } });
-      wsState._monacoConfigured = true;
-    }
-    window.require(['vs/editor/editor.main'], () => cb(), () => wsFallbackEditor(cb));
-    return;
-  }
-  if (wsState._monacoTries++ > 25) { wsFallbackEditor(cb); return; } // ~4s, then degrade gracefully
-  setTimeout(() => wsEnsureMonaco(cb), 150);
-}
-
-function wsFallbackEditor(cb) {
-  if (!wsState.editor) {
-    const host = document.getElementById('wsMonaco');
-    host.innerHTML = '<textarea id="wsFallbackTa" style="width:100%;height:100%;min-height:380px;border:0;font-family:ui-monospace,Menlo,Consolas,monospace;font-size:13px;padding:8px;background:#1e1e1e;color:#eee;resize:none;"></textarea>';
-    const ta = document.getElementById('wsFallbackTa');
-    ta.addEventListener('input', () => { wsState.dirty = true; });
-    wsState.editor = {
-      _fallback: true,
-      getValue: () => ta.value,
-      setValue: (v) => { ta.value = v == null ? '' : v; },
-      getModel: () => null,
-    };
-  }
-  cb(wsState.editor);
-}
-
+// ---------- the code editor ----------
+//
+// MONACO WAS REMOVED HERE (2026-08-10), and this textarea is not a downgrade — it is what has
+// actually been running all along.
+//
+// Monaco was loaded from cdn.jsdelivr.net and NEVER ONCE WORKED in this dashboard: its
+// `editor.main.css` was blocked by our own CSP (`style-src 'self' 'unsafe-inline'
+// fonts.googleapis.com`, no jsdelivr), so the AMD module hung, the retry loop expired after ~4s,
+// and every load fell through to the fallback textarea. Nobody noticed, which is the most
+// informative fact available about how much of monaco was needed.
+//
+// What the rest of this file asks an editor for is the whole reason it was safe to drop:
+//   getValue() · setValue(v) · getModel() (may be null) · layout() (optional, guarded)
+// That is a textarea that knows when it is dirty. Monaco was ~98MB of dependency, an AMD loader,
+// a third-party origin and a CSP exemption to provide it.
+//
+// Removing it also removed a real bug elsewhere: monaco's loader installed an AMD `define`, and
+// livekit-client's UMD wrapper prefers AMD over its global, so `window.LivekitClient` was never
+// set and the LiveKit room silently never connected (fixed separately in 7883d72 by deferring the
+// loader; with the loader gone the collision cannot recur at all).
+//
+// IF SYNTAX HIGHLIGHTING IS EVER WANTED: CodeMirror 6 is ~200KB as a vendored ESM module and needs
+// no AMD loader, which fits the existing dashboard/vendor/*.esm.js + import-map pattern. Do NOT
+// reach back for monaco to get it.
 function wsGetEditor(cb) {
   if (wsState.editor) { cb(wsState.editor); return; }
-  wsEnsureMonaco(() => {
-    if (wsState.editor) { cb(wsState.editor); return; } // fallback already created one
-    if (window.monaco && window.monaco.editor) {
-      wsState.editor = window.monaco.editor.create(document.getElementById('wsMonaco'), {
-        value: '', language: 'html', theme: 'vs-dark', automaticLayout: true,
-        minimap: { enabled: false }, fontSize: 13, wordWrap: 'on', scrollBeyondLastLine: false,
-      });
-      wsState.editor.onDidChangeModelContent(() => { wsState.dirty = true; });
-    }
-    cb(wsState.editor);
-  });
+  const host = document.getElementById('wsEditorHost');
+  host.innerHTML = '<textarea id="wsEditorTa" style="width:100%;height:100%;min-height:380px;border:0;font-family:ui-monospace,Menlo,Consolas,monospace;font-size:13px;padding:8px;background:#1e1e1e;color:#eee;resize:none;" spellcheck="false"></textarea>';
+  const ta = document.getElementById('wsEditorTa');
+  ta.addEventListener('input', () => { wsState.dirty = true; });
+  wsState.editor = {
+    getValue: () => ta.value,
+    setValue: (v) => { ta.value = v == null ? '' : v; },
+    // Kept because wsLoadFile() calls it and acts only on a truthy model. Returning null is the
+    // honest answer — there is no model object — and every caller already handles that.
+    getModel: () => null,
+  };
+  cb(wsState.editor);
 }

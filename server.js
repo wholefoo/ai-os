@@ -3252,7 +3252,7 @@ app.get('/api/web-studio/sites/:id/file', requireClientOrAdmin, (req, res) => {
   res.json({ path: req.query.path, content: fs.readFileSync(target, 'utf-8') });
 });
 
-// --- Editor: write a file (Monaco save) — path-guarded ---
+// --- Editor: write a file (code-editor save) — path-guarded ---
 app.put('/api/web-studio/sites/:id/file', requireClientOrAdmin, (req, res) => {
   if (!wsFindSite(req, res)) return;
   const target = wsResolveFile(req.params.id, (req.body || {}).path);
@@ -3264,7 +3264,7 @@ app.put('/api/web-studio/sites/:id/file', requireClientOrAdmin, (req, res) => {
 
 // --- AI natural-language edit: regenerate the site incorporating the change.
 //     (Coarse MVP — overwrites the workspace; surgical per-file edits are Phase 1.
-//     The Monaco editor is the precise-edit path between regenerations.) ---
+//     The code editor is the precise-edit path between regenerations.) ---
 app.post('/api/web-studio/sites/:id/ai-edit', requireClientOrAdmin, heavyLimiter, async (req, res) => {
   const site = wsFindSite(req, res); if (!site) return;
   if (site.kind === 'imported') return res.status(400).json({ error: 'AI edit is for generated sites — edit imported sites in the Code tab.' });
@@ -3338,7 +3338,7 @@ app.put('/api/web-studio/sites/:id/content', requireClientOrAdmin, async (req, r
   }
 });
 
-// --- Rebuild from current workspace source (after Monaco edits) ---
+// --- Rebuild from current workspace source (after code-editor edits) ---
 app.post('/api/web-studio/sites/:id/build', requireClientOrAdmin, async (req, res) => {
   const site = wsFindSite(req, res); if (!site) return;
   site.status = 'building'; broadcast({ event: 'web_studio_site', data: site });
@@ -3347,7 +3347,7 @@ app.post('/api/web-studio/sites/:id/build', requireClientOrAdmin, async (req, re
   site.lastBuiltAt = new Date().toISOString();
   if (!result.ok) site.error = result.error; else delete site.error;
   // Re-sign the provenance sidecar against the freshly built index.html (generated sites only) so a
-  // Monaco-edited rebuild never serves a stale, content-mismatched credential.
+  // A hand-edited rebuild never serves a stale, content-mismatched credential.
   if (result.ok && site.kind !== 'imported') {
     try {
       const ws = wsWorkspaceDir(site.id); const provMeta = wsProvMeta(site);
