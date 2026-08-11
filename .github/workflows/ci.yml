@@ -29,11 +29,17 @@ jobs:
       # Strict gate: dead-code must stay at zero. Intentional exports (orchestrator pattern
       # toolkit, multiModel API, module internals, CRM facade) are whitelisted in
       # .fallowrc.json ignoreExports — so a NEW unused export will (correctly) fail the build.
+      # DEP-06: these ran as `npx fallow`, which falls back to FETCHING AND EXECUTING whatever the
+      # registry serves when no local binary is present — unpinned code, in CI, with repo access.
+      # `npm ci` above installs the lockfile-exact fallow, so the direct path always resolves it,
+      # and if it is ever missing this fails loudly instead of silently downloading a substitute.
+      # `npx --no` was tried first and rejected: it still queried the registry in testing, so its
+      # semantics are not something to rely on for a supply-chain control.
       - name: Dead code check (fallow)
-        run: npx fallow dead-code
+        run: ./node_modules/.bin/fallow dead-code
 
       - name: Duplication check (fallow)
-        run: npx fallow dupes
+        run: ./node_modules/.bin/fallow dupes
 
       # Deterministic security gate: encodes the vuln classes from the 2026-07-01 audit
       # (path traversal, missing-auth routes, shell injection, JSON-LD breakout). Fails on any ERROR.

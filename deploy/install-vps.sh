@@ -212,18 +212,46 @@ fi
 # ============================================================
 step "[7/${TOTAL_STEPS}] Node.js ${NODE_VERSION}"
 # ============================================================
+# DEP-07: this used to be `curl https://deb.nodesource.com/setup_X.x | bash -`, i.e. download an
+# opaque script over the network and execute it AS ROOT, unreviewed and unverified, on every
+# provision. Whatever that URL served at that moment became root on the box.
+#
+# Replaced with NodeSource's own apt repository, added by hand: fetch their signing KEY (data, not
+# code), dearmor it into a keyring, and register the repo as `signed-by` that keyring. Nothing
+# downloaded is executed — apt verifies every package against the pinned key before installing, so
+# the trust anchor becomes a signature we control the storage of rather than a shell script.
+#
+# `nodistro` is NodeSource's current distribution-agnostic channel; it is their documented layout,
+# not a guess. If they change it, THIS STEP FAILS LOUDLY at `apt-get update` rather than silently
+# installing something unexpected — which is the direction a supply-chain step should fail in.
+install_nodejs_from_nodesource() {
+  apt-get install -y -qq ca-certificates curl gnupg
+  install -d -m 0755 /etc/apt/keyrings
+  # -o to a temp file first: a truncated or failed download must not leave a partial keyring in
+  # place that apt would then reject with a confusing signature error.
+  local tmpkey; tmpkey="$(mktemp)"
+  if ! curl -fsSL https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key -o "$tmpkey"; then
+    rm -f "$tmpkey"; err "Could not fetch the NodeSource signing key — refusing to continue"
+  fi
+  gpg --dearmor --yes -o /etc/apt/keyrings/nodesource.gpg < "$tmpkey"
+  rm -f "$tmpkey"
+  chmod 0644 /etc/apt/keyrings/nodesource.gpg
+  echo "deb [signed-by=/etc/apt/keyrings/nodesource.gpg] https://deb.nodesource.com/node_${NODE_VERSION}.x nodistro main" \
+    > /etc/apt/sources.list.d/nodesource.list
+  apt-get update -qq
+  apt-get install -y -qq nodejs
+}
+
 if command -v node &>/dev/null; then
   CURRENT_NODE=$(node --version | cut -d'v' -f2 | cut -d'.' -f1)
   if [ "$CURRENT_NODE" -ge "$NODE_VERSION" ]; then
     log "Node.js already installed: $(node --version)"
   else
     warn "Node.js $(node --version) found, upgrading to v${NODE_VERSION}..."
-    curl -fsSL https://deb.nodesource.com/setup_${NODE_VERSION}.x | bash -
-    apt-get install -y -qq nodejs
+    install_nodejs_from_nodesource
   fi
 else
-  curl -fsSL https://deb.nodesource.com/setup_${NODE_VERSION}.x | bash -
-  apt-get install -y -qq nodejs
+  install_nodejs_from_nodesource
 fi
 log "Node: $(node --version), npm: $(npm --version)"
 

@@ -18,7 +18,7 @@
     "lint:dead": "fallow dead-code",
     "lint:dupes": "fallow dupes",
     "lint:sec": "node tools/seclint.js --ci",
-    "test": "node tools/test-all.js && npx fallow dead-code && npx fallow dupes && node tools/seclint.js --ci",
+    "test": "node tools/test-all.js && fallow dead-code && fallow dupes && node tools/seclint.js --ci",
     "audit": "npm audit"
   },
   "dependencies": {
@@ -46,6 +46,6 @@
     "node": ">=24.0.0"
   },
   "devDependencies": {
-    "fallow": "^2.91.0"
+    "fallow": "2.91.0"
   }
 }
