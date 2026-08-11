@@ -43,11 +43,36 @@ ssh "${VPS}" "cd ${APP_DIR} && sudo -u ${APP_USER} git pull origin master"
 echo "[3/7] Pulling commercial modules (skipped if Community)..."
 ssh "${VPS}" "if [ -d ${APP_DIR}/commercial/.git ]; then cd ${APP_DIR}/commercial && sudo -u ${APP_USER} git pull origin master; else echo 'no commercial/ mount — Community tier, skipping'; fi"
 
-# Step 4: Install dependencies EXACTLY as pinned
-# npm ci, not npm install — see the matching comment in install-vps.sh. ci is reproducible and fails
-# loudly when the lockfile is stale; npm install silently re-resolves semver ranges on every deploy.
+# Step 4: Install dependencies EXACTLY as pinned, then PROVE the tree is complete.
+#
+# npm ci, not npm install — ci is reproducible and fails loudly when the lockfile is stale, while
+# npm install silently re-resolves semver ranges on every deploy. That reasoning still holds and is
+# why `ci` stays the primary path.
+#
+# BUT `npm ci` DELETES node_modules BEFORE REBUILDING, and on 2026-08-11 the rebuild did not
+# complete. The deploy went on to restart pm2 against a PARTIAL tree, server.js died at require(),
+# and the main site was down ~40 minutes. `exceljs` was missing on one attempt and `adm-zip` on the
+# next. Nothing noticed, because a half-built node_modules looks exactly like a healthy one until
+# something requires the file that is not there — and we never established why the install failed,
+# so its exit code alone cannot be trusted to tell us.
+#
+# So: install, then CHECK THE RESULT. If the tree is incomplete this ABORTS HERE, before the
+# restart — `set -euo pipefail` turns the non-zero ssh into an abort, so steps 5-7 never run and the
+# ALREADY-RUNNING PROCESS KEEPS SERVING on the tree it already has. That is the whole point: a
+# failed install must be a stalled deploy, not an outage.
+#
+# It does NOT auto-repair, deliberately. `npm install --omit=dev` is what recovered the box that
+# day, and it is what check-deps-installed.js tells the operator to run — but it stays a HUMAN
+# step. `npm install` can silently rewrite package-lock.json when it finds drift, where `npm ci`
+# errors; keeping it out of the automated path is the reproducibility rule this repo already
+# encodes (tools/test-deploy-determinism.js asserts no non-global `npm install` survives in these
+# scripts, and it caught an earlier version of this very change). Stopping the deploy is the fix
+# for the outage; auto-repairing was convenience beyond the requirement, at the cost of a guard.
 echo "[4/7] Installing dependencies (npm ci — exact lockfile versions)..."
-ssh "${VPS}" "cd ${APP_DIR} && sudo -u ${APP_USER} npm ci --omit=dev --quiet"
+ssh "${VPS}" "set -e
+  cd ${APP_DIR}
+  sudo -u ${APP_USER} npm ci --omit=dev --quiet || echo '  npm ci reported failure — the completeness check below is what decides'
+  sudo -u ${APP_USER} node tools/check-deps-installed.js"
 
 # Step 5: Install the root-owned hosting scripts.
 #

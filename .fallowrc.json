@@ -87,7 +87,10 @@
     "tools/test-nginx-headers.js",
     "tools/check-nginx-headers.js",
     "tools/test-seclint-innerhtml.js",
-    "tools/test-zip-import.js"
+    "tools/test-zip-import.js",
+    "tools/test-deps-installed.js",
+    "tools/check-deps-installed.js",
+    "tools/test-deploy-guard.js"
   ],
   "ignorePatterns": [
     "docs-export/**",
