@@ -595,8 +595,8 @@ function renderQuickActions() {
   }));
 
   container.innerHTML = actions.map(a => `
-    <button class="action-btn" onclick="executeSkill('${a.filename}')" title="${a.time} · ${a.paramCount} params">
-      <span class="action-icon">${a.icon}</span>
+    <button class="action-btn" onclick="executeSkill('${escapeHtml(a.filename)}')" title="${escapeHtml(a.time)} · ${a.paramCount} params">
+      <span class="action-icon">${escapeHtml(a.icon)}</span>
       <span>${capitalize(a.name.replace(/-/g, ' '))}</span>
     </button>
   `).join('') || '<div class="empty-state">No skills configured</div>';
@@ -1261,8 +1261,11 @@ async function executeSkill(filename) {
           const opts = p.options.map(o => `<option value="${o}" ${o === p.default ? 'selected' : ''}>${o}</option>`).join('');
           return `
             <div class="form-group">
-              <label>${p.name}${p.required ? '<span class="required-star">*</span>' : ''}</label>
-              <select id="param-${p.name}">${opts}</select>
+              <!-- p.description was already escaped on the line below while p.name was not, which
+                   is an oversight rather than a trust decision: both come from the same skill
+                   frontmatter (readDir -> parseFrontmatter), so they carry identical provenance. -->
+              <label>${escapeHtml(p.name)}${p.required ? '<span class="required-star">*</span>' : ''}</label>
+              <select id="param-${escapeHtml(p.name)}">${opts}</select>
               ${p.description ? `<span class="form-hint">${escapeHtml(p.description)}</span>` : ''}
             </div>
           `;
@@ -1557,11 +1560,17 @@ async function loadArtifacts() {
     container.innerHTML = '<div class="empty-state">No artifacts generated yet.</div>';
     return;
   }
+  // filename/category are AGENT-CREATED, not developer-authored: /api/artifacts readdirSync's
+  // .magent/artifacts/<category>/<file> and returns the raw names, so a pipeline stage that writes
+  // a file whose name contains an img tag with an onerror handler injects it straight in here.
+  // This repo already treats model output as untrusted (fenceUntrusted) — a filename chosen by an
+  // agent is model output that happens to live on disk. Found by the item-5b provenance triage;
+  // seclint cannot see it, because the innerHTML assignment is on a different line from the markup.
   container.innerHTML = artifacts.map(a => `
     <div class="artifact-item">
       <div>
-        <div class="artifact-name">${a.filename}</div>
-        <div class="artifact-category">${a.category}</div>
+        <div class="artifact-name">${escapeHtml(a.filename)}</div>
+        <div class="artifact-category">${escapeHtml(a.category)}</div>
       </div>
       <span class="workflow-time">${new Date(a.modified).toLocaleDateString()}</span>
     </div>
