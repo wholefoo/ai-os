@@ -115,8 +115,21 @@ app.use(helmet({
   contentSecurityPolicy: {
     directives: {
       defaultSrc: ["'self'"],
-      scriptSrc: ["'self'", "'unsafe-inline'", "https://www.googletagmanager.com", "https://www.google-analytics.com", "https://cdn.jsdelivr.net"],
-      scriptSrcAttr: ["'unsafe-inline'"],  // Required for onclick handlers in HTML
+      // AS-02: `'unsafe-inline'` REMOVED from script-src. This is the directive that decides whether
+      // an INJECTED <script> tag executes, so it is the one worth buying back. It was here because
+      // 52 executable inline blocks existed across the dashboard; all 52 are now external files
+      // (45 identical GA-init snippets -> /js/ga-init.js, plus 7 page scripts), so `'self'` covers
+      // them. Keep it that way: adding one inline <script> anywhere under dashboard/ will be blocked
+      // by this policy and the page will break loudly — which is the intended failure direction.
+      // (The 123 ld+json / importmap blocks are DATA, not executed, and were never in scope.)
+      scriptSrc: ["'self'", "https://www.googletagmanager.com", "https://www.google-analytics.com", "https://cdn.jsdelivr.net"],
+      // STILL 'unsafe-inline', and honestly so: ~325 inline handlers (157 in HTML, 168 generated
+      // from JS template literals) depend on it. Removing it means event delegation across the whole
+      // dashboard — a large, regression-prone refactor, tracked as the remaining half of AS-02.
+      // Note what this does and does not buy: with script-src tightened, an injected <script> tag
+      // no longer runs, but an injected attribute (e.g. `<img onerror=...>`) still would. AS-02 is
+      // therefore NARROWED, not closed.
+      scriptSrcAttr: ["'unsafe-inline'"],
       styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
       fontSrc: ["'self'", "https://fonts.gstatic.com"],
       connectSrc: ["'self'", "ws:", "wss:", "https://www.google-analytics.com", "https://analytics.google.com", "https://*.google-analytics.com", "https://*.analytics.google.com", "wss://*.livekit.cloud", "https://*.heygen.com", "https://*.liveavatar.com", "wss://*.heygen.com", "wss://*.liveavatar.com", "https://cdn.jsdelivr.net", "https://api.d-id.com", "https://*.d-id.com"],

@@ -103,6 +103,7 @@
   "ignoreUnresolvedImports": [
     "/css/**",
     "/js/**",
+    "/vendor/**",
     "./commercial/loader",
     "./commercial/**"
   ],

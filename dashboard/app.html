@@ -32,11 +32,7 @@
        import resolves through the import map to a vendored Node EventEmitter shim; livekit is bundled
        inside the SDK. Exposed on window for the classic-script app.js. -->
   <script type="importmap">{ "imports": { "events": "/vendor/events.esm.js" } }</script>
-  <script type="module">
-    import * as LiveAvatarSDK from '/vendor/liveavatar-sdk.esm.js';
-    window.LiveAvatarSDK = LiveAvatarSDK;
-    window.dispatchEvent(new Event('liveavatar-sdk-ready'));
-  </script>
+  <script src="/js/app-liveavatar.js" type="module"></script>
 </head>
 <body>
   <div class="app">
