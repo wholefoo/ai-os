@@ -9255,16 +9255,19 @@ async function viewSeoAudit(auditId) {
     const scoreClass = data.score >= 75 ? 'good' : data.score >= 50 ? 'warning' : 'critical';
     const findings = (data.findings || []).map(f => {
       const sevClass = f.severity === 'critical' ? 'critical' : f.severity === 'high' ? 'high' : f.severity === 'medium' ? 'warning' : 'info';
+      // `f.severity` is LLM output, not a validated enum — nothing server-side constrains it. It is
+      // called as a string method, so a payload passes straight through `.toUpperCase()` and lands
+      // in the ADMIN's browser. `sevClass` above is a computed literal and is safe.
       return `<div class="seo-finding seo-finding-${sevClass}">
-        <span class="seo-finding-severity">${f.severity.toUpperCase()}</span>
+        <span class="seo-finding-severity">${escapeHtml(f.severity.toUpperCase())}</span>
         <div><strong>${escapeHtml(f.issue)}</strong><br><span class="seo-finding-rec">${escapeHtml(f.recommendation)}</span></div>
       </div>`;
     }).join('');
     return `
       <div class="seo-agent-card">
         <div class="seo-agent-header">
-          <span class="seo-agent-name">${name === 'aeo' ? 'AEO Readiness (AI Answer Engines)' : capitalize(name) + ' Analysis'}</span>
-          <span class="seo-score seo-score-${scoreClass}">${data.score}<small>/100</small></span>
+          <span class="seo-agent-name">${name === 'aeo' ? 'AEO Readiness (AI Answer Engines)' : escapeHtml(capitalize(name)) + ' Analysis'}</span>
+          <span class="seo-score seo-score-${scoreClass}">${escapeHtml(data.score)}<small>/100</small></span>
         </div>
         <div class="seo-findings">${findings}</div>
       </div>
@@ -9272,12 +9275,12 @@ async function viewSeoAudit(auditId) {
   }).join('');
 
   const quickWins = (audit.quickWins || []).map(w =>
-    `<tr><td>${w.priority}</td><td>${escapeHtml(w.action)}</td><td>${w.time}</td><td><span class="seo-impact seo-impact-${w.impact}">${w.impact}</span></td></tr>`
+    `<tr><td>${escapeHtml(w.priority)}</td><td>${escapeHtml(w.action)}</td><td>${escapeHtml(w.time)}</td><td><span class="seo-impact seo-impact-${escapeHtml(w.impact)}">${escapeHtml(w.impact)}</span></td></tr>`
   ).join('');
 
   const actionPlan = (audit.actionPlan || []).map(p =>
     `<div class="seo-phase">
-      <div class="seo-phase-header"><span class="seo-phase-name">${p.phase}</span><span class="seo-phase-title">${p.title}</span><span class="seo-phase-priority priority-${p.priority}">${p.priority}</span></div>
+      <div class="seo-phase-header"><span class="seo-phase-name">${escapeHtml(p.phase)}</span><span class="seo-phase-title">${escapeHtml(p.title)}</span><span class="seo-phase-priority priority-${escapeHtml(p.priority)}">${escapeHtml(p.priority)}</span></div>
       <ul>${p.tasks.map(t => `<li>${escapeHtml(t)}</li>`).join('')}</ul>
     </div>`
   ).join('');
@@ -9289,7 +9292,7 @@ async function viewSeoAudit(auditId) {
       <div class="seo-report-header">
         <button class="btn btn-sm" onclick="document.getElementById('seoAuditDetail').innerHTML=''; document.getElementById('seoAuditDetail').style.display='none';">&larr; Back to Audits</button>
         <h3>${escapeHtml(audit.domain)} — Full SEO Audit Report</h3>
-        <span class="seo-score seo-score-${scoreClass} seo-score-lg">${audit.compositeScore}<small>/100</small></span>
+        <span class="seo-score seo-score-${scoreClass} seo-score-lg">${escapeHtml(audit.compositeScore)}<small>/100</small></span>
       </div>
 
       <section class="panel" style="margin-top:16px;">

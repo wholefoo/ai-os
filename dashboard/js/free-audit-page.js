@@ -114,15 +114,20 @@ async function startFreeAudit() {
       const agents = audit.agents || {};
       const agentCards = Object.entries(agents).map(([name, data]) => {
         const sc = (data.score || 0) >= 75 ? 'score-good' : (data.score || 0) >= 50 ? 'score-warn' : 'score-bad';
+        // EVERY value below is LLM output derived from a user-supplied domain — and the audit agents
+        // CRAWL that domain, so text from an attacker's own page (title, meta, headings) reaches
+        // these findings. `sc` and `scoreClass` are computed literals and are the only safe ones.
         return `<div class="audit-agent-result">
-          <div class="audit-agent-result-score ${sc}">${data.score || '?'}</div>
-          <div class="audit-agent-result-name">${name}</div>
-          ${data.topFinding ? `<div class="audit-finding-peek">${data.topFinding.severity}: ${(data.topFinding.issue || '').substring(0, 60)}...</div>` : ''}
+          <div class="audit-agent-result-score ${sc}">${escapeHtml(data.score || '?')}</div>
+          <div class="audit-agent-result-name">${escapeHtml(name)}</div>
+          ${data.topFinding ? `<div class="audit-finding-peek">${escapeHtml(data.topFinding.severity)}: ${escapeHtml((data.topFinding.issue || '').substring(0, 60))}...</div>` : ''}
         </div>`;
       }).join('');
 
+      // `impact` lands in a CLASS ATTRIBUTE as well as in text, which is why escapeHtml here escapes
+      // quotes too — an unescaped quote would break out of class="…" and add arbitrary attributes.
       const wins = (audit.quickWins || []).slice(0, 4).map(w =>
-        `<div class="audit-win"><span class="audit-win-num">${w.priority}</span><span>${w.action}</span><span class="audit-win-impact impact-${w.impact}">${w.impact}</span></div>`
+        `<div class="audit-win"><span class="audit-win-num">${escapeHtml(w.priority)}</span><span>${escapeHtml(w.action)}</span><span class="audit-win-impact impact-${escapeHtml(w.impact)}">${escapeHtml(w.impact)}</span></div>`
       ).join('');
 
       const estimateNotice = audit.estimated ? `
@@ -135,11 +140,11 @@ async function startFreeAudit() {
       el.innerHTML = `
         ${estimateNotice}
         <div class="audit-score">
-          <div class="audit-score-num ${scoreClass}">${audit.compositeScore || 0}</div>
+          <div class="audit-score-num ${scoreClass}">${escapeHtml(audit.compositeScore || 0)}</div>
           <div class="audit-score-label">Composite SEO Score out of 100</div>
         </div>
 
-        <div class="audit-summary">${audit.executiveSummary || 'Audit complete.'}</div>
+        <div class="audit-summary">${escapeHtml(audit.executiveSummary || 'Audit complete.')}</div>
 
         <div class="audit-agents-result">${agentCards}</div>
 
