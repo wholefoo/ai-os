@@ -32,7 +32,7 @@
        import resolves through the import map to a vendored Node EventEmitter shim; livekit is bundled
        inside the SDK. Exposed on window for the classic-script app.js. -->
   <script type="importmap">{ "imports": { "events": "/vendor/events.esm.js" } }</script>
-  <script src="/js/app-liveavatar.js" type="module"></script>
+  <script src="/js/app-liveavatar.js?v=1" type="module"></script>
 </head>
 <body>
   <div class="app">
@@ -3006,7 +3006,7 @@
     </div>
   </div>
 
-  <script src="js/app.js?v=74"></script>
+  <script src="js/app.js?v=75"></script>
   <!-- The monaco-editor loader used to be here and was REMOVED on 2026-08-10. It never once worked:
        our own CSP blocks third-party stylesheets, so monaco's editor.main.css was refused, the AMD
        module hung, and Web Studio fell through to its textarea on every load. Nobody noticed.
@@ -3020,6 +3020,6 @@
   <script src="js/security.js?v=1"></script>
   <script src="js/brand-kits.js?v=1"></script>
   <script src="js/clones.js?v=12"></script>
-  <script src="js/org.js?v=3"></script>
+  <script src="js/org.js?v=4"></script>
 </body>
 </html>
