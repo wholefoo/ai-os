@@ -596,7 +596,12 @@ function renderQuickActions() {
 
   container.innerHTML = actions.map(a => `
     <button class="action-btn" data-skill-file="${escapeHtml(a.filename)}" onclick="executeSkill(this.dataset.skillFile)" title="${escapeHtml(a.time)} · ${escapeHtml(a.paramCount)} params">
-      <span class="action-icon">${escapeHtml(a.icon)}</span>
+      <!-- NOT escaped, deliberately: getSkillIcon returns HTML ENTITIES ('&#9889;' etc.) from a
+           hard-coded table, so escaping turns '&' into '&amp;' and the user sees the literal text
+           "&#9889;" instead of the glyph. I added escapeHtml here in 99249a5 without checking what
+           the value was and broke every icon. Entity strings from a fixed lookup are not user data;
+           they are markup. -->
+      <span class="action-icon">${a.icon}</span>
       <span>${capitalize(a.name.replace(/-/g, ' '))}</span>
     </button>
   `).join('') || '<div class="empty-state">No skills configured</div>';
@@ -1261,7 +1266,15 @@ async function executeSkill(filename) {
   if (params.length > 0) {
     formHtml = `<div class="skill-exec-form">
       ${params.map(p => {
-        if (p.inputType === 'select' && p.options.length > 0) {
+        // `Array.isArray` is load-bearing, not defensive noise. A skill declaring
+        // `inputType: select` with no `options` list made `p.options.length` throw, and because
+        // executeSkill is async and nothing catches, the click did NOTHING AT ALL — no modal, no
+        // console error visible to the user, no clue. Reported 2026-08-13 as "Quick Actions and
+        // Skill Launchpad don't work"; reproduced by driving renderQuickActions() with that exact
+        // parameter shape. Pre-dates the data-* handler conversion, which was a red herring.
+        // The settings renderer at the `p.type === 'enum'` branch already guards this way — the
+        // correct pattern existed in this file and simply had not been applied here.
+        if (p.inputType === 'select' && Array.isArray(p.options) && p.options.length > 0) {
           const opts = p.options.map(o => `<option value="${o}" ${o === p.default ? 'selected' : ''}>${o}</option>`).join('');
           return `
             <div class="form-group">
