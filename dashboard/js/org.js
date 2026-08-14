@@ -479,11 +479,18 @@ function orgMemberRowHtml(m) {
   const controls = m.isOwner ? '' : `
     <div style="margin-top:8px;">
       <label style="display:flex;align-items:center;gap:6px;font-size:13px;">
-        <input type="checkbox" ${m.cloneDispatch ? 'checked' : ''} onchange="orgToggleDispatch('${escapeHtml(m.email)}', this.checked)">
+        <!-- The member email is USER-SUPPLIED (typed at invite time) and must not sit inside the
+             handler's JS string. escapeHtml is the WRONG encoding for that position: it turns a
+             single quote into the &#39; entity, the HTML attribute decodes it back to a quote, and
+             the JS string breaks. Verified in a browser, where an escapeHtml-ed payload still
+             executed arbitrary JS. A data-* attribute plus dataset removes the JS-string context
+             entirely, leaving only HTML escaping — which escapeHtml does correctly. Same treatment
+             as the Remove button below. -->
+        <input type="checkbox" ${m.cloneDispatch ? 'checked' : ''} data-member-email="${escapeHtml(m.email)}" onchange="orgToggleDispatch(this.dataset.memberEmail, this.checked)">
         May commission agent work
       </label>
       <div class="org-muted" style="font-size:11px;margin:2px 0 8px 22px;">Having a clone and letting it spend money commissioning work from agents are different permissions. This one starts off.</div>
-      <button class="btn" onclick="orgRemoveMember('${escapeHtml(m.email)}')">Remove</button>
+      <button class="btn" data-member-email="${escapeHtml(m.email)}" onclick="orgRemoveMember(this.dataset.memberEmail)">Remove</button>
     </div>`;
 
   return `

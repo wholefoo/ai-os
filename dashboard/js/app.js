@@ -595,7 +595,7 @@ function renderQuickActions() {
   }));
 
   container.innerHTML = actions.map(a => `
-    <button class="action-btn" onclick="executeSkill('${escapeHtml(a.filename)}')" title="${escapeHtml(a.time)} · ${a.paramCount} params">
+    <button class="action-btn" data-skill-file="${escapeHtml(a.filename)}" onclick="executeSkill(this.dataset.skillFile)" title="${escapeHtml(a.time)} · ${escapeHtml(a.paramCount)} params">
       <span class="action-icon">${escapeHtml(a.icon)}</span>
       <span>${capitalize(a.name.replace(/-/g, ' '))}</span>
     </button>
@@ -1137,10 +1137,14 @@ function renderSkillsGrid(skills) {
     // refuses it. Offering a Launch button anyway is a dead-end click, so these open for READING
     // instead: they are genuinely useful to follow, just not to dispatch.
     const isReference = s.dispatchable === false;
-    const action = isReference ? `openSkillReference('${s.filename}')` : `executeSkill('${s.filename}')`;
+    // The filename goes in a data-* attribute, NOT into the handler's JS string. See the note above
+    // the Email-to-Lead button: a value inside `onclick="fn('${x}')"` sits in an HTML attribute AND
+    // a JS string literal at once, and escapeHtml is the wrong tool for that pair — it turns ' into
+    // &#39;, the attribute decodes it back to ', and the JS string breaks. Verified in a browser.
+    const action = isReference ? 'openSkillReference(this.dataset.skillFile)' : 'executeSkill(this.dataset.skillFile)';
 
     return `
-      <div class="skill-card" onclick="${action}">
+      <div class="skill-card" data-skill-file="${escapeHtml(s.filename)}" onclick="${action}">
         <div class="skill-card-icon">${icon}</div>
         <div class="skill-card-header">
           <span class="skill-name">${capitalize(name.replace(/-/g, ' '))}</span>
@@ -2885,7 +2889,7 @@ function renderPipelineCards(pipelines) {
           <div class="pipeline-params">
             ${params.map(k => `<span class="pipeline-param-tag">${k}</span>`).join('')}
           </div>
-          <button class="btn btn-sm btn-primary" onclick="launchPipeline('${p.name}')">Run Pipeline</button>
+          <button class="btn btn-sm btn-primary" data-pipeline-name="${escapeHtml(p.name)}" onclick="launchPipeline(this.dataset.pipelineName)">Run Pipeline</button>
         </div>
       </div>
     `;
@@ -3085,7 +3089,7 @@ function renderIdentityCards(files) {
         <div class="identity-card-body">${bodyHtml}</div>
         <div class="identity-card-footer">
           <span>Last modified: ${f.meta?.created || 'unknown'}</span>
-          ${f.immutable ? '<span class="identity-immutable">IMMUTABLE</span>' : `<button class="btn btn-sm btn-secondary" onclick="viewIdentityFile('${f.name}')">View Full</button>`}
+          ${f.immutable ? '<span class="identity-immutable">IMMUTABLE</span>' : `<button class="btn btn-sm btn-secondary" data-identity-file="${escapeHtml(f.name)}" onclick="viewIdentityFile(this.dataset.identityFile)">View Full</button>`}
         </div>
       </div>
     `;
@@ -9147,7 +9151,21 @@ function renderSeoAgency() {
         <div class="seo-audit-actions">
           <button class="btn btn-sm btn-primary" onclick="viewSeoAudit('${a.id}')" ${a.status !== 'complete' ? 'disabled' : ''}>View Report</button>
           <button class="btn btn-sm" onclick="generateSeoReport('${a.id}')" ${a.status !== 'complete' ? 'disabled' : ''}>Export PDF</button>
-          <button class="btn btn-sm" onclick="emailAuditToLead('${a.id}', '${(a.email || '').replace(/'/g, '')}')" ${a.status !== 'complete' ? 'disabled' : ''} title="Send the headline findings to the lead as an outreach email">&#9993; Email to Lead</button>
+          <!-- The email is USER-SUPPLIED (typed into the public free-audit form) and used only to
+               prefill a prompt(). It was previously interpolated into the onclick and passed
+               through a hand-rolled .replace that stripped single quotes — an escape for the WRONG
+               context: it protects the JS string but leaves the surrounding HTML attribute open, so
+               an email containing a double quote escapes the onclick attribute and adds attributes
+               of its own.
+               escapeHtml alone would NOT have fixed it either: it turns a single quote into the
+               &#39; entity, the attribute decodes that back to a quote, and the JS string breaks
+               again. Verified in a browser — an escapeHtml-ed payload still executed arbitrary JS.
+               Two nested contexts (HTML attribute + JS string literal) need two encodings in the
+               right order, and getting that wrong looks safe.
+               So the JS-string context is REMOVED instead: values live in data-* attributes where
+               plain HTML escaping is correct and sufficient, and the handler reads them back via
+               dataset. No caller-supplied data appears inside the onclick at all. -->
+          <button class="btn btn-sm" data-audit-id="${escapeHtml(a.id)}" data-audit-email="${escapeHtml(a.email || '')}" onclick="emailAuditToLead(this.dataset.auditId, this.dataset.auditEmail)" ${a.status !== 'complete' ? 'disabled' : ''} title="Send the headline findings to the lead as an outreach email">&#9993; Email to Lead</button>
           <button class="btn btn-sm btn-danger" onclick="deleteSeoAudit('${a.id}')">Delete</button>
         </div>
       </div>
