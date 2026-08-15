@@ -61,6 +61,27 @@ function interpolations(line) {
   return out;
 }
 
+/**
+ * Is this interpolated expression safe to drop into HTML as-is?
+ *
+ * Shared by the line-based and multi-line innerHTML rules so the two cannot drift apart — a value
+ * judged safe on one line and unsafe three lines later would be worse than either answer.
+ *
+ * The formatter allowlist is EARNED, not assumed. Each was read before being added:
+ *   timeAgo            — every branch returns a computed string; a garbage timestamp yields
+ *                        'Invalid Date'. It cannot echo its input. (45 call sites cleared by this.)
+ *   Number/formatTokenCount/formatFileSize — numeric output only.
+ *   encodeURIComponent — percent-encodes quotes and angle brackets; correct here.
+ * NOTE `capitalize` is deliberately ABSENT: it is a PASS-THROUGH
+ * (`str.replace(/\b\w/g, c => c.toUpperCase())`), so capitalize('<img …>') is live HTML because tag
+ * names are case-insensitive. It cost 8 unescaped sites; do not add it here.
+ */
+function safeInterp(e) {
+  return /^escapeHtml\(/.test(e) || /^esc\(/.test(e) || /^escapeAttr\(/.test(e)
+    || /^\s*['"`]/.test(e) || /^[\d.]+$/.test(e) || e === ''
+    || /^(timeAgo|Number|formatTokenCount|formatFileSize|encodeURIComponent)\(/.test(e);
+}
+
 const rules = [
   {
     id: 'route-no-auth',
@@ -128,12 +149,67 @@ const rules = [
       // by the same scan. The `.map(` exemption is gone — `${ids.map(i => i.raw).join(',')}` is a
       // real injection vector and now reports. Use `// seclint-ok: <reason>` where it truly is not.
       const exprs = interpolations(line);
-      const safe = e =>
-        /^escapeHtml\(/.test(e) || /^esc\(/.test(e) || /^escapeAttr\(/.test(e) ||
-        /^\s*['"`]/.test(e) || /^[\d.]+$/.test(e) || e === '';
-      const bad = exprs.filter(e => !e.includes('`') && !safe(e));
+      const bad = exprs.filter(e => !e.includes('`') && !safeInterp(e));
       if (!bad.length) return null;
       return `innerHTML interpolates possibly-unescaped value(s): ${bad.slice(0, 2).map(e => e.slice(0, 40)).join(', ')} — wrap in escapeHtml()`;
+    },
+  },
+];
+
+/**
+ * FILE-LEVEL rules. The line-based ones above cannot see a template literal that spans lines, and
+ * that blind spot hid three real XSS bugs: agent-created artifact filenames, the free-audit result
+ * renderer, and both SEO-audit renderers. In every case the `innerHTML =` sat many lines above the
+ * interpolation, so `innerhtml-unescaped` never even looked.
+ */
+const fileRules = [
+  {
+    id: 'innerhtml-multiline',
+    level: 'warn',
+    test(text) {
+      const out = [];
+      const re = /\.innerHTML\s*\+?=\s*`/g;
+      let m;
+      while ((m = re.exec(text))) {
+        const start = m.index + m[0].length;
+        // Walk to the template's closing backtick, honouring ${ } nesting (which may itself contain
+        // nested template literals). A naive indexOf('`') stops inside the first nested template.
+        let i = start, depth = 0;
+        for (; i < text.length; i++) {
+          const c = text[i];
+          if (c === '\\') { i++; continue; }
+          if (c === '$' && text[i + 1] === '{') { depth++; i++; continue; }
+          if (c === '}' && depth > 0) { depth--; continue; }
+          if (c === '`' && depth === 0) break;
+        }
+        const body = text.slice(start, i);
+        re.lastIndex = i;
+        if (!body.includes('\n')) continue;   // single-line: innerhtml-unescaped already covers it
+
+        // Flag PROPERTY READS and NON-ALLOWLISTED FUNCTION CALLS.
+        //
+        // Bare locals are excluded deliberately: in these spans they are overwhelmingly pre-built
+        // HTML fragments (agentCards, quickWins) or computed class names (scoreClass, tierLabel),
+        // and flagging them turns a 23-item review list into a 52-item one nobody reads.
+        //
+        // Function calls MUST be included even though safeInterp() clears the common formatters,
+        // because the dangerous case is a PASS-THROUGH helper that merely looks like a formatter.
+        // `capitalize()` is precisely that — it returns its input, and it cost 8 unescaped sites.
+        // A first draft of this rule checked property reads only; a test showed `capitalize(a.name)`
+        // in a multi-line span then fell through BOTH rules — the line rule cannot see it either,
+        // because it sits on a different line from the `innerHTML =`.
+        const isPropertyRead = (e) => /^[a-zA-Z_$][\w$]*\.[\w$.]+$/.test(e);
+        const isCall = (e) => /^[a-zA-Z_$][\w$]*\(/.test(e);
+        const bad = interpolations(body).filter((e) =>
+          !e.includes('`') && !safeInterp(e) && !/\?[\s\S]*:/.test(e) && (isPropertyRead(e) || isCall(e)));
+        if (!bad.length) continue;
+        out.push({
+          line: text.slice(0, m.index).split('\n').length,
+          msg: `multi-line innerHTML interpolates possibly-unescaped value(s): ${bad.slice(0, 3).map((e) => e.slice(0, 40)).join(', ')}`
+            + `${bad.length > 3 ? ` (+${bad.length - 3} more)` : ''} — wrap in escapeHtml()`,
+        });
+      }
+      return out;
     },
   },
 ];
@@ -150,6 +226,16 @@ function scanFile(file) {
     for (const rule of rules) {
       const msg = rule.test(line);
       if (msg) findings.push({ file: path.relative(ROOT, file), line: i + 1, rule: rule.id, level: rule.level, msg });
+    }
+  }
+  for (const rule of fileRules) {
+    for (const hit of rule.test(text)) {
+      // Suppression is checked against the line the finding is REPORTED on (the `innerHTML =`),
+      // which is where a reviewer would naturally write the comment.
+      const own = lines[hit.line - 1] || '';
+      const prev = lines[hit.line - 2] || '';
+      if (/seclint-(ok|disable-line)/.test(own) || /seclint-disable-next-line/.test(prev)) continue;
+      findings.push({ file: path.relative(ROOT, file), line: hit.line, rule: rule.id, level: rule.level, msg: hit.msg });
     }
   }
   return findings;
