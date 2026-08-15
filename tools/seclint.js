@@ -84,7 +84,16 @@ function safeInterp(e) {
     // property of the language, not an assumption about the data, which is why it belongs here
     // rather than in a per-site suppression. It clears a run of `skills.length`,
     // `result.pages.length`, `stats.raw.length` findings that were pure noise.
-    || /\.length$/.test(e);
+    || /\.length$/.test(e)
+    // ARITHMETIC RESULTS. Like `.length`, these are language-level guarantees rather than claims
+    // about the data: `Math.round` and friends return a Number for ANY input (NaN at worst), and
+    // `.toFixed()` returns a String of digits. Needed now that isMethodCall() is in the filter,
+    // which would otherwise flag `${Math.round(i.confidence * 100)}` as an unescaped method call.
+    // NOTE what is deliberately ABSENT: `.toLocaleString()`. It looks like a sibling of `.toFixed()`
+    // but it is Object.prototype's, so on a string it returns that string UNCHANGED — a pass-through
+    // wearing a formatter's name. That is exactly how `v.score` reached innerHTML unescaped.
+    || /^Math\.(round|floor|ceil|abs|min|max)\(/.test(e)
+    || /\.toFixed\(\d*\)$/.test(e);
 }
 
 const rules = [
@@ -205,8 +214,19 @@ const fileRules = [
         // because it sits on a different line from the `innerHTML =`.
         const isPropertyRead = (e) => /^[a-zA-Z_$][\w$]*\.[\w$.]+$/.test(e);
         const isCall = (e) => /^[a-zA-Z_$][\w$]*\(/.test(e);
+        // METHOD CALLS ON A PROPERTY PATH — the gap that let `${e.model.replace('a','b')}` through
+        // BOTH detectors: isPropertyRead rejects anything containing parens, and isCall requires the
+        // expression to START with `ident(`, which `e.model.replace(` does not.
+        // This is not hypothetical — `dashboard/js/app.js:2655` had exactly that shape, sitting on
+        // the same line as a value the rule DID report, so the span looked reviewed.
+        // It matters because the common string methods are PASS-THROUGHS, the `capitalize` lesson
+        // again: `.replace()` returns the input unchanged when the pattern does not match,
+        // `.slice()` and `.join()` return their input's content, and `.toLocaleString()` is a no-op
+        // on a string (Object.prototype) — which is how v.score reached innerHTML unescaped.
+        const isMethodCall = (e) => /^[a-zA-Z_$][\w$]*\.[\w$.]*\(/.test(e);
         const bad = interpolations(body).filter((e) =>
-          !e.includes('`') && !safeInterp(e) && !/\?[\s\S]*:/.test(e) && (isPropertyRead(e) || isCall(e)));
+          !e.includes('`') && !safeInterp(e) && !/\?[\s\S]*:/.test(e)
+          && (isPropertyRead(e) || isCall(e) || isMethodCall(e)));
         if (!bad.length) continue;
         out.push({
           line: text.slice(0, m.index).split('\n').length,

@@ -571,7 +571,7 @@ function showUpgradeModal(requiredTier, featureName) {
       <div style="font-size:48px;margin-bottom:16px;">🚀</div>
       <h2 style="margin:0 0 8px;font-size:20px;color:var(--text,#f1f5f9);">${tierLabel} Feature</h2>
       <p style="color:var(--text-muted,#94a3b8);margin:0 0 20px;font-size:14px;line-height:1.5;">
-        <strong>${featureName.replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase())}</strong> requires an active ${tierLabel} license (${price}).
+        <strong>${escapeHtml(featureName.replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase()))}</strong> requires an active ${tierLabel} license (${price}).
       </p>
       <div style="display:flex;gap:12px;justify-content:center;">
         <a href="${checkoutUrl}" target="_blank" style="padding:10px 24px;background:linear-gradient(135deg,#3b82f6,#8b5cf6);color:#fff;border-radius:8px;text-decoration:none;font-weight:600;font-size:14px;">Upgrade Now</a>
@@ -3527,6 +3527,11 @@ function renderContextResolved(data) {
   const rules = r.rules || {};
   const rulesEntries = Object.entries(rules);
   const strategy = r.strategy || {};
+  // Hoisted so the escaping is visible at a glance and the value reaches the template as a
+  // pre-built fragment. `.map(escapeHtml).join(', ')` is safe — every element is escaped and the
+  // separator is a literal — but seclint's method-call detector cannot see that from the call site,
+  // and suppressing the span would also silence anything added to it later.
+  const competitorList = (strategy.competitors || []).map((c) => escapeHtml(c)).join(', ');
   const stakeholders = r.stakeholders || [];
   const agentOverrides = r.agent_overrides || {};
 
@@ -3565,7 +3570,7 @@ function renderContextResolved(data) {
         <div class="context-resolved-items">
           ${strategy.icp ? `<div class="context-resolved-item"><span class="context-resolved-key">ICP</span><span class="context-resolved-val">${escapeHtml(strategy.icp)}</span></div>` : ''}
           ${strategy.current_phase ? `<div class="context-resolved-item"><span class="context-resolved-key">Phase</span><span class="context-resolved-val">${escapeHtml(strategy.current_phase)}</span></div>` : ''}
-          ${(strategy.competitors || []).length > 0 ? `<div class="context-resolved-item"><span class="context-resolved-key">Competitors</span><span class="context-resolved-val">${strategy.competitors.map(c => escapeHtml(c)).join(', ')}</span></div>` : ''}
+          ${(strategy.competitors || []).length > 0 ? `<div class="context-resolved-item"><span class="context-resolved-key">Competitors</span><span class="context-resolved-val">${competitorList}</span></div>` : ''}
         </div>
       </div>
       ${rulesEntries.length > 0 ? `
@@ -4506,7 +4511,7 @@ async function exportDesignSystem() {
       <div class="design-export-preview">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
           <span class="badge badge-success">${escapeHtml(result.filename)}</span>
-          <span style="color:var(--text-muted);font-size:11px;">Compatible: ${result.compatibleWith.join(', ')}</span>
+          <span style="color:var(--text-muted);font-size:11px;">Compatible: ${escapeHtml(result.compatibleWith.join(', '))}</span>
         </div>
         <pre class="design-export-code">${escapeHtml(result.content.substring(0, 600))}${result.content.length > 600 ? '\n...' : ''}</pre>
       </div>
@@ -6734,9 +6739,9 @@ function renderReportTemplates() {
           <div style="margin-top:6px;font-size:12px;">Formats: ${t.formats.map(f => f.toUpperCase()).join(', ')}</div>
         </div>
         <div style="display:flex; gap:6px;">
-          <button class="btn btn-sm btn-primary" onclick="generateReport('${t.id}', 'pdf')">PDF</button>
-          ${t.formats.includes('csv') ? `<button class="btn btn-sm" onclick="generateReport('${t.id}', 'csv')">CSV</button>` : ''}
-          <button class="btn btn-sm" onclick="showScheduleReportModal('${t.id}')" title="Schedule">&#128339;</button>
+          <button class="btn btn-sm btn-primary" data-report-id="${escapeHtml(t.id)}" onclick="generateReport(this.dataset.reportId, 'pdf')">PDF</button>
+          ${t.formats.includes('csv') ? `<button class="btn btn-sm" data-report-id="${escapeHtml(t.id)}" onclick="generateReport(this.dataset.reportId, 'csv')">CSV</button>` : ''}
+          <button class="btn btn-sm" data-report-id="${escapeHtml(t.id)}" onclick="showScheduleReportModal(this.dataset.reportId)" title="Schedule">&#128339;</button>
         </div>
       </div>
     </div>
@@ -6828,7 +6833,7 @@ function showScheduleReportModal(templateId) {
   const modal = document.getElementById('reportModal');
   document.getElementById('reportModalContent').innerHTML = `
     <h3>Schedule Report</h3>
-    <div class="settings-field"><label>Report</label><input type="text" value="${templateId.replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase())}" disabled></div>
+    <div class="settings-field"><label>Report</label><input type="text" value="${escapeHtml(templateId.replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase()))}" disabled></div>
     <div class="settings-field"><label>Frequency</label>
       <select id="schedFrequency">
         <option value="daily">Daily</option>

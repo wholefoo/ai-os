@@ -124,6 +124,58 @@ ok('DOES flag capitalize() — it returns its input, so it is not a safe formatt
   assert.ok(hits.length > 0, 'capitalize() is a pass-through and must be flagged in a multi-line span');
 });
 
+// --- METHOD CALLS ON A PROPERTY PATH. The gap that hid four spans. ----------------------------
+// `${e.model.replace('a','b')}` fell through BOTH detectors: isPropertyRead rejects anything with
+// parens, isCall requires the expression to START with `ident(`. It was live at app.js:2655, on the
+// SAME LINE as a value the rule did report — so the span looked reviewed. The string methods are
+// pass-throughs (`.replace()` returns the input unchanged when the pattern misses), which is the
+// capitalize lesson wearing different clothes.
+ok('FLAGS a method call on a property path — the .replace() pass-through gap', () => {
+  const src = [
+    'function render(a) {',
+    '  el.innerHTML = ' + BT + '',
+    '    <div>',
+    "      <span>${a.model.replace('x', 'y')}</span>",
+    '    </div>',
+    '  ' + BT + ';',
+    '}',
+  ].join('\n');
+  const hits = scan(src).filter((h) => h.rule === 'innerhtml-multiline');
+  assert.ok(hits.length > 0, 'obj.prop.method(...) must be flagged — .replace() escapes nothing');
+});
+
+// Arithmetic is a language-level guarantee, so it must NOT fire once method calls are in scope.
+ok('does NOT flag Math.round(...) or .toFixed(n)', () => {
+  const src = [
+    'function render(a) {',
+    '  el.innerHTML = ' + BT + '',
+    '    <div>',
+    '      <span>${Math.round(a.confidence * 100)}%</span>',
+    '      <span>${a.cost.toFixed(2)}</span>',
+    '    </div>',
+    '  ' + BT + ';',
+    '}',
+  ].join('\n');
+  assert.deepStrictEqual(scan(src).filter((h) => h.rule === 'innerhtml-multiline'), []);
+});
+
+// .toLocaleString() is the trap: it LOOKS like .toFixed()'s sibling but it is Object.prototype's,
+// so on a string it returns that string unchanged. That is how v.score reached innerHTML unescaped
+// (8759382). If someone adds it beside .toFixed in safeInterp, this test is what stops them.
+ok('DOES flag .toLocaleString() — a no-op pass-through on a string, not a formatter', () => {
+  const src = [
+    'function render(a) {',
+    '  el.innerHTML = ' + BT + '',
+    '    <div>',
+    '      <span>${a.views.toLocaleString()}</span>',
+    '    </div>',
+    '  ' + BT + ';',
+    '}',
+  ].join('\n');
+  const hits = scan(src).filter((h) => h.rule === 'innerhtml-multiline');
+  assert.ok(hits.length > 0, '.toLocaleString() on a string returns it unchanged — must be flagged');
+});
+
 // --- A nested template literal must not truncate the scan. ------------------------------------
 // A naive indexOf('`') stops at the first nested template and silently checks only part of the span.
 ok('handles a nested template literal without truncating the span', () => {
