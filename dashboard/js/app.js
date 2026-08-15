@@ -1492,10 +1492,10 @@ function renderOutcomeRun(run) {
     <div class="skill-exec-progress">
       <div class="skill-exec-header">
         <span class="skill-exec-name">${escapeHtml((run.goal || 'Stated outcome').slice(0, 90))}</span>
-        <span class="skill-exec-status ${run.status}">${escapeHtml(phase)}</span>
+        <span class="skill-exec-status ${escapeHtml(run.status)}">${escapeHtml(phase)}</span>
       </div>
       <div class="skill-exec-bar-wrap">
-        <div class="skill-exec-bar ${(run.progress || 0) >= 100 ? 'complete' : ''}" style="width:${run.progress || 0}%"></div>
+        <div class="skill-exec-bar ${(run.progress || 0) >= 100 ? 'complete' : ''}" style="width:${Number(run.progress) || 0}%"></div>
       </div>
       ${members.length ? `
         <div style="margin-top:10px;">
@@ -1514,7 +1514,7 @@ function renderOutcomeRun(run) {
           ? `<span title="the orchestrator named agents that do not exist; they were dropped before dispatch">Dropped: ${escapeHtml(run.droppedAgents.join(', '))}</span>` : ''}
       </div>
       ${v ? `<div style="margin-top:10px;font-size:13px;">
-          Verdict: <strong>${escapeHtml(v.verdict)}</strong> &middot; ${v.score}/100
+          Verdict: <strong>${escapeHtml(v.verdict)}</strong> &middot; ${Number(v.score)}/100
           <span style="color:var(--text-muted);"> — graded against your criteria plus the lead agent's own</span>
         </div>` : (run.status === 'completed' ? '<div style="margin-top:10px;font-size:12px;color:var(--text-muted);">Grading…</div>' : '')}
       ${run.error ? `<div style="margin-top:10px;font-size:13px;color:var(--danger,#e5534b);">${escapeHtml(run.error)}</div>
@@ -3283,7 +3283,7 @@ function renderVerifyHistory(history) {
           <span class="verify-verdict-tag ${verdictClass}">${v.status === 'running' ? 'Running...' : v.verdict}</span>
         </div>
         <div class="verify-score-gauge">
-          <div class="verify-score-ring ${verdictClass}">${v.score}</div>
+          <div class="verify-score-ring ${verdictClass}">${Number(v.score)}</div>
           <div>
             <div style="font-size:12px;color:var(--text-secondary);">${escapeHtml(v.rubricName || v.category)}</div>
             <div class="verify-score-breakdown">
@@ -5733,19 +5733,19 @@ function renderHermesStatus(status) {
         <div class="hermes-stat-label">MCP Status</div>
       </div>
       <div class="hermes-stat">
-        <div class="hermes-stat-value">${status.endpoint}</div>
+        <div class="hermes-stat-value">${escapeHtml(status.endpoint)}</div>
         <div class="hermes-stat-label">Endpoint</div>
       </div>
       <div class="hermes-stat">
-        <div class="hermes-stat-value">${status.stats.tasksCompleted}</div>
+        <div class="hermes-stat-value">${Number(status.stats.tasksCompleted)}</div>
         <div class="hermes-stat-label">Tasks Completed</div>
       </div>
       <div class="hermes-stat">
-        <div class="hermes-stat-value">${status.stats.cronExecutions}</div>
+        <div class="hermes-stat-value">${Number(status.stats.cronExecutions)}</div>
         <div class="hermes-stat-label">Cron Executions</div>
       </div>
       <div class="hermes-stat">
-        <div class="hermes-stat-value">${status.stats.approvalsPending}</div>
+        <div class="hermes-stat-value">${Number(status.stats.approvalsPending)}</div>
         <div class="hermes-stat-label">Approvals Pending</div>
       </div>
       <div class="hermes-stat">
@@ -9435,11 +9435,11 @@ async function seoGenerateCalendar(auditId) {
           <div class="seo-calendar-week-label">${escapeHtml(w.week)}</div>
           <div class="seo-calendar-items">
             ${w.items.map(item => `
-              <div class="seo-calendar-item seo-cal-${item.type}">
-                <span class="seo-cal-type">${item.type}</span>
+              <div class="seo-calendar-item seo-cal-${escapeHtml(item.type)}">
+                <span class="seo-cal-type">${escapeHtml(item.type)}</span>
                 <span class="seo-cal-title">${escapeHtml(item.title)}</span>
-                <span class="seo-cal-effort">${item.effort}</span>
-                <span class="seo-impact seo-impact-${item.priority}">${item.priority}</span>
+                <span class="seo-cal-effort">${escapeHtml(item.effort)}</span>
+                <span class="seo-impact seo-impact-${escapeHtml(item.priority)}">${escapeHtml(item.priority)}</span>
               </div>
             `).join('')}
           </div>
