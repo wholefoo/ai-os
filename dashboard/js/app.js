@@ -7211,14 +7211,14 @@ async function viewYTAnalysis(analysisId) {
       </div>
 
       <div class="yt-video-meta">
-        <img src="https://img.youtube.com/vi/${analysis.videoId}/mqdefault.jpg" alt="thumb" class="yt-report-thumb">
+        <img src="https://img.youtube.com/vi/${escapeHtml(analysis.videoId)}/mqdefault.jpg" alt="thumb" class="yt-report-thumb">
         <div class="yt-meta-details">
           <div class="yt-meta-row"><strong>Channel:</strong> ${escapeHtml(info.channel || 'Unknown')}</div>
-          <div class="yt-meta-row"><strong>Duration:</strong> ${info.duration || 'Unknown'}</div>
-          <div class="yt-meta-row"><strong>Views:</strong> ${info.views ? info.views.toLocaleString() : 'N/A'}</div>
-          <div class="yt-meta-row"><strong>Likes:</strong> ${info.likes ? info.likes.toLocaleString() : 'N/A'}</div>
+          <div class="yt-meta-row"><strong>Duration:</strong> ${escapeHtml(info.duration || 'Unknown')}</div>
+          <div class="yt-meta-row"><strong>Views:</strong> ${info.views ? Number(info.views).toLocaleString() : 'N/A'}</div>
+          <div class="yt-meta-row"><strong>Likes:</strong> ${info.likes ? Number(info.likes).toLocaleString() : 'N/A'}</div>
           <div class="yt-meta-row"><strong>Frames analyzed:</strong> ${visuals.length}</div>
-          <div class="yt-meta-row"><strong>Analysis type:</strong> ${analysis.type}</div>
+          <div class="yt-meta-row"><strong>Analysis type:</strong> ${escapeHtml(analysis.type)}</div>
         </div>
       </div>
 
@@ -7226,9 +7226,9 @@ async function viewYTAnalysis(analysisId) {
         <h3 class="panel-title">Summary</h3>
         <p class="yt-summary-text">${escapeHtml(summary.overview || '')}</p>
         <div class="yt-summary-meta">
-          <div><strong>Content Type:</strong> ${summary.contentType || 'N/A'}</div>
-          <div><strong>Level:</strong> ${summary.technicalLevel || 'N/A'}</div>
-          <div><strong>Actionability:</strong> ${summary.actionability || 'N/A'}</div>
+          <div><strong>Content Type:</strong> ${escapeHtml(summary.contentType || 'N/A')}</div>
+          <div><strong>Level:</strong> ${escapeHtml(summary.technicalLevel || 'N/A')}</div>
+          <div><strong>Actionability:</strong> ${escapeHtml(summary.actionability || 'N/A')}</div>
         </div>
         <div class="yt-topics" style="margin-top:10px;">${topicsHtml}</div>
       </section>

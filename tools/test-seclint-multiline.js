@@ -11,7 +11,7 @@
 //
 //  THE REFINEMENT IS THE DIFFERENCE BETWEEN A GATE AND NOISE. Flagging every unescaped
 //  interpolation in these spans gives 52 findings across 256 values. Restricting to property reads
-//  plus non-allowlisted calls gives 25, and triage has since brought it to 18. The bare locals it drops are pre-built HTML fragments and
+//  plus non-allowlisted calls gives 25, and triage has since brought it to 17. The bare locals it drops are pre-built HTML fragments and
 //  computed class names. A 52-item list gets switched off, which is the same reasoning that keeps
 //  --audit-level at high in CI.
 //
@@ -154,16 +154,16 @@ ok('respects a seclint-ok comment on the innerHTML line', () => {
 });
 
 // --- THE REPO'S CURRENT COUNT, pinned. --------------------------------------------------------
-// This is a RATCHET, not a target: the rule ships at `warn` with 18 known findings. If the number
+// This is a RATCHET, not a target: the rule ships at `warn` with 17 known findings. If the number
 // grows, someone added a new unescaped multi-line render. If it shrinks, someone did the triage —
 // update this and move toward promoting the rule to `error`.
-ok('the repo has exactly the 18 known findings (ratchet — see the handoff)', () => {
+ok('the repo has exactly the 17 known findings (ratchet — see the handoff)', () => {
   let out = '';
   try { out = execFileSync('node', [SECLINT, '--ci'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }); }
   catch (e) { out = String(e.stdout || '') + String(e.stderr || ''); }
   const n = (out.match(/\(innerhtml-multiline\)/g) || []).length;
-  assert.strictEqual(n, 18,
-    `expected 18 known innerhtml-multiline findings, got ${n}. If you FIXED some, lower this number. `
+  assert.strictEqual(n, 17,
+    `expected 17 known innerhtml-multiline findings, got ${n}. If you FIXED some, lower this number. `
     + 'If you ADDED a multi-line innerHTML with an unescaped property read, escape it.');
 });
 
