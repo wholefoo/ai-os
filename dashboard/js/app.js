@@ -602,7 +602,7 @@ function renderQuickActions() {
            the value was and broke every icon. Entity strings from a fixed lookup are not user data;
            they are markup. -->
       <span class="action-icon">${a.icon}</span>
-      <span>${capitalize(a.name.replace(/-/g, ' '))}</span>
+      <span>${escapeHtml(capitalize(a.name.replace(/-/g, ' ')))}</span>
     </button>
   `).join('') || '<div class="empty-state">No skills configured</div>';
 }
@@ -1152,7 +1152,7 @@ function renderSkillsGrid(skills) {
       <div class="skill-card" data-skill-file="${escapeHtml(s.filename)}" onclick="${action}">
         <div class="skill-card-icon">${icon}</div>
         <div class="skill-card-header">
-          <span class="skill-name">${capitalize(name.replace(/-/g, ' '))}</span>
+          <span class="skill-name">${escapeHtml(capitalize(name.replace(/-/g, ' ')))}</span>
           <span class="skill-category ${category}">${category}</span>
         </div>
         <div class="skill-desc">${escapeHtml(s.meta?.description || '')}</div>
@@ -1207,7 +1207,7 @@ function renderSkillsExecutions() {
     return `
       <div class="skill-exec-progress">
         <div class="skill-exec-header">
-          <span class="skill-exec-name">${capitalize((exec.skillName || exec.skill).replace('.md', '').replace(/-/g, ' '))}</span>
+          <span class="skill-exec-name">${escapeHtml(capitalize((exec.skillName || exec.skill).replace('.md', '').replace(/-/g, ' ')))}</span>
           <span class="skill-exec-status ${exec.status}">${exec.status}</span>
         </div>
         <div class="skill-exec-bar-wrap">
@@ -1538,7 +1538,7 @@ async function loadWorkflows() {
       <div class="workflow-info">
         <span class="workflow-status ${w.status}"></span>
         <div>
-          <div class="workflow-name">${capitalize(w.skill.replace('.md', '').replace(/-/g, ' '))}</div>
+          <div class="workflow-name">${escapeHtml(capitalize(w.skill.replace('.md', '').replace(/-/g, ' ')))}</div>
           <div class="workflow-time">${new Date(w.startedAt).toLocaleString()}</div>
         </div>
       </div>
@@ -3032,7 +3032,7 @@ async function launchPipeline(name) {
     return `<div style="margin-bottom:10px;"><label style="font-size:12px;font-weight:600;display:block;margin-bottom:2px;">${escapeHtml(key)}${req}</label>${desc}${field}</div>`;
   }).join('');
   showModal('Launch Pipeline', `
-    <p>Execute <strong>${capitalize(name.replace(/-/g, ' '))}</strong>?</p>
+    <p>Execute <strong>${escapeHtml(capitalize(name.replace(/-/g, ' ')))}</strong>?</p>
     ${fields || '<p style="color:var(--text-secondary);font-size:13px;">No parameters required.</p>'}
     <div id="launchErr" style="color:#ef4444;font-size:12px;margin-top:4px;"></div>
     <p style="color: var(--text-secondary); font-size: 12px; margin-top: 8px;">Chains agents in sequence with real model calls (spends tokens). Live progress in the Pipelines view.</p>
@@ -3279,7 +3279,7 @@ function renderVerifyHistory(history) {
     return `
       <div class="verify-report">
         <div class="verify-report-header">
-          <span class="verify-report-name">${capitalize(escapeHtml(v.skillName).replace(/-/g, ' '))}${overrideTag}</span>
+          <span class="verify-report-name">${escapeHtml(capitalize(v.skillName.replace(/-/g, ' ')))}${overrideTag}</span>
           <span class="verify-verdict-tag ${verdictClass}">${v.status === 'running' ? 'Running...' : v.verdict}</span>
         </div>
         <div class="verify-score-gauge">
@@ -3345,7 +3345,7 @@ function showManualVerifyModal() {
   const recentExecs = state.workflows.filter(w => w.status === 'completed').slice(0, 5);
 
   const execOptions = recentExecs.length > 0
-    ? recentExecs.map(w => `<option value="${w.id}">${capitalize((w.skillName || w.skill).replace('.md', '').replace(/-/g, ' '))} (${timeAgo(w.startedAt)})</option>`).join('')
+    ? recentExecs.map(w => `<option value="${w.id}">${escapeHtml(capitalize((w.skillName || w.skill).replace('.md', '').replace(/-/g, ' ')))} (${timeAgo(w.startedAt)})</option>`).join('')
     : '<option value="">No recent executions</option>';
 
   showModal('Run Verification', `
@@ -9074,7 +9074,7 @@ function renderOmniResult(type, result) {
       <div class="omni-result-header">
         <span class="omni-result-icon">${icon}</span>
         <div>
-          <strong>${capitalize(type)} Generated</strong>
+          <strong>${escapeHtml(capitalize(type))} Generated</strong>
           <div style="font-size:12px; color:var(--text-muted);">${escapeHtml(result.prompt.substring(0, 100))}${result.prompt.length > 100 ? '...' : ''}</div>
         </div>
         <span class="omni-result-badge">${escapeHtml(result.model)}</span>
