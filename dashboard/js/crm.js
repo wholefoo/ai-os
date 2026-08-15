@@ -396,6 +396,10 @@ async function crmOpenContact(id) {
   const stageOpts = CRM_STAGES.map((s) => `<option value="${s}" ${c.stage === s ? 'selected' : ''}>${s}</option>`).join('');
   const linkOpts = crmState.unassigned.map((s) => `<option value="${s.id}">${escapeHtml(s.name || s.domain || s.id)}${s.domain ? ' (' + escapeHtml(s.domain) + ')' : ''}</option>`).join('');
 
+  // seclint-ok: every value below is escaped at source — crmTags() interpolates only literal
+  // spans chosen by booleans, and ro()/stageOpts/linkOpts all call escapeHtml. Verified by reading
+  // each helper, not by shape.
+  // seclint-disable-next-line innerhtml-multiline
   el.innerHTML = `
     <div class="ws-row" style="justify-content:space-between;align-items:start;">
       <h3 class="panel-title" style="margin:0;">${escapeHtml(c.name || c.email)}</h3>

@@ -195,6 +195,9 @@ async function wsLoadManage() {
       <span class="an-path" title="${escapeHtml(l.message || '')}">${escapeHtml((l.message || '').slice(0, 90))}</span>
       <span class="an-time">${timeAgo(l.at)}</span>
     </div>`).join('') : '<div class="an-empty">No leads yet. The contact form on your site feeds this inbox automatically.</div>';
+  // seclint-ok: the only interpolations are stat(v,label), which does escapeHtml(String(v)) and
+  // escapeHtml(label) internally. Verified by reading the helper at line 187.
+  // seclint-disable-next-line innerhtml-multiline
   pane.innerHTML = `
     <div class="an-stats" style="margin-top:10px;">
       ${stat(s.status || '—', 'Status')}${stat(s.domain || 'not set', 'Domain')}${stat(views, 'Pageviews (30d)')}${stat(aiHits, 'AI crawler hits')}${stat(aiRefs, 'AI-referred visits')}${stat(leads.length, 'Leads')}

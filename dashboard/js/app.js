@@ -8897,8 +8897,8 @@ function renderOrgChart(org) {
             <div class="hq-avatar-typing"><div class="hq-typing-dots"><span></span><span></span><span></span></div></div>
           </div>
           <div class="hq-emp-info">
-            <div class="hq-emp-name">${statusDot} ${emp.name}</div>
-            <div class="hq-emp-title">${emp.title}</div>
+            <div class="hq-emp-name">${statusDot} ${escapeHtml(emp.name)}</div>
+            <div class="hq-emp-title">${escapeHtml(emp.title)}</div>
           </div>
           <span class="hq-tier-badge hq-tier-${tierClass}">${emp.tier}</span>
         </div>
@@ -8934,24 +8934,24 @@ async function showEmployee(empId, el) {
     <div class="hq-profile">
       <div class="hq-profile-avatar">${AVATAR_MAP[(data.name || '').toLowerCase()] ? renderAvatar(data.name, 'lg') : data.avatar}</div>
       <div class="hq-profile-info">
-        <h3>${data.name}</h3>
-        <div class="hq-profile-title">${data.title}</div>
-        <div class="hq-profile-dept">${data.department}</div>
+        <h3>${escapeHtml(data.name)}</h3>
+        <div class="hq-profile-title">${escapeHtml(data.title)}</div>
+        <div class="hq-profile-dept">${escapeHtml(data.department)}</div>
       </div>
-      <span class="hq-tier-badge hq-tier-${tierClass}">${data.tier}</span>
+      <span class="hq-tier-badge hq-tier-${tierClass}">${escapeHtml(data.tier)}</span>
     </div>
     <div class="hq-profile-details">
-      <div class="hq-detail-row"><span class="hq-detail-key">Agent</span><span class="hq-detail-val"><code>${data.agent}</code></span></div>
+      <div class="hq-detail-row"><span class="hq-detail-key">Agent</span><span class="hq-detail-val"><code>${escapeHtml(data.agent)}</code></span></div>
       <div class="hq-detail-row"><span class="hq-detail-key">Model</span><span class="hq-detail-val">${routing}</span></div>
-      <div class="hq-detail-row"><span class="hq-detail-key">Status</span><span class="hq-detail-val hq-status-${data.status}">${data.status}</span></div>
-      <div class="hq-detail-row"><span class="hq-detail-key">Reports To</span><span class="hq-detail-val">${data.reportsTo || 'Board'}</span></div>
+      <div class="hq-detail-row"><span class="hq-detail-key">Status</span><span class="hq-detail-val hq-status-${escapeHtml(data.status)}">${escapeHtml(data.status)}</span></div>
+      <div class="hq-detail-row"><span class="hq-detail-key">Reports To</span><span class="hq-detail-val">${escapeHtml(data.reportsTo || 'Board')}</span></div>
     </div>
-    <div class="hq-profile-desc">${data.desc}</div>
+    <div class="hq-profile-desc">${escapeHtml(data.desc)}</div>
     <div class="hq-dispatch">
       <h4>Dispatch Task</h4>
       <div class="settings-input-row">
         <input type="text" class="settings-input" id="hqTaskInput" placeholder="Describe the task..." spellcheck="false">
-        <button class="btn btn-primary" onclick="dispatchHQTask('${data.id}')">Dispatch</button>
+        <button class="btn btn-primary" data-emp-id="${escapeHtml(data.id)}" onclick="dispatchHQTask(this.dataset.empId)">Dispatch</button>
       </div>
       <div id="hqDispatchResult" style="margin-top:10px;"></div>
     </div>
