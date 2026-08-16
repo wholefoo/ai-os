@@ -205,18 +205,38 @@ ok('respects a seclint-ok comment on the innerHTML line', () => {
   assert.deepStrictEqual(scan(src).filter((h) => h.rule === 'innerhtml-multiline'), []);
 });
 
-// --- THE REPO'S CURRENT COUNT, pinned. --------------------------------------------------------
-// This is a RATCHET, not a target: the rule ships at `warn` with 13 known findings. If the number
-// grows, someone added a new unescaped multi-line render. If it shrinks, someone did the triage —
-// update this and move toward promoting the rule to `error`.
-ok('the repo has exactly the 13 known findings (ratchet — see the handoff)', () => {
+// --- ZERO, AND THE RULE IS NOW `error`. -------------------------------------------------------
+// The ratchet is retired: the count went 25 -> 18 -> 17 -> 14 -> 13 -> 0 and the rule was promoted
+// from `warn` to `error`. There is no number to update any more — the target is zero and CI
+// enforces it. If this fails, do NOT raise a threshold and do NOT reach for `continue-on-error`
+// (see DEP-04): escape the value, or fix the rule if the finding is wrong.
+ok('the repo has ZERO innerhtml-multiline findings', () => {
   let out = '';
   try { out = execFileSync('node', [SECLINT, '--ci'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }); }
   catch (e) { out = String(e.stdout || '') + String(e.stderr || ''); }
   const n = (out.match(/\(innerhtml-multiline\)/g) || []).length;
-  assert.strictEqual(n, 13,
-    `expected 13 known innerhtml-multiline findings, got ${n}. If you FIXED some, lower this number. `
-    + 'If you ADDED a multi-line innerHTML with an unescaped property read, escape it.');
+  assert.strictEqual(n, 0, `expected ZERO innerhtml-multiline findings, got ${n}:\n${out}`);
+});
+
+// The promotion is only worth something if the rule actually FAILS the build. A rule at `error`
+// that still exits 0 is the same false comfort as a rule with a blind spot — assert the exit code,
+// not just the finding count.
+ok('a new unescaped multi-line span makes seclint EXIT NON-ZERO, not just warn', () => {
+  const f = path.join(TMP, 'ci-fixture.js');
+  fs.writeFileSync(f, [
+    'function render(a) {',
+    '  el.innerHTML = ' + BT + '',
+    '    <div>',
+    '      <span>${a.filename}</span>',
+    '    </div>',
+    '  ' + BT + ';',
+    '}',
+  ].join('\n'));
+  let code = 0;
+  try { execFileSync('node', [SECLINT, f], { stdio: ['ignore', 'pipe', 'pipe'] }); }
+  catch (e) { code = e.status || 1; }
+  assert.notStrictEqual(code, 0, 'seclint must exit non-zero on an innerhtml-multiline finding now '
+    + 'that the rule is at `error` — otherwise the promotion is cosmetic');
 });
 
 fs.rmSync(TMP, { recursive: true, force: true });

@@ -186,7 +186,21 @@ const rules = [
 const fileRules = [
   {
     id: 'innerhtml-multiline',
-    level: 'warn',
+    // PROMOTED FROM `warn` TO `error` once the repo reached ZERO findings (25 -> 0 across
+    // b3b36a3, c46f459, 8759382, 5826013 and this commit). It shipped at `warn` deliberately while
+    // findings remained: turning on `error` with a backlog fails CI on benign counters, and the
+    // next person reaches for `continue-on-error` — the exact failure DEP-04 existed to end.
+    //
+    // WHAT THE PROMOTION IS AND IS NOT. It is a guarantee that no NEW multi-line innerHTML span
+    // interpolates an unescaped property read or non-allowlisted call. It is NOT a guarantee that
+    // the dashboard is XSS-free: this rule cannot see `const rows = items.map(...)` assigned to
+    // innerHTML further down (crm.js has that shape), which needs dataflow analysis.
+    //
+    // Before trusting a clean run, remember the count was clean at 14 while the rule was BLIND to
+    // `obj.prop.method(...)` (fixed in 0233474). A rule reporting zero for a shape it cannot see
+    // looks exactly like a rule reporting zero because the code is clean. If you extend it, add a
+    // fixture to test-seclint-multiline.js and watch it FAIL first.
+    level: 'error',
     test(text) {
       const out = [];
       const re = /\.innerHTML\s*\+?=\s*`/g;
@@ -331,7 +345,14 @@ function main() {
   const targets = files.length ? files.map(f => path.resolve(f)) : defaultFileSet();
   const findings = targets.flatMap(scanFile);
   const errorCount = report(findings);
-  if (ci && errorCount > 0) process.exit(1);
+  // Exit non-zero on ERRORS in every mode, not only under --ci. A plain
+  // `node tools/seclint.js somefile.js` used to print "1 error(s)" and still exit 0, so any script,
+  // pre-commit hook or one-liner keying on the exit code read a real finding as a pass — the same
+  // shape of false comfort as a rule with a blind spot. Caught by the test that asserts the
+  // `error` promotion is more than cosmetic; without that test the promotion would have looked
+  // complete while a local run stayed silent. Warnings still exit 0 on purpose.
+  // (`--ci` remains the flag CI and package.json use; it no longer gates the exit code.)
+  if (errorCount > 0) process.exit(1);
 }
 
 main();

@@ -108,7 +108,7 @@ function renderProspects(run) {
     </tr>`;
   }).join('');
   box.innerHTML = `
-    <div style="font-size:12px;color:#888;margin-bottom:8px;">${run.count} found &middot; <b style="color:#22c55e;">${run.noWebsite} without websites</b> &middot; ${run.withEmail} with emails &middot; via ${escapeHtml(run.provider)}. Score = managed-website fit (hover for reasons).</div>
+    <div style="font-size:12px;color:#888;margin-bottom:8px;">${escapeHtml(run.count)} found &middot; <b style="color:#22c55e;">${escapeHtml(run.noWebsite)} without websites</b> &middot; ${escapeHtml(run.withEmail)} with emails &middot; via ${escapeHtml(run.provider)}. Score = managed-website fit (hover for reasons).</div>
     <div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;font-size:13px;">
       <thead><tr style="text-align:left;color:#888;font-size:11px;text-transform:uppercase;"><th style="padding:6px;"></th><th style="padding:6px;">Business</th><th style="padding:6px;">Rating</th><th style="padding:6px;">Website</th><th style="padding:6px;">Phone</th><th style="padding:6px;">Email</th><th style="padding:6px;">Fit</th><th style="padding:6px;"></th></tr></thead>
       <tbody>${rows}</tbody>

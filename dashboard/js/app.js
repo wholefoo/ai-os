@@ -2165,7 +2165,7 @@ function renderVaultStats(stats) {
   if (!container) return;
   container.innerHTML = `
     <div class="vault-stat">
-      <div class="vault-stat-value">${stats.totalFiles}</div>
+      <div class="vault-stat-value">${escapeHtml(stats.totalFiles)}</div>
       <div class="vault-stat-label">Total Files</div>
     </div>
     <div class="vault-stat">
@@ -2671,7 +2671,7 @@ function renderCostLedger(entries) {
         ${entries.map(e => `
           <tr>
             <td class="ledger-agent">${escapeHtml(e.agent)}</td>
-            <td><span class="ledger-model ${modelClass(e.model)}">${e.model.replace('opus-5-', 'Opus 5 ').replace('claude-4.7-', '')}</span></td>
+            <td><span class="ledger-model ${escapeHtml(modelClass(e.model))}">${escapeHtml(e.model.replace('opus-5-', 'Opus 5 ').replace('claude-4.7-', ''))}</span></td>
             <td>${escapeHtml(e.skill)}</td>
             <td class="ledger-tokens">${formatTokenCount(e.inputTokens)}</td>
             <td class="ledger-tokens">${formatTokenCount(e.outputTokens)}</td>
@@ -2794,19 +2794,19 @@ function renderSocialStats(stats) {
   if (!container) return;
   container.innerHTML = `
     <div class="radar-stat">
-      <div class="radar-stat-value total">${stats.total}</div>
+      <div class="radar-stat-value total">${escapeHtml(stats.total)}</div>
       <div class="radar-stat-label">Findings</div>
     </div>
     <div class="radar-stat">
-      <div class="radar-stat-value" style="color:var(--success);">${stats.positive}</div>
+      <div class="radar-stat-value" style="color:var(--success);">${escapeHtml(stats.positive)}</div>
       <div class="radar-stat-label">Positive</div>
     </div>
     <div class="radar-stat">
-      <div class="radar-stat-value" style="color:var(--warning);">${stats.mixed}</div>
+      <div class="radar-stat-value" style="color:var(--warning);">${escapeHtml(stats.mixed)}</div>
       <div class="radar-stat-label">Mixed</div>
     </div>
     <div class="radar-stat">
-      <div class="radar-stat-value" style="color:var(--accent);">${formatEngagement(stats.totalEngagement)}</div>
+      <div class="radar-stat-value" style="color:var(--accent);">${escapeHtml(formatEngagement(stats.totalEngagement))}</div>
       <div class="radar-stat-label">Total Engagement</div>
     </div>
   `;
@@ -3165,23 +3165,23 @@ function renderVerifyStats(stats) {
 
   container.innerHTML = `
     <div class="verify-stat">
-      <div class="verify-stat-value">${stats.total}</div>
+      <div class="verify-stat-value">${escapeHtml(stats.total)}</div>
       <div class="verify-stat-label">Total Checks</div>
     </div>
     <div class="verify-stat">
-      <div class="verify-stat-value pass">${stats.passed}</div>
+      <div class="verify-stat-value pass">${escapeHtml(stats.passed)}</div>
       <div class="verify-stat-label">Passed</div>
     </div>
     <div class="verify-stat">
-      <div class="verify-stat-value review">${stats.review}</div>
+      <div class="verify-stat-value review">${escapeHtml(stats.review)}</div>
       <div class="verify-stat-label">Needs Review</div>
     </div>
     <div class="verify-stat">
-      <div class="verify-stat-value fail">${stats.failed}</div>
+      <div class="verify-stat-value fail">${escapeHtml(stats.failed)}</div>
       <div class="verify-stat-label">Failed</div>
     </div>
     <div class="verify-stat">
-      <div class="verify-stat-value" style="color: ${stats.passRate >= 80 ? 'var(--success)' : stats.passRate >= 60 ? 'var(--warning)' : 'var(--error)'}">${stats.passRate}%</div>
+      <div class="verify-stat-value" style="color: ${stats.passRate >= 80 ? 'var(--success)' : stats.passRate >= 60 ? 'var(--warning)' : 'var(--error)'}">${escapeHtml(stats.passRate)}%</div>
       <div class="verify-stat-label">Pass Rate</div>
     </div>
   `;
@@ -3767,15 +3767,15 @@ function renderGrokStats(stats) {
 
   container.innerHTML = `
     <div class="grok-stat">
-      <div class="grok-stat-value">${stats.total}</div>
+      <div class="grok-stat-value">${escapeHtml(stats.total)}</div>
       <div class="grok-stat-label">Total Queries</div>
     </div>
     <div class="grok-stat">
-      <div class="grok-stat-value" style="color: var(--success);">${stats.completed}</div>
+      <div class="grok-stat-value" style="color: var(--success);">${escapeHtml(stats.completed)}</div>
       <div class="grok-stat-label">Completed</div>
     </div>
     <div class="grok-stat">
-      <div class="grok-stat-value" style="color: var(--accent);">${stats.streaming}</div>
+      <div class="grok-stat-value" style="color: var(--accent);">${escapeHtml(stats.streaming)}</div>
       <div class="grok-stat-label">Streaming</div>
     </div>
     <div class="grok-stat">
@@ -5853,7 +5853,7 @@ function renderHermesCron(jobs) {
       <td>${j.nextRun ? new Date(j.nextRun).toLocaleTimeString() : '—'}</td>
       <td>${j.runs || 0}</td>
       <td>${escapeHtml(j.notifyVia || 'ws')}</td>
-      <td><button class="btn btn-danger btn-sm" onclick="deleteHermesCron('${j.id}')">&#10005;</button></td>
+      <td><button class="btn btn-danger btn-sm" data-cron-id="${escapeHtml(j.id)}" onclick="deleteHermesCron(this.dataset.cronId)">&#10005;</button></td>
     </tr>`).join('')}
   </tbody></table>`;
 }
@@ -8847,11 +8847,11 @@ function renderHQStats(stats) {
   const tierLabel = (stats.tier || 'community').charAt(0).toUpperCase() + (stats.tier || 'community').slice(1);
   container.innerHTML = `
     <div class="hq-stat"><div class="hq-stat-value" style="color:${tierColor};">${tierLabel}</div><div class="hq-stat-label">License Tier</div></div>
-    <div class="hq-stat"><div class="hq-stat-value">${stats.totalEmployees}</div><div class="hq-stat-label">Total Agents</div></div>
-    <div class="hq-stat"><div class="hq-stat-value">${stats.departments}</div><div class="hq-stat-label">Departments</div></div>
+    <div class="hq-stat"><div class="hq-stat-value">${escapeHtml(stats.totalEmployees)}</div><div class="hq-stat-label">Total Agents</div></div>
+    <div class="hq-stat"><div class="hq-stat-value">${escapeHtml(stats.departments)}</div><div class="hq-stat-label">Departments</div></div>
     <div class="hq-stat"><div class="hq-stat-value" style="color:var(--success);">${stats.byStatus?.active || 0}</div><div class="hq-stat-label">Active</div></div>
     <div class="hq-stat"><div class="hq-stat-value" style="color:var(--text-muted);">${stats.byStatus?.idle || 0}</div><div class="hq-stat-label">Idle</div></div>
-    <div class="hq-stat"><div class="hq-stat-value">${stats.cSuite}</div><div class="hq-stat-label">C-Suite</div></div>
+    <div class="hq-stat"><div class="hq-stat-value">${escapeHtml(stats.cSuite)}</div><div class="hq-stat-label">C-Suite</div></div>
   `;
 
   // Upgrade banner for community users
@@ -8868,7 +8868,7 @@ function renderHQStats(stats) {
           <span style="font-size:24px;">&#128640;</span>
           <div>
             <div style="font-size:16px;font-weight:700;color:var(--text,#f1f5f9);">Unlock the Full AI OS Platform</div>
-            <div style="font-size:13px;color:var(--text-muted,#94a3b8);margin-top:2px;">You're on the Community edition with ${stats.totalEmployees} agents and ${stats.departments} departments.</div>
+            <div style="font-size:13px;color:var(--text-muted,#94a3b8);margin-top:2px;">You're on the Community edition with ${escapeHtml(stats.totalEmployees)} agents and ${escapeHtml(stats.departments)} departments.</div>
           </div>
         </div>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">
@@ -9377,16 +9377,16 @@ async function viewSeoAudit(auditId) {
         <h3 class="panel-title">Post-Audit Actions</h3>
         <p style="font-size:13px; color:var(--text-secondary); margin-bottom:14px;">Generate deliverables from this audit's findings to accelerate implementation.</p>
         <div class="seo-action-btns">
-          <button class="btn btn-primary" onclick="seoGenerateBriefs('${audit.id}')">
+          <button class="btn btn-primary" data-audit-id="${escapeHtml(audit.id)}" onclick="seoGenerateBriefs(this.dataset.auditId)">
             <span class="seo-action-icon">&#128221;</span> Draft Content Briefs
           </button>
-          <button class="btn btn-primary" onclick="seoGenerateCalendar('${audit.id}')">
+          <button class="btn btn-primary" data-audit-id="${escapeHtml(audit.id)}" onclick="seoGenerateCalendar(this.dataset.auditId)">
             <span class="seo-action-icon">&#128197;</span> Generate Content Calendar
           </button>
-          <button class="btn btn-primary" onclick="seoOptimizeMeta('${audit.id}')">
+          <button class="btn btn-primary" data-audit-id="${escapeHtml(audit.id)}" onclick="seoOptimizeMeta(this.dataset.auditId)">
             <span class="seo-action-icon">&#127991;</span> Optimize Meta Tags
           </button>
-          <button class="btn" onclick="generateSeoReport('${audit.id}')">
+          <button class="btn" data-audit-id="${escapeHtml(audit.id)}" onclick="generateSeoReport(this.dataset.auditId)">
             <span class="seo-action-icon">&#128196;</span> Export PDF Report
           </button>
         </div>
@@ -9430,9 +9430,9 @@ async function seoGenerateBriefs(auditId) {
           <div class="seo-brief-info">
             <strong>${escapeHtml(b.title)}</strong>
             <div class="seo-brief-meta">
-              <span class="seo-impact seo-impact-${b.priority}">${b.priority}</span>
-              <span>${b.wordCount} words</span>
-              <span class="seo-intent-badge">${b.intent}</span>
+              <span class="seo-impact seo-impact-${escapeHtml(b.priority)}">${escapeHtml(b.priority)}</span>
+              <span>${escapeHtml(b.wordCount)} words</span>
+              <span class="seo-intent-badge">${escapeHtml(b.intent)}</span>
               <span>Target: <code>${escapeHtml(b.targetKeyword)}</code></span>
             </div>
           </div>
