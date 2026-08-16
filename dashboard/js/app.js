@@ -1686,6 +1686,25 @@ function escapeHtml(str) {
     .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 }
 
+// A CSS VALUE IS NOT AN HTML VALUE, and escapeHtml() is the wrong tool for one. Interpolating into
+// `style="background:${...}"` puts the value inside a declaration block, where the dangerous
+// payloads carry no HTML metacharacters at all and therefore survive escaping untouched:
+// a `;` starts a new declaration, `url(...)` fetches an attacker-chosen resource (a real
+// data-exfiltration channel for anything rendered in the page), and legacy `expression(...)`
+// executes. So this ALLOWLISTS a shape instead of escaping characters — the only reliable move for
+// a context whose grammar is not HTML's.
+//
+// Why it exists even though AVATAR_PROFILES is a hard-coded table today: that table is ALREADY
+// mutated at runtime (`AVATAR_PROFILES[employee].photo = dataUrl` from an upload), so "the values
+// are source literals" is a fact about today, not a guarantee. Avatar colours becoming
+// user-editable is a plausible next step for this product, and this is the line that would
+// otherwise turn into stored CSS injection the day it happens.
+const CSS_GRADIENT_RE = /^linear-gradient\(\s*-?\d+(?:\.\d+)?deg\s*(?:,\s*#[0-9a-fA-F]{3,8}\s*){1,8}\)$/;
+const DEFAULT_GRADIENT = 'linear-gradient(135deg, #1e3a5f, #3b52cc)';
+function safeGradient(value) {
+  return CSS_GRADIENT_RE.test(String(value == null ? '' : value)) ? String(value) : DEFAULT_GRADIENT;
+}
+
 function timeAgo(timestamp) {
   const seconds = Math.floor((Date.now() - new Date(timestamp)) / 1000);
   if (seconds < 60) return 'just now';
@@ -7733,9 +7752,9 @@ function renderPortrait(container) {
 
   container.innerHTML = `
     <div class="portrait-frame ${avatarState.speaking ? 'speaking' : ''} ${avatarState.listening ? 'listening' : ''}" id="portraitFrame">
-      <div class="portrait-glow" style="background:${profile.gradient};"></div>
-      <div class="portrait-avatar" style="background:${profile.gradient};">
-        <span class="portrait-initials">${profile.initials}</span>
+      <div class="portrait-glow" style="background:${safeGradient(profile.gradient)};"></div>
+      <div class="portrait-avatar" style="background:${safeGradient(profile.gradient)};">
+        <span class="portrait-initials">${escapeHtml(profile.initials)}</span>
       </div>
       <div class="portrait-ring ${avatarState.speaking ? 'ring-speaking' : avatarState.listening ? 'ring-listening' : 'ring-idle'}"></div>
       <div class="portrait-speaking-indicator" id="portraitSpeakingBars">

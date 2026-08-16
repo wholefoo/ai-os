@@ -80,6 +80,13 @@ function safeInterp(e) {
   return /^escapeHtml\(/.test(e) || /^esc\(/.test(e) || /^escapeAttr\(/.test(e)
     || /^\s*['"`]/.test(e) || /^[\d.]+$/.test(e) || e === ''
     || /^(timeAgo|Number|formatTokenCount|formatFileSize|encodeURIComponent)\(/.test(e)
+    // `safeGradient()` is allowlisted where a file-local helper would NOT be (see the crm.js and
+    // web-studio.js spans, which got per-site suppressions instead). Three things earn it: the name
+    // is specific rather than generic, it is a real SANITISER — it allowlists a CSS shape and
+    // returns a constant fallback otherwise, rather than formatting — and `test-safe-gradient.js`
+    // pins that behaviour against the payloads escapeHtml would have passed through untouched.
+    // Allowlisting a name is a promise about a function; keep it only while that test exists.
+    || /^safeGradient\(/.test(e)
     // `x.length` on an Array or String is ALWAYS a number — it cannot carry markup. This is a
     // property of the language, not an assumption about the data, which is why it belongs here
     // rather than in a per-site suppression. It clears a run of `skills.length`,
