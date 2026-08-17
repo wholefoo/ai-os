@@ -690,7 +690,7 @@ async function wsOptimize() {
   const a = r.aeo || {};
   if (hint) hint.textContent = `AEO Readiness ${a.score}/100 (grade ${a.grade})${r.model ? ` · suggestions by ${r.model}` : ''}.`;
   const col = a.score >= 80 ? '#10b981' : a.score >= 50 ? '#f59e0b' : '#ef4444';
-  let html = `<div style="font-size:28px;font-weight:700;color:${col};">${a.score}<span style="font-size:14px;color:var(--text-muted,#9aa);font-weight:400;">/100 &middot; grade ${escapeHtml(a.grade || '')}</span></div>`;
+  let html = `<div style="font-size:28px;font-weight:700;color:${col};">${escapeHtml(a.score)}<span style="font-size:14px;color:var(--text-muted,#9aa);font-weight:400;">/100 &middot; grade ${escapeHtml(a.grade || '')}</span></div>`;
   if (r.crawlers && r.crawlers.blocked && r.crawlers.blocked.length) {
     html += `<div class="ws-hint" style="color:#ef4444;margin-top:4px;">&#9888; AI crawlers blocked in robots.txt: ${r.crawlers.blocked.map(escapeHtml).join(', ')}</div>`;
   }

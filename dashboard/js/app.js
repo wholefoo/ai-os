@@ -7195,7 +7195,7 @@ async function viewYTAnalysis(analysisId) {
   // Visual timeline
   const timeline = visuals.map(v => `
     <div class="yt-timeline-frame">
-      <div class="yt-frame-time">${v.timecode}</div>
+      <div class="yt-frame-time">${escapeHtml(v.timecode)}</div>
       <div class="yt-frame-content">
         <div class="yt-frame-scene">${escapeHtml(v.scene)}</div>
         <div class="yt-frame-elements">${v.elements.map(e => `<span class="yt-element-tag">${escapeHtml(e)}</span>`).join('')}</div>
@@ -7207,7 +7207,7 @@ async function viewYTAnalysis(analysisId) {
   // Transcript segments
   const transcriptHtml = (transcript.segments || []).map(s => `
     <div class="yt-transcript-seg">
-      <span class="yt-transcript-time">${Math.floor(s.start / 60)}:${String(s.start % 60).padStart(2, '0')}</span>
+      <span class="yt-transcript-time">${Math.floor(s.start / 60)}:${escapeHtml(String(s.start % 60).padStart(2, '0'))}</span>
       <span class="yt-transcript-text">${escapeHtml(s.text)}</span>
     </div>
   `).join('');

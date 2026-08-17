@@ -183,7 +183,106 @@ const rules = [
  * renderer, and both SEO-audit renderers. In every case the `innerHTML =` sat many lines above the
  * interpolation, so `innerhtml-unescaped` never even looked.
  */
+/**
+ * Walk from the opening backtick at `start` to its matching close, honouring ${ } nesting.
+ * Shared by the template-reading rules — a naive indexOf('`') stops inside the first nested
+ * template and silently scans only part of the span.
+ */
+function readTemplateBody(text, start) {
+  let i = start + 1, depth = 0;
+  for (; i < text.length; i++) {
+    const c = text[i];
+    if (c === '\\') { i++; continue; }
+    if (c === '$' && text[i + 1] === '{') { depth++; i++; continue; }
+    if (c === '}' && depth > 0) { depth--; continue; }
+    if (c === '`' && depth === 0) break;
+  }
+  return { body: text.slice(start + 1, i), end: i };
+}
+
+/** The shared unsafe-value predicate used by the innerHTML rules. */
+function unsafeInterps(body) {
+  return interpolations(body).filter((e) =>
+    !e.includes('`') && !safeInterp(e) && !/\?[\s\S]*:/.test(e)
+    && (/^[a-zA-Z_$][\w$]*\.[\w$.]+$/.test(e)        // property read
+      || /^[a-zA-Z_$][\w$]*\(/.test(e)               // call
+      || /^[a-zA-Z_$][\w$]*\.[\w$.]*\(/.test(e)));   // method call on a property path
+}
+
 const fileRules = [
+  {
+    id: 'innerhtml-dataflow',
+    // THE HOLE THE OTHER TWO RULES CANNOT COVER. `innerhtml-unescaped` needs the value on the
+    // `.innerHTML` line; `innerhtml-multiline` needs it inside the assigned template. Neither can
+    // see this, which is the single most common real shape in this codebase:
+    //
+    //     const rows = items.map((r) => `<td>${r.name}</td>`).join('');   // <- the unsafe value
+    //     el.innerHTML = `<table>${rows}</table>`;                        // <- the sink, 20 lines on
+    //
+    // `innerhtml-multiline` deliberately IGNORES bare locals like ${rows} (they are usually
+    // pre-built fragments, and flagging them gave 52 findings nobody would read). That exclusion is
+    // what opens this gap: the fragment itself is never checked. This rule closes it by resolving
+    // the local back to its nearest preceding assignment and scanning THAT template.
+    //
+    // Found 4 real sites on its first run, and 3 of the 4 had an ESCAPED NEIGHBOUR — `v.scene`,
+    // `s.name` and `a.grade` were escaped while the value beside them was not. An escaped neighbour
+    // means someone looked at that line and made a per-field judgement; it is not evidence the line
+    // is safe.
+    //
+    // One of the 4 sat directly above a `seclint-ok` span suppression: the suppression silenced the
+    // sink while the fragment feeding it went unchecked. That is the argument for hoisting over
+    // suppressing, made concrete.
+    //
+    // SCOPE, stated so nobody over-trusts it: "nearest preceding assignment" is a TEXTUAL
+    // approximation of scope, not real dataflow. It resolves single-assignment locals well and can
+    // miss reassignment, cross-function shadowing, and values built by += in a loop.
+    level: 'error',
+    test(text) {
+      const out = [];
+      const lineAt = (idx) => text.slice(0, idx).split('\n').length;
+      const sinks = [];
+
+      // Sink A: `el.innerHTML = someLocal;` (optionally `.join(...)`)
+      for (const m of text.matchAll(/\.innerHTML\s*\+?=\s*([a-zA-Z_$][\w$]*)\s*(?:\.join\([^)]*\))?\s*;/g)) {
+        sinks.push({ name: m[1], at: m.index });
+      }
+      // Sink B: a bare `${someLocal}` inside an assigned template — the exclusion that opens the gap.
+      for (const m of text.matchAll(/\.innerHTML\s*\+?=\s*`/g)) {
+        const { body } = readTemplateBody(text, m.index + m[0].length - 1);
+        for (const v of body.matchAll(/\$\{\s*([a-zA-Z_$][\w$]*)\s*\}/g)) {
+          sinks.push({ name: v[1], at: m.index });
+        }
+      }
+
+      const seen = new Set();
+      for (const { name, at } of sinks) {
+        // Nearest PRECEDING assignment. Textual proximity stands in for scope analysis.
+        const assignRe = new RegExp(`(?:const|let|var)\\s+${name}\\s*=|(?<![\\w$.])${name}\\s*=(?!=)`, 'g');
+        let best = -1;
+        for (const a of text.matchAll(assignRe)) { if (a.index < at) best = a.index; else break; }
+        if (best === -1) continue;
+        const eq = text.indexOf('=', best + name.length);
+        const tick = text.indexOf('`', eq);
+        if (tick === -1 || tick - eq > 200) continue;   // not a template-literal assignment
+        const line = lineAt(best);
+        if (seen.has(`${line}:${name}`)) continue;
+        // Honour the same suppression comments the other rules use, on the ASSIGNMENT line.
+        const lines = text.split('\n');
+        if (/seclint-(ok|disable-line)/.test(lines[line - 1] || '')
+          || /seclint-disable-next-line/.test(lines[line - 2] || '')) continue;
+        const bad = unsafeInterps(readTemplateBody(text, tick).body);
+        if (!bad.length) continue;
+        seen.add(`${line}:${name}`);
+        out.push({
+          line,
+          msg: `\`${name}\` flows into innerHTML (line ${lineAt(at)}) carrying unescaped value(s): `
+            + `${bad.slice(0, 3).map((e) => e.slice(0, 40)).join(', ')}`
+            + `${bad.length > 3 ? ` (+${bad.length - 3} more)` : ''} — wrap in escapeHtml()`,
+        });
+      }
+      return out;
+    },
+  },
   {
     id: 'innerhtml-multiline',
     // PROMOTED FROM `warn` TO `error` once the repo reached ZERO findings (25 -> 0 across

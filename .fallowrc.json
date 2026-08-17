@@ -89,6 +89,7 @@
     "tools/test-seclint-innerhtml.js",
     "tools/test-seclint-multiline.js",
     "tools/test-safe-gradient.js",
+    "tools/test-seclint-dataflow.js",
     "tools/test-zip-import.js",
     "tools/test-deps-installed.js",
     "tools/check-deps-installed.js",

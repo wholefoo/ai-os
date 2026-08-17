@@ -394,7 +394,7 @@ async function crmOpenContact(id) {
   const ro = (k, v) => (v || v === 0) ? `<div class="crm-detail-row"><span class="crm-muted">${k}</span><span>${escapeHtml(String(v))}</span></div>` : '';
   const date = (v) => { try { return v ? new Date(v).toLocaleDateString() : ''; } catch { return v || ''; } };
   const stageOpts = CRM_STAGES.map((s) => `<option value="${s}" ${c.stage === s ? 'selected' : ''}>${s}</option>`).join('');
-  const linkOpts = crmState.unassigned.map((s) => `<option value="${s.id}">${escapeHtml(s.name || s.domain || s.id)}${s.domain ? ' (' + escapeHtml(s.domain) + ')' : ''}</option>`).join('');
+  const linkOpts = crmState.unassigned.map((s) => `<option value="${escapeHtml(s.id)}">${escapeHtml(s.name || s.domain || s.id)}${s.domain ? ' (' + escapeHtml(s.domain) + ')' : ''}</option>`).join('');
 
   // seclint-ok: every value below is escaped at source — crmTags() interpolates only literal
   // spans chosen by booleans, and ro()/stageOpts/linkOpts all call escapeHtml. Verified by reading
