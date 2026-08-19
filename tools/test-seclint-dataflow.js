@@ -22,24 +22,15 @@
 // ============================================================
 
 const assert = require('assert');
-const fs = require('fs');
-const os = require('os');
-const path = require('path');
-const { execFileSync } = require('child_process');
+const { seclintFixture } = require('./test-util');
 
-const SECLINT = path.join(__dirname, 'seclint.js');
-const TMP = fs.mkdtempSync(path.join(os.tmpdir(), 'seclint-df-'));
+const seclint = seclintFixture('seclint-df-');
 let pass = 0;
 const ok = (label, fn) => { fn(); console.log(`ok  : ${label}`); pass++; };
 const BT = '`';
 
 function scan(src) {
-  const f = path.join(TMP, 'fixture.js');
-  fs.writeFileSync(f, src);
-  let out = '';
-  try { out = execFileSync('node', [SECLINT, f], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }); }
-  catch (e) { out = String(e.stdout || '') + String(e.stderr || ''); }
-  return (out.match(/\(innerhtml-dataflow\)/g) || []).length;
+  return (seclint.run(src).match(/\(innerhtml-dataflow\)/g) || []).length;
 }
 
 // --- SINK A: a bare local interpolated into the assigned template. ----------------------------
@@ -103,9 +94,7 @@ ok('respects seclint-disable-next-line above the fragment assignment', () => {
 
 // --- The repo is clean, AND the rule can fail a build. ----------------------------------------
 ok('the repo has ZERO innerhtml-dataflow findings', () => {
-  let out = '';
-  try { out = execFileSync('node', [SECLINT, '--ci'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }); }
-  catch (e) { out = String(e.stdout || '') + String(e.stderr || ''); }
+  const { out } = seclint.ci();
   const n = (out.match(/\(innerhtml-dataflow\)/g) || []).length;
   assert.strictEqual(n, 0, `expected ZERO innerhtml-dataflow findings, got ${n}:\n${out}`);
 });
@@ -113,18 +102,14 @@ ok('the repo has ZERO innerhtml-dataflow findings', () => {
 // A zero from a rule that cannot fire is indistinguishable from a clean repo — the mistake that
 // nearly shipped the `error` promotion as cosmetic. Assert the exit code too.
 ok('a dataflow finding makes seclint EXIT NON-ZERO', () => {
-  const f = path.join(TMP, 'ci-fixture.js');
-  fs.writeFileSync(f, [
+  const code = seclint.exitCode([
     'function render(a) {',
     '  const html = ' + BT + '<div>${a.title}</div>' + BT + ';',
     '  el.innerHTML = html;',
     '}',
   ].join('\n'));
-  let code = 0;
-  try { execFileSync('node', [SECLINT, f], { stdio: ['ignore', 'pipe', 'pipe'] }); }
-  catch (e) { code = e.status || 1; }
   assert.notStrictEqual(code, 0, 'the rule is at `error`; it must be able to fail a build');
 });
 
-fs.rmSync(TMP, { recursive: true, force: true });
+seclint.cleanup();
 console.log(`\nALL TESTS PASSED\n${pass} assertions`);

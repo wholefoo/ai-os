@@ -22,24 +22,15 @@
 // ============================================================
 
 const assert = require('assert');
-const fs = require('fs');
-const os = require('os');
-const path = require('path');
-const { execFileSync } = require('child_process');
+const { seclintFixture } = require('./test-util');
 
-const SECLINT = path.join(__dirname, 'seclint.js');
-const TMP = fs.mkdtempSync(path.join(os.tmpdir(), 'seclint-ml-'));
+const seclint = seclintFixture('seclint-ml-');
 let pass = 0;
 const ok = (label, fn) => { fn(); console.log(`ok  : ${label}`); pass++; };
 
 /** Run seclint over a fixture; return the ids+lines it reported. */
 function scan(src) {
-  const f = path.join(TMP, 'fixture.js');
-  fs.writeFileSync(f, src);
-  let out = '';
-  try { out = execFileSync('node', [SECLINT, f], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }); }
-  catch (e) { out = String(e.stdout || '') + String(e.stderr || ''); }
-  return [...out.matchAll(/fixture\.js:(\d+)\s+\((innerhtml-multiline|innerhtml-unescaped)\)/g)]
+  return [...seclint.run(src).matchAll(/fixture\.js:(\d+)\s+\((innerhtml-multiline|innerhtml-unescaped)\)/g)]
     .map((m) => ({ line: Number(m[1]), rule: m[2] }));
 }
 
@@ -211,9 +202,7 @@ ok('respects a seclint-ok comment on the innerHTML line', () => {
 // enforces it. If this fails, do NOT raise a threshold and do NOT reach for `continue-on-error`
 // (see DEP-04): escape the value, or fix the rule if the finding is wrong.
 ok('the repo has ZERO innerhtml-multiline findings', () => {
-  let out = '';
-  try { out = execFileSync('node', [SECLINT, '--ci'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }); }
-  catch (e) { out = String(e.stdout || '') + String(e.stderr || ''); }
+  const { out } = seclint.ci();
   const n = (out.match(/\(innerhtml-multiline\)/g) || []).length;
   assert.strictEqual(n, 0, `expected ZERO innerhtml-multiline findings, got ${n}:\n${out}`);
 });
@@ -222,8 +211,7 @@ ok('the repo has ZERO innerhtml-multiline findings', () => {
 // that still exits 0 is the same false comfort as a rule with a blind spot — assert the exit code,
 // not just the finding count.
 ok('a new unescaped multi-line span makes seclint EXIT NON-ZERO, not just warn', () => {
-  const f = path.join(TMP, 'ci-fixture.js');
-  fs.writeFileSync(f, [
+  const code = seclint.exitCode([
     'function render(a) {',
     '  el.innerHTML = ' + BT + '',
     '    <div>',
@@ -232,12 +220,9 @@ ok('a new unescaped multi-line span makes seclint EXIT NON-ZERO, not just warn',
     '  ' + BT + ';',
     '}',
   ].join('\n'));
-  let code = 0;
-  try { execFileSync('node', [SECLINT, f], { stdio: ['ignore', 'pipe', 'pipe'] }); }
-  catch (e) { code = e.status || 1; }
   assert.notStrictEqual(code, 0, 'seclint must exit non-zero on an innerhtml-multiline finding now '
     + 'that the rule is at `error` — otherwise the promotion is cosmetic');
 });
 
-fs.rmSync(TMP, { recursive: true, force: true });
+seclint.cleanup();
 console.log(`\nALL TESTS PASSED\n${pass} assertions`);
