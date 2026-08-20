@@ -46,6 +46,7 @@
     "tools/test-library-contribute.js",
     "tools/test-library-retention.js",
     "tools/test-clone-persona-ui.js",
+    "tools/test-clone-onboarding-ui.js",
     "tools/test-clone-effective-readiness.js",
     "tools/test-safe-request.js",
     "tools/test-notify-slack.js",
