@@ -7001,3 +7001,15 @@ body {
   .seo-meta-comparison { grid-template-columns: 1fr; }
   .seo-action-btns { flex-direction: column; }
 }
+
+/* Severity colours for the security-scan summary. These live here rather than in a
+   `style="color:${SEV_COLOR.X}"` interpolation: a CSS declaration block is a different grammar
+   from HTML, so escapeHtml() is not a defence there (`;`, `url(...)` and `expression(...)` carry
+   no HTML metacharacters). The values were const literals and safe, but a static class removes the
+   dynamic-CSS question entirely instead of arguing it — see safeGradient() in app.js for the case
+   where the value genuinely has to stay dynamic. */
+.sev-critical { color: #ef4444; }
+.sev-high     { color: #f97316; }
+.sev-medium   { color: #eab308; }
+.sev-low      { color: #3b82f6; }
+.sev-info     { color: #6b7280; }

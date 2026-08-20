@@ -21,25 +21,13 @@
 // ============================================================
 
 const assert = require('assert');
-const fs = require('fs');
-const os = require('os');
-const path = require('path');
-const { execFileSync } = require('child_process');
+const { seclintFixture } = require('./test-util');
 
-const SECLINT = path.join(__dirname, 'seclint.js');
-const TMP = fs.mkdtempSync(path.join(os.tmpdir(), 'seclint-'));
+const seclint = seclintFixture('seclint-');
 
 /** Run the real seclint CLI over a fixture; return the lines it flagged. */
 function scan(source) {
-  const f = path.join(TMP, 'fixture.js');
-  fs.writeFileSync(f, source);
-  let out = '';
-  try {
-    out = execFileSync('node', [SECLINT, f], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
-  } catch (e) {
-    out = String(e.stdout || '') + String(e.stderr || '');
-  }
-  return [...out.matchAll(/fixture\.js:(\d+)\s+\(innerhtml-unescaped\)/g)].map((m) => Number(m[1]));
+  return [...seclint.run(source).matchAll(/fixture\.js:(\d+)\s+\(innerhtml-unescaped\)/g)].map((m) => Number(m[1]));
 }
 
 let pass = 0;
@@ -87,10 +75,7 @@ ok('does NOT flag string or numeric literals', () => {
 // Tightening a linter is only real if the codebase then passes it. If this goes red, either a
 // regression landed or the rule became too aggressive — both worth stopping for.
 ok('the whole default file set passes the tightened rule', () => {
-  let out = '', code = 0;
-  try {
-    out = execFileSync('node', [SECLINT, '--ci'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
-  } catch (e) { code = e.status; out = String(e.stdout || '') + String(e.stderr || ''); }
+  const { out, code } = seclint.ci();
   assert.strictEqual(code, 0, `seclint --ci must pass: ${out.slice(0, 400)}`);
   assert.ok(!/innerhtml-unescaped/.test(out), `no innerHTML findings expected, got: ${out.slice(0, 400)}`);
 });
@@ -108,5 +93,5 @@ ok('KNOWN GAP: HTML built into a variable and assigned later is NOT covered', ()
     'if this starts flagging, the rule gained multi-statement coverage — update this test and the docs');
 });
 
-fs.rmSync(TMP, { recursive: true, force: true });
+seclint.cleanup();
 console.log(`\nALL TESTS PASSED\n${pass} assertions`);

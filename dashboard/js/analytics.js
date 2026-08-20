@@ -72,8 +72,8 @@ function anRenderStats(s) {
   if (!el) return;
   const liveFetches = anState.feed.filter((e) => e.purpose === 'live').length;
   el.innerHTML = `
-    <div class="an-stat"><div class="an-stat-value">${s.botHits}</div><div class="an-stat-label">AI crawler hits</div></div>
-    <div class="an-stat"><div class="an-stat-value">${s.pageviews}</div><div class="an-stat-label">Human pageviews</div></div>
+    <div class="an-stat"><div class="an-stat-value">${escapeHtml(s.botHits)}</div><div class="an-stat-label">AI crawler hits</div></div>
+    <div class="an-stat"><div class="an-stat-value">${escapeHtml(s.pageviews)}</div><div class="an-stat-label">Human pageviews</div></div>
     <div class="an-stat"><div class="an-stat-value">${(s.aiReferrers || []).reduce((a, r) => a + r.count, 0)}</div><div class="an-stat-label">AI-referred visits</div></div>
     <div class="an-stat"><div class="an-stat-value">${liveFetches}</div><div class="an-stat-label">Live AI fetches (recent)</div></div>`;
 }

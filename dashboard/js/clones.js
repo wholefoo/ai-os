@@ -232,34 +232,39 @@ function clCreateFormHtml() {
   </div>`;
 }
 
-async function clAcceptDisclosure() {
-  const res = await fetchJSON('/api/clones/onboarding/accept', { method: 'POST', body: {} });
-  if (res && res.error) return showSettingsToast(res.error, true);
-  // MERGE, never replace. A response that omits the disclosure must not blank the one we already
-  // hold — an empty consent screen is worse than no consent screen, because it still has a button.
+/**
+ * One onboarding POST: apply the reply, run whatever that button needs next, re-render.
+ *
+ * MERGE, never replace. A response that omits the disclosure must not blank the one we already
+ * hold — an empty consent screen is worse than no consent screen, because it still has a button.
+ * That rule used to be a comment copy-pasted into all three callers, where it could quietly drift
+ * in two of them; it is stated once here and pinned by tools/test-clone-onboarding-ui.js.
+ *
+ * RETURNS WHETHER IT SUCCEEDED, and callers with their own tail must check it. Dismiss confirms in
+ * words afterwards, and a helper that simply returned would run that confirmation on the failure
+ * path too — telling someone their onboarding was set aside, next to the error saying it was not.
+ */
+async function clOnboardingPost(action, after) {
+  const res = await fetchJSON(`/api/clones/onboarding/${action}`, { method: 'POST', body: {} });
+  if (res && res.error) { showSettingsToast(res.error, true); return false; }
   clState.onboarding = { ...(clState.onboarding || {}), ...res };
-  await clEnsureTemplates();
+  if (after) await after();
   clRenderEmptyDetail();
+  return true;
+}
+
+async function clAcceptDisclosure() {
+  await clOnboardingPost('accept', clEnsureTemplates);
 }
 
 async function clDismissOnboarding() {
-  const res = await fetchJSON('/api/clones/onboarding/dismiss', { method: 'POST', body: {} });
-  if (res && res.error) return showSettingsToast(res.error, true);
-  // MERGE, never replace. A response that omits the disclosure must not blank the one we already
-  // hold — an empty consent screen is worse than no consent screen, because it still has a button.
-  clState.onboarding = { ...(clState.onboarding || {}), ...res };
-  clRenderEmptyDetail();
-  showSettingsToast('Set aside — pick it up whenever');
+  // No templates: nothing is about to be built. And because the screen barely changes, this is the
+  // one of the three that has to say out loud that it did something.
+  if (await clOnboardingPost('dismiss')) showSettingsToast('Set aside — pick it up whenever');
 }
 
 async function clResumeOnboarding() {
-  const res = await fetchJSON('/api/clones/onboarding/resume', { method: 'POST', body: {} });
-  if (res && res.error) return showSettingsToast(res.error, true);
-  // MERGE, never replace. A response that omits the disclosure must not blank the one we already
-  // hold — an empty consent screen is worse than no consent screen, because it still has a button.
-  clState.onboarding = { ...(clState.onboarding || {}), ...res };
-  await clEnsureTemplates();
-  clRenderEmptyDetail();
+  await clOnboardingPost('resume', clEnsureTemplates);
 }
 
 async function clEnsureTemplates() {

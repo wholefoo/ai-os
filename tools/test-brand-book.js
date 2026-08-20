@@ -17,10 +17,8 @@
 // number that drifts.
 const fs = require('fs');
 const path = require('path');
-const { assert, done } = require('./test-util');
+const { assert, done, repoRoot: ROOT, readRepoFile: read } = require('./test-util');
 
-const ROOT = path.join(__dirname, '..');
-const read = (p) => fs.readFileSync(p, 'utf8').replace(/\r\n?/g, '\n');
 const BOOK = path.join(ROOT, '.claude', 'design', 'brand-book.html');
 
 // WCAG 2.1 relative luminance -> contrast ratio. Deliberately reimplemented here rather than

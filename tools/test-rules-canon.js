@@ -21,10 +21,7 @@
 // observable state, which is the only kind of check that would actually have fired here.
 const fs = require('fs');
 const path = require('path');
-const { assert, done } = require('./test-util');
-
-const ROOT = path.join(__dirname, '..');
-const read = (p) => fs.readFileSync(p, 'utf8').replace(/\r\n?/g, '\n');
+const { assert, done, repoRoot: ROOT, readRepoFile: read } = require('./test-util');
 
 // Every file that describes how to work in this repo. Derived, not listed: a rule file added
 // tomorrow is covered without anyone remembering to add it here.

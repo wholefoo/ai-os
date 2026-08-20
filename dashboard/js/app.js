@@ -571,7 +571,7 @@ function showUpgradeModal(requiredTier, featureName) {
       <div style="font-size:48px;margin-bottom:16px;">🚀</div>
       <h2 style="margin:0 0 8px;font-size:20px;color:var(--text,#f1f5f9);">${tierLabel} Feature</h2>
       <p style="color:var(--text-muted,#94a3b8);margin:0 0 20px;font-size:14px;line-height:1.5;">
-        <strong>${featureName.replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase())}</strong> requires an active ${tierLabel} license (${price}).
+        <strong>${escapeHtml(featureName.replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase()))}</strong> requires an active ${tierLabel} license (${price}).
       </p>
       <div style="display:flex;gap:12px;justify-content:center;">
         <a href="${checkoutUrl}" target="_blank" style="padding:10px 24px;background:linear-gradient(135deg,#3b82f6,#8b5cf6);color:#fff;border-radius:8px;text-decoration:none;font-weight:600;font-size:14px;">Upgrade Now</a>
@@ -595,9 +595,14 @@ function renderQuickActions() {
   }));
 
   container.innerHTML = actions.map(a => `
-    <button class="action-btn" onclick="executeSkill('${a.filename}')" title="${a.time} · ${a.paramCount} params">
+    <button class="action-btn" data-skill-file="${escapeHtml(a.filename)}" onclick="executeSkill(this.dataset.skillFile)" title="${escapeHtml(a.time)} · ${escapeHtml(a.paramCount)} params">
+      <!-- NOT escaped, deliberately: getSkillIcon returns HTML ENTITIES ('&#9889;' etc.) from a
+           hard-coded table, so escaping turns '&' into '&amp;' and the user sees the literal text
+           "&#9889;" instead of the glyph. I added escapeHtml here in 99249a5 without checking what
+           the value was and broke every icon. Entity strings from a fixed lookup are not user data;
+           they are markup. -->
       <span class="action-icon">${a.icon}</span>
-      <span>${capitalize(a.name.replace(/-/g, ' '))}</span>
+      <span>${escapeHtml(capitalize(a.name.replace(/-/g, ' ')))}</span>
     </button>
   `).join('') || '<div class="empty-state">No skills configured</div>';
 }
@@ -1137,13 +1142,17 @@ function renderSkillsGrid(skills) {
     // refuses it. Offering a Launch button anyway is a dead-end click, so these open for READING
     // instead: they are genuinely useful to follow, just not to dispatch.
     const isReference = s.dispatchable === false;
-    const action = isReference ? `openSkillReference('${s.filename}')` : `executeSkill('${s.filename}')`;
+    // The filename goes in a data-* attribute, NOT into the handler's JS string. See the note above
+    // the Email-to-Lead button: a value inside `onclick="fn('${x}')"` sits in an HTML attribute AND
+    // a JS string literal at once, and escapeHtml is the wrong tool for that pair — it turns ' into
+    // &#39;, the attribute decodes it back to ', and the JS string breaks. Verified in a browser.
+    const action = isReference ? 'openSkillReference(this.dataset.skillFile)' : 'executeSkill(this.dataset.skillFile)';
 
     return `
-      <div class="skill-card" onclick="${action}">
+      <div class="skill-card" data-skill-file="${escapeHtml(s.filename)}" onclick="${action}">
         <div class="skill-card-icon">${icon}</div>
         <div class="skill-card-header">
-          <span class="skill-name">${capitalize(name.replace(/-/g, ' '))}</span>
+          <span class="skill-name">${escapeHtml(capitalize(name.replace(/-/g, ' ')))}</span>
           <span class="skill-category ${category}">${category}</span>
         </div>
         <div class="skill-desc">${escapeHtml(s.meta?.description || '')}</div>
@@ -1198,7 +1207,7 @@ function renderSkillsExecutions() {
     return `
       <div class="skill-exec-progress">
         <div class="skill-exec-header">
-          <span class="skill-exec-name">${capitalize((exec.skillName || exec.skill).replace('.md', '').replace(/-/g, ' '))}</span>
+          <span class="skill-exec-name">${escapeHtml(capitalize((exec.skillName || exec.skill).replace('.md', '').replace(/-/g, ' ')))}</span>
           <span class="skill-exec-status ${exec.status}">${exec.status}</span>
         </div>
         <div class="skill-exec-bar-wrap">
@@ -1257,12 +1266,23 @@ async function executeSkill(filename) {
   if (params.length > 0) {
     formHtml = `<div class="skill-exec-form">
       ${params.map(p => {
-        if (p.inputType === 'select' && p.options.length > 0) {
+        // `Array.isArray` is load-bearing, not defensive noise. A skill declaring
+        // `inputType: select` with no `options` list made `p.options.length` throw, and because
+        // executeSkill is async and nothing catches, the click did NOTHING AT ALL — no modal, no
+        // console error visible to the user, no clue. Reported 2026-08-13 as "Quick Actions and
+        // Skill Launchpad don't work"; reproduced by driving renderQuickActions() with that exact
+        // parameter shape. Pre-dates the data-* handler conversion, which was a red herring.
+        // The settings renderer at the `p.type === 'enum'` branch already guards this way — the
+        // correct pattern existed in this file and simply had not been applied here.
+        if (p.inputType === 'select' && Array.isArray(p.options) && p.options.length > 0) {
           const opts = p.options.map(o => `<option value="${o}" ${o === p.default ? 'selected' : ''}>${o}</option>`).join('');
           return `
             <div class="form-group">
-              <label>${p.name}${p.required ? '<span class="required-star">*</span>' : ''}</label>
-              <select id="param-${p.name}">${opts}</select>
+              <!-- p.description was already escaped on the line below while p.name was not, which
+                   is an oversight rather than a trust decision: both come from the same skill
+                   frontmatter (readDir -> parseFrontmatter), so they carry identical provenance. -->
+              <label>${escapeHtml(p.name)}${p.required ? '<span class="required-star">*</span>' : ''}</label>
+              <select id="param-${escapeHtml(p.name)}">${opts}</select>
               ${p.description ? `<span class="form-hint">${escapeHtml(p.description)}</span>` : ''}
             </div>
           `;
@@ -1472,10 +1492,10 @@ function renderOutcomeRun(run) {
     <div class="skill-exec-progress">
       <div class="skill-exec-header">
         <span class="skill-exec-name">${escapeHtml((run.goal || 'Stated outcome').slice(0, 90))}</span>
-        <span class="skill-exec-status ${run.status}">${escapeHtml(phase)}</span>
+        <span class="skill-exec-status ${escapeHtml(run.status)}">${escapeHtml(phase)}</span>
       </div>
       <div class="skill-exec-bar-wrap">
-        <div class="skill-exec-bar ${(run.progress || 0) >= 100 ? 'complete' : ''}" style="width:${run.progress || 0}%"></div>
+        <div class="skill-exec-bar ${(run.progress || 0) >= 100 ? 'complete' : ''}" style="width:${Number(run.progress) || 0}%"></div>
       </div>
       ${members.length ? `
         <div style="margin-top:10px;">
@@ -1494,7 +1514,7 @@ function renderOutcomeRun(run) {
           ? `<span title="the orchestrator named agents that do not exist; they were dropped before dispatch">Dropped: ${escapeHtml(run.droppedAgents.join(', '))}</span>` : ''}
       </div>
       ${v ? `<div style="margin-top:10px;font-size:13px;">
-          Verdict: <strong>${escapeHtml(v.verdict)}</strong> &middot; ${v.score}/100
+          Verdict: <strong>${escapeHtml(v.verdict)}</strong> &middot; ${Number(v.score)}/100
           <span style="color:var(--text-muted);"> — graded against your criteria plus the lead agent's own</span>
         </div>` : (run.status === 'completed' ? '<div style="margin-top:10px;font-size:12px;color:var(--text-muted);">Grading…</div>' : '')}
       ${run.error ? `<div style="margin-top:10px;font-size:13px;color:var(--danger,#e5534b);">${escapeHtml(run.error)}</div>
@@ -1518,7 +1538,7 @@ async function loadWorkflows() {
       <div class="workflow-info">
         <span class="workflow-status ${w.status}"></span>
         <div>
-          <div class="workflow-name">${capitalize(w.skill.replace('.md', '').replace(/-/g, ' '))}</div>
+          <div class="workflow-name">${escapeHtml(capitalize(w.skill.replace('.md', '').replace(/-/g, ' ')))}</div>
           <div class="workflow-time">${new Date(w.startedAt).toLocaleString()}</div>
         </div>
       </div>
@@ -1557,11 +1577,17 @@ async function loadArtifacts() {
     container.innerHTML = '<div class="empty-state">No artifacts generated yet.</div>';
     return;
   }
+  // filename/category are AGENT-CREATED, not developer-authored: /api/artifacts readdirSync's
+  // .magent/artifacts/<category>/<file> and returns the raw names, so a pipeline stage that writes
+  // a file whose name contains an img tag with an onerror handler injects it straight in here.
+  // This repo already treats model output as untrusted (fenceUntrusted) — a filename chosen by an
+  // agent is model output that happens to live on disk. Found by the item-5b provenance triage;
+  // seclint cannot see it, because the innerHTML assignment is on a different line from the markup.
   container.innerHTML = artifacts.map(a => `
     <div class="artifact-item">
       <div>
-        <div class="artifact-name">${a.filename}</div>
-        <div class="artifact-category">${a.category}</div>
+        <div class="artifact-name">${escapeHtml(a.filename)}</div>
+        <div class="artifact-category">${escapeHtml(a.category)}</div>
       </div>
       <span class="workflow-time">${new Date(a.modified).toLocaleDateString()}</span>
     </div>
@@ -1658,6 +1684,25 @@ function escapeHtml(str) {
   return String(str == null ? '' : str)
     .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+
+// A CSS VALUE IS NOT AN HTML VALUE, and escapeHtml() is the wrong tool for one. Interpolating into
+// `style="background:${...}"` puts the value inside a declaration block, where the dangerous
+// payloads carry no HTML metacharacters at all and therefore survive escaping untouched:
+// a `;` starts a new declaration, `url(...)` fetches an attacker-chosen resource (a real
+// data-exfiltration channel for anything rendered in the page), and legacy `expression(...)`
+// executes. So this ALLOWLISTS a shape instead of escaping characters — the only reliable move for
+// a context whose grammar is not HTML's.
+//
+// Why it exists even though AVATAR_PROFILES is a hard-coded table today: that table is ALREADY
+// mutated at runtime (`AVATAR_PROFILES[employee].photo = dataUrl` from an upload), so "the values
+// are source literals" is a fact about today, not a guarantee. Avatar colours becoming
+// user-editable is a plausible next step for this product, and this is the line that would
+// otherwise turn into stored CSS injection the day it happens.
+const CSS_GRADIENT_RE = /^linear-gradient\(\s*-?\d+(?:\.\d+)?deg\s*(?:,\s*#[0-9a-fA-F]{3,8}\s*){1,8}\)$/;
+const DEFAULT_GRADIENT = 'linear-gradient(135deg, #1e3a5f, #3b52cc)';
+function safeGradient(value) {
+  return CSS_GRADIENT_RE.test(String(value == null ? '' : value)) ? String(value) : DEFAULT_GRADIENT;
 }
 
 function timeAgo(timestamp) {
@@ -2120,7 +2165,7 @@ function renderVaultStats(stats) {
   if (!container) return;
   container.innerHTML = `
     <div class="vault-stat">
-      <div class="vault-stat-value">${stats.totalFiles}</div>
+      <div class="vault-stat-value">${escapeHtml(stats.totalFiles)}</div>
       <div class="vault-stat-label">Total Files</div>
     </div>
     <div class="vault-stat">
@@ -2626,7 +2671,7 @@ function renderCostLedger(entries) {
         ${entries.map(e => `
           <tr>
             <td class="ledger-agent">${escapeHtml(e.agent)}</td>
-            <td><span class="ledger-model ${modelClass(e.model)}">${e.model.replace('opus-5-', 'Opus 5 ').replace('claude-4.7-', '')}</span></td>
+            <td><span class="ledger-model ${escapeHtml(modelClass(e.model))}">${escapeHtml(e.model.replace('opus-5-', 'Opus 5 ').replace('claude-4.7-', ''))}</span></td>
             <td>${escapeHtml(e.skill)}</td>
             <td class="ledger-tokens">${formatTokenCount(e.inputTokens)}</td>
             <td class="ledger-tokens">${formatTokenCount(e.outputTokens)}</td>
@@ -2749,19 +2794,19 @@ function renderSocialStats(stats) {
   if (!container) return;
   container.innerHTML = `
     <div class="radar-stat">
-      <div class="radar-stat-value total">${stats.total}</div>
+      <div class="radar-stat-value total">${escapeHtml(stats.total)}</div>
       <div class="radar-stat-label">Findings</div>
     </div>
     <div class="radar-stat">
-      <div class="radar-stat-value" style="color:var(--success);">${stats.positive}</div>
+      <div class="radar-stat-value" style="color:var(--success);">${escapeHtml(stats.positive)}</div>
       <div class="radar-stat-label">Positive</div>
     </div>
     <div class="radar-stat">
-      <div class="radar-stat-value" style="color:var(--warning);">${stats.mixed}</div>
+      <div class="radar-stat-value" style="color:var(--warning);">${escapeHtml(stats.mixed)}</div>
       <div class="radar-stat-label">Mixed</div>
     </div>
     <div class="radar-stat">
-      <div class="radar-stat-value" style="color:var(--accent);">${formatEngagement(stats.totalEngagement)}</div>
+      <div class="radar-stat-value" style="color:var(--accent);">${escapeHtml(formatEngagement(stats.totalEngagement))}</div>
       <div class="radar-stat-label">Total Engagement</div>
     </div>
   `;
@@ -2876,7 +2921,7 @@ function renderPipelineCards(pipelines) {
           <div class="pipeline-params">
             ${params.map(k => `<span class="pipeline-param-tag">${k}</span>`).join('')}
           </div>
-          <button class="btn btn-sm btn-primary" onclick="launchPipeline('${p.name}')">Run Pipeline</button>
+          <button class="btn btn-sm btn-primary" data-pipeline-name="${escapeHtml(p.name)}" onclick="launchPipeline(this.dataset.pipelineName)">Run Pipeline</button>
         </div>
       </div>
     `;
@@ -3006,7 +3051,7 @@ async function launchPipeline(name) {
     return `<div style="margin-bottom:10px;"><label style="font-size:12px;font-weight:600;display:block;margin-bottom:2px;">${escapeHtml(key)}${req}</label>${desc}${field}</div>`;
   }).join('');
   showModal('Launch Pipeline', `
-    <p>Execute <strong>${capitalize(name.replace(/-/g, ' '))}</strong>?</p>
+    <p>Execute <strong>${escapeHtml(capitalize(name.replace(/-/g, ' ')))}</strong>?</p>
     ${fields || '<p style="color:var(--text-secondary);font-size:13px;">No parameters required.</p>'}
     <div id="launchErr" style="color:#ef4444;font-size:12px;margin-top:4px;"></div>
     <p style="color: var(--text-secondary); font-size: 12px; margin-top: 8px;">Chains agents in sequence with real model calls (spends tokens). Live progress in the Pipelines view.</p>
@@ -3076,7 +3121,7 @@ function renderIdentityCards(files) {
         <div class="identity-card-body">${bodyHtml}</div>
         <div class="identity-card-footer">
           <span>Last modified: ${f.meta?.created || 'unknown'}</span>
-          ${f.immutable ? '<span class="identity-immutable">IMMUTABLE</span>' : `<button class="btn btn-sm btn-secondary" onclick="viewIdentityFile('${f.name}')">View Full</button>`}
+          ${f.immutable ? '<span class="identity-immutable">IMMUTABLE</span>' : `<button class="btn btn-sm btn-secondary" data-identity-file="${escapeHtml(f.name)}" onclick="viewIdentityFile(this.dataset.identityFile)">View Full</button>`}
         </div>
       </div>
     `;
@@ -3120,23 +3165,23 @@ function renderVerifyStats(stats) {
 
   container.innerHTML = `
     <div class="verify-stat">
-      <div class="verify-stat-value">${stats.total}</div>
+      <div class="verify-stat-value">${escapeHtml(stats.total)}</div>
       <div class="verify-stat-label">Total Checks</div>
     </div>
     <div class="verify-stat">
-      <div class="verify-stat-value pass">${stats.passed}</div>
+      <div class="verify-stat-value pass">${escapeHtml(stats.passed)}</div>
       <div class="verify-stat-label">Passed</div>
     </div>
     <div class="verify-stat">
-      <div class="verify-stat-value review">${stats.review}</div>
+      <div class="verify-stat-value review">${escapeHtml(stats.review)}</div>
       <div class="verify-stat-label">Needs Review</div>
     </div>
     <div class="verify-stat">
-      <div class="verify-stat-value fail">${stats.failed}</div>
+      <div class="verify-stat-value fail">${escapeHtml(stats.failed)}</div>
       <div class="verify-stat-label">Failed</div>
     </div>
     <div class="verify-stat">
-      <div class="verify-stat-value" style="color: ${stats.passRate >= 80 ? 'var(--success)' : stats.passRate >= 60 ? 'var(--warning)' : 'var(--error)'}">${stats.passRate}%</div>
+      <div class="verify-stat-value" style="color: ${stats.passRate >= 80 ? 'var(--success)' : stats.passRate >= 60 ? 'var(--warning)' : 'var(--error)'}">${escapeHtml(stats.passRate)}%</div>
       <div class="verify-stat-label">Pass Rate</div>
     </div>
   `;
@@ -3253,11 +3298,11 @@ function renderVerifyHistory(history) {
     return `
       <div class="verify-report">
         <div class="verify-report-header">
-          <span class="verify-report-name">${capitalize(escapeHtml(v.skillName).replace(/-/g, ' '))}${overrideTag}</span>
+          <span class="verify-report-name">${escapeHtml(capitalize(v.skillName.replace(/-/g, ' ')))}${overrideTag}</span>
           <span class="verify-verdict-tag ${verdictClass}">${v.status === 'running' ? 'Running...' : v.verdict}</span>
         </div>
         <div class="verify-score-gauge">
-          <div class="verify-score-ring ${verdictClass}">${v.score}</div>
+          <div class="verify-score-ring ${verdictClass}">${Number(v.score)}</div>
           <div>
             <div style="font-size:12px;color:var(--text-secondary);">${escapeHtml(v.rubricName || v.category)}</div>
             <div class="verify-score-breakdown">
@@ -3319,7 +3364,7 @@ function showManualVerifyModal() {
   const recentExecs = state.workflows.filter(w => w.status === 'completed').slice(0, 5);
 
   const execOptions = recentExecs.length > 0
-    ? recentExecs.map(w => `<option value="${w.id}">${capitalize((w.skillName || w.skill).replace('.md', '').replace(/-/g, ' '))} (${timeAgo(w.startedAt)})</option>`).join('')
+    ? recentExecs.map(w => `<option value="${w.id}">${escapeHtml(capitalize((w.skillName || w.skill).replace('.md', '').replace(/-/g, ' ')))} (${timeAgo(w.startedAt)})</option>`).join('')
     : '<option value="">No recent executions</option>';
 
   showModal('Run Verification', `
@@ -3501,6 +3546,11 @@ function renderContextResolved(data) {
   const rules = r.rules || {};
   const rulesEntries = Object.entries(rules);
   const strategy = r.strategy || {};
+  // Hoisted so the escaping is visible at a glance and the value reaches the template as a
+  // pre-built fragment. `.map(escapeHtml).join(', ')` is safe — every element is escaped and the
+  // separator is a literal — but seclint's method-call detector cannot see that from the call site,
+  // and suppressing the span would also silence anything added to it later.
+  const competitorList = (strategy.competitors || []).map((c) => escapeHtml(c)).join(', ');
   const stakeholders = r.stakeholders || [];
   const agentOverrides = r.agent_overrides || {};
 
@@ -3539,7 +3589,7 @@ function renderContextResolved(data) {
         <div class="context-resolved-items">
           ${strategy.icp ? `<div class="context-resolved-item"><span class="context-resolved-key">ICP</span><span class="context-resolved-val">${escapeHtml(strategy.icp)}</span></div>` : ''}
           ${strategy.current_phase ? `<div class="context-resolved-item"><span class="context-resolved-key">Phase</span><span class="context-resolved-val">${escapeHtml(strategy.current_phase)}</span></div>` : ''}
-          ${(strategy.competitors || []).length > 0 ? `<div class="context-resolved-item"><span class="context-resolved-key">Competitors</span><span class="context-resolved-val">${strategy.competitors.map(c => escapeHtml(c)).join(', ')}</span></div>` : ''}
+          ${(strategy.competitors || []).length > 0 ? `<div class="context-resolved-item"><span class="context-resolved-key">Competitors</span><span class="context-resolved-val">${competitorList}</span></div>` : ''}
         </div>
       </div>
       ${rulesEntries.length > 0 ? `
@@ -3717,15 +3767,15 @@ function renderGrokStats(stats) {
 
   container.innerHTML = `
     <div class="grok-stat">
-      <div class="grok-stat-value">${stats.total}</div>
+      <div class="grok-stat-value">${escapeHtml(stats.total)}</div>
       <div class="grok-stat-label">Total Queries</div>
     </div>
     <div class="grok-stat">
-      <div class="grok-stat-value" style="color: var(--success);">${stats.completed}</div>
+      <div class="grok-stat-value" style="color: var(--success);">${escapeHtml(stats.completed)}</div>
       <div class="grok-stat-label">Completed</div>
     </div>
     <div class="grok-stat">
-      <div class="grok-stat-value" style="color: var(--accent);">${stats.streaming}</div>
+      <div class="grok-stat-value" style="color: var(--accent);">${escapeHtml(stats.streaming)}</div>
       <div class="grok-stat-label">Streaming</div>
     </div>
     <div class="grok-stat">
@@ -4480,7 +4530,7 @@ async function exportDesignSystem() {
       <div class="design-export-preview">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
           <span class="badge badge-success">${escapeHtml(result.filename)}</span>
-          <span style="color:var(--text-muted);font-size:11px;">Compatible: ${result.compatibleWith.join(', ')}</span>
+          <span style="color:var(--text-muted);font-size:11px;">Compatible: ${escapeHtml(result.compatibleWith.join(', '))}</span>
         </div>
         <pre class="design-export-code">${escapeHtml(result.content.substring(0, 600))}${result.content.length > 600 ? '\n...' : ''}</pre>
       </div>
@@ -5707,19 +5757,19 @@ function renderHermesStatus(status) {
         <div class="hermes-stat-label">MCP Status</div>
       </div>
       <div class="hermes-stat">
-        <div class="hermes-stat-value">${status.endpoint}</div>
+        <div class="hermes-stat-value">${escapeHtml(status.endpoint)}</div>
         <div class="hermes-stat-label">Endpoint</div>
       </div>
       <div class="hermes-stat">
-        <div class="hermes-stat-value">${status.stats.tasksCompleted}</div>
+        <div class="hermes-stat-value">${Number(status.stats.tasksCompleted)}</div>
         <div class="hermes-stat-label">Tasks Completed</div>
       </div>
       <div class="hermes-stat">
-        <div class="hermes-stat-value">${status.stats.cronExecutions}</div>
+        <div class="hermes-stat-value">${Number(status.stats.cronExecutions)}</div>
         <div class="hermes-stat-label">Cron Executions</div>
       </div>
       <div class="hermes-stat">
-        <div class="hermes-stat-value">${status.stats.approvalsPending}</div>
+        <div class="hermes-stat-value">${Number(status.stats.approvalsPending)}</div>
         <div class="hermes-stat-label">Approvals Pending</div>
       </div>
       <div class="hermes-stat">
@@ -5803,7 +5853,7 @@ function renderHermesCron(jobs) {
       <td>${j.nextRun ? new Date(j.nextRun).toLocaleTimeString() : '—'}</td>
       <td>${j.runs || 0}</td>
       <td>${escapeHtml(j.notifyVia || 'ws')}</td>
-      <td><button class="btn btn-danger btn-sm" onclick="deleteHermesCron('${j.id}')">&#10005;</button></td>
+      <td><button class="btn btn-danger btn-sm" data-cron-id="${escapeHtml(j.id)}" onclick="deleteHermesCron(this.dataset.cronId)">&#10005;</button></td>
     </tr>`).join('')}
   </tbody></table>`;
 }
@@ -6708,9 +6758,9 @@ function renderReportTemplates() {
           <div style="margin-top:6px;font-size:12px;">Formats: ${t.formats.map(f => f.toUpperCase()).join(', ')}</div>
         </div>
         <div style="display:flex; gap:6px;">
-          <button class="btn btn-sm btn-primary" onclick="generateReport('${t.id}', 'pdf')">PDF</button>
-          ${t.formats.includes('csv') ? `<button class="btn btn-sm" onclick="generateReport('${t.id}', 'csv')">CSV</button>` : ''}
-          <button class="btn btn-sm" onclick="showScheduleReportModal('${t.id}')" title="Schedule">&#128339;</button>
+          <button class="btn btn-sm btn-primary" data-report-id="${escapeHtml(t.id)}" onclick="generateReport(this.dataset.reportId, 'pdf')">PDF</button>
+          ${t.formats.includes('csv') ? `<button class="btn btn-sm" data-report-id="${escapeHtml(t.id)}" onclick="generateReport(this.dataset.reportId, 'csv')">CSV</button>` : ''}
+          <button class="btn btn-sm" data-report-id="${escapeHtml(t.id)}" onclick="showScheduleReportModal(this.dataset.reportId)" title="Schedule">&#128339;</button>
         </div>
       </div>
     </div>
@@ -6802,7 +6852,7 @@ function showScheduleReportModal(templateId) {
   const modal = document.getElementById('reportModal');
   document.getElementById('reportModalContent').innerHTML = `
     <h3>Schedule Report</h3>
-    <div class="settings-field"><label>Report</label><input type="text" value="${templateId.replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase())}" disabled></div>
+    <div class="settings-field"><label>Report</label><input type="text" value="${escapeHtml(templateId.replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase()))}" disabled></div>
     <div class="settings-field"><label>Frequency</label>
       <select id="schedFrequency">
         <option value="daily">Daily</option>
@@ -7145,7 +7195,7 @@ async function viewYTAnalysis(analysisId) {
   // Visual timeline
   const timeline = visuals.map(v => `
     <div class="yt-timeline-frame">
-      <div class="yt-frame-time">${v.timecode}</div>
+      <div class="yt-frame-time">${escapeHtml(v.timecode)}</div>
       <div class="yt-frame-content">
         <div class="yt-frame-scene">${escapeHtml(v.scene)}</div>
         <div class="yt-frame-elements">${v.elements.map(e => `<span class="yt-element-tag">${escapeHtml(e)}</span>`).join('')}</div>
@@ -7157,7 +7207,7 @@ async function viewYTAnalysis(analysisId) {
   // Transcript segments
   const transcriptHtml = (transcript.segments || []).map(s => `
     <div class="yt-transcript-seg">
-      <span class="yt-transcript-time">${Math.floor(s.start / 60)}:${String(s.start % 60).padStart(2, '0')}</span>
+      <span class="yt-transcript-time">${Math.floor(s.start / 60)}:${escapeHtml(String(s.start % 60).padStart(2, '0'))}</span>
       <span class="yt-transcript-text">${escapeHtml(s.text)}</span>
     </div>
   `).join('');
@@ -7185,14 +7235,14 @@ async function viewYTAnalysis(analysisId) {
       </div>
 
       <div class="yt-video-meta">
-        <img src="https://img.youtube.com/vi/${analysis.videoId}/mqdefault.jpg" alt="thumb" class="yt-report-thumb">
+        <img src="https://img.youtube.com/vi/${escapeHtml(analysis.videoId)}/mqdefault.jpg" alt="thumb" class="yt-report-thumb">
         <div class="yt-meta-details">
           <div class="yt-meta-row"><strong>Channel:</strong> ${escapeHtml(info.channel || 'Unknown')}</div>
-          <div class="yt-meta-row"><strong>Duration:</strong> ${info.duration || 'Unknown'}</div>
-          <div class="yt-meta-row"><strong>Views:</strong> ${info.views ? info.views.toLocaleString() : 'N/A'}</div>
-          <div class="yt-meta-row"><strong>Likes:</strong> ${info.likes ? info.likes.toLocaleString() : 'N/A'}</div>
+          <div class="yt-meta-row"><strong>Duration:</strong> ${escapeHtml(info.duration || 'Unknown')}</div>
+          <div class="yt-meta-row"><strong>Views:</strong> ${info.views ? Number(info.views).toLocaleString() : 'N/A'}</div>
+          <div class="yt-meta-row"><strong>Likes:</strong> ${info.likes ? Number(info.likes).toLocaleString() : 'N/A'}</div>
           <div class="yt-meta-row"><strong>Frames analyzed:</strong> ${visuals.length}</div>
-          <div class="yt-meta-row"><strong>Analysis type:</strong> ${analysis.type}</div>
+          <div class="yt-meta-row"><strong>Analysis type:</strong> ${escapeHtml(analysis.type)}</div>
         </div>
       </div>
 
@@ -7200,9 +7250,9 @@ async function viewYTAnalysis(analysisId) {
         <h3 class="panel-title">Summary</h3>
         <p class="yt-summary-text">${escapeHtml(summary.overview || '')}</p>
         <div class="yt-summary-meta">
-          <div><strong>Content Type:</strong> ${summary.contentType || 'N/A'}</div>
-          <div><strong>Level:</strong> ${summary.technicalLevel || 'N/A'}</div>
-          <div><strong>Actionability:</strong> ${summary.actionability || 'N/A'}</div>
+          <div><strong>Content Type:</strong> ${escapeHtml(summary.contentType || 'N/A')}</div>
+          <div><strong>Level:</strong> ${escapeHtml(summary.technicalLevel || 'N/A')}</div>
+          <div><strong>Actionability:</strong> ${escapeHtml(summary.actionability || 'N/A')}</div>
         </div>
         <div class="yt-topics" style="margin-top:10px;">${topicsHtml}</div>
       </section>
@@ -7702,9 +7752,9 @@ function renderPortrait(container) {
 
   container.innerHTML = `
     <div class="portrait-frame ${avatarState.speaking ? 'speaking' : ''} ${avatarState.listening ? 'listening' : ''}" id="portraitFrame">
-      <div class="portrait-glow" style="background:${profile.gradient};"></div>
-      <div class="portrait-avatar" style="background:${profile.gradient};">
-        <span class="portrait-initials">${profile.initials}</span>
+      <div class="portrait-glow" style="background:${safeGradient(profile.gradient)};"></div>
+      <div class="portrait-avatar" style="background:${safeGradient(profile.gradient)};">
+        <span class="portrait-initials">${escapeHtml(profile.initials)}</span>
       </div>
       <div class="portrait-ring ${avatarState.speaking ? 'ring-speaking' : avatarState.listening ? 'ring-listening' : 'ring-idle'}"></div>
       <div class="portrait-speaking-indicator" id="portraitSpeakingBars">
@@ -8797,11 +8847,11 @@ function renderHQStats(stats) {
   const tierLabel = (stats.tier || 'community').charAt(0).toUpperCase() + (stats.tier || 'community').slice(1);
   container.innerHTML = `
     <div class="hq-stat"><div class="hq-stat-value" style="color:${tierColor};">${tierLabel}</div><div class="hq-stat-label">License Tier</div></div>
-    <div class="hq-stat"><div class="hq-stat-value">${stats.totalEmployees}</div><div class="hq-stat-label">Total Agents</div></div>
-    <div class="hq-stat"><div class="hq-stat-value">${stats.departments}</div><div class="hq-stat-label">Departments</div></div>
+    <div class="hq-stat"><div class="hq-stat-value">${escapeHtml(stats.totalEmployees)}</div><div class="hq-stat-label">Total Agents</div></div>
+    <div class="hq-stat"><div class="hq-stat-value">${escapeHtml(stats.departments)}</div><div class="hq-stat-label">Departments</div></div>
     <div class="hq-stat"><div class="hq-stat-value" style="color:var(--success);">${stats.byStatus?.active || 0}</div><div class="hq-stat-label">Active</div></div>
     <div class="hq-stat"><div class="hq-stat-value" style="color:var(--text-muted);">${stats.byStatus?.idle || 0}</div><div class="hq-stat-label">Idle</div></div>
-    <div class="hq-stat"><div class="hq-stat-value">${stats.cSuite}</div><div class="hq-stat-label">C-Suite</div></div>
+    <div class="hq-stat"><div class="hq-stat-value">${escapeHtml(stats.cSuite)}</div><div class="hq-stat-label">C-Suite</div></div>
   `;
 
   // Upgrade banner for community users
@@ -8818,7 +8868,7 @@ function renderHQStats(stats) {
           <span style="font-size:24px;">&#128640;</span>
           <div>
             <div style="font-size:16px;font-weight:700;color:var(--text,#f1f5f9);">Unlock the Full AI OS Platform</div>
-            <div style="font-size:13px;color:var(--text-muted,#94a3b8);margin-top:2px;">You're on the Community edition with ${stats.totalEmployees} agents and ${stats.departments} departments.</div>
+            <div style="font-size:13px;color:var(--text-muted,#94a3b8);margin-top:2px;">You're on the Community edition with ${escapeHtml(stats.totalEmployees)} agents and ${escapeHtml(stats.departments)} departments.</div>
           </div>
         </div>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">
@@ -8871,8 +8921,8 @@ function renderOrgChart(org) {
             <div class="hq-avatar-typing"><div class="hq-typing-dots"><span></span><span></span><span></span></div></div>
           </div>
           <div class="hq-emp-info">
-            <div class="hq-emp-name">${statusDot} ${emp.name}</div>
-            <div class="hq-emp-title">${emp.title}</div>
+            <div class="hq-emp-name">${statusDot} ${escapeHtml(emp.name)}</div>
+            <div class="hq-emp-title">${escapeHtml(emp.title)}</div>
           </div>
           <span class="hq-tier-badge hq-tier-${tierClass}">${emp.tier}</span>
         </div>
@@ -8908,24 +8958,24 @@ async function showEmployee(empId, el) {
     <div class="hq-profile">
       <div class="hq-profile-avatar">${AVATAR_MAP[(data.name || '').toLowerCase()] ? renderAvatar(data.name, 'lg') : data.avatar}</div>
       <div class="hq-profile-info">
-        <h3>${data.name}</h3>
-        <div class="hq-profile-title">${data.title}</div>
-        <div class="hq-profile-dept">${data.department}</div>
+        <h3>${escapeHtml(data.name)}</h3>
+        <div class="hq-profile-title">${escapeHtml(data.title)}</div>
+        <div class="hq-profile-dept">${escapeHtml(data.department)}</div>
       </div>
-      <span class="hq-tier-badge hq-tier-${tierClass}">${data.tier}</span>
+      <span class="hq-tier-badge hq-tier-${tierClass}">${escapeHtml(data.tier)}</span>
     </div>
     <div class="hq-profile-details">
-      <div class="hq-detail-row"><span class="hq-detail-key">Agent</span><span class="hq-detail-val"><code>${data.agent}</code></span></div>
+      <div class="hq-detail-row"><span class="hq-detail-key">Agent</span><span class="hq-detail-val"><code>${escapeHtml(data.agent)}</code></span></div>
       <div class="hq-detail-row"><span class="hq-detail-key">Model</span><span class="hq-detail-val">${routing}</span></div>
-      <div class="hq-detail-row"><span class="hq-detail-key">Status</span><span class="hq-detail-val hq-status-${data.status}">${data.status}</span></div>
-      <div class="hq-detail-row"><span class="hq-detail-key">Reports To</span><span class="hq-detail-val">${data.reportsTo || 'Board'}</span></div>
+      <div class="hq-detail-row"><span class="hq-detail-key">Status</span><span class="hq-detail-val hq-status-${escapeHtml(data.status)}">${escapeHtml(data.status)}</span></div>
+      <div class="hq-detail-row"><span class="hq-detail-key">Reports To</span><span class="hq-detail-val">${escapeHtml(data.reportsTo || 'Board')}</span></div>
     </div>
-    <div class="hq-profile-desc">${data.desc}</div>
+    <div class="hq-profile-desc">${escapeHtml(data.desc)}</div>
     <div class="hq-dispatch">
       <h4>Dispatch Task</h4>
       <div class="settings-input-row">
         <input type="text" class="settings-input" id="hqTaskInput" placeholder="Describe the task..." spellcheck="false">
-        <button class="btn btn-primary" onclick="dispatchHQTask('${data.id}')">Dispatch</button>
+        <button class="btn btn-primary" data-emp-id="${escapeHtml(data.id)}" onclick="dispatchHQTask(this.dataset.empId)">Dispatch</button>
       </div>
       <div id="hqDispatchResult" style="margin-top:10px;"></div>
     </div>
@@ -9048,7 +9098,7 @@ function renderOmniResult(type, result) {
       <div class="omni-result-header">
         <span class="omni-result-icon">${icon}</span>
         <div>
-          <strong>${capitalize(type)} Generated</strong>
+          <strong>${escapeHtml(capitalize(type))} Generated</strong>
           <div style="font-size:12px; color:var(--text-muted);">${escapeHtml(result.prompt.substring(0, 100))}${result.prompt.length > 100 ? '...' : ''}</div>
         </div>
         <span class="omni-result-badge">${escapeHtml(result.model)}</span>
@@ -9138,7 +9188,21 @@ function renderSeoAgency() {
         <div class="seo-audit-actions">
           <button class="btn btn-sm btn-primary" onclick="viewSeoAudit('${a.id}')" ${a.status !== 'complete' ? 'disabled' : ''}>View Report</button>
           <button class="btn btn-sm" onclick="generateSeoReport('${a.id}')" ${a.status !== 'complete' ? 'disabled' : ''}>Export PDF</button>
-          <button class="btn btn-sm" onclick="emailAuditToLead('${a.id}', '${(a.email || '').replace(/'/g, '')}')" ${a.status !== 'complete' ? 'disabled' : ''} title="Send the headline findings to the lead as an outreach email">&#9993; Email to Lead</button>
+          <!-- The email is USER-SUPPLIED (typed into the public free-audit form) and used only to
+               prefill a prompt(). It was previously interpolated into the onclick and passed
+               through a hand-rolled .replace that stripped single quotes — an escape for the WRONG
+               context: it protects the JS string but leaves the surrounding HTML attribute open, so
+               an email containing a double quote escapes the onclick attribute and adds attributes
+               of its own.
+               escapeHtml alone would NOT have fixed it either: it turns a single quote into the
+               &#39; entity, the attribute decodes that back to a quote, and the JS string breaks
+               again. Verified in a browser — an escapeHtml-ed payload still executed arbitrary JS.
+               Two nested contexts (HTML attribute + JS string literal) need two encodings in the
+               right order, and getting that wrong looks safe.
+               So the JS-string context is REMOVED instead: values live in data-* attributes where
+               plain HTML escaping is correct and sufficient, and the handler reads them back via
+               dataset. No caller-supplied data appears inside the onclick at all. -->
+          <button class="btn btn-sm" data-audit-id="${escapeHtml(a.id)}" data-audit-email="${escapeHtml(a.email || '')}" onclick="emailAuditToLead(this.dataset.auditId, this.dataset.auditEmail)" ${a.status !== 'complete' ? 'disabled' : ''} title="Send the headline findings to the lead as an outreach email">&#9993; Email to Lead</button>
           <button class="btn btn-sm btn-danger" onclick="deleteSeoAudit('${a.id}')">Delete</button>
         </div>
       </div>
@@ -9246,16 +9310,19 @@ async function viewSeoAudit(auditId) {
     const scoreClass = data.score >= 75 ? 'good' : data.score >= 50 ? 'warning' : 'critical';
     const findings = (data.findings || []).map(f => {
       const sevClass = f.severity === 'critical' ? 'critical' : f.severity === 'high' ? 'high' : f.severity === 'medium' ? 'warning' : 'info';
+      // `f.severity` is LLM output, not a validated enum — nothing server-side constrains it. It is
+      // called as a string method, so a payload passes straight through `.toUpperCase()` and lands
+      // in the ADMIN's browser. `sevClass` above is a computed literal and is safe.
       return `<div class="seo-finding seo-finding-${sevClass}">
-        <span class="seo-finding-severity">${f.severity.toUpperCase()}</span>
+        <span class="seo-finding-severity">${escapeHtml(f.severity.toUpperCase())}</span>
         <div><strong>${escapeHtml(f.issue)}</strong><br><span class="seo-finding-rec">${escapeHtml(f.recommendation)}</span></div>
       </div>`;
     }).join('');
     return `
       <div class="seo-agent-card">
         <div class="seo-agent-header">
-          <span class="seo-agent-name">${name === 'aeo' ? 'AEO Readiness (AI Answer Engines)' : capitalize(name) + ' Analysis'}</span>
-          <span class="seo-score seo-score-${scoreClass}">${data.score}<small>/100</small></span>
+          <span class="seo-agent-name">${name === 'aeo' ? 'AEO Readiness (AI Answer Engines)' : escapeHtml(capitalize(name)) + ' Analysis'}</span>
+          <span class="seo-score seo-score-${scoreClass}">${escapeHtml(data.score)}<small>/100</small></span>
         </div>
         <div class="seo-findings">${findings}</div>
       </div>
@@ -9263,12 +9330,12 @@ async function viewSeoAudit(auditId) {
   }).join('');
 
   const quickWins = (audit.quickWins || []).map(w =>
-    `<tr><td>${w.priority}</td><td>${escapeHtml(w.action)}</td><td>${w.time}</td><td><span class="seo-impact seo-impact-${w.impact}">${w.impact}</span></td></tr>`
+    `<tr><td>${escapeHtml(w.priority)}</td><td>${escapeHtml(w.action)}</td><td>${escapeHtml(w.time)}</td><td><span class="seo-impact seo-impact-${escapeHtml(w.impact)}">${escapeHtml(w.impact)}</span></td></tr>`
   ).join('');
 
   const actionPlan = (audit.actionPlan || []).map(p =>
     `<div class="seo-phase">
-      <div class="seo-phase-header"><span class="seo-phase-name">${p.phase}</span><span class="seo-phase-title">${p.title}</span><span class="seo-phase-priority priority-${p.priority}">${p.priority}</span></div>
+      <div class="seo-phase-header"><span class="seo-phase-name">${escapeHtml(p.phase)}</span><span class="seo-phase-title">${escapeHtml(p.title)}</span><span class="seo-phase-priority priority-${escapeHtml(p.priority)}">${escapeHtml(p.priority)}</span></div>
       <ul>${p.tasks.map(t => `<li>${escapeHtml(t)}</li>`).join('')}</ul>
     </div>`
   ).join('');
@@ -9280,7 +9347,7 @@ async function viewSeoAudit(auditId) {
       <div class="seo-report-header">
         <button class="btn btn-sm" onclick="document.getElementById('seoAuditDetail').innerHTML=''; document.getElementById('seoAuditDetail').style.display='none';">&larr; Back to Audits</button>
         <h3>${escapeHtml(audit.domain)} — Full SEO Audit Report</h3>
-        <span class="seo-score seo-score-${scoreClass} seo-score-lg">${audit.compositeScore}<small>/100</small></span>
+        <span class="seo-score seo-score-${scoreClass} seo-score-lg">${escapeHtml(audit.compositeScore)}<small>/100</small></span>
       </div>
 
       <section class="panel" style="margin-top:16px;">
@@ -9310,16 +9377,16 @@ async function viewSeoAudit(auditId) {
         <h3 class="panel-title">Post-Audit Actions</h3>
         <p style="font-size:13px; color:var(--text-secondary); margin-bottom:14px;">Generate deliverables from this audit's findings to accelerate implementation.</p>
         <div class="seo-action-btns">
-          <button class="btn btn-primary" onclick="seoGenerateBriefs('${audit.id}')">
+          <button class="btn btn-primary" data-audit-id="${escapeHtml(audit.id)}" onclick="seoGenerateBriefs(this.dataset.auditId)">
             <span class="seo-action-icon">&#128221;</span> Draft Content Briefs
           </button>
-          <button class="btn btn-primary" onclick="seoGenerateCalendar('${audit.id}')">
+          <button class="btn btn-primary" data-audit-id="${escapeHtml(audit.id)}" onclick="seoGenerateCalendar(this.dataset.auditId)">
             <span class="seo-action-icon">&#128197;</span> Generate Content Calendar
           </button>
-          <button class="btn btn-primary" onclick="seoOptimizeMeta('${audit.id}')">
+          <button class="btn btn-primary" data-audit-id="${escapeHtml(audit.id)}" onclick="seoOptimizeMeta(this.dataset.auditId)">
             <span class="seo-action-icon">&#127991;</span> Optimize Meta Tags
           </button>
-          <button class="btn" onclick="generateSeoReport('${audit.id}')">
+          <button class="btn" data-audit-id="${escapeHtml(audit.id)}" onclick="generateSeoReport(this.dataset.auditId)">
             <span class="seo-action-icon">&#128196;</span> Export PDF Report
           </button>
         </div>
@@ -9363,9 +9430,9 @@ async function seoGenerateBriefs(auditId) {
           <div class="seo-brief-info">
             <strong>${escapeHtml(b.title)}</strong>
             <div class="seo-brief-meta">
-              <span class="seo-impact seo-impact-${b.priority}">${b.priority}</span>
-              <span>${b.wordCount} words</span>
-              <span class="seo-intent-badge">${b.intent}</span>
+              <span class="seo-impact seo-impact-${escapeHtml(b.priority)}">${escapeHtml(b.priority)}</span>
+              <span>${escapeHtml(b.wordCount)} words</span>
+              <span class="seo-intent-badge">${escapeHtml(b.intent)}</span>
               <span>Target: <code>${escapeHtml(b.targetKeyword)}</code></span>
             </div>
           </div>
@@ -9392,11 +9459,11 @@ async function seoGenerateCalendar(auditId) {
           <div class="seo-calendar-week-label">${escapeHtml(w.week)}</div>
           <div class="seo-calendar-items">
             ${w.items.map(item => `
-              <div class="seo-calendar-item seo-cal-${item.type}">
-                <span class="seo-cal-type">${item.type}</span>
+              <div class="seo-calendar-item seo-cal-${escapeHtml(item.type)}">
+                <span class="seo-cal-type">${escapeHtml(item.type)}</span>
                 <span class="seo-cal-title">${escapeHtml(item.title)}</span>
-                <span class="seo-cal-effort">${item.effort}</span>
-                <span class="seo-impact seo-impact-${item.priority}">${item.priority}</span>
+                <span class="seo-cal-effort">${escapeHtml(item.effort)}</span>
+                <span class="seo-impact seo-impact-${escapeHtml(item.priority)}">${escapeHtml(item.priority)}</span>
               </div>
             `).join('')}
           </div>

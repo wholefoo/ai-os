@@ -115,8 +115,21 @@ app.use(helmet({
   contentSecurityPolicy: {
     directives: {
       defaultSrc: ["'self'"],
-      scriptSrc: ["'self'", "'unsafe-inline'", "https://www.googletagmanager.com", "https://www.google-analytics.com", "https://cdn.jsdelivr.net"],
-      scriptSrcAttr: ["'unsafe-inline'"],  // Required for onclick handlers in HTML
+      // AS-02: `'unsafe-inline'` REMOVED from script-src. This is the directive that decides whether
+      // an INJECTED <script> tag executes, so it is the one worth buying back. It was here because
+      // 52 executable inline blocks existed across the dashboard; all 52 are now external files
+      // (45 identical GA-init snippets -> /js/ga-init.js, plus 7 page scripts), so `'self'` covers
+      // them. Keep it that way: adding one inline <script> anywhere under dashboard/ will be blocked
+      // by this policy and the page will break loudly — which is the intended failure direction.
+      // (The 123 ld+json / importmap blocks are DATA, not executed, and were never in scope.)
+      scriptSrc: ["'self'", "https://www.googletagmanager.com", "https://www.google-analytics.com", "https://cdn.jsdelivr.net"],
+      // STILL 'unsafe-inline', and honestly so: ~325 inline handlers (157 in HTML, 168 generated
+      // from JS template literals) depend on it. Removing it means event delegation across the whole
+      // dashboard — a large, regression-prone refactor, tracked as the remaining half of AS-02.
+      // Note what this does and does not buy: with script-src tightened, an injected <script> tag
+      // no longer runs, but an injected attribute (e.g. `<img onerror=...>`) still would. AS-02 is
+      // therefore NARROWED, not closed.
+      scriptSrcAttr: ["'unsafe-inline'"],
       styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
       fontSrc: ["'self'", "https://fonts.gstatic.com"],
       connectSrc: ["'self'", "ws:", "wss:", "https://www.google-analytics.com", "https://analytics.google.com", "https://*.google-analytics.com", "https://*.analytics.google.com", "wss://*.livekit.cloud", "https://*.heygen.com", "https://*.liveavatar.com", "wss://*.heygen.com", "wss://*.liveavatar.com", "https://cdn.jsdelivr.net", "https://api.d-id.com", "https://*.d-id.com"],
@@ -3447,7 +3460,10 @@ app.post('/api/web-studio/sites/:id/unpublish', requireClientOrAdmin, async (req
 });
 
 // --- Serve the built preview (static dist) for the in-dashboard iframe ---
-app.get('/api/web-studio/sites/:id/preview/*', requireClientOrAdmin, (req, res) => {
+// `*splat`, not a bare `*`: path-to-regexp v8 (Express 5) REQUIRES wildcards to be named and
+// THROWS AT BOOT on the old form — `Missing parameter name at index 35`. Loud, not silent, so CI's
+// boot smoke test catches a regression here.
+app.get('/api/web-studio/sites/:id/preview/*splat', requireClientOrAdmin, (req, res) => {
   const site = webStudioSites.find(s => s.id === req.params.id);
   if (!site || !wsOwns(req.session, site)) return res.status(404).send('Not found');
   // Untrusted site content (esp. imported): neuter scripts even on a TOP-LEVEL open of this
@@ -3455,7 +3471,16 @@ app.get('/api/web-studio/sites/:id/preview/*', requireClientOrAdmin, (req, res) 
   res.setHeader('Content-Security-Policy', "sandbox allow-same-origin; default-src 'self' data: blob:; script-src 'none'; style-src 'self' 'unsafe-inline'; object-src 'none'; base-uri 'none'");
   res.setHeader('X-Content-Type-Options', 'nosniff');
   const dist = path.join(wsWorkspaceDir(site.id), 'dist');
-  let target = path.resolve(dist, req.params[0] || 'index.html');
+  // Express 5 gives a NAMED wildcard as an ARRAY of already-decoded segments
+  // (`/preview/_astro/x/y.css` → `['_astro','x','y.css']`); `req.params[0]` no longer exists.
+  // Verified against a live Express 5.2.1 app, not inferred from the changelog. Passing the array
+  // straight to path.resolve() throws a TypeError per request, so this is a required change, not a
+  // cosmetic one — and the empty-splat case (`/preview/`) must still fall back to index.html.
+  const splat = req.params.splat;
+  const relPath = (Array.isArray(splat) ? splat.join('/') : (splat || '')) || 'index.html';
+  let target = path.resolve(dist, relPath);
+  // UNCHANGED and still the real defence: resolve() normalises any `..` BEFORE this containment
+  // check, so the guard holds regardless of how the segments arrive.
   if (target !== dist && !target.startsWith(dist + path.sep)) return res.status(400).send('bad path');
   if (fs.existsSync(target) && fs.statSync(target).isDirectory()) target = path.join(target, 'index.html');
   if (!fs.existsSync(target)) { const idx = path.join(dist, 'index.html'); if (!fs.existsSync(idx)) return res.status(404).send('Not built yet'); target = idx; }
@@ -14068,9 +14093,17 @@ app.use((err, req, res, next) => {
   });
 });
 
-// 404 handler for unknown API routes
-app.use('/api/*', (req, res) => {
-  res.status(404).json({ error: `Route not found: ${req.method} ${req.path}` });
+// 404 handler for unknown API routes.
+// `*splat` for the same path-to-regexp v8 reason as the preview route above — a bare `*` throws at
+// boot on Express 5. This handler reads neither params nor the wildcard, so naming it is the whole
+// change.
+app.use('/api/*splat', (req, res) => {
+  // `req.originalUrl`, NOT `req.path`. Inside an `app.use` mount, Express strips the matched prefix
+  // from `req.url`, and under Express 5's wildcard mount that leaves `req.path === '/'` — so every
+  // API 404 reported the identical useless "Route not found: GET /". Found by probing the LIVE
+  // route after the 5.2.1 migration; no test and no boot check would have shown it, because the
+  // handler still returns a correct 404 status and valid JSON. originalUrl is unstripped.
+  res.status(404).json({ error: `Route not found: ${req.method} ${req.originalUrl}` });
 });
 
 // --- Security Self-Scan Cron (report-only) ---

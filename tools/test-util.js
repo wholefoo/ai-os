@@ -29,4 +29,66 @@ const readRepoFile = (p) =>
   fs.readFileSync(require('path').isAbsolute(p) ? p : require('path').join(repoRoot, p), 'utf8')
     .replace(/\r\n?/g, '\n');
 
-module.exports = { assert, done, cleanupAndFinish, serverSource, repoRoot, readRepoFile };
+// Drive the REAL seclint CLI over a throwaway fixture file. All three tools/test-seclint-*.js
+// suites do this rather than importing seclint's logic, and each says so in its own header — the
+// point is that a suite must not be able to pass while the SHIPPED linter fails. That decision is
+// one idea held in three places, and it had been written out three times: mkdtemp a scratch dir,
+// write the fixture, execFileSync, and fold stderr into the result. Anything that changes about
+// invoking the CLI — a new required flag, a config path, `process.execPath` instead of 'node' —
+// has to be changed in all three today. That is what makes it shared rather than merely similar.
+//
+// Only the regex each suite applies to the output differs (`innerhtml-unescaped` lines, {line,rule}
+// pairs, a `innerhtml-dataflow` count), so `run` returns the raw text and each suite keeps its own
+// parse — the part that is genuinely per-rule stays per-rule.
+//
+// stdout and stderr are concatenated because seclint EXITS NON-ZERO as soon as it finds anything,
+// which is the normal case for a fixture built to trip a rule: the findings arrive via the throw,
+// not the return. Reading only the return value would report every interesting fixture as clean.
+const seclintFixture = (prefix) => {
+  const nodePath = require('path');
+  const { execFileSync } = require('child_process');
+  const seclint = nodePath.join(__dirname, 'seclint.js');
+  const dir = fs.mkdtempSync(nodePath.join(require('os').tmpdir(), prefix));
+  const write = (name, src) => {
+    const f = nodePath.join(dir, name);
+    fs.writeFileSync(f, src);
+    return f;
+  };
+  return {
+    dir,
+    /** Combined stdout+stderr of seclint over `src`. */
+    run: (src) => {
+      const f = write('fixture.js', src);
+      try {
+        return execFileSync('node', [seclint, f], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
+      } catch (e) {
+        return String(e.stdout || '') + String(e.stderr || '');
+      }
+    },
+    /** The CLI's exit status over `src`. A rule at `error` that still exits 0 is cosmetic, so the
+     *  suites assert this separately from the finding count. */
+    exitCode: (src) => {
+      const f = write('ci-fixture.js', src);
+      try {
+        execFileSync('node', [seclint, f], { stdio: ['ignore', 'pipe', 'pipe'] });
+        return 0;
+      } catch (e) {
+        return e.status || 1;
+      }
+    },
+    /** `seclint --ci` over the real repo — every suite ends by asserting the codebase itself is
+     *  clean under its rule, because tightening a linter only counts once the code passes it.
+     *  `code` is `e.status` verbatim, NOT `e.status || 1`: a run killed by a signal reports
+     *  undefined, which fails an `=== 0` assertion, and that is the behaviour to keep. */
+    ci: () => {
+      try {
+        return { out: execFileSync('node', [seclint, '--ci'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }), code: 0 };
+      } catch (e) {
+        return { out: String(e.stdout || '') + String(e.stderr || ''), code: e.status };
+      }
+    },
+    cleanup: () => fs.rmSync(dir, { recursive: true, force: true }),
+  };
+};
+
+module.exports = { assert, done, cleanupAndFinish, serverSource, repoRoot, readRepoFile, seclintFixture };

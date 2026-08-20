@@ -46,6 +46,7 @@
     "tools/test-library-contribute.js",
     "tools/test-library-retention.js",
     "tools/test-clone-persona-ui.js",
+    "tools/test-clone-onboarding-ui.js",
     "tools/test-clone-effective-readiness.js",
     "tools/test-safe-request.js",
     "tools/test-notify-slack.js",
@@ -87,7 +88,15 @@
     "tools/test-nginx-headers.js",
     "tools/check-nginx-headers.js",
     "tools/test-seclint-innerhtml.js",
-    "tools/test-zip-import.js"
+    "tools/test-seclint-multiline.js",
+    "tools/test-safe-gradient.js",
+    "tools/test-seclint-dataflow.js",
+    "tools/test-preview-path.js",
+    "tools/test-no-nested-repos.js",
+    "tools/test-zip-import.js",
+    "tools/test-deps-installed.js",
+    "tools/check-deps-installed.js",
+    "tools/test-deploy-guard.js"
   ],
   "ignorePatterns": [
     "docs-export/**",
@@ -100,6 +109,7 @@
   "ignoreUnresolvedImports": [
     "/css/**",
     "/js/**",
+    "/vendor/**",
     "./commercial/loader",
     "./commercial/**"
   ],
