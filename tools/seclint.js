@@ -61,6 +61,48 @@ function interpolations(line) {
   return out;
 }
 
+/**
+ * Is this interpolated expression safe to drop into HTML as-is?
+ *
+ * Shared by the line-based and multi-line innerHTML rules so the two cannot drift apart — a value
+ * judged safe on one line and unsafe three lines later would be worse than either answer.
+ *
+ * The formatter allowlist is EARNED, not assumed. Each was read before being added:
+ *   timeAgo            — every branch returns a computed string; a garbage timestamp yields
+ *                        'Invalid Date'. It cannot echo its input. (45 call sites cleared by this.)
+ *   Number/formatTokenCount/formatFileSize — numeric output only.
+ *   encodeURIComponent — percent-encodes quotes and angle brackets; correct here.
+ * NOTE `capitalize` is deliberately ABSENT: it is a PASS-THROUGH
+ * (`str.replace(/\b\w/g, c => c.toUpperCase())`), so capitalize('<img …>') is live HTML because tag
+ * names are case-insensitive. It cost 8 unescaped sites; do not add it here.
+ */
+function safeInterp(e) {
+  return /^escapeHtml\(/.test(e) || /^esc\(/.test(e) || /^escapeAttr\(/.test(e)
+    || /^\s*['"`]/.test(e) || /^[\d.]+$/.test(e) || e === ''
+    || /^(timeAgo|Number|formatTokenCount|formatFileSize|encodeURIComponent)\(/.test(e)
+    // `safeGradient()` is allowlisted where a file-local helper would NOT be (see the crm.js and
+    // web-studio.js spans, which got per-site suppressions instead). Three things earn it: the name
+    // is specific rather than generic, it is a real SANITISER — it allowlists a CSS shape and
+    // returns a constant fallback otherwise, rather than formatting — and `test-safe-gradient.js`
+    // pins that behaviour against the payloads escapeHtml would have passed through untouched.
+    // Allowlisting a name is a promise about a function; keep it only while that test exists.
+    || /^safeGradient\(/.test(e)
+    // `x.length` on an Array or String is ALWAYS a number — it cannot carry markup. This is a
+    // property of the language, not an assumption about the data, which is why it belongs here
+    // rather than in a per-site suppression. It clears a run of `skills.length`,
+    // `result.pages.length`, `stats.raw.length` findings that were pure noise.
+    || /\.length$/.test(e)
+    // ARITHMETIC RESULTS. Like `.length`, these are language-level guarantees rather than claims
+    // about the data: `Math.round` and friends return a Number for ANY input (NaN at worst), and
+    // `.toFixed()` returns a String of digits. Needed now that isMethodCall() is in the filter,
+    // which would otherwise flag `${Math.round(i.confidence * 100)}` as an unescaped method call.
+    // NOTE what is deliberately ABSENT: `.toLocaleString()`. It looks like a sibling of `.toFixed()`
+    // but it is Object.prototype's, so on a string it returns that string UNCHANGED — a pass-through
+    // wearing a formatter's name. That is exactly how `v.score` reached innerHTML unescaped.
+    || /^Math\.(round|floor|ceil|abs|min|max)\(/.test(e)
+    || /\.toFixed\(\d*\)$/.test(e);
+}
+
 const rules = [
   {
     id: 'route-no-auth',
@@ -128,12 +170,191 @@ const rules = [
       // by the same scan. The `.map(` exemption is gone — `${ids.map(i => i.raw).join(',')}` is a
       // real injection vector and now reports. Use `// seclint-ok: <reason>` where it truly is not.
       const exprs = interpolations(line);
-      const safe = e =>
-        /^escapeHtml\(/.test(e) || /^esc\(/.test(e) || /^escapeAttr\(/.test(e) ||
-        /^\s*['"`]/.test(e) || /^[\d.]+$/.test(e) || e === '';
-      const bad = exprs.filter(e => !e.includes('`') && !safe(e));
+      const bad = exprs.filter(e => !e.includes('`') && !safeInterp(e));
       if (!bad.length) return null;
       return `innerHTML interpolates possibly-unescaped value(s): ${bad.slice(0, 2).map(e => e.slice(0, 40)).join(', ')} — wrap in escapeHtml()`;
+    },
+  },
+];
+
+/**
+ * FILE-LEVEL rules. The line-based ones above cannot see a template literal that spans lines, and
+ * that blind spot hid three real XSS bugs: agent-created artifact filenames, the free-audit result
+ * renderer, and both SEO-audit renderers. In every case the `innerHTML =` sat many lines above the
+ * interpolation, so `innerhtml-unescaped` never even looked.
+ */
+/**
+ * Walk from the opening backtick at `start` to its matching close, honouring ${ } nesting.
+ * Shared by the template-reading rules — a naive indexOf('`') stops inside the first nested
+ * template and silently scans only part of the span.
+ */
+function readTemplateBody(text, start) {
+  let i = start + 1, depth = 0;
+  for (; i < text.length; i++) {
+    const c = text[i];
+    if (c === '\\') { i++; continue; }
+    if (c === '$' && text[i + 1] === '{') { depth++; i++; continue; }
+    if (c === '}' && depth > 0) { depth--; continue; }
+    if (c === '`' && depth === 0) break;
+  }
+  return { body: text.slice(start + 1, i), end: i };
+}
+
+/** The shared unsafe-value predicate used by the innerHTML rules. */
+function unsafeInterps(body) {
+  return interpolations(body).filter((e) =>
+    !e.includes('`') && !safeInterp(e) && !/\?[\s\S]*:/.test(e)
+    && (/^[a-zA-Z_$][\w$]*\.[\w$.]+$/.test(e)        // property read
+      || /^[a-zA-Z_$][\w$]*\(/.test(e)               // call
+      || /^[a-zA-Z_$][\w$]*\.[\w$.]*\(/.test(e)));   // method call on a property path
+}
+
+const fileRules = [
+  {
+    id: 'innerhtml-dataflow',
+    // THE HOLE THE OTHER TWO RULES CANNOT COVER. `innerhtml-unescaped` needs the value on the
+    // `.innerHTML` line; `innerhtml-multiline` needs it inside the assigned template. Neither can
+    // see this, which is the single most common real shape in this codebase:
+    //
+    //     const rows = items.map((r) => `<td>${r.name}</td>`).join('');   // <- the unsafe value
+    //     el.innerHTML = `<table>${rows}</table>`;                        // <- the sink, 20 lines on
+    //
+    // `innerhtml-multiline` deliberately IGNORES bare locals like ${rows} (they are usually
+    // pre-built fragments, and flagging them gave 52 findings nobody would read). That exclusion is
+    // what opens this gap: the fragment itself is never checked. This rule closes it by resolving
+    // the local back to its nearest preceding assignment and scanning THAT template.
+    //
+    // Found 4 real sites on its first run, and 3 of the 4 had an ESCAPED NEIGHBOUR — `v.scene`,
+    // `s.name` and `a.grade` were escaped while the value beside them was not. An escaped neighbour
+    // means someone looked at that line and made a per-field judgement; it is not evidence the line
+    // is safe.
+    //
+    // One of the 4 sat directly above a `seclint-ok` span suppression: the suppression silenced the
+    // sink while the fragment feeding it went unchecked. That is the argument for hoisting over
+    // suppressing, made concrete.
+    //
+    // SCOPE, stated so nobody over-trusts it: "nearest preceding assignment" is a TEXTUAL
+    // approximation of scope, not real dataflow. It resolves single-assignment locals well and can
+    // miss reassignment, cross-function shadowing, and values built by += in a loop.
+    level: 'error',
+    test(text) {
+      const out = [];
+      const lineAt = (idx) => text.slice(0, idx).split('\n').length;
+      const sinks = [];
+
+      // Sink A: `el.innerHTML = someLocal;` (optionally `.join(...)`)
+      for (const m of text.matchAll(/\.innerHTML\s*\+?=\s*([a-zA-Z_$][\w$]*)\s*(?:\.join\([^)]*\))?\s*;/g)) {
+        sinks.push({ name: m[1], at: m.index });
+      }
+      // Sink B: a bare `${someLocal}` inside an assigned template — the exclusion that opens the gap.
+      for (const m of text.matchAll(/\.innerHTML\s*\+?=\s*`/g)) {
+        const { body } = readTemplateBody(text, m.index + m[0].length - 1);
+        for (const v of body.matchAll(/\$\{\s*([a-zA-Z_$][\w$]*)\s*\}/g)) {
+          sinks.push({ name: v[1], at: m.index });
+        }
+      }
+
+      const seen = new Set();
+      for (const { name, at } of sinks) {
+        // Nearest PRECEDING assignment. Textual proximity stands in for scope analysis.
+        const assignRe = new RegExp(`(?:const|let|var)\\s+${name}\\s*=|(?<![\\w$.])${name}\\s*=(?!=)`, 'g');
+        let best = -1;
+        for (const a of text.matchAll(assignRe)) { if (a.index < at) best = a.index; else break; }
+        if (best === -1) continue;
+        const eq = text.indexOf('=', best + name.length);
+        const tick = text.indexOf('`', eq);
+        if (tick === -1 || tick - eq > 200) continue;   // not a template-literal assignment
+        const line = lineAt(best);
+        if (seen.has(`${line}:${name}`)) continue;
+        // Honour the same suppression comments the other rules use, on the ASSIGNMENT line.
+        const lines = text.split('\n');
+        if (/seclint-(ok|disable-line)/.test(lines[line - 1] || '')
+          || /seclint-disable-next-line/.test(lines[line - 2] || '')) continue;
+        const bad = unsafeInterps(readTemplateBody(text, tick).body);
+        if (!bad.length) continue;
+        seen.add(`${line}:${name}`);
+        out.push({
+          line,
+          msg: `\`${name}\` flows into innerHTML (line ${lineAt(at)}) carrying unescaped value(s): `
+            + `${bad.slice(0, 3).map((e) => e.slice(0, 40)).join(', ')}`
+            + `${bad.length > 3 ? ` (+${bad.length - 3} more)` : ''} — wrap in escapeHtml()`,
+        });
+      }
+      return out;
+    },
+  },
+  {
+    id: 'innerhtml-multiline',
+    // PROMOTED FROM `warn` TO `error` once the repo reached ZERO findings (25 -> 0 across
+    // b3b36a3, c46f459, 8759382, 5826013 and this commit). It shipped at `warn` deliberately while
+    // findings remained: turning on `error` with a backlog fails CI on benign counters, and the
+    // next person reaches for `continue-on-error` — the exact failure DEP-04 existed to end.
+    //
+    // WHAT THE PROMOTION IS AND IS NOT. It is a guarantee that no NEW multi-line innerHTML span
+    // interpolates an unescaped property read or non-allowlisted call. It is NOT a guarantee that
+    // the dashboard is XSS-free: this rule cannot see `const rows = items.map(...)` assigned to
+    // innerHTML further down (crm.js has that shape), which needs dataflow analysis.
+    //
+    // Before trusting a clean run, remember the count was clean at 14 while the rule was BLIND to
+    // `obj.prop.method(...)` (fixed in 0233474). A rule reporting zero for a shape it cannot see
+    // looks exactly like a rule reporting zero because the code is clean. If you extend it, add a
+    // fixture to test-seclint-multiline.js and watch it FAIL first.
+    level: 'error',
+    test(text) {
+      const out = [];
+      const re = /\.innerHTML\s*\+?=\s*`/g;
+      let m;
+      while ((m = re.exec(text))) {
+        const start = m.index + m[0].length;
+        // Walk to the template's closing backtick, honouring ${ } nesting (which may itself contain
+        // nested template literals). A naive indexOf('`') stops inside the first nested template.
+        let i = start, depth = 0;
+        for (; i < text.length; i++) {
+          const c = text[i];
+          if (c === '\\') { i++; continue; }
+          if (c === '$' && text[i + 1] === '{') { depth++; i++; continue; }
+          if (c === '}' && depth > 0) { depth--; continue; }
+          if (c === '`' && depth === 0) break;
+        }
+        const body = text.slice(start, i);
+        re.lastIndex = i;
+        if (!body.includes('\n')) continue;   // single-line: innerhtml-unescaped already covers it
+
+        // Flag PROPERTY READS and NON-ALLOWLISTED FUNCTION CALLS.
+        //
+        // Bare locals are excluded deliberately: in these spans they are overwhelmingly pre-built
+        // HTML fragments (agentCards, quickWins) or computed class names (scoreClass, tierLabel),
+        // and flagging them turns a 23-item review list into a 52-item one nobody reads.
+        //
+        // Function calls MUST be included even though safeInterp() clears the common formatters,
+        // because the dangerous case is a PASS-THROUGH helper that merely looks like a formatter.
+        // `capitalize()` is precisely that — it returns its input, and it cost 8 unescaped sites.
+        // A first draft of this rule checked property reads only; a test showed `capitalize(a.name)`
+        // in a multi-line span then fell through BOTH rules — the line rule cannot see it either,
+        // because it sits on a different line from the `innerHTML =`.
+        const isPropertyRead = (e) => /^[a-zA-Z_$][\w$]*\.[\w$.]+$/.test(e);
+        const isCall = (e) => /^[a-zA-Z_$][\w$]*\(/.test(e);
+        // METHOD CALLS ON A PROPERTY PATH — the gap that let `${e.model.replace('a','b')}` through
+        // BOTH detectors: isPropertyRead rejects anything containing parens, and isCall requires the
+        // expression to START with `ident(`, which `e.model.replace(` does not.
+        // This is not hypothetical — `dashboard/js/app.js:2655` had exactly that shape, sitting on
+        // the same line as a value the rule DID report, so the span looked reviewed.
+        // It matters because the common string methods are PASS-THROUGHS, the `capitalize` lesson
+        // again: `.replace()` returns the input unchanged when the pattern does not match,
+        // `.slice()` and `.join()` return their input's content, and `.toLocaleString()` is a no-op
+        // on a string (Object.prototype) — which is how v.score reached innerHTML unescaped.
+        const isMethodCall = (e) => /^[a-zA-Z_$][\w$]*\.[\w$.]*\(/.test(e);
+        const bad = interpolations(body).filter((e) =>
+          !e.includes('`') && !safeInterp(e) && !/\?[\s\S]*:/.test(e)
+          && (isPropertyRead(e) || isCall(e) || isMethodCall(e)));
+        if (!bad.length) continue;
+        out.push({
+          line: text.slice(0, m.index).split('\n').length,
+          msg: `multi-line innerHTML interpolates possibly-unescaped value(s): ${bad.slice(0, 3).map((e) => e.slice(0, 40)).join(', ')}`
+            + `${bad.length > 3 ? ` (+${bad.length - 3} more)` : ''} — wrap in escapeHtml()`,
+        });
+      }
+      return out;
     },
   },
 ];
@@ -150,6 +371,16 @@ function scanFile(file) {
     for (const rule of rules) {
       const msg = rule.test(line);
       if (msg) findings.push({ file: path.relative(ROOT, file), line: i + 1, rule: rule.id, level: rule.level, msg });
+    }
+  }
+  for (const rule of fileRules) {
+    for (const hit of rule.test(text)) {
+      // Suppression is checked against the line the finding is REPORTED on (the `innerHTML =`),
+      // which is where a reviewer would naturally write the comment.
+      const own = lines[hit.line - 1] || '';
+      const prev = lines[hit.line - 2] || '';
+      if (/seclint-(ok|disable-line)/.test(own) || /seclint-disable-next-line/.test(prev)) continue;
+      findings.push({ file: path.relative(ROOT, file), line: hit.line, rule: rule.id, level: rule.level, msg: hit.msg });
     }
   }
   return findings;
@@ -213,7 +444,14 @@ function main() {
   const targets = files.length ? files.map(f => path.resolve(f)) : defaultFileSet();
   const findings = targets.flatMap(scanFile);
   const errorCount = report(findings);
-  if (ci && errorCount > 0) process.exit(1);
+  // Exit non-zero on ERRORS in every mode, not only under --ci. A plain
+  // `node tools/seclint.js somefile.js` used to print "1 error(s)" and still exit 0, so any script,
+  // pre-commit hook or one-liner keying on the exit code read a real finding as a pass — the same
+  // shape of false comfort as a rule with a blind spot. Caught by the test that asserts the
+  // `error` promotion is more than cosmetic; without that test the promotion would have looked
+  // complete while a local run stayed silent. Warnings still exit 0 on purpose.
+  // (`--ci` remains the flag CI and package.json use; it no longer gates the exit code.)
+  if (errorCount > 0) process.exit(1);
 }
 
 main();

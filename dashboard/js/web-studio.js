@@ -195,6 +195,9 @@ async function wsLoadManage() {
       <span class="an-path" title="${escapeHtml(l.message || '')}">${escapeHtml((l.message || '').slice(0, 90))}</span>
       <span class="an-time">${timeAgo(l.at)}</span>
     </div>`).join('') : '<div class="an-empty">No leads yet. The contact form on your site feeds this inbox automatically.</div>';
+  // seclint-ok: the only interpolations are stat(v,label), which does escapeHtml(String(v)) and
+  // escapeHtml(label) internally. Verified by reading the helper at line 187.
+  // seclint-disable-next-line innerhtml-multiline
   pane.innerHTML = `
     <div class="an-stats" style="margin-top:10px;">
       ${stat(s.status || '—', 'Status')}${stat(s.domain || 'not set', 'Domain')}${stat(views, 'Pageviews (30d)')}${stat(aiHits, 'AI crawler hits')}${stat(aiRefs, 'AI-referred visits')}${stat(leads.length, 'Leads')}
@@ -687,7 +690,7 @@ async function wsOptimize() {
   const a = r.aeo || {};
   if (hint) hint.textContent = `AEO Readiness ${a.score}/100 (grade ${a.grade})${r.model ? ` · suggestions by ${r.model}` : ''}.`;
   const col = a.score >= 80 ? '#10b981' : a.score >= 50 ? '#f59e0b' : '#ef4444';
-  let html = `<div style="font-size:28px;font-weight:700;color:${col};">${a.score}<span style="font-size:14px;color:var(--text-muted,#9aa);font-weight:400;">/100 &middot; grade ${escapeHtml(a.grade || '')}</span></div>`;
+  let html = `<div style="font-size:28px;font-weight:700;color:${col};">${escapeHtml(a.score)}<span style="font-size:14px;color:var(--text-muted,#9aa);font-weight:400;">/100 &middot; grade ${escapeHtml(a.grade || '')}</span></div>`;
   if (r.crawlers && r.crawlers.blocked && r.crawlers.blocked.length) {
     html += `<div class="ws-hint" style="color:#ef4444;margin-top:4px;">&#9888; AI crawlers blocked in robots.txt: ${r.crawlers.blocked.map(escapeHtml).join(', ')}</div>`;
   }

@@ -107,7 +107,7 @@ async function securityOpenScan(id) {
       <span class="crm-muted">${s.durationSeconds ? Math.round(s.durationSeconds) + 's' : ''}</span>
     </div>
     <div class="crm-muted" style="margin:6px 0 12px;">${timeAgo(s.startedAt)} · ${escapeHtml(s.actor || '')}${s.patchRecommendations ? ' · ' + s.patchRecommendations + ' patch recommendation(s) (on a copy — not applied)' : ''}</div>
-    ${c.total != null ? `<div style="margin-bottom:10px;">Findings: <strong>${c.total || 0}</strong> — <span style="color:${SEV_COLOR.CRITICAL}">${c.critical || 0} critical</span>, <span style="color:${SEV_COLOR.HIGH}">${c.high || 0} high</span>, ${c.medium || 0} medium, ${c.low || 0} low · unresolved ${c.unresolved || 0}</div>` : ''}
+    ${c.total != null ? `<div style="margin-bottom:10px;">Findings: <strong>${c.total || 0}</strong> — <span class="sev-critical">${c.critical || 0} critical</span>, <span class="sev-high">${c.high || 0} high</span>, ${c.medium || 0} medium, ${c.low || 0} low · unresolved ${c.unresolved || 0}</div>` : ''}
     ${findings || (s.mode === 'deep' ? '<div class="crm-muted">No code findings.</div>' : '')}
     ${tm}${audit}
   `;

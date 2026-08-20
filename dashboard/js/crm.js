@@ -108,7 +108,7 @@ function renderProspects(run) {
     </tr>`;
   }).join('');
   box.innerHTML = `
-    <div style="font-size:12px;color:#888;margin-bottom:8px;">${run.count} found &middot; <b style="color:#22c55e;">${run.noWebsite} without websites</b> &middot; ${run.withEmail} with emails &middot; via ${escapeHtml(run.provider)}. Score = managed-website fit (hover for reasons).</div>
+    <div style="font-size:12px;color:#888;margin-bottom:8px;">${escapeHtml(run.count)} found &middot; <b style="color:#22c55e;">${escapeHtml(run.noWebsite)} without websites</b> &middot; ${escapeHtml(run.withEmail)} with emails &middot; via ${escapeHtml(run.provider)}. Score = managed-website fit (hover for reasons).</div>
     <div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;font-size:13px;">
       <thead><tr style="text-align:left;color:#888;font-size:11px;text-transform:uppercase;"><th style="padding:6px;"></th><th style="padding:6px;">Business</th><th style="padding:6px;">Rating</th><th style="padding:6px;">Website</th><th style="padding:6px;">Phone</th><th style="padding:6px;">Email</th><th style="padding:6px;">Fit</th><th style="padding:6px;"></th></tr></thead>
       <tbody>${rows}</tbody>
@@ -394,8 +394,12 @@ async function crmOpenContact(id) {
   const ro = (k, v) => (v || v === 0) ? `<div class="crm-detail-row"><span class="crm-muted">${k}</span><span>${escapeHtml(String(v))}</span></div>` : '';
   const date = (v) => { try { return v ? new Date(v).toLocaleDateString() : ''; } catch { return v || ''; } };
   const stageOpts = CRM_STAGES.map((s) => `<option value="${s}" ${c.stage === s ? 'selected' : ''}>${s}</option>`).join('');
-  const linkOpts = crmState.unassigned.map((s) => `<option value="${s.id}">${escapeHtml(s.name || s.domain || s.id)}${s.domain ? ' (' + escapeHtml(s.domain) + ')' : ''}</option>`).join('');
+  const linkOpts = crmState.unassigned.map((s) => `<option value="${escapeHtml(s.id)}">${escapeHtml(s.name || s.domain || s.id)}${s.domain ? ' (' + escapeHtml(s.domain) + ')' : ''}</option>`).join('');
 
+  // seclint-ok: every value below is escaped at source — crmTags() interpolates only literal
+  // spans chosen by booleans, and ro()/stageOpts/linkOpts all call escapeHtml. Verified by reading
+  // each helper, not by shape.
+  // seclint-disable-next-line innerhtml-multiline
   el.innerHTML = `
     <div class="ws-row" style="justify-content:space-between;align-items:start;">
       <h3 class="panel-title" style="margin:0;">${escapeHtml(c.name || c.email)}</h3>
