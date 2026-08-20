@@ -14098,7 +14098,12 @@ app.use((err, req, res, next) => {
 // boot on Express 5. This handler reads neither params nor the wildcard, so naming it is the whole
 // change.
 app.use('/api/*splat', (req, res) => {
-  res.status(404).json({ error: `Route not found: ${req.method} ${req.path}` });
+  // `req.originalUrl`, NOT `req.path`. Inside an `app.use` mount, Express strips the matched prefix
+  // from `req.url`, and under Express 5's wildcard mount that leaves `req.path === '/'` — so every
+  // API 404 reported the identical useless "Route not found: GET /". Found by probing the LIVE
+  // route after the 5.2.1 migration; no test and no boot check would have shown it, because the
+  // handler still returns a correct 404 status and valid JSON. originalUrl is unstripped.
+  res.status(404).json({ error: `Route not found: ${req.method} ${req.originalUrl}` });
 });
 
 // --- Security Self-Scan Cron (report-only) ---
