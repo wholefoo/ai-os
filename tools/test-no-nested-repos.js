@@ -70,12 +70,23 @@ ok('no UNEXPECTED git repository is nested inside this working tree', () => {
     + 'entry only covers this one name, and the next drop-in will have a different one.');
 });
 
-// `commercial/` must be RECOGNISED, not merely tolerated — if the detector stopped seeing it, the
-// allowlist would be hiding a broken detector rather than an expected repo.
-ok('the detector DOES see commercial/ (proving it works on a real repo, not just fixtures)', () => {
+// `commercial/` should be RECOGNISED where it exists, not merely tolerated — otherwise the
+// allowlist could be hiding a broken detector rather than an expected repo.
+//
+// CONDITIONAL ON PRESENCE, and that is not a hedge — it is the open-core split. The PUBLIC repo has
+// no `commercial/`: CI clones only this repo and builds against the commercial stub, so asserting
+// its presence unconditionally fails every CI run. The first version of this file did exactly that
+// and turned master red. The environment-INDEPENDENT proof that the detector works is the fixture
+// test below; this one is a bonus real-repo confirmation on machines that have the private repo
+// mounted.
+ok('the detector sees commercial/ where it exists (real repo, not just a fixture)', () => {
+  if (!fs.existsSync(path.join(ROOT, 'commercial', '.git'))) {
+    console.log('      (skipped: no commercial/ checkout here — expected in CI and Community clones)');
+    return;
+  }
   const all = findNestedRepos(ROOT);
   assert.ok(all.includes('commercial'),
-    'commercial/ is a real nested repo (the open-core split) and the detector must find it; '
+    'commercial/ is mounted here and the detector must find it; '
     + `found: ${JSON.stringify(all)}`);
 });
 
