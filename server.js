@@ -1568,6 +1568,7 @@ const providerLimits = providerLimitLib.createTracker();
 const pipelinePatterns = require('./lib/pipeline-patterns');
 const pipelineTrail = require('./lib/pipeline-trail');
 const pipelineMemory = require('./lib/pipeline-memory');
+const pipelineEvents = require('./lib/pipeline-events');
 const knowledgeContext = require('./lib/knowledge-context');
 
 // How many files the knowledge graph COULD cover. Mirrors the commercial module's
@@ -2787,6 +2788,28 @@ function startPublishBackground(site, domain) {
 // Reconstructable side effects — invoked by gateAction (immediate) or the approve endpoint
 // (deferred). Each throws on failure; callers translate that to an HTTP error.
 const ACTION_EXECUTORS = {
+  // An EVENT starting a whole pipeline. Registered here rather than dispatching directly from the
+  // event hook, because `test-infra-gate.js` enforces that every id in ACTION_RISK has an executor
+  // — and that invariant is right: an action classified but unexecutable through the gate is one
+  // the operator can never approve, only be refused.
+  //
+  // Going through the gate makes the behaviour BETTER than a bare policy check. Classified
+  // 'critical', so in `auto` mode it runs unattended, and in supervised/manual it becomes a PENDING
+  // APPROVAL the operator can accept — the docx's human gate applied to the trigger itself, instead
+  // of the event being silently dropped.
+  //
+  // Re-checked at EXECUTION time, not only when the event fired: an approval can sit in the queue
+  // while the pipeline is edited or deleted underneath it, and running a stale decision would start
+  // a graph nobody reviewed.
+  'pipeline.event-dispatch': async ({ pipeline, event }) => {
+    const def = loadPipelines().find((p) => p.name === pipeline);
+    if (!def) throw new Error(`pipeline "${pipeline}" no longer exists`);
+    if (def.graphValid === false) {
+      throw new Error(`pipeline "${pipeline}" has an invalid graph: ${(def.graphErrors || []).join('; ')}`);
+    }
+    const run = executePipeline(pipeline, { triggeredBy: `event:${event}` });
+    return { runId: run && run.id, pipeline, event };
+  },
   // A business clone commissioning work from an agent. The dispatch RECORD is written before the
   // gate is consulted and this executor takes only its id, so the run-now path and the
   // approve-later path operate on the same row and cannot drift apart.
@@ -8271,7 +8294,12 @@ function loadPipelines() {
         // refute, or an unknown pattern name, is refused here rather than failing on the stage.
         const patternErrors = ((pipeline && pipeline.stages) || [])
           .flatMap((s) => pipelinePatterns.validatePatternStage(s));
-        const errors = [...check.errors, ...patternErrors];
+        // And the event subscription, for the same reason but with more at stake: a pipeline
+        // subscribing to an event that a pipeline RUN emits is an unbounded spend loop
+        // (run -> event -> run). Refusing it at LOAD time means the mistake cannot be made in YAML
+        // at all, rather than being discovered at runtime after it has cost money.
+        const eventErrors = pipelineEvents.validateSubscription(pipeline);
+        const errors = [...check.errors, ...patternErrors, ...eventErrors];
         return { filename: f, ...pipeline, graphValid: errors.length === 0, graphErrors: errors };
       } catch { return null; }
     })
