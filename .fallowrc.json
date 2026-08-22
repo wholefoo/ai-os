@@ -92,6 +92,7 @@
     "tools/test-safe-gradient.js",
     "tools/test-seclint-dataflow.js",
     "tools/test-preview-path.js",
+    "tools/test-no-nested-repos.js",
     "tools/test-zip-import.js",
     "tools/test-deps-installed.js",
     "tools/check-deps-installed.js",
