@@ -1146,7 +1146,16 @@ function renderSkillsGrid(skills) {
     // the Email-to-Lead button: a value inside `onclick="fn('${x}')"` sits in an HTML attribute AND
     // a JS string literal at once, and escapeHtml is the wrong tool for that pair — it turns ' into
     // &#39;, the attribute decodes it back to ', and the JS string breaks. Verified in a browser.
-    const action = isReference ? 'openSkillReference(this.dataset.skillFile)' : 'executeSkill(this.dataset.skillFile)';
+    const fn = isReference ? 'openSkillReference' : 'executeSkill';
+    // The CARD carries `data-skill-file`, so on the card `this.dataset.skillFile` is right.
+    const action = `${fn}(this.dataset.skillFile)`;
+    // THE NESTED RUN BUTTON MUST NOT USE `this` — in an inline handler `this` is the element the
+    // handler sits on, i.e. the BUTTON, which has no data-* attribute. It read `undefined`, and
+    // because `event.stopPropagation()` also stopped the card's working handler, the whole card was
+    // dead: `executeSkill(undefined)` fetched `/api/skills/undefined` (404) and then threw on
+    // `filename.replace(...)` inside an async function — an unhandled rejection, so SILENT.
+    // `closest()` walks up to the element that actually holds the value.
+    const nestedAction = `${fn}(this.closest('[data-skill-file]').dataset.skillFile)`;
 
     return `
       <div class="skill-card" data-skill-file="${escapeHtml(s.filename)}" onclick="${action}">
@@ -1160,7 +1169,7 @@ function renderSkillsGrid(skills) {
         ${agentsPreview}
         <div class="skill-meta">
           <span class="skill-time">${isReference ? 'read-only' : time}${!isReference && paramCount > 0 ? `<span class="skill-param-count">${paramCount} params</span>` : ''}</span>
-          <button class="skill-run-btn large" onclick="event.stopPropagation(); ${action}">
+          <button class="skill-run-btn large" onclick="event.stopPropagation(); ${nestedAction}">
             ${isReference ? '<span class="run-icon">&#9776;</span> Open' : '<span class="run-icon">&#9654;</span> Launch'}
           </button>
         </div>
