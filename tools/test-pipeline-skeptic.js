@@ -29,7 +29,13 @@ let pass = 0;
 const ok = (label, fn) => { fn(); console.log(`ok  : ${label}`); pass++; };
 
 const load = (f) => yaml.load(fs.readFileSync(path.join(DIR, f + '.yaml'), 'utf8'));
-const WITH_SKEPTIC = ['research-to-report', 'content-pipeline'];
+const WITH_SKEPTIC = ['research-to-report', 'content-pipeline', 'repurpose-video'];
+
+// Stages whose output is CUSTOMER-FACING must gate `blocking`, never `advisory`. The docx is
+// explicit: "any customer-facing or revenue-facing output is strictly saved in draft mode until you
+// personally review and approve it." `repurpose-video` drafts promotional emails, so an advisory
+// gate — which lets work through on a nod — would break that promise.
+const CUSTOMER_FACING = { 'repurpose-video': 'package' };
 
 ok('the content pipelines each declare a skeptic stage', () => {
   for (const name of WITH_SKEPTIC) {
@@ -59,6 +65,26 @@ ok('the skeptic runs BEFORE the human gate, on work that already exists', () => 
       assert.ok(idx(sk.id) < idx(g.id),
         `${name}: the skeptic must run before the "${g.id}" gate — a human should not be asked first`);
     }
+  }
+});
+
+ok('customer-facing output gates BLOCKING, not advisory (draft mode until a human approves)', () => {
+  for (const [name, stageId] of Object.entries(CUSTOMER_FACING)) {
+    const s = load(name).stages.find((x) => x.id === stageId);
+    assert.ok(s, `${name}.yaml has no "${stageId}" stage`);
+    assert.strictEqual(s.gate, 'blocking',
+      `${name}/${stageId} produces customer-facing output — gate must be "blocking", not "${s.gate}". `
+      + 'Advisory lets promotional copy through on a nod.');
+  }
+});
+
+ok('a playbook does not claim an automatic trigger the runner cannot honour', () => {
+  // `trigger:` is decorative today — nothing dispatches a pipeline on an event. A playbook
+  // advertising `trigger: video_published` would be a promise the system silently breaks.
+  for (const f of fs.readdirSync(DIR).filter((x) => x.endsWith('.yaml'))) {
+    const t = load(f.replace('.yaml', '')).trigger;
+    assert.ok(!t || t === 'manual' || t === 'schedule',
+      `${f}: trigger "${t}" is not honoured by the runner — only "manual" is real today`);
   }
 });
 

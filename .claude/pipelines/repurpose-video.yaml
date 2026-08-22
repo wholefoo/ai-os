@@ -1,0 +1,86 @@
+name: repurpose-video
+description: One command turns a finished video into a lesson, a community recap, and promotional email drafts — across three departments, with a skeptic and a human gate before anything customer-facing.
+trigger: manual
+estimated_time: ~35min
+
+# THE DOCX'S HEADLINE EXAMPLE, made real: "you give a single, high-level command (e.g. 'repurpose my
+# YouTube video') and the orchestrator handles the rest."
+#
+# ⚠️ `trigger: manual` IS THE TRUTH, not a placeholder. The docx describes this firing automatically
+# when a video ends. Pipeline `trigger:` is currently DECORATIVE — nothing dispatches a pipeline on
+# an event, so writing `trigger: video_published` here would be a lie the runner does not honour.
+# Event dispatch is separate machinery and is NOT built. Run this from the Pipelines panel.
+#
+# WHY FAN-OUT AND NOT THREE SEQUENTIAL STAGES: the three departments do not depend on each other.
+# They all consume the same source and produce independent artefacts, so they run concurrently and a
+# single department failing does not lose the other two (the kernel fails only when EVERY worker
+# fails). Sequential stages would serialise them and make one failure poison the rest.
+
+stages:
+  # ---------- SOURCE ----------
+  # The one input every department shares. Kept as its own stage so a failure here stops the run
+  # before three departments spend tokens on nothing.
+  - id: source
+    skill: research-brief
+    agent: researcher
+    inputs:
+      video_url: "{{video_url}}"
+      focus: "{{focus}}"
+    outputs:
+      - transcript_summary
+      - key_points
+    timeout: 10m
+
+  # ---------- THE THREE DEPARTMENTS, CONCURRENTLY ----------
+  # Education, Community, Marketing — the docx's chain reaction. `synthesizer` merges the three
+  # into one package rather than leaving three loose artefacts.
+  - id: departments
+    pattern: fan-out
+    depends_on: [source]
+    workers:
+      - agent: content-writer      # Education — the lesson
+      - agent: comms-director      # Community — the recap
+      - agent: marketing-hub       # Marketing — promotional email drafts
+    synthesizer: synthesis
+    outputs:
+      - department_package
+    timeout: 20m
+
+  # ---------- THE CHECK ----------
+  # Before a human is asked to look. See research-to-report.yaml for why `gate` and not `fail`:
+  # contested marketing copy is a decision, not garbage to discard automatically.
+  - id: skeptic
+    pattern: skeptic
+    depends_on: [departments]
+    n: 3
+    verifier: reviewer
+    on_refute: gate
+    outputs:
+      - panel_verdict
+    timeout: 8m
+
+  # ---------- THE GATE ----------
+  # `blocking`, not `advisory`. The docx is explicit: "any customer-facing or revenue-facing output
+  # is strictly saved in draft mode until you personally review and approve it." This stage produces
+  # promotional emails. Advisory would let them through on a nod.
+  - id: package
+    agent: comms-director
+    depends_on: [departments, skeptic]
+    inputs:
+      package: "{{departments.department_package}}"
+      panel: "{{skeptic.panel_verdict}}"
+    outputs:
+      - final_drafts
+    gate: blocking
+    timeout: 5m
+
+parameters:
+  video_url:
+    type: string
+    required: true
+    description: URL of the finished video to repurpose.
+  focus:
+    type: string
+    required: false
+    default: "the main teaching point"
+    description: What the lesson and recap should centre on.
