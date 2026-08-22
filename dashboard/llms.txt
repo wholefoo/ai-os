@@ -1,13 +1,13 @@
 # AI OS — The Agentic Operating System
 
-> AI OS Orchestration Lab is an open-core, self-hosted AI operating system: a "Virtual Corporate HQ" of 68 specialized AI agents across 11 departments that routes every task across 6 AI models in 4 effort tiers (Claude Opus 5 by default, plus OpenAI, Gemini, DeepSeek, Grok, and Perplexity). It includes an SEO + AEO agency, an AI Web Studio that designs, builds, and hosts static sites with custom domains and TLS, a Knowledge & Records governed document library, a CRM, Ed25519 content provenance, human-in-the-loop Auto-Mode approval gating, and an opt-in AI security suite. It uses a BYOK (bring your own API keys) model and is self-hosted.
+> AI OS Orchestration Lab is an open-core, self-hosted AI operating system: a "Virtual Corporate HQ" of 70 specialized AI agents across 11 departments that routes every task across 6 AI models in 4 effort tiers (Claude Opus 5 by default, plus OpenAI, Gemini, DeepSeek, Grok, and Perplexity). It includes an SEO + AEO agency, an AI Web Studio that designs, builds, and hosts static sites with custom domains and TLS, a Knowledge & Records governed document library, a CRM, Ed25519 content provenance, human-in-the-loop Auto-Mode approval gating, and an opt-in AI security suite. It uses a BYOK (bring your own API keys) model and is self-hosted.
 
 Pricing: Community is free, open-source, and self-hosted; Business is $1,997 one-time; Enterprise is $4,997 one-time; the Managed Website service is $997 setup plus $250/month. Honest framing: the AEO tooling improves AI-answer-engine readiness but never guarantees citations or rankings, and the security suite is AI-assisted and report-only — a strong layer of defense, not a guarantee.
 
 ## Documentation
 - [Getting Started](https://aiosorchestrationlab.com/docs/getting-started): Install AI OS, configure provider API keys, and run your first agents.
 - [Architecture](https://aiosorchestrationlab.com/docs/architecture): The 6 AI models across 4 routing tiers, effort-based routing, and system topology.
-- [Agent Fleet](https://aiosorchestrationlab.com/docs/agents): The 68 specialized agents and the 11 departments they belong to.
+- [Agent Fleet](https://aiosorchestrationlab.com/docs/agents): The 70 specialized agents and the 11 departments they belong to.
 - [Knowledge & Records](https://aiosorchestrationlab.com/docs/knowledge-records): The governed company document library — a catalog over the Memory Vault, uploads, and agent artifacts, with reader-scoped access, retention, and a canonical-facts shelf every agent reads.
 - [Self-Improve](https://aiosorchestrationlab.com/docs/self-improve): Grok Build plans upgrades to AI OS itself and can open a draft GitHub PR — apply and PR always require explicit human approval, no auto-apply tier.
 - [Client Engine](https://aiosorchestrationlab.com/docs/client-engine): Google Maps local prospecting (API-based via DataForSEO or Google Places — never scraped — scored for website-upgrade fit), a Local SEO / Google Business Profile audit dimension (GBP completeness, reviews, local-pack rank) with a one-click outreach email of the audit findings, email nurture sequences (AI-drafted, human-approved, unsubscribe compliance built in), appointment booking on generated sites with .ics calendar invites, and a drag-and-drop CRM pipeline kanban with a full stage-change audit trail.
@@ -26,7 +26,7 @@ Pricing: Community is free, open-source, and self-hosted; Business is $1,997 one
 - [Managed Websites, Done For You](https://aiosorchestrationlab.com/blog/managed-websites-done-for-you): The $997 setup + $250/mo done-for-you hosting and maintenance service.
 
 ## Product
-- [Home](https://aiosorchestrationlab.com/): Platform overview, capabilities, and the 68-agent roster.
+- [Home](https://aiosorchestrationlab.com/): Platform overview, capabilities, and the 70-agent roster.
 - [Pricing](https://aiosorchestrationlab.com/#pricing): Community, Business, Enterprise, and the Managed Website offer.
 - [About](https://aiosorchestrationlab.com/about): What AI OS is, how it works, and who it's for.
 - [Trust & Security](https://aiosorchestrationlab.com/trust): How AI OS handles data and security — self-hosted so your data stays on your own infrastructure, the built-in controls, the shared-responsibility split, subprocessors, and an honest compliance posture (not SOC 2 certified).

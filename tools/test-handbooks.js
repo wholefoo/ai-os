@@ -274,7 +274,7 @@ assert(architect.r.meta.keysCovered === 5, 'all five keys, in one handbook');
 // --- P1 IS COMPLETE, so the progress report becomes a gate -----------------------------------------
 //
 // Through P1 these were `info:` lines — a corpus mid-migration cannot be failed for being
-// mid-migration. All 68 agents now carry all five keys, so the counts are asserted instead of
+// mid-migration. All 70 agents now carry all five keys, so the counts are asserted instead of
 // printed. A NEW agent added without a handbook now fails this suite, which is the point: the
 // alternative is a corpus that decays back one convenient exception at a time.
 //

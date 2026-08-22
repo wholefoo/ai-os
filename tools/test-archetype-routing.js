@@ -1,6 +1,6 @@
 // Tests lib/handbooks/archetype — what an agent's `archetype:` actually does.
 //
-// P4 of .magent/vault/wiki/agent-handbooks-design.md. P1 declared an archetype on all 68 agents and
+// P4 of .magent/vault/wiki/agent-handbooks-design.md. P1 declared an archetype on all 70 agents and
 // nothing read it. This wires it to model effort, with the reasoning tier as a floor.
 //
 // The corpus assertions at the bottom are the ones that matter. The design that looked right in a
