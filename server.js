@@ -3602,6 +3602,64 @@ function broadcast(data) {
     if (c.role && c.role !== 'admin' && !wsClientCanReceive(c, data)) return; // non-admin sockets: owner-scoped allowlist only
     c.send(msg);
   });
+
+  // EVENT TRIGGERS — the consumer that turns a broadcast into work. Without this,
+  // lib/pipeline-events.js is a planner nobody calls: exactly the "capability exists and nothing
+  // dispatches it" shape that `skeptic`, `listRuns` and this feature's own first commit all shipped
+  // with. Deliberately LAST and fully isolated — a trigger must never break the socket fan-out,
+  // which is this function's actual job.
+  try { maybeDispatchOnEvent(data && data.event); } catch { /* a trigger must not break broadcast */ }
+}
+
+// `on:` subscriptions, cached. broadcast() runs hundreds of times per pipeline run, so calling
+// loadPipelines() per event would re-read and re-validate every YAML on every stage tick. A new
+// subscription is picked up within REGISTRY_TTL_MS without a restart.
+let _eventRegistry = null;
+let _eventRegistryAt = 0;
+const REGISTRY_TTL_MS = 30_000;
+const _eventLastFired = new Map();
+const _eventRunning = new Set();
+
+function eventRegistry() {
+  const now = Date.now();
+  if (!_eventRegistry || now - _eventRegistryAt > REGISTRY_TTL_MS) {
+    try { _eventRegistry = pipelineEvents.buildRegistry(loadPipelines()); } catch { _eventRegistry = new Map(); }
+    _eventRegistryAt = now;
+  }
+  return _eventRegistry;
+}
+
+/**
+ * One broadcast event -> zero or more GATED pipeline dispatches.
+ *
+ * Every decision lives in `planDispatch` (pure, tested without a server or a token); this function
+ * only performs what it was told. Dispatch goes through `gateAction`, so in supervised mode the
+ * event becomes a PENDING APPROVAL rather than being dropped, and only `auto` mode runs unattended.
+ */
+function maybeDispatchOnEvent(eventName) {
+  if (!eventName) return;
+  const registry = eventRegistry();
+  if (!registry.size || !registry.has(eventName)) return;   // the common case: nothing subscribes
+
+  const mode = (settings.automation && settings.automation.mode) || 'supervised';
+  for (const plan of pipelineEvents.planDispatch(eventName, {
+    registry, mode, lastFired: _eventLastFired, running: _eventRunning,
+  })) {
+    if (!plan.dispatch) {
+      logActivity('pipeline', `Event "${eventName}" did not start ${plan.pipeline}: ${plan.reason}`);
+      continue;
+    }
+    _eventLastFired.set(`${plan.pipeline}::${eventName}`, Date.now());
+    _eventRunning.add(plan.pipeline);
+    gateAction({
+      type: 'pipeline.event-dispatch',
+      summary: `Event "${eventName}" starts pipeline "${plan.pipeline}"`,
+      target: plan.pipeline,
+      params: { pipeline: plan.pipeline, event: eventName },
+    })
+      .catch((e) => logActivity('pipeline', `Event dispatch failed for ${plan.pipeline}: ${e.message}`))
+      .finally(() => _eventRunning.delete(plan.pipeline));
+  }
 }
 
 function appendLog(entry) {

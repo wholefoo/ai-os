@@ -99,4 +99,35 @@ ok('a pipeline with no `on:` is never dispatched by any event', () => {
   assert.strictEqual(ev.planDispatch('yt_analysis_complete', { registry, mode: 'auto' }).length, 1);
 });
 
+// --- THE WIRING. This module was shipped with NOBODY CALLING IT. -------------------------------
+// The first commit added the planner, the policy band, the executor and load-time validation — and
+// no consumer. Every unit test above passed, because they exercise `planDispatch` directly. A
+// planner nobody calls is the exact "capability exists and nothing dispatches it" shape that
+// `pattern: skeptic` and `listRuns` had already shipped with in this same repo.
+//
+// Asserted at SOURCE level on purpose. The behavioural alternative — boot the server and broadcast
+// an event — proves nothing while no pipeline declares `on:`: it would pass just as happily with
+// the consumer deleted. This checks the one thing that was actually missing.
+ok('server.js CONSUMES the planner — broadcast() is wired to dispatch', () => {
+  const fs = require('fs');
+  const path = require('path');
+  const src = fs.readFileSync(path.join(__dirname, '..', 'server.js'), 'utf8');
+  assert.ok(/pipelineEvents\.planDispatch\(/.test(src),
+    'nothing calls planDispatch() — event triggers cannot fire, whatever the mode says');
+  assert.ok(/pipelineEvents\.buildRegistry\(/.test(src),
+    'nothing builds the subscription registry, so planDispatch can never see a subscriber');
+  // And the call must be INSIDE broadcast(), not merely nearby.
+  //
+  // The first version of this assertion sliced a fixed 2500 chars from `function broadcast(` and
+  // searched for `maybeDispatchOnEvent(`. That matched the FUNCTION DEFINITION, which sits directly
+  // below broadcast — so deleting the actual call still passed. Mutation-testing caught it. Slice
+  // to the real end of the function: the first `}` at column 0.
+  const start = src.indexOf('function broadcast(');
+  assert.notStrictEqual(start, -1, 'broadcast() not found — did it get renamed?');
+  const end = src.indexOf('\n}', start);
+  const body = src.slice(start, end);
+  assert.ok(/maybeDispatchOnEvent\s*\(/.test(body),
+    'broadcast() does not invoke the dispatcher — the bus carries the event but nothing consumes it');
+});
+
 console.log(`\nALL TESTS PASSED\n${pass} assertions`);
