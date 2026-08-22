@@ -115,7 +115,6 @@
   ],
   "ignoreExports": [
     {
-      "_comment": "G2 wired five of these to pipeline `pattern:` stages, so only the two that genuinely have no consumer remain allowlisted. loopUntilDone takes function arguments and cannot be expressed in YAML; runSequential is what the pipeline runner already is.",
       "file": "lib/orchestrator.js",
       "exports": [
         "runSequential",
