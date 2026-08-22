@@ -8649,10 +8649,27 @@ app.get('/api/pipelines/runs/:id/trail', requireAdmin, (req, res) => {
   res.json(manifest);
 });
 
+// Fall back to the trail on disk, exactly as /resume already does. Without this the LIST endpoint
+// above and this one disagreed: the list merges archived runs from `.magent/runs/` and marks them
+// `fromTrail`, so after a restart the UI showed three runs and every one 404'd when opened.
+//
+// Not cosmetic. Two of the three runs sitting on disk here are `awaiting_approval` — work parked at
+// a HUMAN GATE that could not be opened to approve it. A gate you cannot reach is a gate that never
+// clears.
+//
+// Rehydration is REFUSED, not guessed, when the pipeline YAML has changed shape since the run (see
+// rehydrateRunFromTrail): half an old graph rebuilt into half a new one matches neither. That error
+// is surfaced instead of a bare 404, because "the definition moved" and "no such run" are different
+// problems and only one of them is the user's fault.
 app.get('/api/pipelines/runs/:id', (req, res) => {
-  const run = pipelineRuns.get(req.params.id);
-  if (!run) return res.status(404).json({ error: 'Run not found' });
-  res.json(run);
+  const live = pipelineRuns.get(req.params.id);
+  if (live) return res.json(live);
+
+  const { run, error } = rehydrateRunFromTrail(req.params.id);
+  if (error) return res.status(404).json({ error });
+  // Deliberately NOT cached into `pipelineRuns`: this is a read of a finished run, and seeding the
+  // live map with an archived run would let /resume and /approve treat it as in-flight.
+  res.json({ ...run, fromTrail: true });
 });
 
 app.post('/api/pipelines/:name/execute', requireAdmin, (req, res) => {
