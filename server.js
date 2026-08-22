@@ -1567,6 +1567,7 @@ const providerLimitLib = require('./lib/provider-limit');
 const providerLimits = providerLimitLib.createTracker();
 const pipelinePatterns = require('./lib/pipeline-patterns');
 const pipelineTrail = require('./lib/pipeline-trail');
+const pipelineMemory = require('./lib/pipeline-memory');
 const knowledgeContext = require('./lib/knowledge-context');
 
 // How many files the knowledge graph COULD cover. Mirrors the commercial module's
@@ -8362,9 +8363,17 @@ async function runPipelineStage(run, stage, layer = 0) {
   const prior = pipelineGraph.inputsFor(stage, run.stages).filter((s) => s.output)
     .map((s) => `### From stage "${s.id}" (${s.agent})\n${pipelineGraph.clipStageOutput(s.output)}`).join('\n\n');
   const paramsLine = run.params && Object.keys(run.params).length ? `Pipeline inputs: ${JSON.stringify(run.params)}\n` : '';
+  // COMPOUNDING MEMORY: what THIS stage got wrong on previous runs of this pipeline. Outcomes only,
+  // never past outputs — see lib/pipeline-memory.js for why. Returns '' when there is no history,
+  // so a first run's prompt is byte-identical to what it was before this existed.
+  const memory = pipelineMemory.priorStageNotes(PIPELINE_RUNS_DIR, {
+    pipeline: run.pipeline, stageId: stage.id, excludeRunId: run.id,
+  });
+
   const task = `You are the "${stage.id}" stage of the "${run.pipeline}" pipeline.\n`
     + `Objective (skill): ${stage.skill || stage.id}.\n${paramsLine}`
     + (prior ? `\nDeliverables from earlier stages (build on these):\n${prior}\n` : '')
+    + memory
     + '\nProduce this stage\'s deliverable directly and concisely.';
 
   // useMcpTools: stages like "researcher" need real web-search/fetch access to produce grounded

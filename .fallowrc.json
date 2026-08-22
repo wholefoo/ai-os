@@ -96,6 +96,7 @@
     "tools/test-inline-handler-dataset.js",
     "tools/test-pipeline-skeptic.js",
     "tools/test-run-history-durable.js",
+    "tools/test-pipeline-memory.js",
     "tools/test-zip-import.js",
     "tools/test-deps-installed.js",
     "tools/check-deps-installed.js",
