@@ -55,13 +55,35 @@ stages:
       - reference_list
     timeout: 10m
 
+  # SEPARATE THE WORKER FROM THE CHECKER. `review` below is ONE reviewer giving ONE opinion on work
+  # produced upstream. This stage is different in kind: an independent panel whose instruction is to
+  # REFUTE, run before a human is asked to look. A single reviewer that says "looks good" and a
+  # panel where 3 of 3 failed to refute are not the same evidence.
+  #
+  # `on_refute: gate` rather than `fail`: a refuted research report is not garbage, it is a report
+  # with a contested claim — that is precisely the case a HUMAN should see, not one the pipeline
+  # should silently discard. `fail` is right for a security sweep; `gate` is right here.
+  #
+  # A panel nobody answers is treated as a BLOCK by the runner, not a pass — the missing-verdict
+  # rule. Cost note: n=3 means three real agent dispatches.
+  - id: skeptic
+    pattern: skeptic
+    depends_on: [compile]
+    n: 3
+    verifier: reviewer
+    on_refute: gate
+    outputs:
+      - panel_verdict
+    timeout: 8m
+
   - id: review
     skill: academic-reviewer
     agent: reviewer
-    depends_on: [compile]
+    depends_on: [compile, skeptic]
     inputs:
       document: "{{compile.final_report}}"
       references: "{{compile.reference_list}}"
+      panel: "{{skeptic.panel_verdict}}"
     outputs:
       - verdict
       - feedback

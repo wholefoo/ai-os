@@ -39,13 +39,28 @@ stages:
       - recommendations
     timeout: 5m
 
+  # An adversarial panel on the DRAFT, before a human is asked to approve it. See the longer note in
+  # research-to-report.yaml for why this is not the same thing as the `review` stage below.
+  # `on_refute: gate` — contested copy is a human decision, not something to discard automatically.
+  # Cost note: n=3 means three real agent dispatches.
+  - id: skeptic
+    pattern: skeptic
+    depends_on: [draft]
+    n: 3
+    verifier: reviewer
+    on_refute: gate
+    outputs:
+      - panel_verdict
+    timeout: 8m
+
   - id: review
     skill: content-creation
     agent: reviewer
-    depends_on: [draft, seo]
+    depends_on: [draft, seo, skeptic]
     inputs:
       content: "{{draft.draft_content}}"
       seo_feedback: "{{seo.recommendations}}"
+      panel: "{{skeptic.panel_verdict}}"
     outputs:
       - verdict
       - final_content
