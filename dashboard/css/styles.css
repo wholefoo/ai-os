@@ -1855,7 +1855,30 @@ body {
   width: 90%;
   max-width: 500px;
   box-shadow: var(--shadow);
+  /* A modal MUST NOT grow past the viewport. It had no max-height and no overflow, while the
+     overlay is `position: fixed` + `align-items: center` — so a tall modal centred and spilled off
+     BOTH edges with nothing scrollable, putting the primary action out of reach.
+     Measured, not guessed: at 1280x720 the tech-radar and seo-audit launch modals render 835px tall
+     and their "Launch Now" button sits at y=760 — 40px below the fold. Shorter skills
+     (design-system, academic-paper) fit, which is why it only broke on SOME dialogs.
+     Flex column so the BODY scrolls and the footer stays pinned: making the whole modal scroll
+     would work, but would hide the primary action until the user scrolled to find it. */
+  display: flex;
+  flex-direction: column;
+  max-height: calc(100vh - 48px);
 }
+
+/* The scrolling region. `min-height: 0` is load-bearing: a flex child defaults to
+   `min-height: auto`, which refuses to shrink below its content — so without it the body never
+   scrolls and the modal overflows exactly as before, with the max-height above doing nothing. */
+.modal-body {
+  overflow-y: auto;
+  min-height: 0;
+}
+
+/* Header and footer keep their natural height so the action row is always reachable. */
+.modal-header,
+.modal-footer { flex: 0 0 auto; }
 
 .modal-header {
   display: flex;
