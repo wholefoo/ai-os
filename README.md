@@ -366,11 +366,11 @@ DeepSeek V4, Grok (xAI), and Perplexity.
 | Routing Tier | Model(s) | Effort | Count | Role |
 |------|-------|--------|-------|------|
 | Strategic | Claude Opus 5 | xhigh | 6 | Orchestration, architecture, critical review, security audit, Web Studio lead, knowledge taxonomy |
-| Professional | Claude Opus 5 | high | 42 | Research, coding, writing, SEO/AEO, marketing, support, IT, legal, compliance, hosting ops, creative direction, communications, document archiving |
+| Professional | Claude Opus 5 | high | 45 | Research, coding, writing, SEO/AEO, marketing, support, IT, legal, compliance, hosting ops, creative direction, communications, document archiving |
 | Scout | Claude Opus 5 | low | 3 | Fast lookups, triage, scheduled monitoring, social intel |
 | Specialized | Gemini Omni / DeepSeek V4 / Grok 4.5 / Grok Build | — | 9 | Creative media (5, Gemini Omni), bulk economy processing (2, DeepSeek V4), realtime web search (1, Grok 4.5), platform-upgrade planning (1, Grok Build) |
 | LLM Consultants | Each provider's own model | high | 7 | On-site provider consultants (Anthropic, OpenAI, Gemini, DeepSeek, Grok, Perplexity, Manus) — release intelligence + AI OS adoption guidance, each answering on its own provider's model |
-| **Total** | | | **68** | |
+| **Total** | | | **70** | |
 
 OpenAI GPT and Perplexity are additionally available across these tiers — GPT as an
 alternate work/routing model and Perplexity for cited live-web answers. Hermes MCP is the
