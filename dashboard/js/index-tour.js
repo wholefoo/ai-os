@@ -8,7 +8,7 @@
   const tourGuideData = {
     name: 'Atlas',
     role: 'CEO & Chief Orchestrator',
-    greeting: "Hey there! I'm Atlas, the CEO of AI OS Corp. I run a virtual company with 68 AI employees across 11 departments — and you stay in control, approving every important action. Want me to show you around?",
+    greeting: "Hey there! I'm Atlas, the CEO of AI OS Corp. I run a virtual company with 70 AI employees across 11 departments — and you stay in control, approving every important action. Want me to show you around?",
     tours: {
       overview: [
         { msg: "AI OS is a Virtual Corporate Headquarters — imagine a full company staffed by 70 AI agents, each with a name, role, and department. And you stay in the loop: important actions wait for your approval in Auto-Mode.", delay: 0 },
