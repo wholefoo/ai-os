@@ -59,7 +59,19 @@ path in **both** places — they are separate lists and missing either one fails
 - `PUBLIC_ROUTES` in `tools/seclint.js` — the **lint** gate. Keep that list tight.
 
 Then add a test asserting the cap **refuses** — assert on the 429 and on nothing being spent, not on
-a counter's value.
+a counter's value. `tools/test-public-cost-caps.js` already does this for the three routes above;
+extend it rather than starting a new suite, and copy its constraints, which are not optional:
+
+- Seed state so the FIRST request is already over the cap. A test that spends its way up to the
+  ceiling is billing real money to check that it doesn't.
+- Boot with `AIOS_STATE_SUBDIR` so you are not seeding the operator's live leads and tickets. Note
+  what this does **not** isolate: `crm.sqlite` lives at `.magent/crm.sqlite`, outside `STATE_DIR`, so
+  no assertion may let a lead-capturing request complete.
+- Run with `DEMO_MODE=false`. Under `DEMO_MODE` the server seeds the cost ledger at boot when it is
+  empty, so "the ledger is empty" proves nothing.
+- Neutralise credentials with a **non-empty** sentinel. Setting a key to `''` does not disable it —
+  dotenv treats empty as absent and refills it from `.env`. That mistake made an earlier draft of
+  that suite issue a real billed model call while its comment claimed no key was configured.
 
 ## Known gap in the gate — do not rely on seclint here
 
@@ -68,9 +80,17 @@ middleware satisfies it, and a rate limiter is not auth. Verified: `app.post('/a
 async (req, res) =>` passes R1 and needs no `PUBLIC_ROUTES` entry. `/api/web-studio/sites/:id/chat`
 is live today under exactly that shape and is not in the allowlist.
 
-So a new anonymous, cost-bearing route can ship tripping **no gate at all**. Until R1 distinguishes
-auth middleware from a limiter, this file is the control — which means review, not CI, is what
-catches it.
+So a new anonymous, cost-bearing route can ship tripping **no gate at all**.
+
+Be precise about what is and is not covered. `tools/test-public-cost-caps.js` pins the three routes
+that exist today — it boots the real server, proves each refuses before spending, and (because it
+runs with `API_TOKEN` set, putting `authMiddleware` on its production branch) also proves all three
+are genuinely in the runtime public allowlist. Removing one from `publicPaths`, or moving a cap check
+below the paid call, now fails CI.
+
+What remains uncovered is the FOURTH route. Nothing detects a newly added anonymous paid endpoint, so
+for a new one this file is the control — which means review, not CI, is what catches it. Extending
+R1 to distinguish auth middleware from a rate limiter would close that, and is not done.
 
 ## Anti-patterns
 
