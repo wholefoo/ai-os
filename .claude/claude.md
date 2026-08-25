@@ -23,6 +23,7 @@ The first two maps are auto-generated (`npm run maps`) and refreshed by the serv
 | browser automation, real-time queries, notifications | `.claude/context/intelligence.md` |
 | agent tone/persona, project overrides, the vault | `.claude/context/identity-memory.md` |
 | auth, headers, rate limits, state, deploy | `.claude/context/hardening.md` |
+| a public route that costs money per request | `.claude/rules/public-cost-endpoints.md` |
 | security invariants, ship loop, conventions | root `CLAUDE.md` |
 | agent handbooks, criteria, gates, archetypes | `.magent/vault/wiki/agent-handbooks-design.md` |
 
