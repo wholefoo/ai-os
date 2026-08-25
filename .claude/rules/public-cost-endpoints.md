@@ -73,24 +73,38 @@ extend it rather than starting a new suite, and copy its constraints, which are 
   dotenv treats empty as absent and refills it from `.env`. That mistake made an earlier draft of
   that suite issue a real billed model call while its comment claimed no key was configured.
 
-## Known gap in the gate — do not rely on seclint here
+## What CI enforces, and what it still cannot
 
-seclint R1 (`route-no-auth`) fires only when the handler follows the path string *directly*. **Any**
-middleware satisfies it, and a rate limiter is not auth. Verified: `app.post('/api/x', heavyLimiter,
-async (req, res) =>` passes R1 and needs no `PUBLIC_ROUTES` entry. `/api/web-studio/sites/:id/chat`
-is live today under exactly that shape and is not in the allowlist.
+Two gates now exist. Be precise about which claim each one supports.
 
-So a new anonymous, cost-bearing route can ship tripping **no gate at all**.
+**You cannot add an anonymous mutating route silently.** seclint's `route-no-auth` reads the whole
+middleware chain and requires a real auth guard — a rate limiter does not count — or an explicit
+`PUBLIC_ROUTES` entry. So a new public endpoint fails CI until someone consciously allowlists it, and
+that edit is the review checkpoint where this file applies. (It was not always so: the rule used to
+match only a handler placed directly after the path string, so any middleware satisfied it. Tightening
+it found five routes that were public at runtime and missing from the allowlist — including the site
+chat widget, which was calling a paid model for anonymous visitors while tripping nothing.)
 
-Be precise about what is and is not covered. `tools/test-public-cost-caps.js` pins the three routes
-that exist today — it boots the real server, proves each refuses before spending, and (because it
-runs with `API_TOKEN` set, putting `authMiddleware` on its production branch) also proves all three
-are genuinely in the runtime public allowlist. Removing one from `publicPaths`, or moving a cap check
-below the paid call, now fails CI.
+**The three existing paid routes are pinned.** `tools/test-public-cost-caps.js` boots the real server
+and proves each refuses before spending. Because it runs with `API_TOKEN` set — putting
+`authMiddleware` on its production branch — it also proves all three are genuinely in the runtime
+public allowlist. Removing one from `publicPaths`, or moving a cap check below the paid call, fails CI.
 
-What remains uncovered is the FOURTH route. Nothing detects a newly added anonymous paid endpoint, so
-for a new one this file is the control — which means review, not CI, is what catches it. Extending
-R1 to distinguish auth middleware from a rate limiter would close that, and is not done.
+**What neither gate checks: whether a NEW public route has caps at all.** seclint verifies that
+someone made a deliberate decision; it does not verify they made a good one. Nothing statically
+detects that a handler spends money, so an allowlisted route with no cap passes both gates. That is
+the remaining hole, and it is a review hole by design — closing it would mean teaching a linter to
+recognise a paid call, which is a maintained list of function names and therefore stale the first
+time someone adds a provider.
+
+So: CI stops the silent case. For the deliberate one, the allowlist edit is where a human must apply
+the invariants above and extend the cap suite. Treat an untested new entry in `PUBLIC_ROUTES` as an
+incomplete change.
+
+One known false-positive shape: auth guards are recognised by name (`require*`, plus `a2aAuth`). A new
+guard named unconventionally will be flagged despite being correct. Rename it or extend the rule —
+do not reach for a suppression, and do not add it to `PUBLIC_ROUTES`, which would claim the route is
+public when it is not.
 
 ## Anti-patterns
 
