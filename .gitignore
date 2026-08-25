@@ -49,8 +49,15 @@ desktop.ini
 dist/
 build/
 
-# Exported docs (private reference)
-docs-export/
+# Exported docs (private reference). The generated .docx, the local package.json and the local
+# node_modules stay out — but the GENERATOR is source, and an untracked source file is invisible to
+# every guard in tools/. That is not theoretical: a repo-wide sweep for `sudo -u … pm2` fixed 17
+# lines and silently missed the two in this generator, which feed a customer-facing document.
+#
+# `docs-export/*`, not `docs-export/` — git cannot re-include a file whose parent DIRECTORY is
+# excluded, so the negation below only works if the directory itself is never excluded.
+docs-export/*
+!docs-export/generate-stripe-guide.js
 
 # Tenant data
 .magent/tenants/

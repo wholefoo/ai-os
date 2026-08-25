@@ -14,13 +14,15 @@
 // nothing noticed, because nothing was looking.
 //
 // SCOPE: every tracked .md/.sh/.js. `git ls-files` rather than a directory walk, so the set is
-// exactly what the repo ships.
+// exactly what the repo ships — which makes TRACKEDNESS the boundary of this guard, and worth
+// stating because it once cost coverage.
 //
-// KNOWN BLIND SPOT, stated rather than implied: `.gitignore:53` ignores `docs-export/` wholesale,
-// which includes `generate-stripe-guide.js` — a GENERATOR, not generated output, and it carries two
-// occurrences of the wrong form that feed customer-facing docs. Being untracked, it is invisible to
-// this scan and cannot be fixed by a commit here. Tracking that generator would close the gap; until
-// someone decides to, this guard covers the repo and not that file.
+// `.gitignore` ignored `docs-export/` wholesale, which hid `generate-stripe-guide.js` — a GENERATOR,
+// not generated output, feeding a customer-facing document. The first sweep for this rule fixed 17
+// lines and silently missed the two in there, and the guard could not have caught them either. The
+// ignore rule now re-includes that one file, so it is covered. The general lesson stands: source
+// that no guard can see is source that drifts, and "it is in an ignored directory" is not a property
+// of the file, it is an accident of where it was put.
 const { execFileSync } = require('child_process');
 const fs = require('fs');
 const path = require('path');
