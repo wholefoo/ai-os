@@ -48,9 +48,18 @@ Three copies and no written rule is how a fourth gets built without one. That is
 
 Assume the answer is no. If a feature can live behind auth, put it behind auth.
 
-If it genuinely must be public and billable: implement all seven invariants above, add the path to
-`PUBLIC_ROUTES` in `tools/seclint.js` (keep that list tight), and add a test asserting the cap
-**refuses** — assert on the 429 and on nothing being spent, not on a counter's value.
+If it genuinely must be public and billable: implement all seven invariants above, then register the
+path in **both** places — they are separate lists and missing either one fails differently:
+
+- `authMiddleware`'s `publicPaths` (and the explicit branches under it) in `server.js` — the
+  **runtime** gate. `app.use('/api/', authMiddleware)` 401s every `/api/*` route once `API_TOKEN` is
+  set. Miss this and the route works perfectly in dev and 401s every anonymous visitor **in
+  production only**. That has already happened once: the free-audit lead magnet 401'd for everyone,
+  and the symptom was a silent zero in the CRM, not an error anyone saw.
+- `PUBLIC_ROUTES` in `tools/seclint.js` — the **lint** gate. Keep that list tight.
+
+Then add a test asserting the cap **refuses** — assert on the 429 and on nothing being spent, not on
+a counter's value.
 
 ## Known gap in the gate — do not rely on seclint here
 
