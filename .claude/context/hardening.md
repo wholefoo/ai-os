@@ -9,7 +9,7 @@ fencing) live in the root `CLAUDE.md` — this file is the configuration around 
 - **Security headers**: Helmet with CSP (self + fonts.googleapis + ws/wss), X-Frame-Options, HSTS
 - **CORS**: Same-origin only by default in production (the dashboard is served from this origin); set `CORS_ORIGIN` (comma-separated) to allow specific external origins. Dev stays open (`*`).
 - **Self-check gate**: `tools/seclint.js` runs as a PostToolUse hook on every edit + the "Security lint" step of the CI "Lint & Boot Check" job; keep the tree at 0 errors. ERROR rules: missing auth on mutating routes, path traversal, shell-string `exec`, and generated-site JSON-LD breakout; `innerHTML`-unescaped is WARN. Run the `/self-check` skill before committing.
-- **Rate limiting**: 120 req/min global API; 10 req/min on heavy POST operations (batch, grok, media, browser, clone-url, 3d, vibe-design)
+- **Rate limiting**: 120 req/min global API; 10 req/min on heavy POST operations (batch, grok, media, browser, clone-url, 3d, vibe-design). Anonymous routes that spend money per request (free audit, helpdesk, site chat) need more than a limiter — see `.claude/rules/public-cost-endpoints.md`.
 - **Input validation**: `validateBody()` with type/required/maxLength/oneOf/min/max rules on critical POST endpoints
 - **Compression**: gzip via `compression` middleware
 - **Request logging**: `morgan` (dev mode to console, production to `access.log`)
