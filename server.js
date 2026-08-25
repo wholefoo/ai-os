@@ -4512,10 +4512,7 @@ async function callChatCompletions({ provider, keyName, url, model, apiKey, syst
     }),
   });
 
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
-    throw new Error(err.error?.message || `${provider} HTTP ${res.status}`);
-  }
+  if (!res.ok) throw transientErrors.httpError(res, await res.json().catch(() => ({})), provider);
 
   const data = await res.json();
   return {
@@ -4609,10 +4606,7 @@ async function callGrokBuild(systemPrompt, task, maxTokens) {
       headers: { Authorization: `Bearer ${settings.ai.xai_api_key}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({ model: GROK_BUILD_MODEL, messages, tools, max_tokens: maxTokens }),
     });
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({}));
-      throw new Error(err.error?.message || `Grok Build HTTP ${res.status}`);
-    }
+    if (!res.ok) throw transientErrors.httpError(res, await res.json().catch(() => ({})), 'Grok Build');
     const data = await res.json();
     inputTokens += data.usage?.prompt_tokens || 0;
     outputTokens += data.usage?.completion_tokens || 0;
@@ -4663,10 +4657,7 @@ async function callGemini(systemPrompt, task, maxTokens) {
     }),
   });
 
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
-    throw new Error(err.error?.message || `Gemini HTTP ${res.status}`);
-  }
+  if (!res.ok) throw transientErrors.httpError(res, await res.json().catch(() => ({})), 'Gemini');
 
   const data = await res.json();
   const text = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
