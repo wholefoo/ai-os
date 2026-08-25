@@ -24,7 +24,7 @@ Also confirm starting state so you can compare after:
 
 ```bash
 node --version            # expect v20.x
-sudo -u aios pm2 status   # note all three online; note restart counters
+sudo -iu aios pm2 status   # note all three online; note restart counters
 ```
 
 ---
@@ -50,13 +50,13 @@ processes (a real outage — empty `pm2 list`, ports 3000/5678 not listening) un
 
 ```bash
 sudo npm install -g pm2@latest    # DO THIS FIRST — skipping it is what caused the outage
-sudo -u aios pm2 update            # respawns the PM2 daemon under the new Node, resurrecting processes
+sudo -iu aios pm2 update            # respawns the PM2 daemon under the new Node, resurrecting processes
 ```
 
 If `pm2 update` still leaves an empty process list, recover from the saved dump:
 
 ```bash
-sudo -u aios pm2 kill && sudo -u aios pm2 resurrect
+sudo -iu aios pm2 kill && sudo -iu aios pm2 resurrect
 ```
 
 ---
@@ -94,9 +94,9 @@ n8n --version                   # confirm it still resolves
 ## 4. Restart everything and verify
 
 ```bash
-sudo -u aios pm2 restart all --update-env
+sudo -iu aios pm2 restart all --update-env
 sleep 10
-sudo -u aios pm2 status
+sudo -iu aios pm2 status
 ```
 
 **Pass criteria** — all three `online`, uptime climbing, and **restart counters NOT ticking
@@ -108,7 +108,7 @@ curl -s http://localhost:3000/api/health; echo
 # n8n responding:
 curl -sI http://localhost:5678 | head -1
 # agent-worker stable (watch for ~15s — restart count must stay put):
-sudo -u aios pm2 status | grep agent-worker
+sudo -iu aios pm2 status | grep agent-worker
 ```
 
 Want: health `status:ok`, n8n `HTTP/1.1 200`, agent-worker steady at its current ↺.
@@ -121,7 +121,7 @@ repeat its step 3 block (rm node_modules + reinstall), or roll back (below).
 ## 5. Persist the PM2 state
 
 ```bash
-sudo -u aios pm2 save
+sudo -iu aios pm2 save
 ```
 
 ---
@@ -136,11 +136,11 @@ Manual alternative (reinstall Node 20, then rebuild):
 ```bash
 curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
 sudo apt-get install -y nodejs
-sudo -u aios pm2 update
+sudo -iu aios pm2 update
 cd /opt/ai-os && sudo -u aios npm rebuild
 cd /opt/ai-os/agent-worker && sudo -u aios rm -rf node_modules && sudo -u aios npm install
 sudo npm install -g n8n
-sudo -u aios pm2 restart all --update-env && sudo -u aios pm2 save
+sudo -iu aios pm2 restart all --update-env && sudo -iu aios pm2 save
 ```
 
 ---

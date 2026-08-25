@@ -15,7 +15,7 @@ sudo -iu aios pm2 restart ai-os --update-env
 - **Always pull as `aios`.** A single root-run pull leaves root-owned objects in `.git/objects`
   and every later aios pull fails with "insufficient permission for adding an object".
   Fix: `sudo chown -R aios:aios /opt/ai-os` (and `/opt/ai-os/commercial`), then re-pull.
-- **PM2 always via a login shell: `sudo -iu aios pm2 …`** — plain `sudo -u aios pm2 …` resolves
+- **PM2 always via a login shell: `sudo -iu aios pm2 …`** — plain `sudo -u aios pm2 …` resolves <!-- pm2-ok: quotes the wrong form deliberately, to explain it -->
   the wrong Node binary and dies with `spawn /usr/bin/node EACCES`, and if that happens after a
   `pm2 kill` the site is DOWN until you rerun with `-iu`.
 - Front-end changes may be cached by Cloudflare — if a deploy "doesn't show up", purge CF.

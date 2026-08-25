@@ -17,7 +17,7 @@
 #
 #  Restore (example):
 #    sudo tar -xzf /var/backups/ai-os/daily-YYYY-MM-DD.tar.gz -C /
-#    sudo -u aios pm2 restart ai-os n8n --update-env
+#    sudo -iu aios pm2 restart ai-os n8n --update-env
 #
 #  Retention: 7 daily + 4 weekly (Sundays promote to weekly-).
 # ============================================================

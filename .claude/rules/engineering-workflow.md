@@ -44,7 +44,7 @@ DEMO_MODE=true PORT=<free-port> node server.js   # background; PORT avoids clash
 
 ## Deploy (operator runs on the VPS; you provide the command)
 ```
-sudo -u aios git -C /opt/ai-os pull origin master && sudo -u aios pm2 restart ai-os --update-env
+sudo -u aios git -C /opt/ai-os pull origin master && sudo -iu aios pm2 restart ai-os --update-env
 ```
 - **Cloudflare sits in front.** Front-end changes (`/app` assets are content-hash fingerprinted) need a **CF purge** (or purge the specific hashed `app.js`/`web-studio.js`/`security.js` + affected HTML) to reach browsers. **Server-route-only changes don't need a purge.** See memory `cloudflare-in-front`.
 - If `commercial/` changed, the VPS needs **both** repos pulled.
