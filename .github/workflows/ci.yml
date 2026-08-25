@@ -132,8 +132,18 @@ jobs:
 
       - name: Check for secrets in code
         run: |
-          # Fail if real API keys are committed (not placeholders)
-          if grep -rn "sk_live_" --include="*.js" --include="*.json" --include="*.env" .; then
+          # Fail if real API keys are committed (not placeholders).
+          #
+          # The prefix ALONE is not a key. This matched a bare `sk_live_`, so it fired on
+          # documentation that names the prefix in prose — "Switch to live keys (sk_live_...)" —
+          # which is the opposite of what the line above says it does. A real Stripe live secret is
+          # the prefix followed by 24+ base62 characters, so requiring a key-shaped suffix
+          # implements the stated intent instead of contradicting it. This is a precision fix, not a
+          # relaxed threshold: every string that was a real key before still matches.
+          #
+          # node_modules is excluded because a dependency mentioning the prefix in its own docs is
+          # not this repo committing a key — the same reason the check below already excludes it.
+          if grep -rnE "sk_live_[A-Za-z0-9]{16,}" --include="*.js" --include="*.json" --include="*.env" . | grep -v node_modules; then
             echo "ERROR: Live Stripe key found in source"
             exit 1
           fi
