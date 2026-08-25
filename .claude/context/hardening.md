@@ -30,5 +30,5 @@ fencing) live in the root `CLAUDE.md` — this file is the configuration around 
 - **Production binding**: Server binds `127.0.0.1` in production (behind Nginx), `0.0.0.0` in dev
 
 > Ops procedures and the incident table are in `docs/RUNBOOK-vps.md`. On the VPS the app runs as
-> `aios` — always `sudo -u aios pm2 …`; `pm2` as root hits an empty second daemon and a deploy can
+> `aios` — always `sudo -iu aios pm2 …`; `pm2` as root hits an empty second daemon and a deploy can
 > look clean while old code serves.
