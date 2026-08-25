@@ -27,7 +27,18 @@ const API_TOKEN = process.env.API_TOKEN || null;
 const BASE = __dirname;
 const MAGENT_DIR = path.join(BASE, '.magent');
 const CLAUDE_DIR = path.join(BASE, '.claude');
-const STATE_DIR = path.join(MAGENT_DIR, 'state');
+// A SUBDIRECTORY NAME under .magent — never a full path. Exists so a test can boot the real server
+// against throwaway state instead of the operator's live `.magent/state/` (which holds real leads and
+// tickets). Deliberately not an arbitrary directory: STATE_DIR is assumed to sit inside BASE — the
+// mythos snapshot dir at STATE_DIR/security relies on that to satisfy its path allowlist — so the
+// override is sanitised to a single path segment and resolved under MAGENT_DIR, keeping that
+// invariant true by construction rather than by trusting the caller.
+// Must START alphanumeric, so `.`, `..` and `.hidden` are rejected by the same test that rejects
+// separators — no special-casing the dot names, which is where this kind of check usually leaks.
+const STATE_SUBDIR = /^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(process.env.AIOS_STATE_SUBDIR || '')
+  ? process.env.AIOS_STATE_SUBDIR
+  : 'state';
+const STATE_DIR = path.join(MAGENT_DIR, STATE_SUBDIR);
 let crm = null; // CRM facade (lib/crm) — assigned in the CRM init block once node:sqlite opens; live seams call crm?.*
 
 // Ensure state directory exists for persistence
