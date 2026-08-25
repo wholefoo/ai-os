@@ -44,6 +44,33 @@ Three copies and no written rule is how a fourth gets built without one. That is
 7. **Visitor text is fenced as UNTRUSTED** before it reaches a model (prompt-injection defence), and
    IP is retained only to serve the cap — not as general analytics.
 
+## The assumption underneath all of it: ONE process
+
+Every cap above counts an **in-memory array** — `freeAuditLog`, `contactTickets`, `wsChatLog` — each
+loaded once by `loadState` at boot and written back by `saveState`, which serialises the whole array
+and atomically replaces the file. That is correct for exactly one process and quietly wrong for two.
+
+Run N workers and each holds its own copy, refreshed only at startup:
+
+- **The caps multiply.** A worker counts its own requests, not the platform's. A 50/day global
+  ceiling becomes 50 *per worker*. The check still runs before the expensive call, exactly as
+  invariant 1 requires — and is still wrong, which is the point worth internalising: the ordering
+  guarantee is real and it is not the whole guarantee.
+- **Captured leads and tickets are lost.** `saveState` overwrites; it does not merge. Two workers
+  appending to the same file means last-writer-wins, and the loser's rows are gone. The symptom is a
+  quiet undercount in the CRM, not an error.
+
+Today this holds because `ecosystem.config.js` pins `instances: 1`. Note what that single line is
+doing: it is the enforcement of this invariant, and — because PM2 switches to cluster mode the moment
+`instances` is set at all — it is simultaneously the reason production reports `exec mode:
+cluster_mode` while running one worker. So the app is already *in* the mode where scaling is a
+one-number change, and nothing in the code would complain.
+
+**Before ever raising `instances` above 1, these counters have to move to shared storage** (the CRM
+sqlite is already there, or Redis). Until then, treat `instances: 1` as load-bearing configuration
+rather than a default nobody chose. `tools/test-public-cost-caps.js` boots a single server and
+therefore cannot catch this; it verifies the ordering, not the arithmetic under concurrency.
+
 ## Adding a new one
 
 Assume the answer is no. If a feature can live behind auth, put it behind auth.
@@ -115,3 +142,6 @@ public when it is not.
 - Never merge a public handler's construction logic with its authenticated sibling's just because
   they look alike (e.g. the free-audit and prospect audit records). The duplication is the boundary.
 - Never log or broadcast the visitor's email/IP beyond what the cap and CRM capture require.
+- Never raise `instances` above 1 while the caps count in-memory arrays — see the single-process
+  section above. It is a one-line change that multiplies every spend ceiling and silently drops
+  captured leads, and no test or linter in this repo will object.
