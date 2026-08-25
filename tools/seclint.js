@@ -7,8 +7,9 @@
  * the ~90% that are mechanical; the deeper /audit multi-agent pass covers the reasoning-heavy rest.
  *
  * Rules (ERROR blocks CI; WARN is advisory):
- *   R1 route-no-auth (ERROR) — a mutating API route (post/put/delete) with NO middleware between the
- *                              path and the (req,res) handler. Public routes are allowlisted below.
+ *   R1 route-no-auth (ERROR) — a mutating API route (post/put/delete/patch) whose middleware chain
+ *                              contains no AUTH guard. A rate limiter is not auth. Deliberately
+ *                              public routes are allowlisted in PUBLIC_ROUTES below.
  *   R2 path-traversal (ERROR) — path.join(...) fed a req.params/query/body value with no basename() guard.
  *   R3 shell-injection (ERROR) — execSync/exec with an interpolated template string (use execFile/spawn arrays).
  *   R4 jsonld-breakout (ERROR) — set:html={JSON.stringify(...)} without a `< -> <` escape (generated-site XSS).
@@ -28,9 +29,33 @@ const path = require('path');
 const ROOT = path.resolve(__dirname, '..');
 
 // Mutating API routes that are deliberately public (no auth by design). Keep this list tight.
+//
+// This is the LINT half of a pair. The runtime half is authMiddleware's `publicPaths` (and the
+// explicit branches under it) in server.js, which is what actually lets an anonymous request past
+// once API_TOKEN is set. A route needs BOTH: missing here fails CI, missing there 401s every
+// anonymous visitor in production only. See .claude/rules/public-cost-endpoints.md.
+//
+// The two halves had already drifted. Tightening route-no-auth to understand middleware chains
+// surfaced five routes that were public at runtime and absent here — checkout, provenance verify,
+// the two generated-site public forms, and the site chat widget — none of which the old rule could
+// see, because each carries a rate limiter and the old test treated any middleware as auth.
+//
+// It had drifted the other way too: '/api/auth/request-reset' and '/api/webhooks/stripe' were listed
+// and exist nowhere in the codebase. Removed. A stale allowlist entry is not inert — it silently
+// pre-authorises whatever a future route with that path happens to be.
+//
+// Paths are matched as written in SOURCE, so parameterised routes appear with their `:params`.
 const PUBLIC_ROUTES = [
-  '/api/auth/login', '/api/auth/logout', '/api/auth/set-password', '/api/auth/request-reset',
-  '/api/seo/free-audit', '/api/support/contact', '/api/stripe/webhook', '/api/webhooks/stripe',
+  // Session lifecycle — must be reachable before a session exists.
+  '/api/auth/login', '/api/auth/logout', '/api/auth/set-password',
+  // Provider callbacks and unauthenticated commerce entry.
+  '/api/stripe/webhook', '/api/commerce/checkout',
+  // Cheap, local, no paid call.
+  '/api/provenance/verify',
+  // Anonymous visitors of a GENERATED site (a different domain than this platform).
+  '/api/public/booking/:siteId', '/api/public/site-lead/:siteId', '/api/web-studio/sites/:id/chat',
+  // Public lead magnets. These SPEND MONEY per request — see the rule file before touching them.
+  '/api/seo/free-audit', '/api/support/contact',
 ];
 
 /**
@@ -104,18 +129,6 @@ function safeInterp(e) {
 }
 
 const rules = [
-  {
-    id: 'route-no-auth',
-    level: 'error',
-    // app.post('/api/x', (req  -> handler directly after the path string = no middleware
-    test(line) {
-      const m = line.match(/\bapp\.(post|put|delete)\(\s*(['"`])(\/api\/[^'"`]+)\2\s*,\s*(async\s*)?\(\s*req\b/);
-      if (!m) return null;
-      const route = m[3];
-      if (PUBLIC_ROUTES.includes(route)) return null;
-      return `mutating route ${m[1].toUpperCase()} ${route} has no auth middleware (add requireAdmin / requireClientOrAdmin, or allowlist if public)`;
-    },
-  },
   {
     id: 'path-traversal',
     level: 'error',
@@ -210,6 +223,79 @@ function unsafeInterps(body) {
 }
 
 const fileRules = [
+  {
+    id: 'route-no-auth',
+    level: 'error',
+    // A mutating /api route must either carry auth middleware or be named in PUBLIC_ROUTES.
+    //
+    // WHY THIS REPLACED A LINE RULE. The old version matched only `app.post('/api/x', (req` — the
+    // handler DIRECTLY after the path string. Any middleware at all satisfied it, and a rate limiter
+    // is not auth, so `app.post('/api/x', heavyLimiter, async (req, res) =>` passed while being
+    // exactly as anonymous as the shape the rule was written to catch. Verified against the old
+    // predicate before replacing it: that line passed and needed no PUBLIC_ROUTES entry, and
+    // /api/web-studio/sites/:id/chat had been live under precisely that shape, unallowlisted, calling
+    // a paid model on behalf of anonymous visitors of any generated site.
+    //
+    // WHICH DIRECTION THIS FAILS. Auth is recognised by NAME SHAPE (`require*`, plus `a2aAuth` which
+    // authenticates at the route level), and everything else — limiters, body parsers — counts as not
+    // auth. That asymmetry is deliberate. A new guard called `requireSomething` is recognised for
+    // free; one named unconventionally produces a FALSE POSITIVE, which costs a reviewer a minute.
+    // Denylisting limiters instead would fail the other way: the first limiter nobody thought to list
+    // would silently mark an anonymous route as protected. Only one of those two mistakes ships a
+    // hole, so the rule is keyed on the side that cannot.
+    //
+    // `*Limiter` is rejected explicitly even though no limiter currently starts with `require`,
+    // because `authLimiter` already proves the naming can mislead: it is a rate limiter whose name
+    // contains "auth", and a looser "does the chain mention auth?" test would have passed it.
+    test(text) {
+      // CRLF normalised at the read boundary — the middleware chain can span lines, and a stray \r
+      // inside a multi-line match is how line-based parsing in this repo has silently broken before.
+      const src = text.replace(/\r\n?/g, '\n');
+      const out = [];
+      const DEF = /\b(?:app|router)\.(post|put|delete|patch)\(\s*(['"`])(\/api\/[^'"`]+)\2\s*(,|\))/g;
+      let m;
+      while ((m = DEF.exec(src))) {
+        const [, verb, , route, tail] = m;
+        const line = src.slice(0, m.index).split('\n').length;
+        // `app.post('/api/x')` with no second argument registers nothing callable; skip rather than
+        // report a route that cannot serve a request.
+        if (tail === ')') continue;
+        if (PUBLIC_ROUTES.includes(route)) continue;
+
+        // Walk from just past the comma to the handler, balancing parens so `requireCommercial('x')`
+        // and `express.urlencoded({ extended: false })` survive intact as single tokens.
+        const start = m.index + m[0].length;
+        let depth = 0, end = -1;
+        for (let i = start; i < src.length; i++) {
+          const c = src[i];
+          if (c === '(') {
+            if (depth === 0 && /^\(\s*(req|_req)\b/.test(src.slice(i, i + 20))) { end = i; break; }
+            depth++;
+          } else if (c === ')') {
+            if (depth === 0) { end = i; break; }  // end of the app.post(...) call itself
+            depth--;
+          }
+        }
+        const chain = src.slice(start, end === -1 ? start : end);
+        const tokens = chain.split(',')
+          .map((s) => s.trim().replace(/^async\s+/, '').split('(')[0].trim())
+          .filter((s) => /^[A-Za-z_$][\w$.]*$/.test(s));
+
+        const isAuth = (t) => !/Limiter$/.test(t) && (/^require[A-Z]/.test(t) || t === 'a2aAuth');
+        if (tokens.some(isAuth)) continue;
+
+        const seen = tokens.length ? `chain is [${tokens.join(', ')}]` : 'no middleware at all';
+        out.push({
+          line,
+          msg: `mutating route ${verb.toUpperCase()} ${route} has no AUTH middleware — ${seen}. `
+             + 'A rate limiter is not auth. Add requireAdmin / requireClientOrAdmin, or, if it is '
+             + 'deliberately public, add it to PUBLIC_ROUTES here AND to authMiddleware\'s publicPaths '
+             + 'in server.js, then meet .claude/rules/public-cost-endpoints.md.',
+        });
+      }
+      return out;
+    },
+  },
   {
     id: 'innerhtml-dataflow',
     // THE HOLE THE OTHER TWO RULES CANNOT COVER. `innerhtml-unescaped` needs the value on the
