@@ -27,7 +27,18 @@ const API_TOKEN = process.env.API_TOKEN || null;
 const BASE = __dirname;
 const MAGENT_DIR = path.join(BASE, '.magent');
 const CLAUDE_DIR = path.join(BASE, '.claude');
-const STATE_DIR = path.join(MAGENT_DIR, 'state');
+// A SUBDIRECTORY NAME under .magent — never a full path. Exists so a test can boot the real server
+// against throwaway state instead of the operator's live `.magent/state/` (which holds real leads and
+// tickets). Deliberately not an arbitrary directory: STATE_DIR is assumed to sit inside BASE — the
+// mythos snapshot dir at STATE_DIR/security relies on that to satisfy its path allowlist — so the
+// override is sanitised to a single path segment and resolved under MAGENT_DIR, keeping that
+// invariant true by construction rather than by trusting the caller.
+// Must START alphanumeric, so `.`, `..` and `.hidden` are rejected by the same test that rejects
+// separators — no special-casing the dot names, which is where this kind of check usually leaks.
+const STATE_SUBDIR = /^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(process.env.AIOS_STATE_SUBDIR || '')
+  ? process.env.AIOS_STATE_SUBDIR
+  : 'state';
+const STATE_DIR = path.join(MAGENT_DIR, STATE_SUBDIR);
 let crm = null; // CRM facade (lib/crm) — assigned in the CRM init block once node:sqlite opens; live seams call crm?.*
 
 // Ensure state directory exists for persistence
@@ -4512,10 +4523,7 @@ async function callChatCompletions({ provider, keyName, url, model, apiKey, syst
     }),
   });
 
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
-    throw new Error(err.error?.message || `${provider} HTTP ${res.status}`);
-  }
+  if (!res.ok) throw transientErrors.httpError(res, await res.json().catch(() => ({})), provider);
 
   const data = await res.json();
   return {
@@ -4609,10 +4617,7 @@ async function callGrokBuild(systemPrompt, task, maxTokens) {
       headers: { Authorization: `Bearer ${settings.ai.xai_api_key}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({ model: GROK_BUILD_MODEL, messages, tools, max_tokens: maxTokens }),
     });
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({}));
-      throw new Error(err.error?.message || `Grok Build HTTP ${res.status}`);
-    }
+    if (!res.ok) throw transientErrors.httpError(res, await res.json().catch(() => ({})), 'Grok Build');
     const data = await res.json();
     inputTokens += data.usage?.prompt_tokens || 0;
     outputTokens += data.usage?.completion_tokens || 0;
@@ -4663,10 +4668,7 @@ async function callGemini(systemPrompt, task, maxTokens) {
     }),
   });
 
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
-    throw new Error(err.error?.message || `Gemini HTTP ${res.status}`);
-  }
+  if (!res.ok) throw transientErrors.httpError(res, await res.json().catch(() => ({})), 'Gemini');
 
   const data = await res.json();
   const text = data.candidates?.[0]?.content?.parts?.[0]?.text || '';

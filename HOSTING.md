@@ -178,7 +178,7 @@ sudo -u aios N8N_PORT=5678 \
   pm2 start n8n -- start
 
 # Save PM2 process list
-sudo -u aios pm2 save
+sudo -iu aios pm2 save
 ```
 
 ### Connecting AI OS to n8n

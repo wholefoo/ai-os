@@ -68,7 +68,11 @@ a:hover { color: #60a5fa; }
   justify-content: space-between;
 }
 .nav-brand { display: flex; align-items: center; gap: 10px; }
-.nav-logo { font-size: 24px; color: var(--primary); }
+/* Was `font-size: 24px; color: var(--primary)` for a `&#9678;` text glyph. Now an <img>, so both
+   of those are inert. `vertical-align` matters because the two hosts differ: `.nav-brand` is flex
+   (which ignores it and centres via align-items), but `.footer-brand` is NOT — there the image is
+   inline and would otherwise sit on the text baseline, riding low against "AI OS". */
+.nav-logo { width: 24px; height: 24px; vertical-align: middle; }
 .nav-name { font-size: 18px; font-weight: 800; letter-spacing: -0.5px; }
 .nav-links { display: flex; gap: 32px; }
 .nav-links a { color: var(--text-secondary); font-size: 14px; font-weight: 500; transition: color 0.2s; }

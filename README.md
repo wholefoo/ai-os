@@ -287,15 +287,18 @@ sudo bash deploy/install-vps.sh yourdomain.com
 sudo -u aios git -C /opt/ai-os clone https://github.com/wholefoo/ai-os-commercial.git commercial
 sudo nano /opt/ai-os/.env          # Add API keys (+ AIOS_LICENSE_KEY / AIOS_SIGNING_SECRET)
 sudo certbot --nginx -d yourdomain.com
-sudo -u aios pm2 restart ai-os --update-env
+sudo -iu aios pm2 restart ai-os --update-env   # -iu, not -u — see "Push Updates" below
 curl -s https://yourdomain.com/api/health | jq .
 ```
 
 ### Push Updates
 
 ```bash
-# Pull BOTH repos (public core + private commercial) as the owning user, then restart
-ssh root@your-vps-ip 'sudo -u aios git -C /opt/ai-os pull origin master && sudo -u aios git -C /opt/ai-os/commercial pull origin master && sudo -u aios pm2 restart ai-os --update-env'
+# Pull BOTH repos (public core + private commercial) as the owning user, then restart.
+# `git` takes -u; pm2 takes -iu. pm2 finds its daemon via $HOME, and plain `sudo -u` leaves HOME as
+# root's — so it reads /root/.pm2, finds an empty registry, and reports "Process or Namespace not
+# found" as though the app name were wrong, while the OLD code keeps serving.
+ssh root@your-vps-ip 'sudo -u aios git -C /opt/ai-os pull origin master && sudo -u aios git -C /opt/ai-os/commercial pull origin master && sudo -iu aios pm2 restart ai-os --update-env'
 ```
 
 ## Environment Variables

@@ -101,7 +101,10 @@
     "tools/test-zip-import.js",
     "tools/test-deps-installed.js",
     "tools/check-deps-installed.js",
-    "tools/test-deploy-guard.js"
+    "tools/test-deploy-guard.js",
+    "tools/test-seclint-route-auth.js",
+    "tools/test-public-cost-caps.js",
+    "tools/test-pm2-login-shell.js"
   ],
   "ignorePatterns": [
     "docs-export/**",
