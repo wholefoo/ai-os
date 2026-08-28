@@ -146,7 +146,20 @@ static_body() {
     # vhost-attributed analytics (format defined in /etc/nginx/conf.d/aios-logformat.conf;
     # if that drop-in is absent nginx -t fails loudly rather than silently losing attribution)
     access_log /var/log/nginx/access.log aios_vhost;
-    location / { try_files \$uri \$uri/ \$uri.html /index.html =404; }
+    # NO /index.html FALLBACK. It used to read \`... \$uri.html /index.html =404\`, which made every
+    # unmatched path serve the homepage with **200** — the \`=404\` was unreachable because
+    # /index.html always exists. Found in the crawler analytics: a hosted site answered
+    # /credentials.json, /firebase-adminsdk.json, /phpinfo.php AND /api/health with identical
+    # counts and status 200, which is the signature of "everything returns the same page".
+    #
+    # Soft-404s are not cosmetic: search and answer engines treat a 200 as a real page, so every
+    # scanner probe became an indexable duplicate of the homepage, and a genuine typo'd link looked
+    # healthy instead of broken.
+    #
+    # Safe here because Web Studio builds are STATIC and single-page (templates.js) — no
+    # client-side router, no pushState. Real routes resolve via \$uri / \$uri/ / \$uri.html; anchor
+    # links never reach the server. Nothing legitimately depended on the fallback.
+    location / { try_files \$uri \$uri/ \$uri.html =404; }
 
     gzip on;
     gzip_vary on;

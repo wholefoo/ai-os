@@ -138,5 +138,30 @@ ok('still rejects an invalid domain, before any flag handling', () => {
   assert.strictEqual(run('', []).code, 2);
 });
 
+// --- SOFT-404 GUARD: the emitted vhost must NOT fall back to /index.html -----------------------
+// A `/index.html` entry in try_files makes every unmatched path serve the homepage with 200, and
+// the trailing `=404` is then unreachable because /index.html always exists. Found in production
+// analytics: a hosted site answered /credentials.json, /firebase-adminsdk.json, /phpinfo.php AND
+// /api/health with status 200 and identical counts — the signature of "everything returns the same
+// page". Search and answer engines treat a 200 as a real page, so every scanner probe became an
+// indexable duplicate of the homepage, and a genuine broken link looked healthy.
+//
+// HONEST SCOPE: this reads the SOURCE, not a rendered vhost. `patchScript()` above truncates the
+// script before the cert check and exits, so the harness never reaches `static_body()` and no
+// config is ever written — extending it to render would mean standing up cert dirs and nginx paths.
+// So this asserts on the emitted DIRECTIVE LINE, extracted from the `location /` statement itself,
+// NOT on the file as a whole: the surrounding comment explains the bug and necessarily contains the
+// string "/index.html", so a whole-file check would either fail spuriously or, if loosened, pass on
+// a comment while the directive stayed broken.
+ok('the emitted `location /` 404s unknown paths instead of serving the homepage', () => {
+  const src = fs.readFileSync(SRC, 'utf8');
+  const line = (src.match(/^\s*location \/ \{.*$/m) || [])[0];
+  assert.ok(line, 'no `location /` directive found — script shape changed, aborting');
+  assert.ok(line.includes('try_files'), 'location / lost its try_files: ' + line.trim());
+  assert.ok(!line.includes('/index.html'),
+    'location / must not fall back to /index.html (soft-404): ' + line.trim());
+  assert.ok(line.includes('=404'), 'location / must end in the =404 fallback: ' + line.trim());
+});
+
 fs.rmSync(TMP, { recursive: true, force: true });
 console.log(`\nALL TESTS PASSED\n${pass} assertions`);
