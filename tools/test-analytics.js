@@ -121,6 +121,36 @@ assert(acmeSum.pageviews === 1 && acmeSum.aiReferrers.length === 1, `www. host n
 const platBots = adb.botLeaderboard('platform', 7);
 assert(platBots.find((x) => x.bot === 'ClaudeBot' && x.count === 2), 'unknown vhost host fell back to platform (ClaudeBot 1+1)');
 assert(platBots.find((x) => x.bot === 'PerplexityBot' && x.count === 2), 'combined-format line still parses into platform (PerplexityBot 1+1)');
+// --- SPOOFED USER-AGENTS: a credential probe is a scan whatever it claims to be ----------------
+// The UA is attacker-controlled and `classifyUA` is a substring match, so anyone can present as
+// ChatGPT-User. Real logs showed `Claude-User` fetching /phpinfo.php. Before this guard those
+// landed in the AI metrics and inflated live-retrieval ~7x.
+const line = (p, ua, st) => `1.2.3.4 - - [08/Jul/2026:04:00:00 +0000] "GET ${p} HTTP/1.1" ${st} 100 "-" "${ua}"`;
+const CLAUDE_UA = 'Mozilla/5.0 (compatible; Claude-User/1.0; +claude.ai)';
+
+// A path a real crawler fetches stays a bot event — including 404s, which are signal.
+const legit = parseLine(stamp(line('/docs/gone', CLAUDE_UA, 404)));
+assert(legit && legit.kind === 'bot' && legit.purpose === 'live',
+  `genuine bot 404 still kind=bot/purpose=live, got ${JSON.stringify(legit)}`);
+
+// Credential probes wearing the same UA are scans, and carry NO purpose.
+for (const p of ['/phpinfo.php', '/credentials.json', '/firebase-adminsdk.json', '/.env',
+  '/backend/.env', '/sendgrid.env', '/@fs/proc/self/environ', '/server.key',
+  '/terraform.tfstate', '/serviceAccountKey.json', '/config.json', '/actuator/configprops']) {
+  const e = parseLine(stamp(line(p, CLAUDE_UA, 200)));
+  assert(e && e.kind === 'scan', `${p} must be kind=scan, got ${e && e.kind}`);
+  assert(e.purpose === null, `${p} must carry no purpose — a purpose='live' query must never match it`);
+  assert(e.bot === 'Claude-User', `${p} keeps the CLAIMED identity for forensics, got ${e && e.bot}`);
+}
+
+// SHAPES, not a list: a probe filename nobody enumerated is still caught.
+assert(parseLine(stamp(line('/aws-secrets.yaml', CLAUDE_UA, 200))).kind === 'scan',
+  'an unlisted credential-shaped name is still a scan');
+// ...and legitimate content that merely contains a scary word is NOT.
+const article = parseLine(stamp(line('/blog/secrets-of-ai-orchestration', CLAUDE_UA, 200)));
+assert(article && article.kind === 'bot',
+  `a real article whose slug contains "secrets" must stay a bot event, got ${article && article.kind}`);
+
 assert(!platBots.find((x) => x.bot === 'GPTBot' && x.count > 2), 'site-attributed GPTBot hit did NOT leak into the platform bucket');
 
 done();
