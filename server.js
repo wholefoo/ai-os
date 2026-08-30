@@ -10716,6 +10716,36 @@ app.post('/api/approvals/:id/approve', requireAdmin, heavyLimiter, async (req, r
   res.json({ ok: true, approval: a, result: r.result });
 });
 
+// THE FEDERATED DECISION COUNT (agent-overhead audit P2b). The decision stream was fragmented
+// across six surfaces, each with its own count or none — the Inbox badge counted ONLY action
+// approvals, so a run awaiting a pipeline gate or a clone draft awaiting review was invisible
+// from every other screen. This endpoint is the one number that answers "how many decisions are
+// waiting on me right now", with the per-surface breakdown so the operator can jump to the right
+// view.
+//
+// DELIBERATELY EXCLUDED: the Hermes queue. It is demo-seeded (the audit flagged this) — counting
+// it would put fake decisions in a real badge. Fix its seeding first, then add it here.
+//
+// pipelineGates counts the LIVE runs Map; a run awaiting a gate from before a server restart is
+// rehydrated on access, not enumerated here — so this can UNDERCOUNT across restarts. An
+// undercount that names its cause beats a crash from eagerly rehydrating every trail file on a
+// hot endpoint.
+app.get('/api/decisions/summary', requireAdmin, (req, res) => {
+  const surfaces = {
+    approvals: pendingApprovals.filter(a => a.kind === 'action' && a.status === 'pending').length,
+    proposals: pendingApprovals.filter(a => a.kind === 'proposal' && a.status === 'pending').length,
+    pipelineGates: [...pipelineRuns.values()].filter(r => r.status === 'awaiting_approval').length,
+    automations: automationLog.filter(e => e.status === 'pending_approval').length,
+    cloneReviews: cloneDrafts.filter(d => d.status === 'pending').length
+      + clonePersonaProposals.filter(p => p.status === 'pending').length,
+  };
+  res.json({
+    total: Object.values(surfaces).reduce((a, b) => a + b, 0),
+    surfaces,
+    excluded: { hermes: 'demo-seeded queue — not counted until its data is real' },
+  });
+});
+
 // Batch approve (agent-overhead audit P2): a 50-recipient sequence step in manual mode is one
 // gateAction PER SEND — fifty identical cards, fifty clicks. This clears a homogeneous run in one
 // decision. SEQUENTIAL on purpose: executors mutate shared state (enrollments, ledgers) and were

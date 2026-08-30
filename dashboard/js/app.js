@@ -452,8 +452,11 @@ function updateStats() {
     document.getElementById('uptime').textContent = `Uptime: ${hrs}h ${mins % 60}m`;
   }
 
-  // Update inbox badge
-  const pending = state.inbox.filter(i => i.status === 'pending').length;
+  // Update inbox badge — the FEDERATED total when the endpoint exists (decisions waiting anywhere:
+  // inbox, pipeline gates, automations, proposals, clone reviews), else this queue alone.
+  const pending = (state.decisionSummary && typeof state.decisionSummary.total === 'number')
+    ? state.decisionSummary.total
+    : state.inbox.filter(i => i.status === 'pending').length;
   const badge = document.getElementById('inboxBadge');
   if (pending > 0) {
     badge.textContent = pending;
@@ -722,6 +725,14 @@ async function loadInbox(filter) {
   } catch (e) {
     state.inbox = [];
   }
+  // Federated decision count (audit P2b): the badge answers "how many decisions wait on me
+  // ANYWHERE", not just in this queue. Old servers without the endpoint → null, and the badge
+  // falls back to counting only the inbox — degrade, don't break.
+  try {
+    state.decisionSummary = await fetchJSON('/api/decisions/summary');
+  } catch (e) {
+    state.decisionSummary = null;
+  }
   renderInbox(filter);
   updateStats();
 }
@@ -751,6 +762,27 @@ function renderInbox(filter = 'all') {
   }
 
   lastInboxItems = items;
+  // Federated breakdown strip (audit P2b): where else decisions are waiting, one chip per surface
+  // with a pending count, each jumping to its view. Labels and view names are literals; counts are
+  // numbers — nothing user-authored. Renders nothing on old servers (no summary) and nothing when
+  // every other surface is clear, so the Inbox stays quiet unless there is something to say.
+  const ds = state.decisionSummary && state.decisionSummary.surfaces;
+  const SURFACE_VIEWS = [
+    ['pipelineGates', 'Pipeline gates', 'pipelines'],
+    ['automations', 'Automations', 'automations'],
+    ['proposals', 'Platform proposals', 'self-improve'],
+    ['cloneReviews', 'Clone reviews', 'clones'],
+  ];
+  const chips = ds ? SURFACE_VIEWS.filter(([k]) => ds[k] > 0) : [];
+  const federatedStrip = chips.length ? `
+    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:12px;font-size:13px;color:var(--text-muted);">
+      <span>Also waiting elsewhere:</span>
+      ${chips.map(([k, label, view]) => `
+        <button class="btn btn-sm btn-secondary" data-goto-view="${view}" onclick="switchView(this.dataset.gotoView)">
+          ${label}: ${ds[k]}
+        </button>`).join('')}
+    </div>` : '';
+
   // Batch bar (audit P2): a run of identical gated actions — e.g. one sequence step queuing one
   // approval PER RECIPIENT — should be one decision, not N clicks. Only same-type groups of 2+
   // pending items with NO secret requirements qualify; anything needing a secret keeps its
@@ -769,7 +801,7 @@ function renderInbox(filter = 'all') {
       <span style="font-size:12px;color:var(--text-muted);">one decision for a homogeneous run</span>
     </div>` : '';
 
-  container.innerHTML = batchBar + items.map(item => {
+  container.innerHTML = federatedStrip + batchBar + items.map(item => {
     const risk = item.risk || 'medium';
     const when = item.createdAt ? timeAgo(item.createdAt) : '';
     // Stale-pending emphasis: amber past 4h, red past 24h — same thresholds as the oversight card.
