@@ -16,6 +16,7 @@ node_modules/
 .magent/runs/
 .magent/vault/raw/
 .magent/state/
+.magent/reasoning/
 
 # CRM embedded database (runtime data + WAL sidecars) — never commit
 .magent/crm.sqlite
