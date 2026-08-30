@@ -228,23 +228,36 @@ const deps = {
 
   // =============================================================================================
   h(5, 'CONTEXT ENGINEERING — what survives when the window is full');
-  const cm = createContextManager({ maxTokens: 700 });
+  const WINDOW = 700;
+  const cm = createContextManager({ maxTokens: WINDOW });
   cm.setInstructions('SAFETY RULES: never delete a volume without asking. Never restart production unprompted.');
   cm.remember('Scheduler confirmed healthy — three starts, three exits.');
   cm.remember('Ruled out the upstream API.');
   reflex.lessons.forEach((l) => cm.recall(l));
-  for (let i = 0; i < 30; i++) cm.note(`working note ${i}: intermediate observation while tracing the export path`);
+  // Enough working notes to genuinely OVERFLOW the window. An earlier draft used 30, which came to
+  // ~612 tokens against a 700-token cap — so nothing was ever evicted, and this section's claim
+  // that "the safety rules survived" was vacuously true. A demonstration that cannot fail
+  // demonstrates nothing; the pressure has to be real for the invariant to mean anything.
+  for (let i = 0; i < 90; i++) cm.note(`working note ${i}: intermediate observation while tracing the export path`);
 
-  const beforeTotal = cm.usage().total;
+  const before = cm.usage();
+  const rulesBefore = cm.segments.instructions.length;
   const assembled = cm.assemble();
-  say(`${BOLD}before:${OFF} ~${beforeTotal} tokens against a 700-token window`);
-  say(`${BOLD}evicted:${OFF} scratchpad ${assembled.stats.evicted.scratchpad}, episodic ${assembled.stats.evicted.episodic}, longterm ${assembled.stats.evicted.longterm}`);
-  say(`${BOLD}after:${OFF} ~${assembled.stats.total} tokens`);
+  const after = assembled.stats;
+
+  say(`${BOLD}before:${OFF} ~${before.total} tokens against a ${WINDOW}-token window ${before.total > WINDOW ? `${RED}(over by ${before.total - WINDOW})${OFF}` : `${YELLOW}(not actually over — nothing to evict)${OFF}`}`);
+  say(`${BOLD}evicted:${OFF} scratchpad ${after.evicted.scratchpad}, episodic ${after.evicted.episodic}, longterm ${after.evicted.longterm}, ${BOLD}instructions ${GREEN}n/a — not evictable${OFF}`);
+  say(`${BOLD}after:${OFF} ~${after.total} tokens ${after.total <= WINDOW ? `${GREEN}(fits)${OFF}` : `${RED}(still over)${OFF}`}`);
   console.log();
   say(`${BOLD}cacheable prefix (stable across calls):${OFF}`);
   say(`  ${GREEN}${assembled.system}${OFF}`);
-  say(`${BOLD}volatile block (changes per call):${OFF}`);
-  assembled.volatile.split('\n').slice(0, 6).forEach((l) => say(`  ${DIM}${l}${OFF}`));
+  say(`${BOLD}volatile block — sections present after eviction:${OFF}`);
+  for (const seg of ['longterm', 'episodic', 'scratchpad']) {
+    const n = cm.segments[seg].length;
+    say(`  ${DIM}${seg.padEnd(11)}${OFF} ${n ? `${n} entr${n === 1 ? 'y' : 'ies'}` : `${RED}emptied${OFF}`}`);
+  }
+  console.log();
+  say(`${BOLD}instructions kept:${OFF} ${cm.segments.instructions.length === rulesBefore && /never delete a volume/.test(assembled.system) ? `${GREEN}YES — verbatim, under real pressure${OFF}` : `${RED}NO — INVARIANT VIOLATED${OFF}`}`);
   note('THE SAFETY RULES SURVIVED. They are the one segment with no entry in the eviction order —');
   note('a context-budget optimisation that can silently drop "never delete without asking" is a');
   note('safety regression that no test would catch, because the run still succeeds.');

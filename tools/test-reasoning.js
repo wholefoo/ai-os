@@ -404,5 +404,40 @@ const mock = (script, seen = []) => ({
     assert(r.budget.calls === 3, `and reports its REAL cost: ${r.budget.calls} calls for a 1-step task (decompose + act + verify), not the 1 a caller might assume`);
   }
 
+  // =============================================================================================
+  //  THE DEMO IS A DELIVERABLE, SO IT IS TESTED
+  // =============================================================================================
+  // tools/test-all.js only discovers `test-*.js`, so tools/demo-reasoning.js runs in NO gate. It
+  // shipped once already claiming to show eviction under memory pressure while evicting nothing:
+  // 30 working notes came to ~612 tokens against a 700-token cap, so the window was never full and
+  // "the safety rules survived" was vacuously true. The demo is how a reader understands this
+  // subsystem, so a demo that quietly demonstrates nothing is a documentation defect — and the only
+  // thing that catches it is asserting on what it PRINTS.
+  {
+    const { execFileSync } = require('child_process');
+    let out = '';
+    let code = 0;
+    try {
+      out = execFileSync(process.execPath, [require('path').join(__dirname, 'demo-reasoning.js')], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
+    } catch (e) {
+      out = String(e.stdout || '') + String(e.stderr || '');
+      code = e.status || 1;
+    }
+    const plain = out.replace(/\x1b\[[0-9;]*m/g, '');
+    assert(code === 0, `the demo exits 0 (got ${code})`);
+    assert(/backtracks:\s*1\b/.test(plain), 'the demo really backtracks once, rather than narrating that it does');
+    assert(/← DROPPED/.test(plain) && /grep suppress_empty/.test(plain),
+      "the demo SHOWS the hallucinated step's action being dropped — the claim and the printed evidence must be the same thing");
+
+    const over = plain.match(/before:\s*~(\d+) tokens against a (\d+)-token window/);
+    assert(over && Number(over[1]) > Number(over[2]),
+      `the demo's context section is GENUINELY over budget (${over && over[1]} vs ${over && over[2]}) — a demonstration that cannot fail demonstrates nothing`);
+    const eviction = plain.match(/evicted:\s*scratchpad (\d+)/);
+    assert(eviction && Number(eviction[1]) > 0, `...and really evicts (${eviction && eviction[1]} scratchpad entries)`);
+    assert(/instructions kept:\s*YES/.test(plain) && !/INVARIANT VIOLATED/.test(plain),
+      'and the safety rules survive that real pressure — which is the whole point of the section');
+    assert(/Nothing was spent/.test(plain), 'the demo completes to its own final line, so nothing above it threw silently');
+  }
+
   done();
 })();
