@@ -8324,6 +8324,20 @@ app.post('/api/contexts', requireAdmin, (req, res) => {
 
 const PIPELINE_DIR = path.join(CLAUDE_DIR, 'pipelines');
 const pipelineRuns = new Map();
+
+// P3 of the agent-overhead audit: NO pipeline-failure path called sendNotification — a run could
+// die and the operator only found out by looking. One notify per run (the guard matters: a
+// provider-refusal storm once produced ~52 failures/day, and a nag per retry would bury the
+// signal it exists to carry).
+function notifyPipelineFailure(run) {
+  if (run.failureNotified) return;
+  run.failureNotified = true;
+  sendNotification(
+    `Pipeline failed: ${run.pipeline}`,
+    `Run ${run.id} — ${String(run.error || 'a stage failed').slice(0, 300)}. The Pipelines view has the trail; resume may be possible.`,
+    'normal',
+  );
+}
 // Run RESULTS (this Map) are in-memory only and lost on restart — pipeline-reports.js is the
 // durability fix: every completed run is rendered to a real .docx the moment it finishes, so the
 // results survive regardless of what happens to this process afterward. See completePipelineRun.
@@ -8466,6 +8480,7 @@ function executePipeline(pipelineName, params) {
   runPipelineStages(run).catch((e) => {
     run.status = 'failed'; run.error = e.message;
     appendLog(`PIPELINE_ERR: ${run.pipeline} -> ${e.message}`);
+    notifyPipelineFailure(run);
     broadcast({ event: 'pipeline_update', data: run });
   });
 
@@ -8619,6 +8634,7 @@ async function runPipelineStages(run) {
     run.error = `invalid dependency graph: ${errs.join('; ')}`;
     run.completedAt = new Date().toISOString();
     appendLog(`PIPELINE_ERR: ${run.pipeline} -> ${run.error}`);
+    notifyPipelineFailure(run);
     broadcast({ event: 'pipeline_update', data: run });
     return;
   }
@@ -8644,6 +8660,7 @@ async function runPipelineStages(run) {
       run.status = 'failed';
       run.completedAt = new Date().toISOString();
       savePipelineManifest(run);
+      notifyPipelineFailure(run);
       broadcast({ event: 'pipeline_update', data: run });
       return;
     }
@@ -8759,6 +8776,7 @@ app.post('/api/pipelines/runs/:id/resume', requireAdmin, (req, res) => {
   runPipelineStages(run).catch((e) => {
     run.status = 'failed'; run.error = e.message;
     appendLog(`PIPELINE_ERR: ${run.pipeline} -> ${e.message}`);
+    notifyPipelineFailure(run);
     broadcast({ event: 'pipeline_update', data: run });
   });
 
@@ -8862,6 +8880,7 @@ app.post('/api/pipelines/runs/:id/approve', requireAdmin, (req, res) => {
   runPipelineStages(run).catch((e) => {
     run.status = 'failed'; run.error = e.message;
     appendLog(`PIPELINE_ERR: ${run.pipeline} -> ${e.message}`);
+    notifyPipelineFailure(run);
     broadcast({ event: 'pipeline_update', data: run });
   });
 
@@ -10768,6 +10787,52 @@ app.post('/api/approvals/batch', requireAdmin, heavyLimiter, async (req, res) =>
   const approved = results.filter(r => r.ok).length;
   logActivity('approval', `Batch approval: ${approved}/${ids.length} executed`, { actor, ids: ids.length });
   res.json({ ok: results.every(r => r.ok), approved, total: ids.length, results });
+});
+
+// Retry a FAILED approval (audit P3). 'failed' used to be terminal: approve requires
+// status==='pending', so an approved action whose executor threw dead-ended, and the operator
+// rebuilt it at its origin with nothing tracking that debt. Retry re-runs the SAME executor on the
+// SAME record via executeApprovedAction — one implementation, same as approve/batch.
+//
+// This is a HUMAN clicking retry on a card that shows the error — not an unattended re-send. The
+// distinction matters (the hermes-delegate handbook bans retrying ambiguous outward failures
+// UNATTENDED, precisely because a duplicate send is irreversible): here the human reads the error
+// and judges whether the failure was clean. retryCount makes repeated failure visible instead of
+// each attempt overwriting the last.
+app.post('/api/approvals/:id/retry', requireAdmin, heavyLimiter, async (req, res) => {
+  const a = pendingApprovals.find(x => x.id === req.params.id && x.kind === 'action');
+  if (!a) return res.status(404).json({ error: 'Approval not found' });
+  if (a.status !== 'failed') return res.status(409).json({ error: `Only failed actions can be retried (status: ${a.status})` });
+  const secrets = (req.body && req.body.secrets) || {};
+  const actor = (req.session && (req.session.email || req.session.name)) || 'operator';
+  a.retryCount = (a.retryCount || 0) + 1;
+  a.lastError = a.error;   // keep the failure that prompted the retry; executeApprovedAction may overwrite a.error
+  const r = await executeApprovedAction(a, secrets, actor);
+  logActivity('approval', `Retry ${a.retryCount} ${r.ok ? 'succeeded' : 'failed'}: ${a.summary}`, { type: a.type, approvalId: a.id, actor });
+  if (!r.ok) return res.status(r.code).json({ error: r.error, retryCount: a.retryCount });
+  res.json({ ok: true, approval: a, result: r.result });
+});
+
+// Record what cleaning up after an action COST (audit P3 — the 9-seconds/30-hours problem: the
+// remediation side of a failure was invisible everywhere). Modelled on the clone draft-review
+// endpoint, the one pre-existing place a post-action human verdict is recorded. Feeds the
+// oversight ledger's remediation line.
+app.post('/api/approvals/:id/remediation', requireAdmin, (req, res) => {
+  const a = pendingApprovals.find(x => x.id === req.params.id && x.kind === 'action');
+  if (!a) return res.status(404).json({ error: 'Approval not found' });
+  if (a.status === 'pending') return res.status(409).json({ error: 'Record remediation on a RESOLVED action — this one is still pending' });
+  const minutes = Number(req.body && req.body.minutes);
+  if (!Number.isFinite(minutes) || minutes < 0 || minutes > 6000) {
+    return res.status(400).json({ error: 'minutes must be a number between 0 and 6000' });
+  }
+  a.remediationMinutes = minutes;
+  a.remediationNote = String((req.body && req.body.note) || '').slice(0, 500);
+  a.remediationAt = new Date().toISOString();
+  a.remediationBy = (req.session && (req.session.email || req.session.name)) || 'operator';
+  saveState('pending_approvals', pendingApprovals);
+  logActivity('approval', `Remediation logged: ${minutes}m on "${a.summary}"`, { approvalId: a.id });
+  broadcast({ event: 'approval_update', data: a });
+  res.json({ ok: true, approval: a });
 });
 
 app.post('/api/approvals/:id/reject', requireAdmin, (req, res) => {

@@ -838,6 +838,15 @@ function renderInbox(filter = 'all') {
       ` : `
         <div class="inbox-actions">
           <span style="font-size:12px;color:var(--text-muted);">${outcome}</span>
+          ${item.status === 'failed' ? `
+            <button class="btn btn-sm btn-secondary" data-approval-id="${item.id}" data-needs="${(item.needsSecrets || []).join(',')}" onclick="retryAction(this.dataset.approvalId, this.dataset.needs)">Retry${item.retryCount ? ` (${item.retryCount} tried)` : ''}</button>
+          ` : ''}
+          ${item.status !== 'pending' && item.remediationMinutes == null ? `
+            <button class="btn btn-sm btn-secondary" data-approval-id="${item.id}" onclick="logRemediation(this.dataset.approvalId)">Log cleanup time</button>
+          ` : ''}
+          ${item.remediationMinutes != null ? `
+            <span style="font-size:12px;color:var(--text-muted);">cleanup: ${Number(item.remediationMinutes)}m${item.remediationNote ? ' — ' + escapeHtml(item.remediationNote) : ''}</span>
+          ` : ''}
         </div>
       `}
     </div>`;
@@ -2624,6 +2633,8 @@ function renderOversightStats(ov) {
   const pendColor = p.depth === 0 ? 'var(--text-muted)'
     : (p.oldestAgeMs > 86400000 ? '#ef4444' : p.oldestAgeMs > 4 * 3600000 ? '#f59e0b' : '#10b981');
   const failNote = d.failedAfterApproval ? ` · ${d.failedAfterApproval} failed after approval` : '';
+  const rem = d.remediation || {};
+  const remNote = rem.count ? ` · ${Math.round(rem.minutes)}m cleanup logged` : '';
   return `
     <div class="cost-stat">
       <div class="cost-stat-value" style="color:${pendColor}">${p.depth ?? 0}</div>
@@ -2633,7 +2644,7 @@ function renderOversightStats(ov) {
     <div class="cost-stat">
       <div class="cost-stat-value">${fmtDur(d.medianDecisionMs)}</div>
       <div class="cost-stat-label">Median Time-to-Decision</div>
-      <div class="cost-stat-sub">${d.total ? 'p90 ' + fmtDur(d.p90DecisionMs) + ' · ' + d.total + ' decided (' + (ov.windowDays || 30) + 'd)' + failNote : 'no decisions yet'}</div>
+      <div class="cost-stat-sub">${d.total ? 'p90 ' + fmtDur(d.p90DecisionMs) + ' · ' + d.total + ' decided (' + (ov.windowDays || 30) + 'd)' + failNote + remNote : 'no decisions yet'}</div>
     </div>
     <div class="cost-stat">
       <div class="cost-stat-value">${d.total ? d.perDay : '&mdash;'}</div>
@@ -6258,6 +6269,36 @@ async function loadApprovals() {
       </div>
     </div>`;
   }).join('');
+}
+
+// Retry a FAILED action (audit P3): the human reads the error on the card and judges whether the
+// failure was clean enough to re-run — this is deliberate operator intent, not an unattended
+// re-send. Secrets were never persisted, so a secret-bearing action prompts for them again.
+async function retryAction(id, needsCsv) {
+  const secrets = {};
+  for (const k of (needsCsv ? needsCsv.split(',') : [])) {
+    if (!k) continue;
+    const v = window.prompt(`Retry needs "${k}" again (not stored on the server):`);
+    if (v == null || v === '') return;
+    secrets[k] = v;
+  }
+  if (!window.confirm('Re-run this failed action? Check the error first — if it may have PARTIALLY completed (a send, a publish), verify before retrying.')) return;
+  const r = await fetchJSON(`/api/approvals/${id}/retry`, { method: 'POST', body: { secrets } });
+  if (r && r.error) { alert('Retry failed: ' + r.error); }
+  await Promise.all([loadApprovals(), loadInbox()]);
+}
+
+// Log what cleaning up after an action cost (audit P3) — feeds the oversight ledger.
+async function logRemediation(id) {
+  const v = window.prompt('How many MINUTES did cleanup/recovery take? (a note can follow after a comma, e.g. "45, restored from backup")');
+  if (v == null || v.trim() === '') return;
+  const m = v.match(/^\s*(\d+(?:\.\d+)?)\s*(?:,\s*(.*))?$/);
+  if (!m) { alert('Format: minutes, optional note — e.g. "45, restored from backup"'); return; }
+  const r = await fetchJSON(`/api/approvals/${id}/remediation`, {
+    method: 'POST', body: { minutes: Number(m[1]), note: m[2] || '' },
+  });
+  if (r && r.error) { alert('Could not log remediation: ' + r.error); }
+  await loadInbox();
 }
 
 // Approve every pending, secret-free item of one type in one POST (audit P2). Confirmation names

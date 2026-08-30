@@ -107,6 +107,26 @@ ok('gatedShare is gated/(gated+auto), auto summed from in-window day buckets onl
   assert.strictEqual(o.autoVsGated.autoApprovedAllTime, 100);
 });
 
+// --- remediation cost (P3) -----------------------------------------------------------------------
+ok('remediation minutes sum in-window by WHEN LOGGED, and count separates zero from never', () => {
+  const approvals = [
+    { id: 'r1', status: 'failed', createdAt: iso(10 * H), approvedAt: iso(9 * H),
+      remediationMinutes: 45, remediationAt: iso(2 * H) },
+    { id: 'r2', status: 'approved', createdAt: iso(8 * H), approvedAt: iso(7 * H),
+      remediationMinutes: 0, remediationAt: iso(1 * H) },              // logged as ZERO — still counts
+    { id: 'r3', status: 'approved', createdAt: iso(45 * 24 * H), approvedAt: iso(44 * 24 * H),
+      remediationMinutes: 500, remediationAt: iso(40 * 24 * H) },      // logged OUTSIDE the window
+  ];
+  const o = computeOversight(approvals, {}, { now: NOW });
+  assert.strictEqual(o.decided.remediation.minutes, 45, 'only in-window logs sum: 45 + 0');
+  assert.strictEqual(o.decided.remediation.count, 2, 'the zero-minute log still counts as a log');
+});
+
+ok('no remediation logged → {minutes: 0, count: 0}, distinguishable from measured zero by count', () => {
+  const o = computeOversight([{ id: 'a', status: 'approved', createdAt: iso(2 * H), approvedAt: iso(H) }], {}, { now: NOW });
+  assert.deepStrictEqual(o.decided.remediation, { minutes: 0, count: 0 });
+});
+
 // --- malformed input must degrade, not throw or poison -------------------------------------------
 ok('malformed rows are skipped, not fatal, and cannot produce NaN', () => {
   const approvals = [
