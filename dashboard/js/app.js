@@ -736,6 +736,8 @@ function setupInboxFilters() {
   });
 }
 
+let lastInboxItems = [];   // the items renderInbox last drew — approveBatch derives its ids from here
+
 function renderInbox(filter = 'all') {
   const container = document.getElementById('inboxList');
   if (!container) return;
@@ -748,9 +750,33 @@ function renderInbox(filter = 'all') {
     return;
   }
 
-  container.innerHTML = items.map(item => {
+  lastInboxItems = items;
+  // Batch bar (audit P2): a run of identical gated actions — e.g. one sequence step queuing one
+  // approval PER RECIPIENT — should be one decision, not N clicks. Only same-type groups of 2+
+  // pending items with NO secret requirements qualify; anything needing a secret keeps its
+  // per-item flow. Type strings come from ACTION_RISK keys (platform constants), summary counts
+  // are numbers — nothing user-authored lands in this markup unescaped.
+  const batchGroups = Object.entries(items
+    .filter(i => i.status === 'pending' && !(i.needsSecrets || []).length)
+    .reduce((g, i) => { (g[i.type] = g[i.type] || []).push(i.id); return g; }, {}))
+    .filter(([, ids]) => ids.length >= 2);
+  const batchBar = batchGroups.length ? `
+    <div class="inbox-batch-bar" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:12px;padding:10px 12px;background:var(--bg-card);border:1px solid var(--border);border-radius:8px;">
+      ${batchGroups.map(([type, ids]) => `
+        <button class="btn btn-sm btn-success" data-batch-type="${escapeHtml(type)}" onclick="approveBatch(this.dataset.batchType)">
+          Approve all ${ids.length} &times; ${escapeHtml(type)}
+        </button>`).join('')}
+      <span style="font-size:12px;color:var(--text-muted);">one decision for a homogeneous run</span>
+    </div>` : '';
+
+  container.innerHTML = batchBar + items.map(item => {
     const risk = item.risk || 'medium';
     const when = item.createdAt ? timeAgo(item.createdAt) : '';
+    // Stale-pending emphasis: amber past 4h, red past 24h — same thresholds as the oversight card.
+    const ageMs = item.createdAt ? (Date.now() - Date.parse(item.createdAt)) : 0;
+    const ageStyle = item.status !== 'pending' ? '' :
+      ageMs > 86400000 ? 'color:#ef4444;font-weight:600;' :
+      ageMs > 4 * 3600000 ? 'color:#f59e0b;font-weight:600;' : '';
     const detailParts = [];
     if (item.target) detailParts.push(`Target: ${item.target}`);
     if (item.needsSecrets && item.needsSecrets.length) detailParts.push(`Needs: ${item.needsSecrets.join(', ')}`);
@@ -769,7 +795,7 @@ function renderInbox(filter = 'all') {
       <div class="inbox-item-meta">
         <span>Type: <strong>${escapeHtml(item.type)}</strong></span>
         <span>Requested by: ${escapeHtml(item.requestedBy || 'operator')}</span>
-        <span>${when}</span>
+        <span style="${ageStyle}">${when}${ageStyle ? " ⏳" : ""}</span>
         <span>Status: ${item.status}</span>
       </div>
       ${item.status === 'pending' ? `
@@ -6200,6 +6226,23 @@ async function loadApprovals() {
       </div>
     </div>`;
   }).join('');
+}
+
+// Approve every pending, secret-free item of one type in one POST (audit P2). Confirmation names
+// the exact count and type; per-item results are reported honestly — a partial failure says which.
+async function approveBatch(type) {
+  const ids = lastInboxItems
+    .filter(i => i.status === 'pending' && i.type === type && !(i.needsSecrets || []).length)
+    .map(i => i.id);
+  if (!ids.length) { alert('Nothing pending for that type.'); return; }
+  if (!window.confirm(`Approve and execute ${ids.length} pending "${type}" action(s)?`)) return;
+  const r = await fetchJSON('/api/approvals/batch', { method: 'POST', body: { ids } });
+  if (r && r.error) { alert('Batch approval failed: ' + r.error); }
+  else if (r) {
+    const failed = (r.results || []).filter(x => !x.ok);
+    if (failed.length) alert(`${r.approved}/${r.total} approved — ${failed.length} failed; each failed card shows its error in the Inbox.`);
+  }
+  await Promise.all([loadApprovals(), loadInbox()]);
 }
 
 async function approveAction(id, needsCsv) {

@@ -1560,6 +1560,7 @@ const webStudioDesign = require('./lib/web-studio/design-extract');
 const webStudioContentScrape = require('./lib/web-studio/content-scrape');
 const selfImprovePlanStore = require('./lib/self-improve/plan-store');
 const oversightLedger = require('./lib/oversight');
+const approvalsOrder = require('./lib/approvals-order');
 const selfImproveGithubPr = require('./lib/self-improve/github-pr');
 const trendsLib = require('./lib/trends');
 const { fenceUntrusted } = require('./lib/safety/untrusted');
@@ -3109,12 +3110,26 @@ async function gateAction({ type, summary, target = null, params = {}, secrets =
   saveState('pending_approvals', pendingApprovals);
   logActivity('approval', `Approval required (${d.risk}): ${summary}`, { type, approvalId: approval.id });
   broadcast({ event: 'approval_pending', data: approval });
-  broadcast({ event: 'notification', data: {
-    title: `Approval required: ${summary}`,
-    message: `${d.risk.toUpperCase()} action queued — review it in Approvals.`,
-    priority: (d.risk === 'critical' || d.risk === 'high') ? 'high' : 'medium',
-    timestamp: new Date().toISOString(),
-  }});
+  if (d.risk === 'critical' || d.risk === 'high') {
+    // THE INVERTED-URGENCY FIX (agent-overhead audit P2). This used to be a bare `notification`
+    // broadcast — WebSocket only, so it reached exactly the operator who was already looking at the
+    // dashboard, while lower-stakes events (pipeline gates, automation triggers) DID ping
+    // Telegram/Slack. The operator most likely to be absent got the least notice for the highest
+    // risk. sendNotification routes to Telegram + Slack when configured, and 'critical' priority
+    // also engages its escalation re-notify timer — an unanswered critical approval now nags.
+    sendNotification(
+      `Approval required (${d.risk}): ${summary}`,
+      `Type: ${type} — waiting in the Inbox. Mode: ${d.mode}.`,
+      d.risk === 'critical' ? 'critical' : 'normal',
+    );
+  } else {
+    broadcast({ event: 'notification', data: {
+      title: `Approval required: ${summary}`,
+      message: `${d.risk.toUpperCase()} action queued — review it in Approvals.`,
+      priority: 'medium',
+      timestamp: new Date().toISOString(),
+    }});
+  }
   return { pending: true, approval, decision: d };
 }
 
@@ -10658,35 +10673,71 @@ const oversightCounters = loadState('oversight_counters', { autoApproved: 0, aut
 app.get('/api/approvals', requireAdmin, (req, res) => {
   let items = pendingApprovals.filter(a => a.kind === 'action');
   if (req.query.status) items = items.filter(a => a.status === req.query.status);
-  res.json(items.sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || '')));
+  // Pending first, risk-desc, oldest-first within a band; resolved after, newest-first. The old
+  // newest-first-everything sort let a critical item age UNDER fresh low-stakes ones (audit P2).
+  res.json(items.slice().sort(approvalsOrder.compareApprovals));
 });
 
-app.post('/api/approvals/:id/approve', requireAdmin, heavyLimiter, async (req, res) => {
-  const a = pendingApprovals.find(x => x.id === req.params.id && x.kind === 'action');
-  if (!a) return res.status(404).json({ error: 'Approval not found' });
-  if (a.status !== 'pending') return res.status(409).json({ error: `Already ${a.status}` });
+// The one place an approved action executes and its record is stamped — used by the single and
+// batch routes so the two can never drift. Mutates `a`, persists, broadcasts. Returns
+// { ok, code?, error?, result? }; the caller owns the HTTP shape.
+async function executeApprovedAction(a, secrets, actor) {
   const exec = ACTION_EXECUTORS[a.type];
-  if (!exec) return res.status(400).json({ error: `No executor for action type ${a.type}` });
-  // Re-supply any stripped secrets (e.g. a GitHub token) from this request — never persisted.
-  const secrets = (req.body && req.body.secrets) || {};
+  if (!exec) return { ok: false, code: 400, error: `No executor for action type ${a.type}` };
   const missing = (a.needsSecrets || []).filter(k => !secrets[k]);
-  if (missing.length) return res.status(400).json({ error: `This action needs: ${missing.join(', ')}. Send them as { "secrets": { ... } }.` });
+  if (missing.length) return { ok: false, code: 400, error: `This action needs: ${missing.join(', ')}. Send them as { "secrets": { ... } }.` };
   try {
     const result = await exec({ ...a.params, ...secrets });
     a.status = 'approved';
-    a.approvedBy = (req.session && (req.session.email || req.session.name)) || 'operator';
+    a.approvedBy = actor;
     a.approvedAt = new Date().toISOString();
     saveState('pending_approvals', pendingApprovals);
-    logActivity('approval', `Approved + executed: ${a.summary}`, { type: a.type, approvalId: a.id, actor: reqActor(req) });
+    logActivity('approval', `Approved + executed: ${a.summary}`, { type: a.type, approvalId: a.id, actor });
     broadcast({ event: 'approval_update', data: a });
-    res.json({ ok: true, approval: a, result });
+    return { ok: true, result };
   } catch (e) {
     a.status = 'failed';
     a.error = e.message;
     saveState('pending_approvals', pendingApprovals);
     broadcast({ event: 'approval_update', data: a });
-    res.status(502).json({ error: `Action failed after approval: ${e.message}` });
+    return { ok: false, code: 502, error: `Action failed after approval: ${e.message}` };
   }
+}
+
+app.post('/api/approvals/:id/approve', requireAdmin, heavyLimiter, async (req, res) => {
+  const a = pendingApprovals.find(x => x.id === req.params.id && x.kind === 'action');
+  if (!a) return res.status(404).json({ error: 'Approval not found' });
+  if (a.status !== 'pending') return res.status(409).json({ error: `Already ${a.status}` });
+  // Re-supply any stripped secrets (e.g. a GitHub token) from this request — never persisted.
+  const secrets = (req.body && req.body.secrets) || {};
+  const actor = (req.session && (req.session.email || req.session.name)) || 'operator';
+  const r = await executeApprovedAction(a, secrets, actor);
+  if (!r.ok) return res.status(r.code).json({ error: r.error });
+  res.json({ ok: true, approval: a, result: r.result });
+});
+
+// Batch approve (agent-overhead audit P2): a 50-recipient sequence step in manual mode is one
+// gateAction PER SEND — fifty identical cards, fifty clicks. This clears a homogeneous run in one
+// decision. SEQUENTIAL on purpose: executors mutate shared state (enrollments, ledgers) and were
+// never written to run concurrently with themselves. Items needing secrets take the per-item route
+// unless the same secrets apply. Per-item outcomes — one failure does not stop the rest, and the
+// caller sees exactly which items landed where.
+app.post('/api/approvals/batch', requireAdmin, heavyLimiter, async (req, res) => {
+  const ids = Array.isArray(req.body && req.body.ids) ? req.body.ids.slice(0, 100).map(String) : [];
+  if (!ids.length) return res.status(400).json({ error: 'Provide { "ids": [...] } (max 100)' });
+  const secrets = (req.body && req.body.secrets) || {};
+  const actor = (req.session && (req.session.email || req.session.name)) || 'operator';
+  const results = [];
+  for (const id of ids) {
+    const a = pendingApprovals.find(x => x.id === id && x.kind === 'action');
+    if (!a) { results.push({ id, ok: false, error: 'not found' }); continue; }
+    if (a.status !== 'pending') { results.push({ id, ok: false, error: `already ${a.status}` }); continue; }
+    const r = await executeApprovedAction(a, secrets, actor);
+    results.push({ id, ok: r.ok, error: r.ok ? undefined : r.error });
+  }
+  const approved = results.filter(r => r.ok).length;
+  logActivity('approval', `Batch approval: ${approved}/${ids.length} executed`, { actor, ids: ids.length });
+  res.json({ ok: results.every(r => r.ok), approved, total: ids.length, results });
 });
 
 app.post('/api/approvals/:id/reject', requireAdmin, (req, res) => {
