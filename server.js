@@ -2799,6 +2799,17 @@ function startPublishBackground(site, domain) {
 // Reconstructable side effects — invoked by gateAction (immediate) or the approve endpoint
 // (deferred). Each throws on failure; callers translate that to an HTTP error.
 const ACTION_EXECUTORS = {
+  // The LEGACY enterprise proposal-apply. Its three existing callers (dashboard approve, the
+  // /apply endpoint, Telegram /approve) invoke applyProposal() directly — each already sits behind
+  // an explicit human approval of the proposal, and routing those through gateAction would demand
+  // a second approval for the same decision. This entry exists because test-infra-gate enforces
+  // that every ACTION_RISK id is executable through the gate — an invariant worth keeping: it is
+  // what makes the id honest for any FUTURE caller that reaches apply-proposal via gateAction
+  // rather than via the proposal queue.
+  'self-improve.apply-proposal': async ({ proposal }) => {
+    if (!proposal || typeof proposal !== 'object') throw new Error('payload.proposal required');
+    return applyProposal(proposal);
+  },
   // An EVENT starting a whole pipeline. Registered here rather than dispatching directly from the
   // event hook, because `test-infra-gate.js` enforces that every id in ACTION_RISK has an executor
   // — and that invariant is right: an action classified but unexecutable through the gate is one
@@ -10705,7 +10716,10 @@ const SAFE_OPERATIONS = {
 };
 
 async function applyProposal(proposal) {
-  const results = { steps: [], success: false, rollbackCommit: null };
+  // 'self-improve.apply-proposal' in the risk registry (lib/safety/approval.js) names this action
+  // as critical. It is not dispatched through gateAction because every caller already sits behind
+  // an explicit human approval of the proposal itself — see the registry comment.
+  const results = { actionId: 'self-improve.apply-proposal', steps: [], success: false, rollbackCommit: null };
 
   // Safety check: is this type allowed for auto-apply?
   if (!SAFE_OPERATIONS[proposal.type]) {
@@ -10747,7 +10761,13 @@ async function applyProposal(proposal) {
 
       case 'security-patch': {
         const { execSync } = require('child_process');
-        const output = execSync('npm audit fix --force 2>&1 || true', { cwd: BASE, encoding: 'utf-8', timeout: 120000 });
+        // NO --force. `npm audit fix --force` installs whatever major version silences the
+        // advisory, and on THIS repo that is a documented downgrade: it proposes
+        // @livekit/agents-plugin-silero 1.6.3 → 1.3.2 and exceljs 4.4.0 → 3.4.0 (2026-08-27
+        // audit investigations — both "fixes" were breaking regressions for unreachable
+        // vulnerabilities). Non-force applies only semver-compatible fixes; anything needing a
+        // major bump comes back in the output for a human to judge as its own proposal.
+        const output = execSync('npm audit fix 2>&1 || true', { cwd: BASE, encoding: 'utf-8', timeout: 120000 });
         results.steps.push({ action: 'npm-audit-fix', output: output.substring(0, 500), success: true });
         break;
       }
@@ -10834,7 +10854,31 @@ async function applyProposal(proposal) {
             results.steps.push({ action: 'file-update', blocked: true, reason: `Path "${targetFile}" is protected` });
             break;
           }
-          const fullPath = path.join(BASE, targetFile);
+          // ALLOWLIST, not a denylist: content-refresh exists to update COPY, so it may only touch
+          // content surfaces. The old guard was BLOCKED_PATHS.some(includes) alone — a 4-entry
+          // substring denylist that let a proposal write lib/safety/approval.js, .claude/agents/*,
+          // or .magent/state/settings.json, and `path.join(BASE, target)` never checked traversal,
+          // so `../` escaped the repo entirely. A guard keyed on a list loses to the one path
+          // nobody listed (this repo's boundary-guard-enumeration incident); a category allowlist
+          // does not. Code changes are what the non-auto-applicable types (bug-fix,
+          // feature-proposal) are for — that split already existed, this enforces it.
+          const CONTENT_REFRESH_ROOTS = ['dashboard/', 'docs/', 'README.md', 'HOSTING.md'];
+          const normTarget = targetFile.replace(/\\/g, '/').replace(/^\.\//, '');
+          const inContentRoot = CONTENT_REFRESH_ROOTS.some((r) =>
+            r.endsWith('/') ? normTarget.startsWith(r) : normTarget === r);
+          if (!inContentRoot || !selfImprovePlanStore.isPathAllowed(normTarget)) {
+            results.steps.push({ action: 'file-update', blocked: true, reason: `content-refresh may only touch content surfaces (${CONTENT_REFRESH_ROOTS.join(', ')}): "${targetFile}" refused` });
+            break;
+          }
+          try {
+            // Same traversal/symlink containment the modern self-improve apply path uses — one
+            // implementation, shared, not a second weaker copy.
+            selfImprovePlanStore.assertContained(BASE, normTarget);
+          } catch (e) {
+            results.steps.push({ action: 'file-update', blocked: true, reason: e.message });
+            break;
+          }
+          const fullPath = path.join(BASE, normTarget);
           if (fs.existsSync(fullPath) && proposal.diff) {
             // Apply simple replacements from diff format
             let content = fs.readFileSync(fullPath, 'utf-8');
