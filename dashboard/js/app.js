@@ -2517,6 +2517,7 @@ function renderObservability(summary) {
   const hbColor = hb.tripped ? '#ef4444' : hb.enabled ? '#10b981' : 'var(--text-muted)';
   const hbText = hb.tripped ? 'Tripped' : hb.enabled ? 'Armed' : 'Off';
   const hbSub = hb.tripped ? 'budget reached — calls refused' : hb.enabled ? 'hard ceiling enforced' : 'advisory alerts only';
+  const oversightHtml = renderOversightStats(summary.oversight); // seclint-ok: interpolates only platform-computed numbers and its own string literals (see renderOversightStats header) — no request- or agent-authored value reaches this markup
 
   container.innerHTML = `
     <div class="cost-stat">
@@ -2538,6 +2539,53 @@ function renderObservability(summary) {
       <div class="cost-stat-value" style="color:${hbColor}">${hbText}</div>
       <div class="cost-stat-label">Budget Kill-Switch</div>
       <div class="cost-stat-sub">${hbSub}</div>
+    </div>
+    ${oversightHtml}
+  `;
+}
+
+// The oversight ledger: the operator-side metrics (what the agents COST YOU in decisions), beside
+// the agent-side ones above. All values are platform-computed numbers, no user-authored strings.
+function renderOversightStats(ov) {
+  if (!ov) return '';
+  const fmtAge = (ms) => {
+    if (ms == null) return '';
+    const h = ms / 3600000;
+    if (h >= 48) return Math.round(h / 24) + 'd';
+    if (h >= 1) return Math.round(h) + 'h';
+    return Math.max(1, Math.round(ms / 60000)) + 'm';
+  };
+  const fmtDur = (ms) => {
+    if (ms == null) return '&mdash;';
+    if (ms >= 3600000) return (ms / 3600000).toFixed(1) + 'h';
+    if (ms >= 60000) return Math.round(ms / 60000) + 'm';
+    return Math.round(ms / 1000) + 's';
+  };
+  const p = ov.pending || {}; const d = ov.decided || {}; const ag = ov.autoVsGated || {};
+  // Old pending decisions are the "invisible work" signal — colour by the oldest item's age.
+  const pendColor = p.depth === 0 ? 'var(--text-muted)'
+    : (p.oldestAgeMs > 86400000 ? '#ef4444' : p.oldestAgeMs > 4 * 3600000 ? '#f59e0b' : '#10b981');
+  const failNote = d.failedAfterApproval ? ` · ${d.failedAfterApproval} failed after approval` : '';
+  return `
+    <div class="cost-stat">
+      <div class="cost-stat-value" style="color:${pendColor}">${p.depth ?? 0}</div>
+      <div class="cost-stat-label">Decisions Waiting</div>
+      <div class="cost-stat-sub">${p.depth ? 'oldest ' + fmtAge(p.oldestAgeMs) : 'inbox clear'}</div>
+    </div>
+    <div class="cost-stat">
+      <div class="cost-stat-value">${fmtDur(d.medianDecisionMs)}</div>
+      <div class="cost-stat-label">Median Time-to-Decision</div>
+      <div class="cost-stat-sub">${d.total ? 'p90 ' + fmtDur(d.p90DecisionMs) + ' · ' + d.total + ' decided (' + (ov.windowDays || 30) + 'd)' + failNote : 'no decisions yet'}</div>
+    </div>
+    <div class="cost-stat">
+      <div class="cost-stat-value">${d.total ? d.perDay : '&mdash;'}</div>
+      <div class="cost-stat-label">Decisions / Day</div>
+      <div class="cost-stat-sub">what the agents ask of you</div>
+    </div>
+    <div class="cost-stat">
+      <div class="cost-stat-value">${ag.gatedShare == null ? '&mdash;' : ag.gatedShare + '%'}</div>
+      <div class="cost-stat-label">Needed a Human</div>
+      <div class="cost-stat-sub">${ag.gatedShare == null ? 'no gated activity yet' : ag.gated + ' gated · ' + ag.autoApproved + ' auto-approved (' + (ov.windowDays || 30) + 'd)'}</div>
     </div>
   `;
 }

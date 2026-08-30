@@ -1559,6 +1559,7 @@ const webStudioExport = require('./lib/web-studio/export');
 const webStudioDesign = require('./lib/web-studio/design-extract');
 const webStudioContentScrape = require('./lib/web-studio/content-scrape');
 const selfImprovePlanStore = require('./lib/self-improve/plan-store');
+const oversightLedger = require('./lib/oversight');
 const selfImproveGithubPr = require('./lib/self-improve/github-pr');
 const trendsLib = require('./lib/trends');
 const { fenceUntrusted } = require('./lib/safety/untrusted');
@@ -3079,6 +3080,19 @@ async function gateAction({ type, summary, target = null, params = {}, secrets =
 
   if (d.allow) {
     logActivity('approval', `Auto-approved (${d.mode} mode): ${summary}`, { type, risk: d.risk });
+    // Oversight ledger: auto-approvals were logged one activity line each and never aggregated, so
+    // "how much did supervised mode ask of me" was unanswerable (agent-overhead audit P1). The
+    // activity log is capped, so it cannot be the source — this counter is. Pruned to ~90 days of
+    // day-buckets so the state file cannot grow without bound.
+    const day = new Date().toISOString().slice(0, 10);
+    oversightCounters.autoApproved = (oversightCounters.autoApproved || 0) + 1;
+    oversightCounters.autoByDay = oversightCounters.autoByDay || {};
+    oversightCounters.autoByDay[day] = (oversightCounters.autoByDay[day] || 0) + 1;
+    const cutoff = new Date(Date.now() - 90 * 86400000).toISOString().slice(0, 10);
+    for (const k of Object.keys(oversightCounters.autoByDay)) {
+      if (k < cutoff) delete oversightCounters.autoByDay[k];
+    }
+    saveState('oversight_counters', oversightCounters);
     const result = await ACTION_EXECUTORS[type](params);
     return { executed: true, result, decision: d };
   }
@@ -5040,6 +5054,12 @@ function getCostSummary() {
     // nothing on this payload showed it. An empty array means no provider has refused us on budget
     // grounds since its last successful call, NOT that headroom has been confirmed with anyone.
     providerLimits: providerLimits.all(),
+    // THE OVERSIGHT LEDGER (agent-overhead audit P1). Every metric above measures the AGENTS'
+    // side — spend, tokens, latency, reliability. This block measures the OPERATOR's side: how
+    // many decisions the platform demanded, how long they waited, what is queued right now, and
+    // the share of actions that needed a human at all. The raw data (createdAt/approvedAt/
+    // rejectedAt on every approval) was persisted all along; nothing subtracted it until now.
+    oversight: oversightLedger.computeOversight(pendingApprovals, oversightCounters),
     // Prompt-cache effectiveness. This is the ONLY way to tell a working cache from a broken one:
     // every failure mode is silent — a volatile byte in the prefix, a breakpoint that drifts outside
     // the 20-block lookback, or a prefix under the model's minimum all produce correct answers at
@@ -10629,6 +10649,9 @@ app.post('/api/hq/dispatch/:employeeId', requireAdmin, (req, res) => {
 // --- Self-Improving Platform (Telegram/Slack Approval Bot) ---
 
 const pendingApprovals = loadState('pending_approvals', []);
+// Oversight ledger counters (lib/oversight.js). Only the auto-approve branch writes these; the
+// gated side needs no counter because every gated action IS a pendingApprovals record.
+const oversightCounters = loadState('oversight_counters', { autoApproved: 0, autoByDay: {} });
 
 // --- Auto-Mode approvals inbox (the server-enforced action gate; see gateAction) ---
 // These handle kind:'action' approvals only — self-improvement proposals keep their own routes.

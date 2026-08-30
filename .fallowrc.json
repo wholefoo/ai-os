@@ -86,6 +86,7 @@
     "tools/test-crm-sort.js",
     "tools/test-vhost-scheme-guard.js",
     "tools/test-legacy-apply-guard.js",
+    "tools/test-oversight.js",
     "tools/test-nginx-headers.js",
     "tools/check-nginx-headers.js",
     "tools/test-seclint-innerhtml.js",
