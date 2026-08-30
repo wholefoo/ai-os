@@ -3266,15 +3266,17 @@ async function viewIdentityFile(name) {
 
 // --- Verification Protocols ---
 async function loadVerification() {
-  const [stats, rubrics, history] = await Promise.all([
+  const [stats, rubrics, history, criteria] = await Promise.all([
     fetchJSON('/api/verify/stats'),
     fetchJSON('/api/verify/rubrics'),
     fetchJSON('/api/verify/history'),
+    fetchJSON('/api/verify/criteria').catch(() => null),
   ]);
 
   renderVerifyStats(stats);
   renderVerifyRubrics(rubrics);
   renderVerifyCategoryRates(stats);
+  renderVerifyOffenders(criteria);
   renderVerifyHistory(history);
 
   // Setup manual verify button
@@ -3310,6 +3312,30 @@ function renderVerifyStats(stats) {
       <div class="verify-stat-value" style="color: ${stats.passRate >= 80 ? 'var(--success)' : stats.passRate >= 60 ? 'var(--warning)' : 'var(--error)'}">${escapeHtml(stats.passRate)}%</div>
       <div class="verify-stat-label">Pass Rate</div>
     </div>
+  `;
+}
+
+// The mistake-repeated panel (audit P4): criteria that keep failing, each a SUGGESTED human review
+// of the owning handbook — never an automatic edit; handbooks carry safety language and only a
+// person can tell a wrong behaviour from a wrong criterion. Criterion text originates from
+// handbook/rubric files (repo-authored) but is escaped anyway — provenance can drift.
+function renderVerifyOffenders(criteria) {
+  const el = document.getElementById('verifyOffenders');
+  if (!el) return;
+  const offenders = (criteria && criteria.repeatOffenders) || [];
+  if (!offenders.length) {
+    el.innerHTML = criteria
+      ? `<div style="font-size:12px;color:var(--text-muted);">No repeat-failing criteria at the ${((criteria.thresholds && criteria.thresholds.failRateThreshold) || 0.4) * 100}% threshold — ${escapeHtml(String(criteria.readiness || ''))}</div>`
+      : '';
+    return;
+  }
+  el.innerHTML = `
+    <h4 style="margin:0 0 8px;">Repeat offenders — review these handbooks (${offenders.length})</h4>
+    ${offenders.slice(0, 8).map(o => `
+      <div style="padding:8px 10px;margin-bottom:6px;background:var(--bg-card);border-left:3px solid #ef4444;border-radius:0 8px 8px 0;">
+        <div style="font-size:13px;font-weight:600;">${escapeHtml(o.text)}</div>
+        <div style="font-size:12px;color:var(--text-muted);margin-top:2px;">${escapeHtml(o.suggestion)}</div>
+      </div>`).join('')}
   `;
 }
 
@@ -6333,8 +6359,13 @@ async function approveAction(id, needsCsv) {
 }
 
 async function rejectAction(id) {
-  if (!window.confirm('Reject this action? It will not run.')) return;
-  const r = await fetchJSON(`/api/approvals/${id}/reject`, { method: 'POST', body: {} });
+  // Audit P4: the endpoint accepted a reason since day one and the UI never sent one — so
+  // rejections carried no signal about WHY, and nothing could aggregate the pattern. The reason is
+  // optional (cancel = null aborts; empty = reject without a reason), because a forced field just
+  // collects "asdf".
+  const reason = window.prompt('Reject this action? It will not run.\n\nWhy? (optional — one line; rejections with reasons feed the "what keeps getting refused" report)');
+  if (reason == null) return;   // cancelled — do not reject
+  const r = await fetchJSON(`/api/approvals/${id}/reject`, { method: 'POST', body: { reason: reason.trim().slice(0, 300) } });
   if (r && r.error) { alert('Reject failed: ' + r.error); }
   await Promise.all([loadApprovals(), loadInbox()]);
 }

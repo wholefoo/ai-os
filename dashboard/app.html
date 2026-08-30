@@ -718,6 +718,7 @@
             </section>
             <section class="panel">
               <h3 class="panel-title">Category Pass Rates</h3>
+              <div class="verify-offenders" id="verifyOffenders" style="margin-bottom:16px;"></div>
               <div class="verify-category-rates" id="verifyCategoryRates">
                 <!-- Populated by JS -->
               </div>
@@ -3010,7 +3011,7 @@
     </div>
   </div>
 
-  <script src="js/app.js?v=90"></script>
+  <script src="js/app.js?v=91"></script>
   <!-- The monaco-editor loader used to be here and was REMOVED on 2026-08-10. It never once worked:
        our own CSP blocks third-party stylesheets, so monaco's editor.main.css was refused, the AMD
        module hung, and Web Studio fell through to its textarea on every load. Nobody noticed.
