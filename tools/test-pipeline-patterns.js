@@ -54,7 +54,12 @@ assert(!p.PATTERNS.includes('loop-until-done'),
   'loop-until-done is NOT a YAML pattern — it takes functions, and expressing a predicate in YAML means inventing a language');
 assert(!p.PATTERNS.includes('sequential'),
   'runSequential is NOT a pattern — it is what the pipeline runner already is, and a second scheduler inside a stage would compete with the first');
-assert(p.PATTERNS.length === 5, `five patterns are exposed (${p.PATTERNS.join(', ')})`);
+// Five kernel patterns + the three reasoning engines from lib/reasoning (verified-steps, reflexion,
+// tree-search). The count is asserted rather than the membership alone so that ADDING a pattern is a
+// deliberate edit here — a new `pattern:` key is a new public surface and a new way to spend money.
+assert(p.PATTERNS.length === 8, `eight patterns are exposed (${p.PATTERNS.join(', ')})`);
+['verified-steps', 'reflexion', 'tree-search'].forEach((name) =>
+  assert(p.PATTERNS.includes(name), `${name} is reachable from YAML — an unreachable engine is the mistake this file exists to record`));
 
 (async () => {
   // --- fan-out: parallel workers, then a synthesizer ------------------------------------------------
@@ -111,6 +116,28 @@ assert(p.PATTERNS.length === 5, `five patterns are exposed (${p.PATTERNS.join(',
     { task: 'fix the crash' }, mockDeps({ scout: 'bug', coder: 'PATCHED' }));
   assert(cls.ok && cls.output === 'PATCHED' && cls.meta.routeKey === 'bug', 'classify picks a route and runs that agent');
 
+  // --- the three reasoning patterns actually RUN through runPattern -------------------------------------
+  // Declaring a pattern and validating its config proves nothing about whether the stage executes.
+  // This file's own header is about an engine that was correct and unreachable for months, so these
+  // three drive the real lib/reasoning engines through the real runPattern with a mock runner.
+  const vs = await p.runPattern({ id: 'diagnose', pattern: 'verified-steps', max_steps: 2 },
+    { task: 'find the bug' }, mockDeps({ architect: '1. reproduce it', coder: 'reproduced on input X', reviewer: 'STATUS: CORRECT\nSCORE: 0.9' }));
+  assert(vs.ok && /reproduced on input X/.test(vs.output), 'verified-steps runs the PRM engine and returns the rendered trace');
+  assert(vs.meta.budget && vs.meta.budget.calls === 3,
+    `and reports the stage's REAL cost (${vs.meta.budget && vs.meta.budget.calls} calls, not 1) — a multi-call stage that reported one call's tokens would under-report spend on exactly the stages that spend most`);
+
+  const rfx = await p.runPattern({ id: 'draft', pattern: 'reflexion', max_attempts: 2 },
+    { task: 'write it' }, mockDeps({ coder: 'a draft', reviewer: 'VERDICT: PASS\nSCORE: 0.9\nCRITIQUE: fine' }));
+  assert(rfx.ok && rfx.output === 'a draft' && rfx.meta.attempts === 1, 'reflexion runs the Actor-Evaluator loop and stops as soon as it passes');
+
+  const tree = await p.runPattern({ id: 'explore', pattern: 'tree-search', breadth: 2, max_depth: 1 },
+    { task: 'pick an approach' }, mockDeps({ architect: '1. approach one\n2. approach two', reviewer: 'SCORE: 0.9 SOLVED' }));
+  assert(tree.ok && /approach one/.test(tree.output), 'tree-search runs the ToT engine and returns the chosen path');
+  assert(typeof tree.meta.backtracks === 'number', 'and carries the search telemetry a reader needs to judge it');
+
+  const badStrategy = await p.runPattern({ id: 'x', pattern: 'tree-search', strategy: 'astar' }, { task: 't' }, mockDeps({}));
+  assert(!badStrategy.ok, 'a stage that slipped past validation with a bad strategy still fails safely rather than searching wrongly');
+
   // --- the runner is wired to this ---------------------------------------------------------------------
   assert(/pipelinePatterns\.runPattern\(stage,/.test(src), 'server.js dispatches pattern stages to the kernel');
   assert(/pipelinePatterns\.validatePatternStage\(s\)/.test(src), '...and validates their config at load time, with the graph');
@@ -123,10 +150,21 @@ assert(p.PATTERNS.length === 5, `five patterns are exposed (${p.PATTERNS.join(',
 
   // Every exposed pattern must actually exist in the kernel. A pattern naming a function that is not
   // there would be the same defect class as a gates: id that names no action.
+  // Patterns now resolve to TWO implementing modules: the orchestration kernel and lib/reasoning.
+  // The invariant is unchanged and the coverage check below is what enforces it — every exposed
+  // pattern must name a function that exists, in whichever module owns it.
   const kernel = require('../lib/orchestrator');
-  const MAP = { 'fan-out': 'fanOutAndSynthesize', skeptic: 'adversarialVerify', 'generate-filter': 'generateAndFilter', tournament: 'tournament', classify: 'classifyAndAct' };
+  const reasoning = require('../lib/reasoning');
+  const MAP = {
+    'fan-out': [kernel, 'fanOutAndSynthesize'], skeptic: [kernel, 'adversarialVerify'],
+    'generate-filter': [kernel, 'generateAndFilter'], tournament: [kernel, 'tournament'], classify: [kernel, 'classifyAndAct'],
+    'verified-steps': [reasoning, 'reason'], reflexion: [reasoning, 'reason'], 'tree-search': [reasoning, 'reason'],
+  };
+  assert(Object.keys(MAP).length === p.PATTERNS.length && p.PATTERNS.every((n) => MAP[n]),
+    'every exposed pattern is covered by this map — otherwise a new pattern could be added with no existence check at all, which is the hole the check exists to close');
   for (const name of p.PATTERNS) {
-    assert(typeof kernel[MAP[name]] === 'function', `pattern "${name}" maps to kernel.${MAP[name]}, which exists`);
+    const [mod, fn] = MAP[name];
+    assert(typeof mod[fn] === 'function', `pattern "${name}" maps to ${fn}(), which exists`);
   }
 
   console.log(`  info: ${p.PATTERNS.length} patterns wired to the kernel; 2 (loop-until-done, runSequential) deliberately not exposed`);

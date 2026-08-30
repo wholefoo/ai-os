@@ -8536,9 +8536,13 @@ async function runPipelineStage(run, stage, layer = 0) {
 
   if (stage.pattern) {
     // A PATTERN stage reaches lib/orchestrator.js — the kernel whose fan-out, skeptic, tournament,
-    // generate-filter and classify primitives had no consumer at all before G2. Cost is accumulated
-    // inside the injected runner because a pattern makes several agent calls and the kernel's return
-    // shape keeps content, not tokens.
+    // generate-filter and classify primitives had no consumer at all before G2 — or lib/reasoning,
+    // for the verified-steps / reflexion / tree-search engines. Cost is accumulated inside the
+    // injected runner because a pattern makes several agent calls and the return shape keeps
+    // content, not tokens. That matters MORE for the reasoning engines, not less: a verified-steps
+    // stage is 1 + 2N calls, so costing it as one call would under-report the stages that spend the
+    // most. Each engine also carries its own `budget` ceiling, which is a cap, not a ledger — this
+    // is the ledger.
     const patternDeps = {
       runAgent: async (agent, t, opts) => {
         const res = await executeAgent(agent, t, { useMcpTools: true, useRepoTools: true, maxTokens: 12000, maxToolIters: PIPELINE_STAGE_TOOL_ITERS, timeoutMs: PIPELINE_STAGE_FETCH_TIMEOUT_MS, ...(opts || {}) });

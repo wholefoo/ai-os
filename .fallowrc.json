@@ -110,7 +110,11 @@
     "tools/test-deploy-guard.js",
     "tools/test-seclint-route-auth.js",
     "tools/test-public-cost-caps.js",
-    "tools/test-pm2-login-shell.js"
+    "tools/test-pm2-login-shell.js",
+    "tools/test-reasoning.js",
+    "tools/test-reasoning-tot.js",
+    "tools/test-reasoning-star.js",
+    "tools/demo-reasoning.js"
   ],
   "ignorePatterns": [
     "docs-export/**",
@@ -131,8 +135,7 @@
     {
       "file": "lib/orchestrator.js",
       "exports": [
-        "runSequential",
-        "loopUntilDone"
+        "runSequential"
       ]
     },
     {
