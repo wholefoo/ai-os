@@ -24,6 +24,7 @@ const FEATURES = [
   { name: 'CRM',                           pattern: /\bCRM\b/ },
   { name: 'YouTube intelligence',          pattern: /youtube/i },
   { name: 'human-in-the-loop approval',    pattern: /human[- ]in[- ]the[- ]loop|approval gat/i },
+  { name: 'operator oversight ledger',     pattern: /oversight ledger/i },
   { name: 'LLM provider consultants',      pattern: /LLM [Cc]onsultant|provider consultant/i },
   { name: 'Communications Director',       pattern: /[Cc]ommunications [Dd]irector/ },
   { name: 'email nurture sequences',       pattern: /email sequence|nurture sequence|lead nurtur/i },

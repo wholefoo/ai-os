@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="icon" href="/favicon.ico" sizes="any">
+  <link rel="icon" type="image/png" sizes="32x32" href="/assets/favicon-32.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="/assets/favicon-16.png">
+  <link rel="apple-touch-icon" sizes="180x180" href="/assets/apple-touch-icon.png">
+  <title>Oversight &amp; Approvals — AI OS Docs</title>
+  <meta name="description" content="How AI OS manages the work agents create: server-enforced approval gates with risk classes, batch approval, the operator oversight ledger (decisions per day, time-to-decision, remediation cost), deliberate retry, and repeat-failure handbook reviews.">
+  <link rel="canonical" href="https://aiosorchestrationlab.com/docs/oversight">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/css/landing.css?v=1">
+  <link rel="stylesheet" href="/css/docs.css">
+  <script async src="https://www.googletagmanager.com/gtag/js?id=G-SMHYRX8D4P"></script>
+  <script src="/js/ga-init.js"></script>
+
+  <script type="application/ld+json">{"@context":"https://schema.org","@type":"TechArticle","headline":"Oversight & Approvals — AI OS Docs","description":"How AI OS manages the work agents create: server-enforced approval gates with risk classes, batch approval, the operator oversight ledger (decisions per day, time-to-decision, remediation cost), deliberate retry, and repeat-failure handbook reviews.","url":"https://aiosorchestrationlab.com/docs/oversight","author":{"@type":"Organization","name":"AI OS Orchestration Lab"},"publisher":{"@type":"Organization","name":"AI OS Orchestration Lab","url":"https://aiosorchestrationlab.com","logo":{"@type":"ImageObject","url":"https://aiosorchestrationlab.com/assets/logo.png","width":512,"height":512}},"image":{"@type":"ImageObject","url":"https://aiosorchestrationlab.com/assets/og-share.png?v=2","width":1200,"height":630}}</script>
+  <script type="application/ld+json">{"@context":"https://schema.org","@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Home","item":"https://aiosorchestrationlab.com/"},{"@type":"ListItem","position":2,"name":"Documentation","item":"https://aiosorchestrationlab.com/docs/"},{"@type":"ListItem","position":3,"name":"Oversight & Approvals"}]}</script>
+  <script type="application/ld+json">{"@context":"https://schema.org","@type":"FAQPage","mainEntity":[{"@type":"Question","name":"What happens when an agent wants to do something irreversible?","acceptedAnswer":{"@type":"Answer","text":"The action is classified in a server-enforced risk registry (low, medium, high, critical). Depending on the automation mode, it either runs and is logged, or stops as a pending approval in the Inbox. Self-modifying-code actions are always gated regardless of mode. High and critical items also notify via Telegram and Slack, and critical items re-notify until answered."}},{"@type":"Question","name":"What does the operator oversight ledger measure?","acceptedAnswer":{"@type":"Answer","text":"The human side of running agents: how many decisions are waiting and the age of the oldest, median and 90th-percentile time-to-decision, decisions per day, the share of actions that needed a human versus auto-approved, logged remediation minutes, and the top rejection reasons. It appears on the Costs dashboard beside spend and latency."}},{"@type":"Question","name":"What happens when an approved action fails?","acceptedAnswer":{"@type":"Answer","text":"The item is marked failed with its error and can be retried deliberately — a human reads the error first, because a partially-completed outward action should be verified before re-running. Cleanup time can be logged on the item, and that remediation cost feeds the oversight ledger."}}]}</script>
+</head>
+<body>
+  <nav class="landing-nav">
+    <div class="nav-container">
+      <a href="/" class="nav-brand">
+        <img src="/assets/logo-mark.png" class="nav-logo" alt="" width="24" height="24" decoding="async">
+        <span class="nav-name">AI OS</span>
+      </a>
+      <div class="nav-links">
+        <a href="/">Home</a>
+        <a href="/docs" class="active">Docs</a>
+        <a href="/blog">Blog</a>
+        <a href="/about">About</a>
+        <a href="/corporate-mandate">Corporate Mandate</a>
+        <a href="/contact">Contact</a>
+      </div>
+      <div class="nav-cta">
+        <a href="/login" class="btn-nav-login">Log In</a>
+      </div>
+    </div>
+  </nav>
+
+  <main class="docs-page">
+    <div class="docs-container">
+      <div class="docs-layout">
+        <div class="docs-content">
+          <div class="docs-breadcrumb">
+            <a href="/docs">Docs</a> <span>/</span> Oversight &amp; Approvals
+          </div>
+
+          <h1>Oversight &amp; Approvals</h1>
+          <p class="docs-lead">Agents do not remove human work — they transmute it into allocation, specification, evaluation, and recovery. AI OS treats that management work as a first-class product surface: it is gated, measured, and recoverable, not invisible.</p>
+
+          <h2 id="approval-gates">Approval gates</h2>
+          <p>Every irreversible or outward-facing action type is classified in a server-enforced risk registry (<code>low</code>, <code>medium</code>, <code>high</code>, <code>critical</code>). The automation mode decides what happens: in <strong>supervised</strong> mode (the default) risky actions stop as pending approvals in the Inbox; in <strong>auto</strong> mode they run and are logged; self-modifying-code actions are <strong>always gated</strong> regardless of mode. Approving executes the action server-side — the gate is enforcement, not decoration.</p>
+          <p>High and critical items notify via Telegram and Slack when configured, so an absent operator hears about exactly the items that matter; critical items re-notify until answered. Secrets an action needs (a GitHub token, for example) are never persisted — they are re-supplied at approval time.</p>
+
+          <h2 id="batch-approval">Batch approval</h2>
+          <p>A homogeneous run — one email sequence step queuing one approval per recipient, for instance — can be cleared in one decision. The Inbox offers "Approve all N" for same-type groups; items that need secrets keep their individual flow. Execution is sequential and each item reports its own outcome, so one failure never hides the rest.</p>
+
+          <h2 id="oversight-ledger">The operator oversight ledger</h2>
+          <p>The Costs dashboard measures the agents — spend, tokens, latency, reliability — and, beside those, the work the agents create for <em>you</em>:</p>
+          <ul>
+            <li><strong>Decisions waiting</strong>, with the age of the oldest pending item;</li>
+            <li><strong>Median and p90 time-to-decision</strong>, computed from each approval's own timestamps;</li>
+            <li><strong>Decisions per day</strong> over the last 30 days;</li>
+            <li><strong>Needed-a-human share</strong> — gated actions versus auto-approved;</li>
+            <li><strong>Remediation minutes</strong> logged against resolved actions, and the top rejection reasons in your own words.</li>
+          </ul>
+
+          <h2 id="failure-and-recovery">Failure and recovery</h2>
+          <p>An approved action whose executor fails is marked <code>failed</code> with its error, and can be <strong>retried deliberately</strong> — the error is in front of you first, because an outward action that may have partially completed should be verified before re-running. Cleanup time can be logged on the item ("this cost me 45 minutes"), and a failed pipeline run notifies you once rather than dying quietly.</p>
+
+          <h2 id="standards-loop">The standards loop</h2>
+          <p>All 70 agents carry a handbook stating the outcome and what good looks like before anything runs, and verification rubrics grade completed runs against those criteria. Criteria that keep failing across runs are surfaced in the Verification view as suggested <em>human</em> reviews of the owning handbook — never automatic edits: a repeated failure means either the behaviour is wrong or the criterion is, and only a person can tell which.</p>
+
+          <p class="docs-lead" style="font-size:14px;">This is the management layer described on the <a href="/#management-layer">home page</a> — included in every tier, enforced on the server, and measured where you can see it.</p>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <footer class="site-footer">
+    <div class="footer-container">
+      <div class="footer-brand">
+        <img src="/assets/logo-mark.png" class="nav-logo" alt="" width="24" height="24" decoding="async">
+        <span class="nav-name">AI OS</span>
+        <p class="footer-tagline">The Agentic Operating System</p>
+        <p class="footer-mission">I fully recognize that in my God-led business, there is no separation between my spiritual life and my professional life. My enterprise is a direct reflection of my covenant with God. <a href="/corporate-mandate">more&nbsp;.&nbsp;.&nbsp;.</a></p>
+      </div>
+      <div class="footer-links">
+        <div class="footer-col">
+          <h4>Product</h4>
+          <a href="/#features">Features</a>
+          <a href="/#pricing">Pricing</a>
+          <a href="/docs">Documentation</a>
+        </div>
+        <div class="footer-col">
+          <h4>Resources</h4>
+          <a href="/blog">Blog</a>
+          <a href="/about">About</a>
+          <a href="/corporate-mandate">Corporate Mandate</a>
+          <a href="/contact">Contact</a>
+        </div>
+        <div class="footer-col">
+          <h4>Legal</h4>
+          <a href="/trust">Trust &amp; Security</a>
+          <a href="/terms">Terms of Service</a>
+          <a href="/privacy">Privacy Policy</a>
+        </div>
+      </div>
+    </div>
+    <div class="footer-bottom">
+      <p>&copy; 2026 AI OS Orchestration Lab. All rights reserved.</p>
+    </div>
+  </footer>
+</body>
+</html>

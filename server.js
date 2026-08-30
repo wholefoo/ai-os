@@ -850,6 +850,7 @@ app.get('/sitemap.xml', (req, res) => {
     { url: '/docs', priority: '0.8', freq: 'weekly' },
     { url: '/docs/getting-started', priority: '0.9', freq: 'monthly' },
     { url: '/docs/architecture', priority: '0.7', freq: 'monthly' },
+    { url: '/docs/oversight', priority: '0.7', freq: 'monthly' },
     { url: '/docs/agents', priority: '0.7', freq: 'monthly' },
     { url: '/docs/knowledge-records', priority: '0.7', freq: 'monthly' },
     { url: '/docs/skills', priority: '0.6', freq: 'monthly' },
@@ -1341,7 +1342,7 @@ app.get('/privacy', (req, res) => res.sendFile(path.join(BASE, 'dashboard', 'pri
 
 // Documentation pages
 app.get('/docs', (req, res) => res.sendFile(path.join(BASE, 'dashboard', 'docs', 'index.html')));
-const docPages = ['getting-started','architecture','agents','knowledge-records','skills','business-clone','knowledge-graph','design-system','media-production','monetization','batch-queue','api','deployment','notifications','security','hermes','self-improve','analytics','web-studio-business','agent-ready-sites','client-engine','billing','license-community','license-business','license-enterprise'];
+const docPages = ['getting-started','architecture','oversight','agents','knowledge-records','skills','business-clone','knowledge-graph','design-system','media-production','monetization','batch-queue','api','deployment','notifications','security','hermes','self-improve','analytics','web-studio-business','agent-ready-sites','client-engine','billing','license-community','license-business','license-enterprise'];
 docPages.forEach(page => {
   app.get(`/docs/${page}`, (req, res) => res.sendFile(path.join(BASE, 'dashboard', 'docs', `${page}.html`)));
 });
