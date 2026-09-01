@@ -9519,7 +9519,16 @@ async function viewSeoAudit(auditId) {
   if (!detail) return;
 
   const agentCards = Object.entries(audit.agents).map(([name, data]) => {
-    const scoreClass = data.score >= 75 ? 'good' : data.score >= 50 ? 'warning' : 'critical';
+    // A dimension with no score was never measured — skipped in demo mode, or not applicable to this
+    // site (runRealSeoAudit marks those 'skipped'). It must not be GRADED: `null >= 75` and
+    // `null >= 50` are both false, so this expression used to fall through to 'critical' and render
+    // a red, empty "/100" badge — a failing grade for something nobody ran. The audit LIST already
+    // solves this with seo-score-pending (see loadSeoAgency); the detail view never learned it.
+    //
+    // Unlike the public results page, the card itself stays. An admin needs to see THAT Local SEO
+    // was skipped; dropping the dimension silently would only raise a different question.
+    const measured = data.score != null;
+    const scoreClass = !measured ? 'pending' : data.score >= 75 ? 'good' : data.score >= 50 ? 'warning' : 'critical';
     const findings = (data.findings || []).map(f => {
       const sevClass = f.severity === 'critical' ? 'critical' : f.severity === 'high' ? 'high' : f.severity === 'medium' ? 'warning' : 'info';
       // `f.severity` is LLM output, not a validated enum — nothing server-side constrains it. It is
@@ -9534,7 +9543,7 @@ async function viewSeoAudit(auditId) {
       <div class="seo-agent-card">
         <div class="seo-agent-header">
           <span class="seo-agent-name">${name === 'aeo' ? 'AEO Readiness (AI Answer Engines)' : escapeHtml(capitalize(name)) + ' Analysis'}</span>
-          <span class="seo-score seo-score-${scoreClass}">${escapeHtml(data.score)}<small>/100</small></span>
+          <span class="seo-score seo-score-${scoreClass}">${measured ? `${escapeHtml(data.score)}<small>/100</small>` : `<small>${escapeHtml(data.status || 'pending')}</small>`}</span>
         </div>
         <div class="seo-findings">${findings}</div>
       </div>
