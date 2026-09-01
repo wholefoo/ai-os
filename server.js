@@ -133,7 +133,18 @@ app.use(helmet({
       // them. Keep it that way: adding one inline <script> anywhere under dashboard/ will be blocked
       // by this policy and the page will break loudly — which is the intended failure direction.
       // (The 123 ld+json / importmap blocks are DATA, not executed, and were never in scope.)
-      scriptSrc: ["'self'", "https://www.googletagmanager.com", "https://www.google-analytics.com", "https://cdn.jsdelivr.net"],
+      // `static.cloudflareinsights.com` serves the Cloudflare Web Analytics beacon, which Cloudflare
+      // INJECTS at the edge — it is not in any file in this repo, so it cannot be moved to /js/ the
+      // way the 52 blocks above were. Without this entry the beacon is blocked on every page and
+      // Cloudflare Web Analytics silently collects nothing while still appearing configured.
+      //
+      // NOT fixed here, and deliberately: Cloudflare also injects an INLINE `__CF$cv$params` block
+      // for JavaScript Detections (bot management). That one cannot be allowlisted — its body
+      // carries a per-request token (`r:`/`t:`), so its hash differs on every response, and the only
+      // CSP that admits it is `'unsafe-inline'`, which is exactly what AS-02 bought back. It stays
+      // blocked. Turn JavaScript Detections off in the Cloudflare dashboard if the console noise
+      // matters; do not buy it back here.
+      scriptSrc: ["'self'", "https://www.googletagmanager.com", "https://www.google-analytics.com", "https://cdn.jsdelivr.net", "https://static.cloudflareinsights.com"],
       // STILL 'unsafe-inline', and honestly so: ~325 inline handlers (157 in HTML, 168 generated
       // from JS template literals) depend on it. Removing it means event delegation across the whole
       // dashboard — a large, regression-prone refactor, tracked as the remaining half of AS-02.
@@ -143,7 +154,13 @@ app.use(helmet({
       scriptSrcAttr: ["'unsafe-inline'"],
       styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
       fontSrc: ["'self'", "https://fonts.gstatic.com"],
-      connectSrc: ["'self'", "ws:", "wss:", "https://www.google-analytics.com", "https://analytics.google.com", "https://*.google-analytics.com", "https://*.analytics.google.com", "wss://*.livekit.cloud", "https://*.heygen.com", "https://*.liveavatar.com", "wss://*.heygen.com", "wss://*.liveavatar.com", "https://cdn.jsdelivr.net", "https://api.d-id.com", "https://*.d-id.com"],
+      // `cloudflareinsights.com` (NO `static.` prefix — a different host from the script-src entry
+      // above) is where beacon.min.js POSTs its RUM payload: the file contains exactly one absolute
+      // URL, `https://cloudflareinsights.com/cdn-cgi/rum`. Allowing the script without this would
+      // load the beacon and then block every report it tries to send — working from the console's
+      // point of view, collecting nothing, which is the worse of the two failures because it looks
+      // fixed.
+      connectSrc: ["'self'", "ws:", "wss:", "https://www.google-analytics.com", "https://analytics.google.com", "https://*.google-analytics.com", "https://*.analytics.google.com", "wss://*.livekit.cloud", "https://*.heygen.com", "https://*.liveavatar.com", "wss://*.heygen.com", "wss://*.liveavatar.com", "https://cdn.jsdelivr.net", "https://api.d-id.com", "https://*.d-id.com", "https://cloudflareinsights.com"],
       frameSrc: ["'self'", "https://*.heygen.com", "https://*.liveavatar.com"],
       imgSrc: ["'self'", "data:", "blob:", "https://www.google-analytics.com", "https://www.googletagmanager.com", "https://*.heygen.com", "https://*.liveavatar.com", "https://*.d-id.com"],
       mediaSrc: ["'self'", "data:", "blob:", "https://*.heygen.com", "https://*.liveavatar.com", "https://*.d-id.com"],
