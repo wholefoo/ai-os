@@ -190,8 +190,15 @@ for (const [score, want] of [[100, 'score-good'], [75, 'score-good'], [74, 'scor
 const freeAuditHtml = readRepoFile('dashboard/free-audit.html');
 assert(/\.score-pending\s*\{/.test(freeAuditHtml),
   'dashboard/free-audit.html defines .score-pending — otherwise the neutral badge has no styling');
-assert(/free-audit-page\.js\?v=2/.test(freeAuditHtml),
-  'and the script cache-buster was bumped, so returning visitors get this fix rather than the 4h-cached old file');
+// The buster must EXIST and be past v=1, the version that shipped the "?" bug. Deliberately not
+// pinned to an exact number: this file is bumped every time the script changes, and a test that has
+// to be edited on every bump gets edited without being thought about. What must never happen is the
+// buster being dropped or reset — the origin serves this file `max-age=14400`, so returning visitors
+// would keep a stale copy for four hours.
+const buster = freeAuditHtml.match(/free-audit-page\.js\?v=(\d+)/);
+assert(!!buster, 'free-audit.html loads the script WITH a cache-buster');
+assert(Number(buster[1]) >= 2,
+  `and it is past v=1, the version that shipped the "?" bug (found v=${buster && buster[1]})`);
 
 // ================================================================================================
 // 3. dashboard/js/app.js — the admin detail view labels instead of grading
