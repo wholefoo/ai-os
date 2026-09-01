@@ -110,14 +110,24 @@ async function startFreeAudit() {
     }
 
     function renderFreeResult(audit) {
-      const scoreClass = audit.compositeScore >= 75 ? 'score-good' : audit.compositeScore >= 50 ? 'score-warn' : 'score-bad';
+      // `typeof === 'number'` so a real 0 keeps its grade and a MISSING composite gets none. When
+      // nothing could be measured there is no score to colour, and `null >= 75` / `null >= 50` are
+      // both false, which would otherwise paint "no result" in failing red.
+      const hasComposite = typeof audit.compositeScore === 'number';
+      const scoreClass = !hasComposite ? 'score-pending'
+        : audit.compositeScore >= 75 ? 'score-good' : audit.compositeScore >= 50 ? 'score-warn' : 'score-bad';
+      const unmeasured = audit.unmeasured || [];
       const agents = audit.agents || {};
       // Only dimensions that actually ran get a card. A skipped one (Local SEO in demo mode, or a
       // dimension that does not apply to this site) has no score, and the card below renders
       // `data.score || '?'` in the critical-red class — which reads to a lead as a failing grade for
       // something nobody measured. Filtered on the STATUS rather than on the dimension's name, so a
       // future skipped dimension is handled without anyone remembering this line exists.
-      const agentCards = Object.entries(agents).filter(([, data]) => data && data.status === 'complete').map(([name, data]) => {
+      // A dimension that ERRORED is shown, not hidden — a lead who is handed five fewer cards than
+      // the page promised deserves to know why, and silently dropping them would make an outage look
+      // like a smaller audit. Skipped dimensions still drop out (nothing to say about one that does
+      // not apply); errored ones stay and are labelled.
+      const agentCards = Object.entries(agents).filter(([, data]) => data && (data.status === 'complete' || data.status === 'error')).map(([name, data]) => {
         // `data.score != null`, NOT `!data.score`. A REAL score of 0 is a measurement and must show
         // as a red 0; only a MISSING score gets the neutral treatment. Production proved the
         // difference matters: with DataForSEO returning HTTP 401, five agents completed with
@@ -130,7 +140,7 @@ async function startFreeAudit() {
         // CRAWL that domain, so text from an attacker's own page (title, meta, headings) reaches
         // these findings. `sc` and `scoreClass` are computed literals and are the only safe ones.
         return `<div class="audit-agent-result">
-          <div class="audit-agent-result-score ${sc}">${measured ? escapeHtml(data.score) : '&mdash;'}</div>
+          <div class="audit-agent-result-score ${sc}"${data.status === 'error' ? ' title="This dimension could not be analysed"' : ''}>${measured ? escapeHtml(data.score) : (data.status === 'error' ? 'n/a' : '&mdash;')}</div>
           <div class="audit-agent-result-name">${escapeHtml(name)}</div>
           ${data.topFinding ? `<div class="audit-finding-peek">${escapeHtml(data.topFinding.severity)}: ${escapeHtml((data.topFinding.issue || '').substring(0, 60))}...</div>` : ''}
         </div>`;
@@ -148,12 +158,22 @@ async function startFreeAudit() {
           <span>This is a preliminary, directional estimate — not a live search-data crawl. Scores may shift once the full audit runs against real ranking data.</span>
         </div>` : '';
 
+      // Separate from the "estimate" notice above, which means something else: that one says the
+      // numbers are directional, this one says numbers are MISSING. Conflating them would let a
+      // failed audit borrow the softer wording.
+      const unmeasuredNotice = unmeasured.length ? `
+        <div class="audit-estimate-notice">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 9v4M12 17h.01M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/></svg>
+          <span><strong>${escapeHtml(unmeasured.length)} of these checks could not run</strong> (${escapeHtml(unmeasured.join(', '))}), so ${hasComposite ? 'the score below covers only the dimensions we could measure' : 'no overall score could be produced'}. This is a problem on our side, not a finding about your site — please try again shortly.</span>
+        </div>` : '';
+
       const el = document.getElementById('auditResult');
       el.innerHTML = `
         ${estimateNotice}
+        ${unmeasuredNotice}
         <div class="audit-score">
-          <div class="audit-score-num ${scoreClass}">${escapeHtml(audit.compositeScore || 0)}</div>
-          <div class="audit-score-label">Composite SEO Score out of 100</div>
+          <div class="audit-score-num ${scoreClass}">${hasComposite ? escapeHtml(audit.compositeScore) : 'n/a'}</div>
+          <div class="audit-score-label">${hasComposite ? (unmeasured.length ? 'Partial score — some checks did not run' : 'Composite SEO Score out of 100') : 'No score — the analysis could not run'}</div>
         </div>
 
         <div class="audit-summary">${escapeHtml(audit.executiveSummary || 'Audit complete.')}</div>

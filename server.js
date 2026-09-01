@@ -12135,6 +12135,9 @@ app.get('/api/seo/free-audit/:id', (req, res) => {
     domain: audit.domain,
     status: audit.status,
     estimated: !!audit.estimated,
+    // Which dimensions could not be analysed at all. The page needs this to say so out loud — a
+    // composite computed over a subset must never be presented as if it covered everything.
+    unmeasured: audit.unmeasured || [],
     compositeScore: audit.compositeScore,
     executiveSummary: audit.executiveSummary,
     quickWins: audit.quickWins,
@@ -12442,19 +12445,31 @@ async function runRealSeoAudit(audit, auditId) {
     const name = agentNames[i];
     if (result.status === 'fulfilled' && result.value) {
       const applicable = result.value.applicable !== false; // local agent may not apply to non-local sites
-      audit.agents[name] = { ...audit.agents[name], ...result.value, status: applicable ? 'complete' : 'skipped', completedAt: new Date().toISOString() };
+      // THREE outcomes, not two. An agent that returns no score did not measure anything — its own
+      // catch block nulls the score precisely so this can tell the difference — and calling that
+      // 'complete' is what let a failed dimension be presented as a result. 'error' is a status the
+      // rejected branch below already used; this just stops fulfilled-but-failed from being missed
+      // because the promise happened to resolve.
+      const measured = result.value.score != null;
+      const status = !applicable ? 'skipped' : (measured ? 'complete' : 'error');
+      audit.agents[name] = { ...audit.agents[name], ...result.value, status, completedAt: new Date().toISOString() };
     } else {
       audit.agents[name].status = 'error';
-      audit.agents[name].score = 0;
+      audit.agents[name].score = null;
       audit.agents[name].findings = [{ severity: 'critical', issue: `Agent failed: ${result.reason?.message || 'Unknown error'}`, recommendation: 'Check API credits and try again.' }];
       audit.agents[name].completedAt = new Date().toISOString();
     }
     broadcast({ event: 'seo_agent_complete', data: { auditId, agent: name, score: audit.agents[name].score } });
   });
 
-  // Composite score from agents that returned data
-  const scores = agentNames.map(n => audit.agents[n].score || 0);
-  const validScores = scores.filter(s => s > 0);
+  // Composite from agents that actually MEASURED something. `score != null`, not `score > 0` —
+  // the old test threw away a genuine zero along with the failures, so a site that really did score
+  // 0 on a dimension had that dimension quietly excluded from its own overall score.
+  const measuredScores = agentNames.map(n => audit.agents[n].score).filter(s => typeof s === 'number');
+  // What could NOT be measured, so the audit can say so instead of implying full coverage. A
+  // composite built from one of seven dimensions is not a low score, it is not a score.
+  const unmeasured = agentNames.filter(n => audit.agents[n].status === 'error');
+  audit.unmeasured = unmeasured;
 
   // Track cost (~$0.10-0.30 per audit)
   costLedger.push({
@@ -12464,9 +12479,10 @@ async function runRealSeoAudit(audit, auditId) {
   });
 
   finalizeSeoAudit(audit, auditId, {
-    compositeScore: validScores.length ? Math.round(validScores.reduce((a, b) => a + b, 0) / validScores.length) : 0,
+    compositeScore: measuredScores.length ? Math.round(measuredScores.reduce((a, b) => a + b, 0) / measuredScores.length) : null,
   });
-  logActivity('seo', `SEO audit complete (real): ${audit.domain} — score ${audit.compositeScore}/100`, { auditId });
+  logActivity('seo', `SEO audit complete (real): ${audit.domain} — score ${audit.compositeScore}/100`
+    + (unmeasured.length ? ` (${unmeasured.length} dimension(s) UNMEASURED: ${unmeasured.join(', ')})` : ''), { auditId });
 }
 
 // --- Local SEO Agent (Google Business Profile + local-pack) — the 7th audit dimension ---
@@ -12581,7 +12597,14 @@ async function runKeywordAgent(domain, location, language) {
 
   } catch (e) {
     findings.push({ severity: 'critical', issue: `Keyword research failed: ${e.message}`, recommendation: 'Verify DataForSEO credentials and API credits.' });
-    score = 0;
+    // NULL, NOT 0. A failed API call is not a measurement of zero, and every consumer downstream
+    // treats those two identically unless this line keeps them apart: the composite averaged the
+    // fabricated zeros, generateExecutiveSummary interpolated "Technical health: 0/100", and
+    // generateQuickWins fired every `score < 70` branch — so a DataForSEO outage produced
+    // confident, specific, invented advice about a real customer's website. Observed in production
+    // on 2026-09-01 with DataForSEO returning HTTP 401: five dimensions "scored" 0 and a lead was
+    // told their site had "critical technical issues blocking crawlers". Nobody had looked at it.
+    score = null;
   }
 
   return { score, findings };
@@ -12645,7 +12668,14 @@ async function runTechnicalAgent(domain) {
 
   } catch (e) {
     findings.push({ severity: 'critical', issue: `Technical audit failed: ${e.message}`, recommendation: 'Verify DataForSEO credentials.' });
-    score = 0;
+    // NULL, NOT 0. A failed API call is not a measurement of zero, and every consumer downstream
+    // treats those two identically unless this line keeps them apart: the composite averaged the
+    // fabricated zeros, generateExecutiveSummary interpolated "Technical health: 0/100", and
+    // generateQuickWins fired every `score < 70` branch — so a DataForSEO outage produced
+    // confident, specific, invented advice about a real customer's website. Observed in production
+    // on 2026-09-01 with DataForSEO returning HTTP 401: five dimensions "scored" 0 and a lead was
+    // told their site had "critical technical issues blocking crawlers". Nobody had looked at it.
+    score = null;
   }
 
   return { score, findings };
@@ -12692,7 +12722,14 @@ async function runCompetitorAgent(domain, location, language) {
 
   } catch (e) {
     findings.push({ severity: 'critical', issue: `Competitor analysis failed: ${e.message}`, recommendation: 'Verify DataForSEO credentials.' });
-    score = 0;
+    // NULL, NOT 0. A failed API call is not a measurement of zero, and every consumer downstream
+    // treats those two identically unless this line keeps them apart: the composite averaged the
+    // fabricated zeros, generateExecutiveSummary interpolated "Technical health: 0/100", and
+    // generateQuickWins fired every `score < 70` branch — so a DataForSEO outage produced
+    // confident, specific, invented advice about a real customer's website. Observed in production
+    // on 2026-09-01 with DataForSEO returning HTTP 401: five dimensions "scored" 0 and a lead was
+    // told their site had "critical technical issues blocking crawlers". Nobody had looked at it.
+    score = null;
   }
 
   return { score, findings };
@@ -12749,7 +12786,14 @@ async function runContentAgent(domain) {
 
   } catch (e) {
     findings.push({ severity: 'critical', issue: `Content analysis failed: ${e.message}`, recommendation: 'Verify DataForSEO credentials.' });
-    score = 0;
+    // NULL, NOT 0. A failed API call is not a measurement of zero, and every consumer downstream
+    // treats those two identically unless this line keeps them apart: the composite averaged the
+    // fabricated zeros, generateExecutiveSummary interpolated "Technical health: 0/100", and
+    // generateQuickWins fired every `score < 70` branch — so a DataForSEO outage produced
+    // confident, specific, invented advice about a real customer's website. Observed in production
+    // on 2026-09-01 with DataForSEO returning HTTP 401: five dimensions "scored" 0 and a lead was
+    // told their site had "critical technical issues blocking crawlers". Nobody had looked at it.
+    score = null;
   }
 
   return { score, findings };
@@ -12814,7 +12858,14 @@ async function runBacklinkAgent(domain) {
 
   } catch (e) {
     findings.push({ severity: 'critical', issue: `Backlink analysis failed: ${e.message}`, recommendation: 'Verify DataForSEO credentials.' });
-    score = 0;
+    // NULL, NOT 0. A failed API call is not a measurement of zero, and every consumer downstream
+    // treats those two identically unless this line keeps them apart: the composite averaged the
+    // fabricated zeros, generateExecutiveSummary interpolated "Technical health: 0/100", and
+    // generateQuickWins fired every `score < 70` branch — so a DataForSEO outage produced
+    // confident, specific, invented advice about a real customer's website. Observed in production
+    // on 2026-09-01 with DataForSEO returning HTTP 401: five dimensions "scored" 0 and a lead was
+    // told their site had "critical technical issues blocking crawlers". Nobody had looked at it.
+    score = null;
   }
 
   return { score, findings };
@@ -12857,18 +12908,41 @@ function generateSeoFindings(agentName, domain) {
   return findings[agentName] || [];
 }
 
+// Every claim below must be backed by a dimension that actually returned a number. Nothing here may
+// describe a site we failed to measure: when DataForSEO returned 401 this function reported
+// "Technical health: 0/100" and "the site has critical technical issues blocking crawlers" about a
+// site nothing had looked at, which is worse than a wrong number — it is an invented diagnosis
+// delivered to a lead.
 function generateExecutiveSummary(audit) {
   const d = audit.domain;
   const score = audit.compositeScore;
+  const unmeasured = audit.unmeasured || [];
+
+  // No dimension measured at all: say that, and make no claim whatsoever about the site.
+  if (typeof score !== 'number') {
+    return `${d} could not be audited — none of the ${unmeasured.length || 'requested'} analysis dimensions returned data. `
+      + `This reflects a problem on our side, not a finding about the site. Please try again shortly.`;
+  }
+
   const level = score >= 75 ? 'good' : score >= 50 ? 'needs improvement' : 'critical';
-  const techScore = audit.agents.technical.score;
-  const contentScore = audit.agents.content.score;
-  const backlinkScore = audit.agents.backlink.score;
-  return `${d} scores ${score}/100 overall (${level}). Technical health: ${techScore}/100 — ` +
-    `Content quality: ${contentScore}/100 — Backlink profile: ${backlinkScore}/100. ` +
-    (score < 50 ? `Immediate action required: the site has critical technical issues blocking crawlers and lacks content depth to compete. ` : '') +
-    (score < 75 ? `Key opportunities: expand content strategy, fix technical errors, and build quality backlinks to close the gap with competitors.` :
-    `The site is performing well. Focus on maintaining momentum with consistent content and monitoring competitor movements.`);
+  // Cite a dimension only if it has a number. A dropped clause is honest; "0/100" is not.
+  const cite = (label, v) => (typeof v === 'number' ? `${label}: ${v}/100` : null);
+  const parts = [
+    cite('Technical health', audit.agents.technical.score),
+    cite('Content quality', audit.agents.content.score),
+    cite('Backlink profile', audit.agents.backlink.score),
+  ].filter(Boolean);
+
+  const caveat = unmeasured.length
+    ? ` NOTE: ${unmeasured.length} of ${Object.keys(audit.agents).length} dimensions (${unmeasured.join(', ')}) could not be analysed, so this score covers only part of the picture.`
+    : '';
+
+  return `${d} scores ${score}/100 across the dimensions we could measure (${level}).`
+    + (parts.length ? ` ${parts.join(' — ')}.` : '')
+    + caveat + ' '
+    + (score < 50 ? `Immediate action required: the measured dimensions show critical issues. ` : '')
+    + (score < 75 ? `Key opportunities: expand content strategy, fix technical errors, and build quality backlinks to close the gap with competitors.`
+      : `The site is performing well. Focus on maintaining momentum with consistent content and monitoring competitor movements.`);
 }
 
 function generateQuickWins(audit) {
@@ -12878,10 +12952,16 @@ function generateQuickWins(audit) {
   if (local && local.applicable !== false && typeof local.score === 'number' && local.score < 60) {
     wins.push({ priority: 0, action: 'Complete & optimize the Google Business Profile (hours, photos, category, reviews)', time: '30 min', impact: 'high' });
   }
-  if (audit.agents.technical.score < 70) wins.push({ priority: 1, action: 'Fix crawler blocking rules in Cloudflare/server config', time: '15 min', impact: 'high' });
-  if (audit.agents.technical.score < 80) wins.push({ priority: 2, action: 'Submit updated XML sitemap to Google Search Console', time: '10 min', impact: 'medium' });
-  if (audit.agents.content.score < 60) wins.push({ priority: 3, action: 'Add unique meta descriptions to all service pages', time: '30 min', impact: 'medium' });
-  if (audit.agents.backlink.score < 70) wins.push({ priority: 4, action: 'Set up 301 redirects for backlinks pointing to 404 pages', time: '20 min', impact: 'high' });
+  // `below(x, n)` instead of `x < n`, because in JS `null < 70` is TRUE — null coerces to 0. Every
+  // one of these four branches therefore fired for a dimension that had never been measured, which
+  // is how a DataForSEO 401 turned into "Fix crawler blocking rules in Cloudflare/server config"
+  // presented to a lead as a diagnosis of their site. A recommendation with no measurement behind
+  // it is not a cautious default; it is a fabrication.
+  const below = (v, n) => typeof v === 'number' && v < n;
+  if (below(audit.agents.technical.score, 70)) wins.push({ priority: 1, action: 'Fix crawler blocking rules in Cloudflare/server config', time: '15 min', impact: 'high' });
+  if (below(audit.agents.technical.score, 80)) wins.push({ priority: 2, action: 'Submit updated XML sitemap to Google Search Console', time: '10 min', impact: 'medium' });
+  if (below(audit.agents.content.score, 60)) wins.push({ priority: 3, action: 'Add unique meta descriptions to all service pages', time: '30 min', impact: 'medium' });
+  if (below(audit.agents.backlink.score, 70)) wins.push({ priority: 4, action: 'Set up 301 redirects for backlinks pointing to 404 pages', time: '20 min', impact: 'high' });
   wins.push({ priority: 5, action: 'Add LocalBusiness schema markup to homepage', time: '15 min', impact: 'medium' });
   wins.push({ priority: 6, action: 'Optimize title tags with primary keyword + location', time: '25 min', impact: 'high' });
   return wins;
