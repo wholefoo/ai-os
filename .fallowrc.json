@@ -114,7 +114,8 @@
     "tools/test-reasoning.js",
     "tools/test-reasoning-tot.js",
     "tools/test-reasoning-star.js",
-    "tools/demo-reasoning.js"
+    "tools/demo-reasoning.js",
+    "tools/test-mcp-client.js"
   ],
   "ignorePatterns": [
     "docs-export/**",

@@ -145,8 +145,12 @@ async function suite() {
       assert(l.ok === false && l.error === `auth failed (HTTP ${status}) — check the token`,
         `listTools: HTTP ${status} is an auth failure naming the status`);
       const c = await mcpCallTool(s.url, 'tool', {});
-      assert(c.ok === false && /^auth failed \(HTTP \d+\)/.test(c.error) && c.error.includes(String(status)),
-        `callTool: HTTP ${status} is an auth failure naming the status`);
+      // Both calls now give the SAME advice. Before the handshake was shared, mcpCallTool said only
+      // "auth failed (HTTP 401)" — the terser of two hand-maintained copies, for no reason anyone
+      // chose. Sharing the handshake is what makes divergence like that impossible rather than
+      // merely unlikely, so the identical wording is the point, not an incidental side effect.
+      assert(c.ok === false && c.error === `auth failed (HTTP ${status}) — check the token`,
+        `callTool: HTTP ${status} gives the same auth message as listTools`);
     });
   }
 
@@ -155,6 +159,19 @@ async function suite() {
     const r = await mcpListTools(s.url);
     assert(r.ok === false && /not an MCP server/.test(r.error),
       'listTools: a 200 with no initialize result is "not an MCP server", not a crash');
+  });
+
+  // mcpCallTool inherited that same check by sharing the handshake, and did not have it before: it
+  // used to push on to tools/call regardless and report "no tools/call response (HTTP 200)", which
+  // blamed the tool for an endpoint that was never an MCP server. Both the better message and the
+  // request that is no longer sent are worth pinning — the skipped call is the part a future
+  // "simplification" would silently undo.
+  await withServer((msg, res) => send(res, 200, { hello: 'i am a plain web service' }), async (s) => {
+    const r = await mcpCallTool(s.url, 'anything', {});
+    assert(r.ok === false && /not an MCP server/.test(r.error),
+      'callTool: a non-MCP endpoint is named as such, not reported as a missing tool response');
+    assert(s.requests.every((q) => !q.msg || q.msg.method !== 'tools/call'),
+      'callTool: and no tools/call is sent to something that failed to initialize');
   });
 
   // A server that speaks JSON-RPC and refuses.
