@@ -155,11 +155,20 @@ app.use(helmet({
       styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
       fontSrc: ["'self'", "https://fonts.gstatic.com"],
       // `cloudflareinsights.com` (NO `static.` prefix — a different host from the script-src entry
-      // above) is where beacon.min.js POSTs its RUM payload: the file contains exactly one absolute
-      // URL, `https://cloudflareinsights.com/cdn-cgi/rum`. Allowing the script without this would
-      // load the beacon and then block every report it tries to send — working from the console's
-      // point of view, collecting nothing, which is the worse of the two failures because it looks
-      // fixed.
+      // above) is a FALLBACK, and is not what makes Web Analytics work here. Measured on the live
+      // page after deploying: the beacon POSTs same-origin to `/cdn-cgi/rum` (observed 204), which
+      // `'self'` above already allows. Keep this entry — it costs nothing and covers the generic
+      // beacon — but do not believe removing it would break reporting on this zone.
+      //
+      // The reason it is here at all is a mistake worth leaving documented, because the same trap is
+      // waiting for the next third-party integration: `curl`ing
+      // https://static.cloudflareinsights.com/beacon.min.js shows exactly one absolute URL,
+      // `https://cloudflareinsights.com/cdn-cgi/rum`, and that read is what this comment originally
+      // asserted. But Cloudflare does not inject that file — it injects a VERSIONED build
+      // (`beacon.min.js/v3d52b4…`) which, on a proxied zone, reports to the site's own origin.
+      // A vendor's generic asset is not necessarily the asset your edge serves. Verify a
+      // third-party integration from the RUNNING PAGE — `performance.getEntriesByType('resource')`
+      // and the network tab — not from the file you can download.
       connectSrc: ["'self'", "ws:", "wss:", "https://www.google-analytics.com", "https://analytics.google.com", "https://*.google-analytics.com", "https://*.analytics.google.com", "wss://*.livekit.cloud", "https://*.heygen.com", "https://*.liveavatar.com", "wss://*.heygen.com", "wss://*.liveavatar.com", "https://cdn.jsdelivr.net", "https://api.d-id.com", "https://*.d-id.com", "https://cloudflareinsights.com"],
       frameSrc: ["'self'", "https://*.heygen.com", "https://*.liveavatar.com"],
       imgSrc: ["'self'", "data:", "blob:", "https://www.google-analytics.com", "https://www.googletagmanager.com", "https://*.heygen.com", "https://*.liveavatar.com", "https://*.d-id.com"],
