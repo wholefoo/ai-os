@@ -128,7 +128,18 @@ function repairAll(audits) {
   const report = [];
   const out = list.map((a) => {
     const r = repairAudit(a);
-    if (r.changed) report.push({ id: a.id, domain: a.domain, email: a.email || null, source: a.source || null, repaired: r.repaired, wasComposite: a.compositeScore });
+    if (r.changed) {
+      report.push({
+        id: a.id, domain: a.domain, email: a.email || null, source: a.source || null,
+        repaired: r.repaired, wasComposite: a.compositeScore,
+        // THE ONE THING THIS TOOL CANNOT UNDO. `POST /api/seo/audit/:id/email-lead` is admin-only
+        // and operator-clicked, so a fabricated report only left the building if someone pressed
+        // send — but if they did, it is in a real person's inbox and no amount of state repair
+        // reaches it. Surfaced per-audit so that possibility is decided about rather than assumed
+        // away. Each entry is { to, at }.
+        emailedTo: Array.isArray(a.emailedTo) ? a.emailedTo : [],
+      });
+    }
     return r.audit;
   });
   return { audits: out, report };
@@ -170,10 +181,23 @@ function main() {
     console.log(`      source=${r.source}  composite ${r.wasComposite} -> recomputed`);
     console.log(`      dimensions repaired: ${r.repaired.join(', ')}`);
     if (r.email) console.log(`      lead: ${r.email}`);
+    if (r.emailedTo.length) {
+      console.log(`      *** ALREADY EMAILED — repairing this record does NOT reach that inbox:`);
+      for (const e of r.emailedTo) console.log(`          -> ${e.to} at ${e.at}`);
+    }
   }
 
   const emails = [...new Set(report.map((r) => r.email).filter(Boolean))];
+  const wereEmailed = report.filter((r) => r.emailedTo.length);
   console.log(`\n  ${report.length} audit(s) would be repaired.`);
+  if (wereEmailed.length) {
+    console.log(`\n  *** ${wereEmailed.length} of them WERE EMAILED to a real recipient. A fabricated report`);
+    console.log(`      is sitting in an inbox and this tool cannot retract it. Decide whether to send a`);
+    console.log(`      correction BEFORE repairing the record, because the record is the evidence of`);
+    console.log(`      what was sent.`);
+  } else {
+    console.log(`  None of them were ever emailed — the fabricated text never left the server.`);
+  }
   if (emails.length) {
     console.log(`\n  CRM NOT TOUCHED — crm.attachAudit wrote the fabricated composite onto these contacts.`);
     console.log(`  Correct them deliberately, in .magent/crm.sqlite:`);
