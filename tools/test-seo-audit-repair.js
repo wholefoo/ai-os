@@ -121,4 +121,20 @@ assert(report[0].email === 'lead@example.com', 'the report carries the lead emai
 assert(audits[1] === healthy, 'the healthy record in the middle is passed through by reference');
 assert(repairAll([]).report.length === 0 && repairAll(null).audits.length === 0, 'empty and malformed input are handled without throwing');
 
+// --- the one thing repairing cannot undo -----------------------------------------------------------
+// A fabricated report that was EMAILED is in a real person's inbox, and rewriting the stored record
+// does not reach it. The record is also the only evidence of what was sent, so this has to be
+// surfaced BEFORE the repair, not discovered after it.
+const emailed = { ...dirty(), emailedTo: [{ to: 'real@customer.test', at: '2026-09-01T04:00:00.000Z' }] };
+const er = repairAll([emailed]).report[0];
+assert(Array.isArray(er.emailedTo) && er.emailedTo.length === 1, 'the report surfaces that an affected audit was emailed');
+assert(er.emailedTo[0].to === 'real@customer.test', 'and to whom');
+assert(er.emailedTo[0].at === '2026-09-01T04:00:00.000Z', 'and when');
+assert(repairAll([dirty()]).report[0].emailedTo.length === 0,
+  'an audit that was never emailed reports an empty list, not undefined — the CLI branches on length');
+// The repaired record must KEEP emailedTo: it is the evidence of what was sent to whom.
+const keptRecord = repairAudit(emailed).audit;
+assert(Array.isArray(keptRecord.emailedTo) && keptRecord.emailedTo.length === 1,
+  'and repairing PRESERVES emailedTo — erasing the record of a send would destroy the evidence of it');
+
 done();
