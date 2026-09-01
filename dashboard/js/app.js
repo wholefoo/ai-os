@@ -8829,15 +8829,34 @@ function startContinuousSTT() {
 }
 
 // --- Avatar Chat Messages ---
-function addAvatarBotMessage(text) {
+// The two bot-message helpers are one renderer plus a decision about audio, so they live together.
+// They used to sit 60 lines apart with sendAvatarMessage() between them, and had drifted into
+// byte-identical copies of the bubble markup — the distance is how the copy happened.
+//
+// The `innerHTML` sink stays here rather than moving behind a shared append helper, deliberately:
+// seclint's R5 reads the right-hand side of the assignment looking for unescaped `${...}`, so
+// hoisting it behind a parameter would hide the sink from the rule while looking tidier. The
+// escaping has to stay visible at the point of assignment.
+
+// Returns whether the message actually landed — the Avatar Chat page is not always mounted.
+function addAvatarBotMessageNoSpeak(text) {
   const container = document.getElementById('avatarMessages');
-  if (!container) return;
+  if (!container) return false;
   const div = document.createElement('div');
   div.className = 'avatar-msg avatar-msg-bot';
   div.innerHTML = `<div class="avatar-msg-face">${renderAvatar(avatarState.employee, 'sm')}</div><div class="avatar-msg-text">${escapeHtml(text)}</div>`; // seclint-ok: renderAvatar returns trusted markup; text is escaped
   container.appendChild(div);
   container.scrollTop = container.scrollHeight;
-  speakText(text);
+  return true;
+}
+
+// The same message, then spoken aloud. When D-ID or the LiveAvatar stream is already voicing the
+// reply, sendAvatarMessage() calls the NoSpeak variant instead so the user does not hear both.
+function addAvatarBotMessage(text) {
+  // Speak only if the message landed. With no container the original returned before reaching
+  // speakText(), and audio playing from a page the user is not looking at is a real bug — this is
+  // the one place the delegation could have quietly changed behaviour.
+  if (addAvatarBotMessageNoSpeak(text)) speakText(text);
 }
 
 function addAvatarUserMessage(text) {
@@ -8885,17 +8904,6 @@ async function sendAvatarMessage() {
   }
 
   document.getElementById('avatarStatus').textContent = 'Idle';
-}
-
-// Add bot message without speaking (used when D-ID handles audio)
-function addAvatarBotMessageNoSpeak(text) {
-  const container = document.getElementById('avatarMessages');
-  if (!container) return;
-  const div = document.createElement('div');
-  div.className = 'avatar-msg avatar-msg-bot';
-  div.innerHTML = `<div class="avatar-msg-face">${renderAvatar(avatarState.employee, 'sm')}</div><div class="avatar-msg-text">${escapeHtml(text)}</div>`; // seclint-ok: renderAvatar returns trusted markup; text is escaped
-  container.appendChild(div);
-  container.scrollTop = container.scrollHeight;
 }
 
 // --- D-ID Interactive Talking Avatar ---
