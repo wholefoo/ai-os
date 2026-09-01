@@ -12060,6 +12060,22 @@ app.post('/api/seo/free-audit', heavyLimiter, async (req, res) => {
     audit.estimated = true;
     const agentNames = ['keyword', 'technical', 'competitor', 'content', 'backlink', 'aeo'];
     const delays = [2000, 3000, 2500, 3500, 4000, 0];
+
+    // Close out every slot this fallback does NOT run. A new record starts all seven dimensions at
+    // 'running', and demo mode runs six — Local SEO needs a real business identity (placeId, Maps
+    // data) that a public form asking only for a domain cannot supply, and fabricating one would be
+    // worse than omitting it. Left alone, `local` sat at 'running' forever: the audit reported
+    // status 'complete' while one dimension never terminated, and both result views render a card
+    // per slot, so a public lead saw a red "?" scored dimension that had never been measured.
+    //
+    // Derived from the two lists rather than naming 'local', so adding a dimension to the record
+    // without adding it here closes itself out instead of hanging. 'skipped' is the vocabulary
+    // runRealSeoAudit already uses for a dimension that does not apply to a site.
+    for (const slot of Object.keys(audit.agents)) {
+      if (agentNames.includes(slot)) continue;
+      audit.agents[slot] = { ...audit.agents[slot], status: 'skipped', completedAt: new Date().toISOString() };
+    }
+
     agentNames.forEach((name, i) => {
       setTimeout(async () => {
         if (name === 'aeo') {
