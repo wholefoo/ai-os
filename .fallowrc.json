@@ -117,7 +117,9 @@
     "tools/demo-reasoning.js",
     "tools/test-mcp-client.js",
     "tools/test-seo-skipped-dimension.js",
-    "tools/test-seo-unmeasured.js"
+    "tools/test-seo-unmeasured.js",
+    "tools/test-seo-audit-repair.js",
+    "tools/seo-audit-repair.js"
   ],
   "ignorePatterns": [
     "docs-export/**",
