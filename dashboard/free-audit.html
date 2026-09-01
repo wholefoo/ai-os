@@ -62,6 +62,9 @@
     .score-good { color: #10b981; }
     .score-warn { color: #f59e0b; }
     .score-bad { color: #ef4444; }
+    /* No score at all — deliberately NOT one of the three grades. A dimension with nothing to report
+       must not be coloured as if it had been graded; red for "unmeasured" reads as a failing mark. */
+    .score-pending { color: var(--text-muted); }
     .audit-summary { padding: 16px; background: var(--bg-primary); border-radius: 10px; border-left: 3px solid var(--primary); font-size: 14px; line-height: 1.7; color: var(--text-secondary); margin-bottom: 20px; }
     .audit-estimate-notice { padding: 12px 16px; background: rgba(245,158,11,0.1); border: 1px solid rgba(245,158,11,0.35); border-radius: 10px; font-size: 13px; line-height: 1.6; color: var(--text-secondary); margin-bottom: 20px; display: flex; gap: 10px; align-items: flex-start; }
     .audit-estimate-notice svg { flex: none; margin-top: 2px; color: #f59e0b; }
@@ -194,6 +197,6 @@
     </div>
   </footer>
 
-  <script src="/js/free-audit-page.js?v=1"></script>
+  <script src="/js/free-audit-page.js?v=2"></script>
 </body>
 </html>

@@ -118,12 +118,19 @@ async function startFreeAudit() {
       // something nobody measured. Filtered on the STATUS rather than on the dimension's name, so a
       // future skipped dimension is handled without anyone remembering this line exists.
       const agentCards = Object.entries(agents).filter(([, data]) => data && data.status === 'complete').map(([name, data]) => {
-        const sc = (data.score || 0) >= 75 ? 'score-good' : (data.score || 0) >= 50 ? 'score-warn' : 'score-bad';
+        // `data.score != null`, NOT `!data.score`. A REAL score of 0 is a measurement and must show
+        // as a red 0; only a MISSING score gets the neutral treatment. Production proved the
+        // difference matters: with DataForSEO returning HTTP 401, five agents completed with
+        // score 0 and every one rendered "?" — which reads as "we did not run this" when the truth
+        // is "we ran it and it scored zero". Same distinction the dashboard's audit detail already
+        // makes (`viewSeoAudit`); it was fixed there and missed here.
+        const measured = data.score != null;
+        const sc = !measured ? 'score-pending' : data.score >= 75 ? 'score-good' : data.score >= 50 ? 'score-warn' : 'score-bad';
         // EVERY value below is LLM output derived from a user-supplied domain — and the audit agents
         // CRAWL that domain, so text from an attacker's own page (title, meta, headings) reaches
         // these findings. `sc` and `scoreClass` are computed literals and are the only safe ones.
         return `<div class="audit-agent-result">
-          <div class="audit-agent-result-score ${sc}">${escapeHtml(data.score || '?')}</div>
+          <div class="audit-agent-result-score ${sc}">${measured ? escapeHtml(data.score) : '&mdash;'}</div>
           <div class="audit-agent-result-name">${escapeHtml(name)}</div>
           ${data.topFinding ? `<div class="audit-finding-peek">${escapeHtml(data.topFinding.severity)}: ${escapeHtml((data.topFinding.issue || '').substring(0, 60))}...</div>` : ''}
         </div>`;

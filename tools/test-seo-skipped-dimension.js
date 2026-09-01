@@ -150,6 +150,49 @@ const realCards = cardNames(renderPublic(real));
 assert(realCards.length === demoNames.length + 1 && realCards.includes('local'),
   'when Local SEO genuinely runs, its card IS shown — the filter is on status, not on the name');
 
+// --- a score of ZERO is a measurement, not a missing one -------------------------------------------
+//
+// Observed in PRODUCTION on 2026-09-01, which is why this is pinned rather than reasoned about: with
+// DataForSEO returning HTTP 401, five agents completed with `score: 0` and every one rendered "?" in
+// the critical-red style — indistinguishable from "we never ran this". `data.score || '?'` cannot
+// tell a real zero from a missing value; `data.score != null` can. The dashboard's audit detail
+// already drew that line; the public page did not.
+const scoreBadge = (html, name) => {
+  const m = html.match(new RegExp(`<div class="audit-agent-result-score ([\\w-]+)">([^<]*)</div>\\s*<div class="audit-agent-result-name">${name}<`));
+  return m ? { cls: m[1], text: m[2] } : null;
+};
+
+const zeroed = { ...finished, agents: Object.fromEntries(demoNames.map((n) => [n, { status: 'complete', score: 0, findings: [] }])) };
+const zeroHtml = renderPublic(zeroed);
+const zb = scoreBadge(zeroHtml, 'keyword');
+assert(zb && zb.text === '0', `a REAL score of 0 renders as "0", never as "?" (got ${zb && JSON.stringify(zb.text)})`);
+assert(zb && zb.cls === 'score-bad', 'and it is still graded red — zero is a bad score, not an absent one');
+assert(!/audit-agent-result-score [\w-]*">\?</.test(zeroHtml),
+  'no "?" badge survives anywhere on a fully-zero audit');
+
+// The other half: a dimension that completed WITHOUT a score (the real runner spreads its result over
+// the record, so a runner returning no score leaves the initial null) must go neutral, not red.
+const nullScore = { ...finished, agents: { ...finished.agents, keyword: { status: 'complete', score: null, findings: [] } } };
+const nb = scoreBadge(renderPublic(nullScore), 'keyword');
+assert(nb && nb.cls === 'score-pending',
+  `a completed dimension with NO score uses the neutral class, not a grade (got ${nb && nb.cls})`);
+assert(nb && nb.text === '&mdash;', 'and shows a dash rather than a number it does not have');
+
+// Grading boundaries, re-pinned because the null check was inserted AHEAD of them.
+for (const [score, want] of [[100, 'score-good'], [75, 'score-good'], [74, 'score-warn'], [50, 'score-warn'], [49, 'score-bad'], [1, 'score-bad']]) {
+  const one = { ...finished, agents: { ...finished.agents, keyword: { status: 'complete', score, findings: [] } } };
+  const b = scoreBadge(renderPublic(one), 'keyword');
+  assert(b && b.cls === want, `public page: score ${score} grades ${want} (got ${b && b.cls})`);
+}
+
+// The neutral class has to actually EXIST in the page's stylesheet, or "neutral" renders as
+// unstyled inherited colour and the fix is cosmetic only. Asserted against the real HTML file.
+const freeAuditHtml = readRepoFile('dashboard/free-audit.html');
+assert(/\.score-pending\s*\{/.test(freeAuditHtml),
+  'dashboard/free-audit.html defines .score-pending — otherwise the neutral badge has no styling');
+assert(/free-audit-page\.js\?v=2/.test(freeAuditHtml),
+  'and the script cache-buster was bumped, so returning visitors get this fix rather than the 4h-cached old file');
+
 // ================================================================================================
 // 3. dashboard/js/app.js — the admin detail view labels instead of grading
 // ================================================================================================
