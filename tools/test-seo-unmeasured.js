@@ -56,8 +56,15 @@ const failedAudit = (over = {}) => ({
 
 // --- the executive summary must not describe what it did not measure -------------------------------
 const s = ctx.generateExecutiveSummary(failedAudit());
-assert(!/Technical health: 0\/100/.test(s) && !/Content quality: 0\/100/.test(s) && !/Backlink profile: 0\/100/.test(s),
-  'no "0/100" is reported for a dimension that was never measured');
+// Assert the LABEL is absent, not just the value `0`. An earlier version of this assertion looked
+// only for "0/100" and passed happily against a build that emitted "Technical health: null/100" —
+// caught by mutating the guard away and seeing zero failures. The property is that an unmeasured
+// dimension is not CITED AT ALL, whatever its placeholder happens to stringify to.
+for (const label of ['Technical health', 'Content quality', 'Backlink profile']) {
+  assert(!s.includes(label), `"${label}" is not cited at all for a dimension that was never measured`);
+}
+assert(!/\bnull\b|\bundefined\b|\bNaN\b/.test(s),
+  'and no placeholder value leaks into the prose a lead reads');
 assert(!/critical technical issues blocking crawlers/.test(s),
   'and no invented diagnosis — the "blocking crawlers" claim is not made about an unmeasured site');
 assert(/could not be analysed|could not run|only part of the picture/i.test(s),
