@@ -2473,24 +2473,14 @@ app.post('/api/prospects/audit', requireAdmin, requireCommercial('leadGen'), (re
     return res.status(400).json({ error: 'a full prospect audit needs DataForSEO configured (Settings → SEO Agency)' });
   }
   const auditId = uuidv4();
-  const audit = {
+  const audit = newSeoAudit({
     id: auditId,
     domain: String(p.website).replace(/^https?:\/\//, '').replace(/\/.*$/, ''),
-    status: 'running', startedAt: new Date().toISOString(), completedAt: null, compositeScore: null,
-    email: p.email || null, source: 'prospect',
+    email: p.email || null,
+    source: 'prospect',
     // Carry the Maps data through so the Local SEO agent uses the exact business, not a domain guess.
     localInput: { businessName: p.name, placeId: p.placeId, category: p.category, address: p.address, phone: p.phone, website: p.website, rating: p.rating, reviews: p.reviews, name: p.name },
-    agents: {
-      keyword:    { status: 'running', score: null, findings: [], startedAt: new Date().toISOString() },
-      technical:  { status: 'running', score: null, findings: [], startedAt: new Date().toISOString() },
-      competitor: { status: 'running', score: null, findings: [], startedAt: new Date().toISOString() },
-      content:    { status: 'running', score: null, findings: [], startedAt: new Date().toISOString() },
-      backlink:   { status: 'running', score: null, findings: [], startedAt: new Date().toISOString() },
-      aeo:        { status: 'running', score: null, findings: [], startedAt: new Date().toISOString() },
-      local:      { status: 'running', score: null, findings: [], startedAt: new Date().toISOString() },
-    },
-    quickWins: [], actionPlan: [], executiveSummary: '',
-  };
+  });
   seoAudits.push(audit);
   broadcast({ event: 'seo_audit_started', data: { id: auditId, domain: audit.domain, source: 'prospect' } });
   logActivity('leads', `Prospect audit started: ${p.name} (${audit.domain})`, { auditId, actor: reqActor(req) });
@@ -12045,28 +12035,7 @@ app.post('/api/seo/free-audit', heavyLimiter, async (req, res) => {
   // Run the audit (same pipeline as authenticated)
   const auditId = uuidv4();
   const cleanDomain = domain.replace(/^https?:\/\//, '').replace(/\/.*$/, '');
-  const audit = {
-    id: auditId,
-    domain: cleanDomain,
-    status: 'running',
-    startedAt: new Date().toISOString(),
-    completedAt: null,
-    compositeScore: null,
-    email,
-    source: 'free',
-    agents: {
-      keyword:    { status: 'running', score: null, findings: [], startedAt: new Date().toISOString() },
-      technical:  { status: 'running', score: null, findings: [], startedAt: new Date().toISOString() },
-      competitor: { status: 'running', score: null, findings: [], startedAt: new Date().toISOString() },
-      content:    { status: 'running', score: null, findings: [], startedAt: new Date().toISOString() },
-      backlink:   { status: 'running', score: null, findings: [], startedAt: new Date().toISOString() },
-      aeo:        { status: 'running', score: null, findings: [], startedAt: new Date().toISOString() },
-      local:      { status: 'running', score: null, findings: [], startedAt: new Date().toISOString() },
-    },
-    quickWins: [],
-    actionPlan: [],
-    executiveSummary: '',
-  };
+  const audit = newSeoAudit({ id: auditId, domain: cleanDomain, email, source: 'free' });
 
   seoAudits.push(audit);
   broadcast({ event: 'seo_audit_started', data: { id: auditId, domain: cleanDomain, source: 'free' } });
@@ -12358,6 +12327,38 @@ async function dfsRequest(endpoint, body) {
   const data = await res.json();
   if (data.status_code !== 20000) throw new Error(data.status_message || `DataForSEO error ${data.status_code}`);
   return data;
+}
+
+// The agent slots a NEW audit record starts with. Named for what it is — the slots on a fresh
+// record — rather than "the SEO agents", because it is NOT the same fact as the agentNames arrays
+// in runRealSeoAudit and the free-audit demo fallback, and must not be shared with them. Those two
+// are POSITIONAL index maps: runRealSeoAudit pairs its list element-by-element with a
+// Promise.allSettled call array, and the demo list is paired with a delays array and deliberately
+// omits 'local'. Reordering this list is harmless; reordering theirs silently mis-assigns every
+// agent's result to the wrong dimension. Three lists that look alike, three different facts.
+const NEW_AUDIT_AGENT_SLOTS = Object.freeze(['keyword', 'technical', 'competitor', 'content', 'backlink', 'aeo', 'local']);
+
+// One shape for a new SEO audit record. There are two doors into the same pipeline — the prospect
+// audit (/api/prospects/audit) and the public free audit (/api/seo/free-audit) — and each had
+// spelled the whole record out in full, seven-agent block included, verbatim. They feed the SAME
+// runners and the same finalizeSeoAudit, so a field added to one door and not the other produces a
+// record the pipeline only half understands, and the second door is the one nobody remembers.
+//
+// The caller keeps what is genuinely per-door: which domain, who it is for, and — prospects only —
+// the Google Maps identity the Local agent needs in place of a domain guess. Pushing onto seoAudits
+// and broadcasting stay at the call sites too; this builds a record and touches nothing else.
+function newSeoAudit({ id, domain, email, source, localInput }) {
+  return {
+    id,
+    domain,
+    status: 'running', startedAt: new Date().toISOString(), completedAt: null, compositeScore: null,
+    email, source,
+    ...(localInput ? { localInput } : {}),
+    agents: Object.fromEntries(NEW_AUDIT_AGENT_SLOTS.map((name) => [
+      name, { status: 'running', score: null, findings: [], startedAt: new Date().toISOString() },
+    ])),
+    quickWins: [], actionPlan: [], executiveSummary: '',
+  };
 }
 
 // Finalize an SEO audit: stamp completion, derive summary artifacts, persist, and notify.
