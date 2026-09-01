@@ -112,7 +112,12 @@ async function startFreeAudit() {
     function renderFreeResult(audit) {
       const scoreClass = audit.compositeScore >= 75 ? 'score-good' : audit.compositeScore >= 50 ? 'score-warn' : 'score-bad';
       const agents = audit.agents || {};
-      const agentCards = Object.entries(agents).map(([name, data]) => {
+      // Only dimensions that actually ran get a card. A skipped one (Local SEO in demo mode, or a
+      // dimension that does not apply to this site) has no score, and the card below renders
+      // `data.score || '?'` in the critical-red class — which reads to a lead as a failing grade for
+      // something nobody measured. Filtered on the STATUS rather than on the dimension's name, so a
+      // future skipped dimension is handled without anyone remembering this line exists.
+      const agentCards = Object.entries(agents).filter(([, data]) => data && data.status === 'complete').map(([name, data]) => {
         const sc = (data.score || 0) >= 75 ? 'score-good' : (data.score || 0) >= 50 ? 'score-warn' : 'score-bad';
         // EVERY value below is LLM output derived from a user-supplied domain — and the audit agents
         // CRAWL that domain, so text from an attacker's own page (title, meta, headings) reaches
