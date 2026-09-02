@@ -13,7 +13,7 @@
 
 const { assert, done } = require('./test-util');
 const R = require('../lib/reasoning');
-const { createBudget, guardedCall } = require('../lib/reasoning/budget');
+const { createBudget, guardedCall, MIN_OUTPUT_TOKENS } = require('../lib/reasoning/budget');
 const M = require('../lib/reasoning/models');
 const steps = require('../lib/reasoning/steps');
 const tot = require('../lib/reasoning/tot');
@@ -466,10 +466,14 @@ const mock = (script, seen = []) => ({
     //    returned one item where two were asked for. The check reported "the model did not honour
     //    the format". The model honoured it fine — it was interrupted. A cut-off reply parses
     //    cleanly and is simply MISSING THE END, so nothing anywhere notices.
+    // NOTE the 2500: the ceiling has to sit ABOVE MIN_OUTPUT_TOKENS for this to test anything. An
+    // earlier version used 500/500, which the floor silently raised to a 1500 ceiling — so 500
+    // output tokens were nowhere near it and the assertion started failing. The floor made the old
+    // fixture impossible, which is exactly what a floor is for.
     const atCeiling = {
-      runAgent: async () => ({ ok: true, content: '1. a long first thought that ran out of room', inputTokens: 100, outputTokens: 500 }),
+      runAgent: async () => ({ ok: true, content: '1. a long first thought that ran out of room', inputTokens: 100, outputTokens: 2500 }),
     };
-    const t = await guardedCall(atCeiling, createBudget({ maxCalls: 2 }), 'architect', 'propose', { maxTokens: 500 });
+    const t = await guardedCall(atCeiling, createBudget({ maxCalls: 2 }), 'architect', 'propose', { maxTokens: 2500 });
     assert(t.truncated === true, 'output landing AT the ceiling is flagged as truncated');
     assert(/probably CUT OFF/.test(t.truncationNote), `and the note says so plainly: "${t.truncationNote.slice(0, 55)}..."`);
     assert(t.ok === true && t.content.length > 0,
@@ -484,6 +488,42 @@ const mock = (script, seen = []) => ({
       { runAgent: async () => ({ ok: true, content: 'x', inputTokens: 10, outputTokens: 900 }) },
       createBudget({ maxCalls: 2 }), 'coder', 't');
     assert(!noCeiling.truncated, 'with no maxTokens requested there is no ceiling to hit, so nothing is claimed');
+  }
+  {
+    // 4. THE FLOOR. Starved-budget hit four sites in three days and each fix was "raise this one
+    //    number" — twice I raised the ones I could see and missed another. A sweep then found
+    //    voteThoughts handing an xhigh reviewer 200 tokens, a call that could essentially never
+    //    answer, unnoticed only because no live run exercised `vote` scoring. So the floor is
+    //    enforced in the ONE place every engine passes through, present and future.
+    let sawOpts = null;
+    const spy = { runAgent: async (a, t, o) => { sawOpts = o; return { ok: true, content: 'x', inputTokens: 1, outputTokens: 1 }; } };
+
+    await guardedCall(spy, createBudget({ maxCalls: 4 }), 'reviewer', 't', { maxTokens: 200 });
+    assert(sawOpts.maxTokens === MIN_OUTPUT_TOKENS,
+      `a 200-token ceiling is RAISED to the floor before the call is made (runner saw ${sawOpts.maxTokens}) — the caller does not get to under-provision`);
+
+    await guardedCall(spy, createBudget({ maxCalls: 4 }), 'reviewer', 't', { maxTokens: 8000 });
+    assert(sawOpts.maxTokens === 8000, 'a caller asking for MORE keeps it — the floor raises, it never lowers');
+
+    await guardedCall(spy, createBudget({ maxCalls: 4 }), 'reviewer', 't', {});
+    assert(sawOpts.maxTokens === MIN_OUTPUT_TOKENS, 'a call with no ceiling at all still gets the floor rather than the provider default');
+
+    await guardedCall(spy, createBudget({ maxCalls: 4 }), 'reviewer', 't', { context: 'keep me' });
+    assert(sawOpts.context === 'keep me', 'other options survive the rewrite — the floor must not clobber the rest of the bag');
+
+    // And no call site anywhere in the directory may sit under the floor. This is the sweep, pinned:
+    // finding the 200 by hand once is luck; asserting it is how the next one gets found.
+    const fs2 = require('fs'); const path2 = require('path');
+    const dir = path2.join(__dirname, '..', 'lib', 'reasoning');
+    const offenders = [];
+    for (const file of fs2.readdirSync(dir).filter((f) => f.endsWith('.js') && f !== 'budget.js')) {
+      const src = fs2.readFileSync(path2.join(dir, file), 'utf8');
+      for (const m of src.matchAll(/maxTokens:\s*(?:opts\.\w+\s*\|\|\s*)?(\d+)/g)) {
+        if (Number(m[1]) < MIN_OUTPUT_TOKENS) offenders.push(`${file}: ${m[0]}`);
+      }
+    }
+    assert(offenders.length === 0,
+      `no call site in lib/reasoning requests below the ${MIN_OUTPUT_TOKENS}-token floor (found: ${offenders.join(' | ') || 'none'}) — the floor makes such a request harmless, but a number below it is a lie about what the call will do`);
   }
   {
     // The headroom itself. These are the numbers that were wrong; assert them so a future

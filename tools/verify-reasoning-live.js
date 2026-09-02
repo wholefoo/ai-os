@@ -239,6 +239,18 @@ function makeRunAgent(token) {
       const bad = f.required.filter((r) => !r.test(h.content));
       if (bad.length) {
         failed++;
+        // AN EMPTY REPLY IS NOT A FORMAT VIOLATION, AND MUST NOT BE REPORTED AS ONE.
+        // The third live run printed "missing: VERDICT: line, SCORE: line, CRITIQUE: line" for a
+        // reply of ZERO characters — four format complaints about text that did not exist. That is
+        // the misdiagnosis lib/reasoning/budget.js already knows how to prevent; the engines had the
+        // guard and this diagnostic was bypassing it by grading the raw transport record.
+        if (!h.content.trim()) {
+          console.log(`FAIL ${f.id.padEnd(18)} (${f.engine}) — EMPTY REPLY (0 chars). NOT a format problem.`);
+          console.log(`     ${h.agent} produced ${h.outputTokens} output tokens. At high/xhigh effort adaptive thinking spends`);
+          console.log('     from the same ceiling as the answer, so a tight maxTokens returns nothing at all.');
+          console.log('     Fix: raise maxTokens for this call. Do NOT touch the prompt or the parser.');
+          continue;
+        }
         console.log(`FAIL ${f.id.padEnd(18)} (${f.engine}) — missing: ${bad.map((b) => b.name).join(', ')}`);
         console.log(`     asked for : ${f.asked}`);
         // FIRST question to ask of any format failure: was the reply finished? A cut-off reply looks
