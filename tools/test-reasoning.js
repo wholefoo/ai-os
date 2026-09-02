@@ -16,6 +16,7 @@ const R = require('../lib/reasoning');
 const { createBudget, guardedCall } = require('../lib/reasoning/budget');
 const M = require('../lib/reasoning/models');
 const steps = require('../lib/reasoning/steps');
+const tot = require('../lib/reasoning/tot');
 const reflexion = require('../lib/reasoning/reflexion');
 const { createContextManager, SEGMENTS, EVICTION_ORDER } = require('../lib/reasoning/context');
 
@@ -402,6 +403,69 @@ const mock = (script, seen = []) => ({
     }), { mode: 'steps' });
     assert(r.ok && /1\. reasoning/.test(r.output) && r.trace.outcome === 'solved', 'steps mode returns a rendered trace as its output');
     assert(r.budget.calls === 3, `and reports its REAL cost: ${r.budget.calls} calls for a 1-step task (decompose + act + verify), not the 1 a caller might assume`);
+  }
+
+  // =============================================================================================
+  //  REGRESSIONS FROM THE FIRST LIVE RUN (2026-09-02) — real model output, not invented fixtures
+  // =============================================================================================
+  // tools/verify-reasoning-live.js made 9 real calls and 2 of 7 formats failed. Both failures were
+  // invisible to every mock in this file, because a mock only ever sends what its author already
+  // expected. These fixtures are the ACTUAL bytes the model sent.
+  {
+    // 1. THE PARSER WAS TOO STRICT. Asked for numbered steps, Opus replied in markdown-bold with an
+    //    em-dash. The old pattern matched nothing, fell through to the "unstructured prose" branch,
+    //    and returned the whole reply as ONE step — a three-step plan silently became one step.
+    const REAL = '**Step 1 — Establish the actual code path of the nightly export job** (trigger → write → exit).\n'
+      + '**Step 2 — Confirm whether the write path is reachable** by checking volume state.\n'
+      + '**Step 3 — Reproduce with a forced run** and compare output.';
+    const parsed = steps.parseSteps(REAL);
+    assert(parsed.length === 3, `markdown-bold "**Step N — ..." parses as ${parsed.length} steps (must be 3) — this exact string collapsed to 1 in production`);
+    assert(/Establish the actual code path/.test(parsed[0]) && !/^\*\*/.test(parsed[0]), `the marker is stripped, leaving the step text: "${parsed[0].slice(0, 50)}"`);
+    assert(!/\*\*\s*$/.test(parsed[0]),
+      `and the CLOSING ** is stripped too ("...${parsed[0].slice(-22)}") — a dangling emphasis marker would ride into every downstream prompt and into saved STaR traces`);
+    assert(M.parseList('## 3) heading form', 5)[0] === 'heading form', 'markdown headings around a number are handled as well');
+
+    // The tolerance is shared, so ToT gets it too — that is the point of one parseList.
+    assert(tot.parseThoughts('**Thought 1 — alpha**\n**Thought 2 — beta**', 5).length === 2,
+      'tot.parseThoughts accepts the same shapes — one shared definition means the two engines cannot drift apart in what they accept');
+
+    // Still not loose enough to turn prose into a list.
+    assert(steps.parseSteps('The job writes to /export and the volume is full.').length === 1,
+      'ordinary prose is still ONE step, not several — widening tolerance must not make sentences into steps');
+    assert(steps.parseSteps('1. alpha\n2. beta').length === 2, 'plain numbering still works');
+    assert(steps.parseSteps('- alpha\n- beta').length === 2, 'plain bullets still work');
+    assert(steps.parseSteps('* alpha\n* beta').length === 2, 'single-asterisk bullets still work — and are not confused with ** emphasis');
+  }
+  {
+    // 2. THE EMPTY RESPONSE. `reviewer` runs at effort: xhigh; the PRM verifier gave it maxTokens
+    //    400; adaptive thinking is charged against the same ceiling, so the answer came back "".
+    //    That became an AMBIGUOUS verdict — indistinguishable from "answered but unreadable", which
+    //    is a completely different problem with a completely different fix. FOURTH occurrence of
+    //    this failure shape in this project; every previous one presented as a plausible success.
+    const b = createBudget({ maxCalls: 3 });
+    const r = await guardedCall(mock({ reviewer: '' }), b, 'reviewer', 'judge this');
+    assert(r.ok === false && r.emptyResponse === true,
+      'an EMPTY but "successful" reply is converted to a failure — it is not a success in any sense a caller cares about');
+    assert(/maxTokens was too small/.test(r.error),
+      `the error names the LIKELY CAUSE, because "unparseable verdict" points at the wrong fix: "${r.error.slice(0, 60)}..."`);
+    assert(b.snapshot().calls === 1, 'and it is still metered — an empty reply cost money');
+
+    const ws = await guardedCall(mock({ reviewer: '   \n  ' }), createBudget({ maxCalls: 2 }), 'reviewer', 't');
+    assert(ws.emptyResponse === true, 'whitespace-only counts as empty — a reply of three spaces is not an answer');
+
+    // It must reach the caller as a NAMED unavailability, not a silent AMBIGUOUS.
+    const v = await steps.modelVerifier({ agent: 'reviewer' })(
+      M.makeStep({ rationale: 'x' }), { task: 't', deps: mock({ reviewer: '' }), budget: createBudget({ maxCalls: 3 }) });
+    assert(v.status === 'AMBIGUOUS' && /EMPTY response/.test(v.feedback),
+      'the PRM gate still refuses the step (fail-safe intact) but now SAYS the verifier came back empty, instead of implying the model wrote something unreadable');
+  }
+  {
+    // The headroom itself. These are the numbers that were wrong; assert them so a future
+    // "tidy up the magic numbers" pass cannot quietly put a 400 back.
+    const src = require('fs').readFileSync(require('path').join(__dirname, '..', 'lib', 'reasoning', 'steps.js'), 'utf8');
+    const m = src.match(/modelVerifier\(\{[^}]*maxTokens = (\d+)/);
+    assert(m && Number(m[1]) >= 1500,
+      `the PRM verifier's default maxTokens is >= 1500 (found ${m && m[1]}) — at 400 an xhigh reviewer's adaptive thinking consumed the entire budget and returned nothing`);
   }
 
   // =============================================================================================
