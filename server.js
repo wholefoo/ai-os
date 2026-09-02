@@ -4853,15 +4853,26 @@ const COST_RATES = {
   'opus-4.8-high':     { input: 5.00,  output: 25.00 },
   'opus-4.8-medium':   { input: 5.00,  output: 25.00 },
   'opus-4.8-low':      { input: 5.00,  output: 25.00 },
-  // Sonnet 5 — the cost-efficient reasoning tier (settings.ai.reasoning_mode). Verified against
-  // docs.claude.com/pricing on 2026-07-01: INTRODUCTORY $2/$10 per 1M through 2026-08-31, then reverts to
-  // $3/$15 on 2026-09-01 — bump these to 3.00/15.00 on that date. (Sonnet 5's newer tokenizer emits ~30%
-  // more tokens for the same text; the ledger counts actual API-reported tokens, so the rate needs no
-  // adjustment for that — but effective cost-per-task runs a bit above the headline rate delta vs Opus.)
-  'sonnet-5-xhigh':    { input: 2.00,  output: 10.00 },
-  'sonnet-5-high':     { input: 2.00,  output: 10.00 },
-  'sonnet-5-medium':   { input: 2.00,  output: 10.00 },
-  'sonnet-5-low':      { input: 2.00,  output: 10.00 },
+  // Sonnet 5 — the cost-efficient reasoning tier (settings.ai.reasoning_mode). Standard pricing
+  // $3/$15 per 1M. The INTRODUCTORY $2/$10 ran through 2026-08-31 and these were raised on
+  // 2026-09-02. (Sonnet 5's newer tokenizer emits ~30% more tokens for the same text; the ledger
+  // counts actual API-reported tokens, so the rate needs no adjustment for that — but effective
+  // cost-per-task runs a bit above the headline rate delta vs Opus.)
+  //
+  // ⚠️ IT WAS DUE ON 2026-09-01 AND WAS MISSED BY TWO DAYS. Every Sonnet 5 call in that window was
+  // billed into the ledger at two-thirds of its real cost, and nothing anywhere reported it —
+  // under-reporting spend is invisible by construction, because the number that would have warned
+  // you IS the number that is wrong. The reminder existed only as prose in this comment, which is
+  // to say it existed only in whoever happened to read it on the right day.
+  //
+  // The RATE-CHANGE marker below is machine-readable and tools/test-rate-schedule.js enforces it:
+  // once the date passes, the suite FAILS until the rates match. A dated obligation that lives only
+  // in a comment is not a reminder, it is a hope.
+  // RATE-CHANGE: 2026-09-01 sonnet-5 -> 3.00/15.00
+  'sonnet-5-xhigh':    { input: 3.00,  output: 15.00 },
+  'sonnet-5-high':     { input: 3.00,  output: 15.00 },
+  'sonnet-5-medium':   { input: 3.00,  output: 15.00 },
+  'sonnet-5-low':      { input: 3.00,  output: 15.00 },
   // Fable 5 — Anthropic's most capable model, an opt-in premium override (e.g. Web Studio design).
   // $10/$50 per 1M (flat across effort tiers), verified against docs.claude.com/pricing 2026-07-05.
   'fable-5-xhigh':     { input: 10.00, output: 50.00 },
