@@ -116,6 +116,7 @@
     "tools/test-reasoning-star.js",
     "tools/demo-reasoning.js",
     "tools/test-rate-schedule.js",
+    "tools/verify-reasoning-live.js",
     "tools/test-mcp-client.js",
     "tools/test-seo-skipped-dimension.js",
     "tools/test-seo-unmeasured.js",

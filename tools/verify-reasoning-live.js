@@ -1,0 +1,271 @@
+// tools/verify-reasoning-live.js
+// ============================================================
+//  THE ONE THING lib/reasoning's UNIT SUITES CANNOT TELL YOU.
+//
+//  tools/test-reasoning*.js pass 100% against MOCKS. They prove the engines' control flow, their
+//  budgets, their backtracking and their safety properties. They cannot prove the single assumption
+//  everything else rests on: THAT A REAL MODEL ACTUALLY REPLIES IN THE SHAPES THE PARSERS EXPECT —
+//  `STATUS: CORRECT`, `SCORE: 0.9`, `VERDICT: PASS`, `ANSWER:`, numbered steps.
+//
+//  That assumption has never been tested. It could not be: the Anthropic account was spend-capped
+//  until 2026-09-01, so every paid call 400'd.
+//
+//  ── WHY THE FAILURE MODE IS SNEAKY ──
+//  Every parser in lib/reasoning FAILS SAFE. An unreadable verifier verdict becomes AMBIGUOUS, an
+//  unreadable evaluation becomes FAIL, an unreadable score becomes 0. So if the model ignores the
+//  format entirely, nothing crashes and nothing reports an error — the engines simply refuse
+//  everything and grind through their budget achieving nothing. "Safe but useless" looks almost
+//  exactly like "working but strict" from the outside. The only way to tell them apart is to read
+//  the RAW MODEL REPLY and check its shape.
+//
+//  So this script does not assert on the engines' verdicts. It captures every raw reply the model
+//  sends, works out which format that call ASKED for, and grades the reply against that format.
+//
+//  ── COSTS REAL MONEY, SO IT DOES NOTHING BY DEFAULT ──
+//  Named verify-*, not test-*: tools/test-all.js auto-discovers `test-*.js` and this must never run
+//  in CI. It also defaults to a DRY RUN that makes zero calls and just prints the plan.
+//
+//    node tools/verify-reasoning-live.js              # dry run — 0 calls, 0 cost, shows the plan
+//    node tools/verify-reasoning-live.js --run        # ~8 real calls, a few cents
+//    node tools/verify-reasoning-live.js --run --base http://localhost:3000
+//
+//  RUN IT ON THE VPS. This developer box has a stale truncated key in ~/.claude/settings.json that
+//  shadows the valid one in .env, so a local run fails with `invalid x-api-key` for a reason that
+//  has nothing to do with what is being tested — a false negative that would read as "the formats
+//  do not work".
+//
+//  Auth: API_TOKEN from the environment, else from .env in the repo root. Never printed.
+// ============================================================
+
+'use strict';
+
+const fs = require('fs');
+const path = require('path');
+const steps = require('../lib/reasoning/steps');
+const reflexion = require('../lib/reasoning/reflexion');
+const tot = require('../lib/reasoning/tot');
+const { createBudget } = require('../lib/reasoning/budget');
+
+const args = process.argv.slice(2);
+const has = (n) => args.includes(`--${n}`);
+const flag = (n, d = null) => {
+  const i = args.indexOf(`--${n}`);
+  return i >= 0 && args[i + 1] && !args[i + 1].startsWith('--') ? args[i + 1] : d;
+};
+
+const BASE = flag('base', process.env.AIOS_BASE || 'http://localhost:3000').replace(/\/$/, '');
+const RUN = has('run');
+
+function resolveToken() {
+  if (process.env.API_TOKEN) return process.env.API_TOKEN.trim();
+  try {
+    const env = fs.readFileSync(path.join(__dirname, '..', '.env'), 'utf8');
+    const m = env.match(/^API_TOKEN\s*=\s*(.+)$/m);
+    if (m) return m[1].trim().replace(/^["']|["']$/g, '');
+  } catch { /* fall through */ }
+  return null;
+}
+
+// ── The formats under test ────────────────────────────────────────────────────────────────────────
+// Each entry: how to RECOGNISE the call from its prompt, and what a correctly-shaped reply contains.
+// `required` are the patterns that must ALL match. This is the actual contract between the prompts
+// in lib/reasoning and the parsers that read the replies back.
+const FORMATS = [
+  {
+    id: 'decomposition',
+    engine: 'steps',
+    detect: /Decompose the task/,
+    asked: 'numbered steps, one per line',
+    required: [{ name: 'more than one numbered step', test: (t) => steps.parseSteps(t, 6).length >= 2 }],
+  },
+  {
+    id: 'step-verdict',
+    engine: 'steps (PRM gate)',
+    detect: /You are a PROCESS verifier/,
+    asked: 'STATUS: CORRECT|INCORRECT|AMBIGUOUS + SCORE: 0-1',
+    required: [
+      { name: 'STATUS: line', test: (t) => /STATUS\s*:\s*(CORRECT|INCORRECT|AMBIGUOUS)/i.test(t) },
+      { name: 'SCORE: line', test: (t) => /SCORE\s*:\s*[0-9]*\.?[0-9]+/i.test(t) },
+      // The decisive one. AMBIGUOUS is what the parser returns when it understood NOTHING, so a
+      // verdict that parses to AMBIGUOUS *without* the model having written the word is precisely
+      // the silent-uselessness case this whole script exists to detect.
+      { name: 'parses to a definite verdict (not a fallback)', test: (t) => {
+        const v = steps.parseVerdict(t);
+        return v.status !== 'AMBIGUOUS' || /AMBIGUOUS|UNSURE|UNCLEAR/i.test(t);
+      } },
+    ],
+  },
+  {
+    id: 'evaluation',
+    engine: 'reflexion (Evaluator)',
+    detect: /Evaluate the attempt/,
+    asked: 'VERDICT: PASS|FAIL + SCORE + CRITIQUE',
+    required: [
+      { name: 'VERDICT: line', test: (t) => /VERDICT\s*:\s*(PASS|FAIL)/i.test(t) },
+      { name: 'SCORE: line', test: (t) => /SCORE\s*:\s*[0-9]*\.?[0-9]+/i.test(t) },
+      { name: 'CRITIQUE: line', test: (t) => /CRITIQUE\s*:/i.test(t) },
+      { name: 'parses to a non-empty critique', test: (t) => reflexion.parseEvaluation(t).critique.length > 10 },
+    ],
+  },
+  {
+    id: 'reflection',
+    engine: 'reflexion (Reflector)',
+    detect: /Write ONE sentence/,
+    asked: 'one actionable sentence, no preamble',
+    required: [{ name: 'short and non-empty', test: (t) => t.trim().length > 10 && t.trim().length < 600 }],
+  },
+  {
+    id: 'thought-proposal',
+    engine: 'tot (propose)',
+    detect: /Propose exactly/,
+    asked: 'N distinct numbered thoughts',
+    required: [{ name: 'at least 2 DISTINCT thoughts', test: (t) => tot.parseThoughts(t, 5).length >= 2 }],
+  },
+  {
+    id: 'thought-score',
+    engine: 'tot (value scorer)',
+    detect: /Score how promising/,
+    asked: 'SCORE: 0-1 (+ optional SOLVED / DEAD-END)',
+    required: [
+      { name: 'SCORE: line', test: (t) => /SCORE\s*:\s*[0-9]*\.?[0-9]+/i.test(t) },
+      // A 0 score is what parseScore returns when it finds no number at all — indistinguishable
+      // from a genuine "this branch is worthless" unless the model actually wrote a zero.
+      { name: 'parses to a usable score (not the 0 fallback)', test: (t) => tot.parseScore(t).score > 0 || /\b0(\.0+)?\b/.test(t) },
+    ],
+  },
+];
+
+// ── Transport ─────────────────────────────────────────────────────────────────────────────────────
+const captured = [];   // { agent, prompt, content, ok, error, cost, inputTokens, outputTokens }
+
+function makeRunAgent(token) {
+  return async function runAgent(agent, task, opts = {}) {
+    const res = await fetch(`${BASE}/api/agent/execute`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ agent, task, maxTokens: opts.maxTokens || 800, skill: 'reasoning-verify' }),
+    });
+    if (!res.ok) {
+      const body = await res.text().catch(() => '');
+      const rec = { agent, prompt: task, ok: false, error: `HTTP ${res.status} ${body.slice(0, 200)}` };
+      captured.push(rec);
+      return { ok: false, error: rec.error };
+    }
+    const j = await res.json();
+
+    // A DEMO_MODE instance returns a canned "[DEMO] ..." string. Grading that would be worse than
+    // useless: it is a synthetic reply that happens to arrive over the real transport, so a pass
+    // would mean nothing at all. Refuse the whole run rather than report a result about a fixture.
+    if (j.demo === true || /^\[DEMO\]/.test(String(j.content || ''))) {
+      throw new Error('the instance is in DEMO_MODE — replies are canned, so nothing here would be evidence. Set DEMO_MODE=false and re-run.');
+    }
+
+    captured.push({
+      agent, prompt: task, ok: !!j.ok, content: j.content || '', error: j.error,
+      cost: j.cost || 0, inputTokens: j.inputTokens || 0, outputTokens: j.outputTokens || 0, model: j.model,
+    });
+    return j;
+  };
+}
+
+// ── Main ──────────────────────────────────────────────────────────────────────────────────────────
+(async () => {
+  console.log('\nlib/reasoning — LIVE WIRE-FORMAT CHECK');
+  console.log(`base: ${BASE}\n`);
+
+  if (!RUN) {
+    console.log('DRY RUN — no calls made, nothing spent. Pass --run to execute.\n');
+    console.log('It would drive the three engines at their smallest useful settings and grade the');
+    console.log('RAW model replies against the formats their prompts ask for:\n');
+    for (const f of FORMATS) console.log(`  ${f.id.padEnd(18)} ${f.engine.padEnd(22)} expects: ${f.asked}`);
+    console.log(`\n  ~8 model calls total (a few cents). RUN THIS ON THE VPS — this box's`);
+    console.log('  ~/.claude/settings.json holds a stale truncated key that shadows .env, so a local');
+    console.log('  run fails with `invalid x-api-key` and reads as a format failure that it is not.\n');
+    return;
+  }
+
+  const token = resolveToken();
+  if (!token) {
+    console.error('No API_TOKEN found (environment or .env). Cannot authenticate — aborting.');
+    process.exitCode = 1;
+    return;
+  }
+
+  const runAgent = makeRunAgent(token);
+  const deps = { runAgent, broadcast: () => {}, log: () => {} };
+  const budget = createBudget({ maxCalls: 14 });   // a hard ceiling on what this can ever spend
+
+  const TASK = 'Explain why a nightly export job might produce no output while reporting no errors.';
+
+  try {
+    console.log('[1/3] steps engine (decomposition + PRM gate)...');
+    await steps.runVerifiedSteps(TASK, deps, { maxSteps: 2, maxRevisions: 0, onFail: 'continue', budget, maxTokens: 700 });
+
+    console.log('[2/3] reflexion engine (actor + evaluator + reflector)...');
+    await reflexion.reflexionLoop(TASK, deps, { maxAttempts: 1, budget, maxTokens: 700 });
+
+    console.log('[3/3] tree-of-thoughts engine (propose + value scorer)...');
+    await tot.search(TASK, deps, { strategy: 'bfs', breadth: 2, maxDepth: 1, budget, proposeTokens: 500, scoreTokens: 300 });
+  } catch (e) {
+    console.error(`\nABORTED: ${e.message}\n`);
+    process.exitCode = 1;
+    return;
+  }
+
+  // ── Grade the raw replies ───────────────────────────────────────────────────────────────────────
+  console.log('\n─────────────────────────────────────────────────────────────────────────');
+  let graded = 0;
+  let failed = 0;
+  const unseen = [];
+
+  for (const f of FORMATS) {
+    const hits = captured.filter((c) => f.detect.test(c.prompt));
+    if (!hits.length) { unseen.push(f.id); continue; }
+
+    for (const h of hits) {
+      graded++;
+      if (!h.ok) {
+        failed++;
+        console.log(`FAIL ${f.id.padEnd(18)} the call itself failed: ${h.error}`);
+        continue;
+      }
+      const bad = f.required.filter((r) => !r.test(h.content));
+      if (bad.length) {
+        failed++;
+        console.log(`FAIL ${f.id.padEnd(18)} (${f.engine}) — missing: ${bad.map((b) => b.name).join(', ')}`);
+        console.log(`     asked for : ${f.asked}`);
+        console.log(`     model sent: ${JSON.stringify(h.content.slice(0, 220))}`);
+      } else {
+        console.log(`ok   ${f.id.padEnd(18)} (${f.engine}) — ${f.asked}`);
+      }
+    }
+  }
+
+  for (const id of unseen) {
+    console.log(`SKIP ${id.padEnd(18)} never exercised — the engine short-circuited before reaching it`);
+  }
+
+  const cost = captured.reduce((s, c) => s + (c.cost || 0), 0);
+  const inTok = captured.reduce((s, c) => s + (c.inputTokens || 0), 0);
+  const outTok = captured.reduce((s, c) => s + (c.outputTokens || 0), 0);
+  const models = [...new Set(captured.map((c) => c.model).filter(Boolean))];
+
+  console.log('─────────────────────────────────────────────────────────────────────────');
+  console.log(`calls: ${captured.length}   tokens: ${inTok} in / ${outTok} out   cost: $${cost.toFixed(4)}`);
+  console.log(`models: ${models.join(', ') || '(none reported)'}`);
+  console.log(`formats graded: ${graded}   failed: ${failed}   never reached: ${unseen.length}`);
+
+  if (failed) {
+    console.log('\nFORMATS ARE NOT HONOURED. The engines will run, cost money and refuse everything —');
+    console.log('safe, but useless. Fix the prompt wording in lib/reasoning, or loosen the parser to');
+    console.log('accept what the model actually sends. Do NOT loosen it to accept anything: the');
+    console.log('fail-safe default is the only reason a format mismatch is not a safety problem.\n');
+    process.exitCode = 1;
+  } else if (unseen.length) {
+    console.log('\nEverything reached was correctly shaped, but some formats were never exercised.');
+    console.log('That is a PARTIAL result — do not record it as a clean pass.\n');
+  } else {
+    console.log('\nALL FORMATS HONOURED — the assumption every lib/reasoning unit test rests on is');
+    console.log('now verified against a real model, not a mock.\n');
+  }
+})();
