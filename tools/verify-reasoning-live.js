@@ -41,6 +41,7 @@
 
 const fs = require('fs');
 const path = require('path');
+const os = require('os');
 const steps = require('../lib/reasoning/steps');
 const reflexion = require('../lib/reasoning/reflexion');
 const tot = require('../lib/reasoning/tot');
@@ -76,6 +77,7 @@ const FORMATS = [
     engine: 'steps',
     detect: /Decompose the task/,
     asked: 'numbered steps, one per line',
+    parsedBy: (t) => steps.parseSteps(t, 6),
     required: [{ name: 'more than one numbered step', test: (t) => steps.parseSteps(t, 6).length >= 2 }],
   },
   {
@@ -119,6 +121,7 @@ const FORMATS = [
     engine: 'tot (propose)',
     detect: /Propose exactly/,
     asked: 'N distinct numbered thoughts',
+    parsedBy: (t) => tot.parseThoughts(t, 5),
     required: [{ name: 'at least 2 DISTINCT thoughts', test: (t) => tot.parseThoughts(t, 5).length >= 2 }],
   },
   {
@@ -143,7 +146,7 @@ function makeRunAgent(token) {
     const res = await fetch(`${BASE}/api/agent/execute`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-      body: JSON.stringify({ agent, task, maxTokens: opts.maxTokens || 800, skill: 'reasoning-verify' }),
+      body: JSON.stringify({ agent, task, maxTokens: opts.maxTokens || 2500, skill: 'reasoning-verify' }),
     });
     if (!res.ok) {
       const body = await res.text().catch(() => '');
@@ -199,13 +202,17 @@ function makeRunAgent(token) {
 
   try {
     console.log('[1/3] steps engine (decomposition + PRM gate)...');
-    await steps.runVerifiedSteps(TASK, deps, { maxSteps: 2, maxRevisions: 0, onFail: 'continue', budget, maxTokens: 700 });
+    await steps.runVerifiedSteps(TASK, deps, { maxSteps: 2, maxRevisions: 0, onFail: 'continue', budget });
 
     console.log('[2/3] reflexion engine (actor + evaluator + reflector)...');
-    await reflexion.reflexionLoop(TASK, deps, { maxAttempts: 1, budget, maxTokens: 700 });
+    await reflexion.reflexionLoop(TASK, deps, { maxAttempts: 1, budget });
 
     console.log('[3/3] tree-of-thoughts engine (propose + value scorer)...');
-    await tot.search(TASK, deps, { strategy: 'bfs', breadth: 2, maxDepth: 1, budget, proposeTokens: 500, scoreTokens: 300 });
+    // NO token overrides. An earlier version passed proposeTokens: 500 / scoreTokens: 300 — the
+    // harness starved the calls it was grading and then reported a FORMAT failure, which is a false
+    // negative of its own making. Use the engines' real defaults: this check is meaningless unless
+    // the calls it grades are provisioned exactly as production provisions them.
+    await tot.search(TASK, deps, { strategy: 'bfs', breadth: 2, maxDepth: 1, budget });
   } catch (e) {
     console.error(`\nABORTED: ${e.message}\n`);
     process.exitCode = 1;
@@ -234,7 +241,34 @@ function makeRunAgent(token) {
         failed++;
         console.log(`FAIL ${f.id.padEnd(18)} (${f.engine}) — missing: ${bad.map((b) => b.name).join(', ')}`);
         console.log(`     asked for : ${f.asked}`);
-        console.log(`     model sent: ${JSON.stringify(h.content.slice(0, 220))}`);
+        // FIRST question to ask of any format failure: was the reply finished? A cut-off reply looks
+        // like a format violation and is not one, and blaming the format sends you to rewrite a
+        // prompt that was fine. This line goes above the evidence because it changes how to read it.
+        if (h.truncated) {
+          console.log(`     ⚠ TRUNCATED — ${h.truncationNote}`);
+          console.log('     This is very likely NOT a format problem. Raise maxTokens and re-run before changing any parser.');
+        }
+
+        // THE FULL REPLY, NOT A PREFIX. The first run truncated at 220 chars, and on the second run
+        // that truncation was the only thing standing between a failure and its diagnosis — the
+        // interesting part of a list-parsing failure is almost never in the first item. A diagnostic
+        // that clips the evidence you need is the same defect class as everything else this suite
+        // exists to catch.
+        const dump = path.join(os.tmpdir(), `reasoning-verify-${f.id}-${Date.now()}.txt`);
+        try { fs.writeFileSync(dump, h.content, 'utf8'); } catch { /* best effort */ }
+        console.log(`     full reply (${h.content.length} chars) saved to: ${dump}`);
+
+        // What the PARSER actually extracted. This is what distinguishes "no line matched" from
+        // "lines matched and were then joined/deduped/truncated away" — three different bugs that
+        // look identical from the item count alone.
+        if (f.parsedBy) {
+          const items = f.parsedBy(h.content);
+          console.log(`     parser extracted ${items.length} item(s):`);
+          items.forEach((it, i) => console.log(`       [${i + 1}] ${JSON.stringify(String(it).slice(0, 90))}`));
+        }
+        console.log('     ── raw reply ──');
+        for (const line of h.content.split('\n')) console.log(`     | ${line}`);
+        console.log('     ───────────────');
       } else {
         console.log(`ok   ${f.id.padEnd(18)} (${f.engine}) — ${f.asked}`);
       }

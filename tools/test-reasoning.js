@@ -460,6 +460,32 @@ const mock = (script, seen = []) => ({
       'the PRM gate still refuses the step (fail-safe intact) but now SAYS the verifier came back empty, instead of implying the model wrote something unreadable');
   }
   {
+    // 3. TRUNCATION — the same starved-budget bug one notch less obvious than an empty reply, and
+    //    caught on the SECOND live run. The ToT proposer (architect, effort: xhigh) was given 500
+    //    tokens by the verify harness itself, wrote one very long thought, ran out mid-sentence, and
+    //    returned one item where two were asked for. The check reported "the model did not honour
+    //    the format". The model honoured it fine — it was interrupted. A cut-off reply parses
+    //    cleanly and is simply MISSING THE END, so nothing anywhere notices.
+    const atCeiling = {
+      runAgent: async () => ({ ok: true, content: '1. a long first thought that ran out of room', inputTokens: 100, outputTokens: 500 }),
+    };
+    const t = await guardedCall(atCeiling, createBudget({ maxCalls: 2 }), 'architect', 'propose', { maxTokens: 500 });
+    assert(t.truncated === true, 'output landing AT the ceiling is flagged as truncated');
+    assert(/probably CUT OFF/.test(t.truncationNote), `and the note says so plainly: "${t.truncationNote.slice(0, 55)}..."`);
+    assert(t.ok === true && t.content.length > 0,
+      'but it does NOT fail the call — a truncated reply is often still usable, and hard-failing would throw away good work. The flag is for the diagnostic, not the control flow.');
+
+    const roomy = await guardedCall(
+      { runAgent: async () => ({ ok: true, content: 'short answer', inputTokens: 100, outputTokens: 40 }) },
+      createBudget({ maxCalls: 2 }), 'coder', 't', { maxTokens: 2000 });
+    assert(!roomy.truncated, 'a reply well under its ceiling is NOT flagged — otherwise the signal means nothing');
+
+    const noCeiling = await guardedCall(
+      { runAgent: async () => ({ ok: true, content: 'x', inputTokens: 10, outputTokens: 900 }) },
+      createBudget({ maxCalls: 2 }), 'coder', 't');
+    assert(!noCeiling.truncated, 'with no maxTokens requested there is no ceiling to hit, so nothing is claimed');
+  }
+  {
     // The headroom itself. These are the numbers that were wrong; assert them so a future
     // "tidy up the magic numbers" pass cannot quietly put a 400 back.
     const src = require('fs').readFileSync(require('path').join(__dirname, '..', 'lib', 'reasoning', 'steps.js'), 'utf8');
