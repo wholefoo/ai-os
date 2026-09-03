@@ -163,9 +163,16 @@ function makeRunAgent(token) {
       throw new Error('the instance is in DEMO_MODE — replies are canned, so nothing here would be evidence. Set DEMO_MODE=false and re-run.');
     }
 
+    // `truncated` was being READ by the failure display for three runs and never WRITTEN here — the
+    // warning could not print. Now taken from executeAgent's exact stop_reason, with the ceiling
+    // heuristic as a fallback for an older server that does not send it.
+    const ceiling = opts.maxTokens || 2500;
+    const truncated = j.truncated === true || j.stopReason === 'max_tokens' || ((j.outputTokens || 0) >= ceiling * 0.95);
     captured.push({
       agent, prompt: task, ok: !!j.ok, content: j.content || '', error: j.error,
       cost: j.cost || 0, inputTokens: j.inputTokens || 0, outputTokens: j.outputTokens || 0, model: j.model,
+      truncated, stopReason: j.stopReason || null, ceiling,
+      truncationNote: truncated ? `stop_reason=${j.stopReason || '(not reported)'}, output ${j.outputTokens || 0}/${ceiling} tokens — the reply was CUT OFF, not finished` : null,
     });
     return j;
   };

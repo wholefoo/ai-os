@@ -4224,7 +4224,9 @@ async function executeAgent(agentName, task, options = {}) {
     logActivity('agent', `${agentName} completed in ${elapsed}ms (${model})`, { agentName, model, inputTokens, outputTokens, cost: Math.round(cost * 10000) / 10000 });
     broadcast({ event: 'agent_complete', data: { agent: agentName, model, elapsed, cost: Math.round(cost * 10000) / 10000 } });
 
-    return { ok: true, content: result.content, model, inputTokens, outputTokens, elapsed, cost: Math.round(cost * 10000) / 10000 };
+    // stopReason/truncated ride through so a caller can tell a cut-off reply from a short one — see
+    // callAnthropic for why that signal matters and how long it was being discarded.
+    return { ok: true, content: result.content, model, inputTokens, outputTokens, elapsed, cost: Math.round(cost * 10000) / 10000, stopReason: result.stopReason || null, truncated: !!result.truncated };
 
   } catch (e) {
     const elapsed = Date.now() - startTime;
@@ -4459,6 +4461,16 @@ async function callAnthropic(systemPrompt, task, effort, maxTokens, model = OPUS
     // treating a cached call as a call that barely had a prompt.
     cacheReadTokens: data.usage?.cache_read_input_tokens || 0,
     cacheWriteTokens: data.usage?.cache_creation_input_tokens || 0,
+    // THE EXACT TRUNCATION SIGNAL, PREVIOUSLY THROWN AWAY. The API says `stop_reason: "max_tokens"`
+    // when it cut the reply off, and this function was checking stop_reason for 'refusal' and
+    // 'tool_use' while discarding that one. Every consumer of executeAgent was therefore blind to
+    // truncation — which is how this project kept meeting the same bug in different disguises: an
+    // empty workspace, a 2-character review, a graph node that "parsed fine", and on 2026-09-03 a
+    // reasoning evaluator whose entire reply was the 8 characters `VERDICT:`. Adaptive thinking
+    // spends from the same max_tokens as the answer, so a tight ceiling on an xhigh agent does not
+    // error — it returns the first few characters of an answer and stops. Now a caller can tell.
+    stopReason: data.stop_reason || null,
+    truncated: data.stop_reason === 'max_tokens',
     discardedAttempts: data.aiosDiscarded || 0,
     unmeasuredAttempts: data.aiosUnmeasured || 0,
   };
@@ -4503,7 +4515,7 @@ async function callAnthropicWithTools(systemPrompt, task, effort, maxTokens, too
     const toolUses = content.filter(b => b.type === 'tool_use');
     if (data.stop_reason !== 'tool_use' || !toolUses.length) {
       const text = content.filter(b => b.type === 'text').map(b => b.text).join('\n').trim();
-      return { content: text, inputTokens, outputTokens, cacheReadTokens, cacheWriteTokens, toolInvocations, discardedAttempts, unmeasuredAttempts };
+      return { content: text, inputTokens, outputTokens, cacheReadTokens, cacheWriteTokens, toolInvocations, discardedAttempts, unmeasuredAttempts, stopReason: data.stop_reason || null, truncated: data.stop_reason === 'max_tokens' };
     }
     messages.push({ role: 'assistant', content });
     const toolResults = [];

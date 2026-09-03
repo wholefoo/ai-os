@@ -466,14 +466,15 @@ const mock = (script, seen = []) => ({
     //    returned one item where two were asked for. The check reported "the model did not honour
     //    the format". The model honoured it fine — it was interrupted. A cut-off reply parses
     //    cleanly and is simply MISSING THE END, so nothing anywhere notices.
-    // NOTE the 2500: the ceiling has to sit ABOVE MIN_OUTPUT_TOKENS for this to test anything. An
-    // earlier version used 500/500, which the floor silently raised to a 1500 ceiling — so 500
-    // output tokens were nowhere near it and the assertion started failing. The floor made the old
-    // fixture impossible, which is exactly what a floor is for.
+    // The ceiling is derived from the floor rather than hard-coded, because this fixture has gone
+    // stale TWICE as the floor moved (500 -> 1500 -> 4096): each time the floor silently raised the
+    // requested ceiling above the fixture's output count, and "at the ceiling" quietly became
+    // "nowhere near it". Tie the two together and the fixture cannot drift from the thing it tests.
+    const CEIL = MIN_OUTPUT_TOKENS + 1000;
     const atCeiling = {
-      runAgent: async () => ({ ok: true, content: '1. a long first thought that ran out of room', inputTokens: 100, outputTokens: 2500 }),
+      runAgent: async () => ({ ok: true, content: '1. a long first thought that ran out of room', inputTokens: 100, outputTokens: CEIL }),
     };
-    const t = await guardedCall(atCeiling, createBudget({ maxCalls: 2 }), 'architect', 'propose', { maxTokens: 2500 });
+    const t = await guardedCall(atCeiling, createBudget({ maxCalls: 2 }), 'architect', 'propose', { maxTokens: CEIL });
     assert(t.truncated === true, 'output landing AT the ceiling is flagged as truncated');
     assert(/probably CUT OFF/.test(t.truncationNote), `and the note says so plainly: "${t.truncationNote.slice(0, 55)}..."`);
     assert(t.ok === true && t.content.length > 0,
@@ -526,12 +527,35 @@ const mock = (script, seen = []) => ({
       `no call site in lib/reasoning requests below the ${MIN_OUTPUT_TOKENS}-token floor (found: ${offenders.join(' | ') || 'none'}) — the floor makes such a request harmless, but a number below it is a lie about what the call will do`);
   }
   {
-    // The headroom itself. These are the numbers that were wrong; assert them so a future
-    // "tidy up the magic numbers" pass cannot quietly put a 400 back.
-    const src = require('fs').readFileSync(require('path').join(__dirname, '..', 'lib', 'reasoning', 'steps.js'), 'utf8');
-    const m = src.match(/modelVerifier\(\{[^}]*maxTokens = (\d+)/);
-    assert(m && Number(m[1]) >= 1500,
-      `the PRM verifier's default maxTokens is >= 1500 (found ${m && m[1]}) — at 400 an xhigh reviewer's adaptive thinking consumed the entire budget and returned nothing`);
+    // The PRM verifier no longer carries its own number — the budget.js floor is the policy. So the
+    // assertion is BEHAVIOURAL: drive the real verifier and check what ceiling actually reaches the
+    // runner. The earlier source-regex for `maxTokens = 2000` would have kept passing while the
+    // real call got starved, which is the exact failure a headroom test exists to prevent.
+    let reached = null;
+    await steps.modelVerifier({ agent: 'reviewer' })(M.makeStep({ rationale: 'x' }), {
+      task: 't', budget: createBudget({ maxCalls: 2 }),
+      deps: { runAgent: async (a, t, o) => { reached = o.maxTokens; return { ok: true, content: 'STATUS: CORRECT\nSCORE: 1', inputTokens: 1, outputTokens: 1 }; } },
+    });
+    assert(reached === MIN_OUTPUT_TOKENS,
+      `the PRM verifier's call reaches the runner at the floor (${reached}) — it once passed 400, and an xhigh reviewer's adaptive thinking consumed all of it and returned nothing`);
+    assert(MIN_OUTPUT_TOKENS >= 4096,
+      `the floor is at least executeAgent's own default of 4096 (is ${MIN_OUTPUT_TOKENS}) — a reasoning call must never be provisioned below what an ordinary agent call gets; 2000 left an xhigh evaluator with the 8 characters "VERDICT:"`);
+  }
+  {
+    // The EXACT truncation signal now beats the heuristic. executeAgent passes the API's stop_reason
+    // through; `max_tokens` there is not a guess, and it fires even when output is nowhere near the
+    // 95% line — which is precisely the 8-char `VERDICT:` case, where the heuristic would have needed
+    // the token count and the count alone is ambiguous.
+    const cut = await guardedCall(
+      { runAgent: async () => ({ ok: true, content: 'VERDICT:', inputTokens: 900, outputTokens: 4096, stopReason: 'max_tokens', truncated: true }) },
+      createBudget({ maxCalls: 2 }), 'reviewer', 't', { maxTokens: 8000 });
+    assert(cut.truncated === true, 'stop_reason=max_tokens flags truncation regardless of where the count sits against the ceiling');
+    const fine = await guardedCall(
+      { runAgent: async () => ({ ok: true, content: 'VERDICT: PASS', inputTokens: 900, outputTokens: 4096, stopReason: 'end_turn', truncated: false }) },
+      createBudget({ maxCalls: 2 }), 'reviewer', 't', { maxTokens: 4096 });
+    assert(!fine.truncated,
+      'a reply that ended at end_turn is NOT flagged even though its count sits exactly at the ceiling — the exact signal wins over the heuristic, which would otherwise mark finished work as cut off');
+    assert(fine.stopReason === 'end_turn', 'and the stop reason itself rides through to the caller');
   }
 
   // =============================================================================================
