@@ -17,4 +17,5 @@ assert(/usage:/.test(usage), 'an unknown command prints usage and exits non-zero
 const src = require('fs').readFileSync(path.join(__dirname, 'intel-brief-compare.js'), 'utf8');
 assert(/Authorization: `Bearer \$\{tok\}`/.test(src) && !/execSync|spawn|curl/.test(src),
   'the trigger uses fetch() with the token in-process — no shell, no curl, so it never reaches argv or a process list');
+assert(/task: def.hermes/.test(src), 'the trigger sends task (the route 400s without it) — first live attempt failed exactly this way');
 done();

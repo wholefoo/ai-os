@@ -98,7 +98,9 @@ async function run(mode) {
   const res = await fetch(`${BASE}/api/hermes/delegate`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${tok}` },
-    body: JSON.stringify({ mode: def.hermes }),
+    // `task` is required by the route (400 without it). The intel-brief branches treat a task equal
+    // to the mode name as "no operator focus note", so sending the mode name IS the neutral value.
+    body: JSON.stringify({ mode: def.hermes, task: def.hermes }),
   });
   if (!res.ok) { console.error(`trigger failed: HTTP ${res.status} ${(await res.text().catch(() => '')).slice(0, 200)}`); process.exit(1); }
   const j = await res.json().catch(() => ({}));
