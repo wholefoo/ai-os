@@ -1,18 +1,27 @@
 // SCHEDULED PRICE CHANGES ARE ENFORCED, NOT REMEMBERED.
 //
-// WHY THIS FILE EXISTS. server.js's COST_RATES carried this, in prose, for two months:
+// WHY THIS FILE EXISTS — AND WHY ITS FIRST VERSION WAS WRONG. server.js's COST_RATES carried this,
+// in prose, from 2026-07-01:
 //
 //     INTRODUCTORY $2/$10 per 1M through 2026-08-31, then reverts to $3/$15 on 2026-09-01
 //     — bump these to 3.00/15.00 on that date.
 //
-// The date arrived. Nobody bumped them. Sonnet 5 calls were billed into the ledger at two-thirds of
-// their real cost until 2026-09-02, and NOTHING REPORTED IT — under-reporting spend is invisible by
-// construction, because the number that would have warned you is the number that is wrong. The
-// budget dashboard read healthy the entire time. (Same shape as the provider-limit incident: AI OS's
-// own budget guard was honest and still told you nothing, because it was measuring the wrong ceiling.)
+// On 2026-09-02 this file was written to ENFORCE that: the date had arrived, the rates were still
+// $2/$10, and the conclusion was "under-reported for two days, invisible by construction". Guard,
+// mutation test, commit message. All of it built on a forecast.
 //
-// A dated obligation that lives only in a comment is not a reminder, it is a hope that someone reads
-// the right line on the right day.
+// Anthropic had CANCELLED the increase on 2026-08-10 — release notes, verbatim: "the previously
+// scheduled increase to $3 / $15 per MTok on September 1, 2026 will not occur." The comment, the
+// claude-api skill's pricing cache (2026-06-24), and the engineer all carried the stale schedule
+// forward. So for ~24 hours the guard enforced the WRONG price, in the over-reporting direction,
+// with exactly the invisibility it was written to prevent. It was caught by the compiled intel brief
+// (lib/intel-brief-compiled.js) reading the provider's own changelog — one $0.07 model call.
+//
+// TWO LESSONS, both kept: a dated obligation living only in a comment is a hope, not a reminder —
+// so the marker mechanism stays. AND a schedule baked into code assumes the future arrives as
+// scheduled; vendors cancel things. So a marker must record a VERIFIED fact with the date it became
+// true, not a forecast — and price facts come from the primary source, which the compiled brief now
+// reads daily. If it ever reports a Sonnet 5 price change, this file is what to update.
 //
 // HOW IT WORKS. Any rate with a scheduled change carries a machine-readable marker directly above it:
 //
@@ -109,16 +118,23 @@ for (const m of markers) {
     // Dormant, and it must STAY dormant — a marker that fires early would push a price change before
     // the vendor actually made it, which over-reports spend just as silently as the reverse.
     const wrongAlready = affected.filter((k) => rates[k].input === m.input && rates[k].output === m.output);
-    assert(wrongAlready.length === 0 || true, `future change for ${m.prefix} on ${m.date} is dormant (${affected.length} keys watched)`);
+    // No assertion on the rates here on purpose: a dormant marker constrains nothing yet. Logged so a
+    // reader can see it is being watched, which is all a future change can honestly claim.
+    console.log(`  info: future change for ${m.prefix} on ${m.date} is dormant (${affected.length} keys watched)`);
   }
 }
 
 console.log(`  info: ${markers.length} RATE-CHANGE marker(s) — ${due} due and enforced, ${pending} dormant (today ${today})`);
 
 // --- the specific obligation that caused this file ------------------------------------------------
+// THE OBLIGATION THAT CAUSED THIS FILE WAS ITSELF WRONG. On 2026-09-02 these asserted $3/$15 —
+// "the intro expired 2026-08-31 and was missed by two days". Anthropic had cancelled that increase
+// on 2026-08-10. The guard enforced a stale forecast for 24 hours, in the over-reporting direction,
+// and was caught by the compiled intel brief reading the provider's own changelog. The assertion now
+// pins the VERIFIED price. Its marker in server.js carries the date it became standard.
 for (const tier of ['sonnet-5-xhigh', 'sonnet-5-high', 'sonnet-5-medium', 'sonnet-5-low']) {
-  assert(rates[tier] && rates[tier].input === 3.00 && rates[tier].output === 15.00,
-    `${tier} is $3/$15 — the introductory $2/$10 expired 2026-08-31 and was missed by two days`);
+  assert(rates[tier] && rates[tier].input === 2.00 && rates[tier].output === 10.00,
+    `${tier} is $2/$10 — the "scheduled" rise to $3/$15 was CANCELLED by Anthropic on 2026-08-10 (release notes), and a guard that enforced the cancelled schedule over-billed for a day`);
 }
 
 // The superseded Opus 4.8 rows must survive. Deleting them would make every historical ledger entry

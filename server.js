@@ -4865,26 +4865,29 @@ const COST_RATES = {
   'opus-4.8-high':     { input: 5.00,  output: 25.00 },
   'opus-4.8-medium':   { input: 5.00,  output: 25.00 },
   'opus-4.8-low':      { input: 5.00,  output: 25.00 },
-  // Sonnet 5 — the cost-efficient reasoning tier (settings.ai.reasoning_mode). Standard pricing
-  // $3/$15 per 1M. The INTRODUCTORY $2/$10 ran through 2026-08-31 and these were raised on
-  // 2026-09-02. (Sonnet 5's newer tokenizer emits ~30% more tokens for the same text; the ledger
-  // counts actual API-reported tokens, so the rate needs no adjustment for that — but effective
-  // cost-per-task runs a bit above the headline rate delta vs Opus.)
+  // Sonnet 5 — the cost-efficient reasoning tier (settings.ai.reasoning_mode). $2/$10 per 1M.
   //
-  // ⚠️ IT WAS DUE ON 2026-09-01 AND WAS MISSED BY TWO DAYS. Every Sonnet 5 call in that window was
-  // billed into the ledger at two-thirds of its real cost, and nothing anywhere reported it —
-  // under-reporting spend is invisible by construction, because the number that would have warned
-  // you IS the number that is wrong. The reminder existed only as prose in this comment, which is
-  // to say it existed only in whoever happened to read it on the right day.
+  // ⚠️ THIS WAS WRONG FOR 24 HOURS IN THE OTHER DIRECTION, AND THE STORY MATTERS MORE THAN THE NUMBER.
+  // A comment written 2026-07-01 said "introductory $2/$10 through 2026-08-31, then $3/$15 — bump on
+  // that date". On 2026-09-02 it was bumped, with a guard, a mutation test, and a commit message
+  // about invisible under-reporting. But Anthropic had CANCELLED the increase on 2026-08-10
+  // (release notes, verbatim: "the previously scheduled increase to $3 / $15 per MTok on September 1,
+  // 2026 will not occur"). The comment, the claude-api skill's cached pricing table (2026-06-24), the
+  // eleven-call intel brief with its July knowledge packs, and the engineer all carried the stale
+  // schedule forward. So from the 09-02 deploy until this fix, every Sonnet 5 call was ledgered at
+  // 1.5× its real cost — over-reporting, with the same invisibility as under-reporting.
   //
-  // The RATE-CHANGE marker below is machine-readable and tools/test-rate-schedule.js enforces it:
-  // once the date passes, the suite FAILS until the rates match. A dated obligation that lives only
-  // in a comment is not a reminder, it is a hope.
-  // RATE-CHANGE: 2026-09-01 sonnet-5 -> 3.00/15.00
-  'sonnet-5-xhigh':    { input: 3.00,  output: 15.00 },
-  'sonnet-5-high':     { input: 3.00,  output: 15.00 },
-  'sonnet-5-medium':   { input: 3.00,  output: 15.00 },
-  'sonnet-5-low':      { input: 3.00,  output: 15.00 },
+  // WHAT CAUGHT IT: the compiled intel brief (lib/intel-brief-compiled.js) — ONE $0.07 model call
+  // reading the provider's own changelog — on its second live run. A scheduled obligation baked into
+  // code assumes the future arrives as scheduled; vendors cancel things. The marker below now records
+  // the TRUE current price with the date it became standard, so the guard enforces a verified fact
+  // rather than a forecast. The general rule: price facts come from the primary source, not from a
+  // comment about what the primary source said two months ago.
+  // RATE-CHANGE: 2026-08-10 sonnet-5 -> 2.00/10.00
+  'sonnet-5-xhigh':    { input: 2.00,  output: 10.00 },
+  'sonnet-5-high':     { input: 2.00,  output: 10.00 },
+  'sonnet-5-medium':   { input: 2.00,  output: 10.00 },
+  'sonnet-5-low':      { input: 2.00,  output: 10.00 },
   // Fable 5 — Anthropic's most capable model, an opt-in premium override (e.g. Web Studio design).
   // $10/$50 per 1M (flat across effort tiers), verified against docs.claude.com/pricing 2026-07-05.
   'fable-5-xhigh':     { input: 10.00, output: 50.00 },
