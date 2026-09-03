@@ -118,7 +118,10 @@ const iso = (e) => e.map((x) => x.date);
     seen.push({ url, opts });
     const r = script(url);
     if (r instanceof Error) throw r;
-    return { status: 200, statusText: 'OK', body: r };
+    // The REAL safeFetch returns the body STRING. The first version of this mock returned {status, body}
+    // and thereby encoded the exact bug that shipped — a mock that matches your assumption instead of
+    // the real contract proves nothing. String it is.
+    return r;
   };
   const sources = [
     { provider: 'Healthy',  url: 'https://a.example/changelog' },
@@ -142,7 +145,7 @@ const iso = (e) => e.map((x) => x.date);
   assert(by.Healthy.fetched && by.Healthy.parsed === 1 && by.Healthy.recent === 1 && !by.Healthy.unparsed, 'a healthy source: fetched, parsed, recent');
   assert(by.Quiet.fetched && by.Quiet.parsed === 1 && by.Quiet.recent === 0 && !by.Quiet.unparsed,
     'a QUIET source (entries, none recent) is healthy with recent=0 — this is the genuine "no updates" case');
-  assert(by.Unparsed.fetched && by.Unparsed.status === 200 && by.Unparsed.parsed === 0 && by.Unparsed.unparsed === true,
+  assert(by.Unparsed.fetched && by.Unparsed.parsed === 0 && by.Unparsed.unparsed === true,
     'a page that fetched 200 but yielded ZERO dated entries is flagged UNPARSED — the markup changed, the news did not');
   assert(by.Quiet.unparsed === false && by.Unparsed.recent === 0 && by.Quiet.recent === 0,
     'quiet and unparsed BOTH have recent=0 — the `unparsed` flag is the only thing that tells them apart, which is why it exists');

@@ -142,10 +142,11 @@ async function probe() {
     let challenge = false;
     try {
       const res = await safeFetch(r.url, { timeoutMs: 15000, maxBytes: 2_000_000, accept: 'text/html', headers: { 'Accept-Language': 'en-US,en;q=0.9' } });
-      const text = C.htmlToText(res.body);
+      const body = typeof res === 'string' ? res : (res && res.body) || '';   // safeFetch returns the STRING
+      const text = C.htmlToText(body);
       head = text.slice(0, 200).replace(/s+/g, ' ');
-      challenge = /just a moment|checking your browser|enable javascript|cf-chl|attention required|access denied|verify you are human/i.test(res.body);
-      console.log(`${r.provider.padEnd(11)} HTTP ${res.status}  body ${String(res.body.length).padStart(7)}b  dated ${String(r.parsed).padStart(3)}  recent ${r.recent}${r.unparsed ? '  UNPARSED' : ''}${challenge ? '  <<< BOT CHALLENGE PAGE' : ''}${r.error ? '  ERROR ' + r.error : ''}`);
+      challenge = /just a moment|checking your browser|enable javascript|cf-chl|attention required|access denied|verify you are human/i.test(body);
+      console.log(`${r.provider.padEnd(11)} HTTP ${typeof res === 'string' ? 200 : res.status}  body ${String(body.length).padStart(7)}b  dated ${String(r.parsed).padStart(3)}  recent ${r.recent}${r.unparsed ? '  UNPARSED' : ''}${challenge ? '  <<< BOT CHALLENGE PAGE' : ''}${r.error ? '  ERROR ' + r.error : ''}`);
       console.log(`             ${JSON.stringify(head)}`);
     } catch (e) {
       console.log(`${r.provider.padEnd(11)} FETCH THREW: ${e.message}`);
