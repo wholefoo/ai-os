@@ -6483,6 +6483,7 @@ async function dispatchSkillRun({ agent, skill, task }) {
 // .docx). Doesn't fit dispatchSkillRun's single-agent shape, but mirrors its history/broadcast
 // contract exactly so the Schedules UI treats both identically.
 const intelBrief = require('./lib/intel-brief');
+const intelBriefCompiled = require('./lib/intel-brief-compiled');
 const INTEL_BRIEF_DIR = path.join(BASE, 'data', 'intel-briefs');
 let intelBriefRunning = false; // one at a time — a run is ~11 model calls
 async function dispatchIntelBriefRun() {
@@ -6515,6 +6516,43 @@ async function dispatchIntelBriefRun() {
     runEntry.completedAt = new Date().toISOString();
     broadcast({ event: 'fleet_update', data: { agent: 'comms-director', status: 'idle' } });
     logActivity('schedule', `comms-director → intel-brief: ${runEntry.status}`);
+  }
+  return runEntry;
+}
+
+// THE EXPERIMENT: the same statement via the three-stage split (lib/intel-brief-compiled.js). Shares
+// the in-progress lock with the eleven-call version so the two can never overlap on the same day's
+// files, and tags the ledger `intel-brief-compiled:*` so one run of each is a real comparison.
+async function dispatchIntelBriefCompiledRun() {
+  const runEntry = { id: uuidv4(), agent: 'comms-director', skill: 'intel-brief-compiled', startedAt: new Date().toISOString(), status: 'running' };
+  scheduleHistory.unshift(runEntry);
+  if (scheduleHistory.length > 100) scheduleHistory.length = 100;
+  if (intelBriefRunning) {
+    runEntry.status = 'failed'; runEntry.error = 'an intel-brief run is already in progress';
+    runEntry.completedAt = new Date().toISOString();
+    return runEntry;
+  }
+  intelBriefRunning = true;
+  broadcast({ event: 'fleet_update', data: { agent: 'comms-director', status: 'running' } });
+  try {
+    const meta = await intelBriefCompiled.runIntelBriefCompiled(
+      { runAgent: (agent, task, opts) => executeAgent(agent, task, opts), log: appendLog, broadcast },
+      { dir: INTEL_BRIEF_DIR }
+    );
+    runEntry.status = 'completed';
+    runEntry.summary = `Compiled intelligence statement written: ${meta.file} (${meta.sourcesHealthy}/${meta.sourcesTotal} sources healthy, ${meta.entriesNew} new entries, 1 model call, ${(meta.cost || 0).toFixed(4)})`;
+    const note = `📄 Compiled Intelligence Statement ready — ${meta.file} (1 model call). Download it from the dashboard → Schedules → Intel Briefs.`;
+    sendTelegramMessage(note).catch(() => {});
+    sendSlackMessage(note).catch(() => {});
+  } catch (e) {
+    runEntry.status = 'failed';
+    runEntry.error = e.message;
+    appendLog(`[intel-brief-compiled] FAILED: ${e.message}`);
+  } finally {
+    intelBriefRunning = false;
+    runEntry.completedAt = new Date().toISOString();
+    broadcast({ event: 'fleet_update', data: { agent: 'comms-director', status: 'idle' } });
+    logActivity('schedule', `comms-director → intel-brief-compiled: ${runEntry.status}`);
   }
   return runEntry;
 }
@@ -9626,6 +9664,7 @@ const HERMES_REAL_SKILLS = [
   { name: 'news-brief', description: 'AI/tech intelligence sweep via the scout agent (also runs on its own daily schedule)', real: true },
   { name: 'uptime-check', description: 'Real health-snapshot review via the sysadmin agent (also runs every 30 min on its own schedule)', real: true },
   { name: 'intel-brief', description: 'Daily Intelligence Statement — 7 LLM consultants → Orchestrator/Architect review → Communications Director .docx (also runs daily at 8 AM)', real: true },
+  { name: 'intel-brief-compiled', description: 'THE EXPERIMENT: the same statement via the three-stage split — deterministic changelog fetch → ONE comms-director call → .docx', real: true },
 ];
 
 // Simulate Hermes connection check (except HERMES_REAL_SKILLS, which are real)
@@ -9664,7 +9703,7 @@ app.get('/api/hermes/status', (req, res) => {
 app.post('/api/hermes/delegate', requireAdmin, (req, res) => {
   const errors = validateBody(req.body, {
     task: { type: 'string', required: true, maxLength: 2000 },
-    mode: { type: 'string' }, // 'background' | 'walkaway' | 'cron' | 'dev-project' | 'news-brief' | 'uptime-check' | 'intel-brief'
+    mode: { type: 'string' }, // 'background' | 'walkaway' | 'cron' | 'dev-project' | 'news-brief' | 'uptime-check' | 'intel-brief' | 'intel-brief-compiled'
   });
   if (errors) return res.status(400).json({ error: errors.join(', ') });
 
@@ -9748,6 +9787,23 @@ app.post('/api/hermes/delegate', requireAdmin, (req, res) => {
         delegated.log.push(`Run failed: ${runEntry.error}`);
       }
       broadcast({ event: 'hermes_complete', data: delegated });
+    });
+  } else if (mode === 'intel-brief-compiled') {
+    // THE EXPERIMENT — same document, three-stage split, one model call. See lib/intel-brief-compiled.js.
+    delegated.status = 'running';
+    delegated.progress = 20;
+    delegated.log.push('Handed off to the compiled (fetch → one comms-director call → docx) pipeline');
+    broadcast({ event: 'hermes_progress', data: delegated });
+    dispatchIntelBriefCompiledRun().then((runEntry) => {
+      if (runEntry.status === 'completed') {
+        delegated.status = 'complete'; delegated.progress = 100; delegated.completedAt = new Date().toISOString();
+        delegated.log.push('Statement written — download the .docx from Schedules → Intel Briefs');
+        delegated.result = runEntry.summary;
+      } else {
+        delegated.status = 'failed';
+        delegated.log.push(`Run failed: ${runEntry.error}`);
+      }
+      broadcast({ event: 'hermes_progress', data: delegated });
     });
   } else if (mode === 'intel-brief') {
     // REAL dispatch (see HERMES_REAL_SKILLS) — same multi-step run the 8 AM schedule fires
