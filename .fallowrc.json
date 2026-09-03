@@ -118,6 +118,8 @@
     "tools/test-rate-schedule.js",
     "tools/verify-reasoning-live.js",
     "tools/test-intel-brief-compiled.js",
+    "tools/test-intel-brief-compare.js",
+    "tools/intel-brief-compare.js",
     "tools/test-mcp-client.js",
     "tools/test-seo-skipped-dimension.js",
     "tools/test-seo-unmeasured.js",
