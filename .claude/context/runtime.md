@@ -29,7 +29,7 @@ The system uses a multi-engine architecture for cost-optimized task routing:
 
 ## Cost Tracking
 Real-time token usage and API spend monitoring across all execution engines:
-- Tier tracking keyed by effective model+effort: Strategic (Opus 5 xhigh), Professional/Scout (Sonnet 5 high/low in `balanced` mode, else Opus), Economy (DeepSeek). Rates via `costRateFor(model)` — unknown models warn once instead of silently billing at the Opus rate. Sonnet 5 = $2/$10 introductory through 2026-08-31, then $3/$15.
+- Tier tracking keyed by effective model+effort: Strategic (Opus 5 xhigh), Professional/Scout (Sonnet 5 high/low in `balanced` mode, else Opus), Economy (DeepSeek). Rates via `costRateFor(model)` — unknown models warn once instead of silently billing at the Opus rate. Sonnet 5 = $2/$10 — Anthropic made the introductory price PERMANENT on 2026-08-10 and cancelled the scheduled rise to $3/$15 (release notes, verbatim: "will not occur"). A comment carrying the old schedule caused a day of 1.5× over-billing on 2026-09-02 — price facts come from the primary source, never from a note about what it said.
 - Budget alerts at 75% threshold with auto-downgrade recommendations
 - Per-agent and per-skill cost attribution
 - Daily/weekly/monthly budget caps configurable via API

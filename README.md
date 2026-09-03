@@ -121,10 +121,24 @@ A clone is a replica of one specific person — their voice, expertise, decision
 - **C2PA-Vocabulary-Aligned** — Uses C2PA vocabulary for interoperability; this is NOT certified C2PA
 - **Re-Sign on Rebuild** — Provenance is regenerated and re-signed whenever a site is rebuilt
 
+### The Management Layer
+- **The system above the agents** — approval gates, written standards, oversight metrics, and recovery paths: what runs, what good looks like, who signs off, and what happens when it goes wrong. AI OS ships it as the product; see [Oversight & Approvals](/docs/oversight)
+
 ### Auto-Mode Approval Gating
 - **Human-in-the-Loop** — Irreversible or outward-facing actions are server-enforced behind an approval gate; agents propose, a human approves before execution
 - **Risk-Scored Actions** — Each action is risk-scored, with secrets stripped from the audit trail
 - **Agent-Buyable Offers** — High-impact purchases (e.g. the Managed Website add-on) route through the gate rather than running unattended
+
+### Process-Verified Reasoning
+- **Steps graded before the next runs** — an agent's work is decomposed into steps, each verified before the next; a step's proposed action **cannot execute unless the step verified** (structural, not a convention), and an ambiguous verdict is never a pass
+- **Three patterns for any pipeline stage** — `verified-steps`, `reflexion` (a retry that names what went wrong), `tree-search` (branch, score, backtrack out of dead ends); each turns one call into several, so each carries a hard call budget and reports what it spent
+- **Checked against a live model, not a mock** — the parsers' assumptions about reply shapes were verified in eight live runs; the checks are repeatable (`tools/verify-reasoning-live.js`)
+- **Truncation is reported, not hidden** — every agent result carries the API's own stop reason, so a cut-off reply is flagged rather than passed as complete
+
+### Automation Authoring (Agents as Overseers)
+- **For repeatable work, the agent writes the automation once and reviews its output** instead of re-deriving the procedure with a model every run; the model keeps only the parts that need judgment
+- **Measured on a real task** — the daily intelligence brief, redrawn as deterministic changelog fetch → dedupe → one model call: **16× cheaper, 14.5× fewer tokens, ~6× faster**, and more grounded because it reads the providers' own changelogs rather than a model's recollection (one task, one day; available as a mode alongside the original pipeline)
+- **Honesty rules built in** — a source that fetches but yields nothing is reported *unparsed*, never "no updates"; per-source health is written into the run record for the overseeing agent to read
 
 ### Self-Improve (Grok Build)
 - **Grok Build (the dev-architect-grok agent)** — Plans upgrades to this platform and can propose a distribution blueprint as a draft PR against this repo. Every apply and every PR always requires explicit human approval, regardless of Auto-Mode setting.
@@ -360,17 +374,17 @@ ecosystem.config.js  PM2 process manager config
 
 ## Agent Fleet — 6 AI Models across 4 Routing Tiers
 
-All 70 agents run on **6 AI models** routed through **4 effort/routing tiers**. Claude Opus
-4.8 is the default and runs the three Claude tiers (one model at three effort levels —
-Strategic/xhigh, Professional/high, Scout/low); the remaining models are routed in for
-specialized work. Five additional providers are wired in: OpenAI GPT, Gemini Omni,
+All 70 agents run on **6 AI models** routed through **4 effort/routing tiers**. Claude runs
+the three Claude tiers — in the default `balanced` routing, **Opus 5** for Strategic (xhigh) and
+**Sonnet 5** for Professional (high) and Scout (low); switchable to all-Opus or all-Sonnet in
+Settings. The remaining models are routed in for specialized work. Five additional providers are wired in: OpenAI GPT, Gemini Omni,
 DeepSeek V4, Grok (xAI), and Perplexity.
 
 | Routing Tier | Model(s) | Effort | Count | Role |
 |------|-------|--------|-------|------|
 | Strategic | Claude Opus 5 | xhigh | 6 | Orchestration, architecture, critical review, security audit, Web Studio lead, knowledge taxonomy |
-| Professional | Claude Opus 5 | high | 45 | Research, coding, writing, SEO/AEO, marketing, support, IT, legal, compliance, hosting ops, creative direction, communications, document archiving |
-| Scout | Claude Opus 5 | low | 3 | Fast lookups, triage, scheduled monitoring, social intel |
+| Professional | Claude Sonnet 5 (balanced) / Opus 5 | high | 45 | Research, coding, writing, SEO/AEO, marketing, support, IT, legal, compliance, hosting ops, creative direction, communications, document archiving |
+| Scout | Claude Sonnet 5 (balanced) / Opus 5 | low | 3 | Fast lookups, triage, scheduled monitoring, social intel |
 | Specialized | Gemini Omni / DeepSeek V4 / Grok 4.5 / Grok Build | — | 9 | Creative media (5, Gemini Omni), bulk economy processing (2, DeepSeek V4), realtime web search (1, Grok 4.5), platform-upgrade planning (1, Grok Build) |
 | LLM Consultants | Each provider's own model | high | 7 | On-site provider consultants (Anthropic, OpenAI, Gemini, DeepSeek, Grok, Perplexity, Manus) — release intelligence + AI OS adoption guidance, each answering on its own provider's model |
 | **Total** | | | **70** | |

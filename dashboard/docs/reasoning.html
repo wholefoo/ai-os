@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="icon" href="/favicon.ico" sizes="any">
+  <link rel="icon" type="image/png" sizes="32x32" href="/assets/favicon-32.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="/assets/favicon-16.png">
+  <link rel="apple-touch-icon" sizes="180x180" href="/assets/apple-touch-icon.png">
+  <title>Reasoning &amp; Automation — AI OS Docs</title>
+  <meta name="description" content="How AI OS agents reason and when they stop reasoning: process-verified steps whose actions cannot run unverified, Reflexion and Tree-of-Thoughts patterns for pipelines, and agents that author automations instead of executing them — measured on a real task.">
+  <link rel="canonical" href="https://aiosorchestrationlab.com/docs/reasoning">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/css/landing.css?v=1">
+  <link rel="stylesheet" href="/css/docs.css">
+  <script async src="https://www.googletagmanager.com/gtag/js?id=G-SMHYRX8D4P"></script>
+  <script src="/js/ga-init.js"></script>
+
+  <script type="application/ld+json">{"@context":"https://schema.org","@type":"TechArticle","headline":"Reasoning & Automation — AI OS Docs","description":"How AI OS agents reason and when they stop reasoning: process-verified steps whose actions cannot run unverified, Reflexion and Tree-of-Thoughts patterns for pipelines, and agents that author automations instead of executing them — measured on a real task.","url":"https://aiosorchestrationlab.com/docs/reasoning","author":{"@type":"Organization","name":"AI OS Orchestration Lab"},"publisher":{"@type":"Organization","name":"AI OS Orchestration Lab","url":"https://aiosorchestrationlab.com","logo":{"@type":"ImageObject","url":"https://aiosorchestrationlab.com/assets/logo.png","width":512,"height":512}},"image":{"@type":"ImageObject","url":"https://aiosorchestrationlab.com/assets/og-share.png?v=2","width":1200,"height":630}}</script>
+  <script type="application/ld+json">{"@context":"https://schema.org","@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Home","item":"https://aiosorchestrationlab.com/"},{"@type":"ListItem","position":2,"name":"Documentation","item":"https://aiosorchestrationlab.com/docs/"},{"@type":"ListItem","position":3,"name":"Reasoning & Automation"}]}</script>
+  <script type="application/ld+json">{"@context":"https://schema.org","@type":"FAQPage","mainEntity":[{"@type":"Question","name":"What is process-verified reasoning in AI OS?","acceptedAnswer":{"@type":"Answer","text":"Process-verified reasoning grades each intermediate step of an agent's work before the next step runs, instead of only checking the final answer. In AI OS a step carries a rationale and, optionally, an action; the action cannot execute unless the step verified. That ordering is structural, not a convention. Verification is three-valued — correct, incorrect, or ambiguous — and an ambiguous step is never treated as a pass. Any pipeline stage can use it with pattern: verified-steps."}},{"@type":"Question","name":"What does it mean for AI OS agents to author automations instead of executing tasks?","acceptedAnswer":{"@type":"Answer","text":"For repeatable work with a deterministic middle — fetch, transform, deliver — the agent writes the automation once and reviews its output, rather than re-deriving the procedure with a model on every run. The model handles only the parts that need judgment. Measured on one real task, the daily intelligence brief, the automation-authored version cost 16 times less, used 14.5 times fewer tokens, and was more grounded because it read the providers' own changelogs rather than a model's recollection of them. That is one task on one day, offered as a measurement rather than a guarantee."}},{"@type":"Question","name":"How does AI OS handle a model reply that was cut off?","acceptedAnswer":{"@type":"Answer","text":"Every agent result carries the API's own stop reason, so a reply that hit its token ceiling is reported as truncated rather than passed off as complete. An empty reply is reported as a failure with its likely cause named. Before this, a cut-off answer could parse cleanly and simply be missing its end — the platform met that bug in several disguises before wiring the signal through."}}]}</script>
+</head>
+<body>
+  <nav class="landing-nav">
+    <div class="nav-container">
+      <a href="/" class="nav-brand">
+        <img src="/assets/logo-mark.png" class="nav-logo" alt="" width="24" height="24" decoding="async">
+        <span class="nav-name">AI OS</span>
+      </a>
+      <div class="nav-links">
+        <a href="/">Home</a>
+        <a href="/docs" class="active">Docs</a>
+        <a href="/blog">Blog</a>
+        <a href="/about">About</a>
+        <a href="/corporate-mandate">Corporate Mandate</a>
+        <a href="/contact">Contact</a>
+      </div>
+      <div class="nav-cta">
+        <a href="/login" class="btn-nav-login">Log In</a>
+      </div>
+    </div>
+  </nav>
+
+  <main class="docs-page">
+    <div class="docs-container">
+      <div class="docs-layout">
+        <div class="docs-content">
+          <div class="docs-breadcrumb">
+            <a href="/docs">Docs</a> <span>/</span> Reasoning &amp; Automation
+          </div>
+
+          <h1>Reasoning &amp; Automation</h1>
+          <p class="docs-lead">A language model guesses every token, so every reply carries a margin of error. AI OS treats that as an engineering fact rather than a slogan: it verifies reasoning step by step before anything runs, and for repeatable work it has agents <em>author</em> automations rather than re-derive the procedure on every run. Both are measured, not asserted.</p>
+
+          <h2 id="process-verified-steps">Process-verified steps</h2>
+          <p>Process-verified reasoning grades each intermediate step of an agent's work, not just the final answer. A final answer can be right for the wrong reasons; grading the process catches the broken step where it happens.</p>
+          <p>In AI OS a step has two parts: a <strong>rationale</strong> (the thought) and, optionally, an <strong>action</strong> (the thing the world will feel — a file write, an API call, a command). The verifier grades the rationale <em>before</em> the action is allowed to run. <strong>A step that fails verification has its action dropped, not run-then-regretted.</strong> This is structural: the execute path is unreachable from any state where the step is unverified.</p>
+          <h3 id="three-valued-verdicts">Three-valued verdicts</h3>
+          <p>A verifier answers <code>CORRECT</code>, <code>INCORRECT</code>, or <code>AMBIGUOUS</code>. Ambiguous is a real answer: a step nobody could judge is marked unverified and stays that way, so "checked and fine" and "nobody knows" never blur. A verifier that could not answer at all approves nothing.</p>
+          <h3 id="verifiers">Verifiers are pluggable</h3>
+          <p>A step can be verified by a model, a deterministic rule, or an external checker such as a test run. Rules run first — they are free and cannot be talked out of their answer — and a model is only paid for when the rules have nothing to say.</p>
+
+          <h2 id="reasoning-patterns">Reasoning patterns for pipelines</h2>
+          <p>Three patterns are available to any pipeline stage by name. Each turns one agent call into several, so each carries a hard call budget and reports what it spent.</p>
+          <table class="docs-table">
+            <thead><tr><th>Pattern</th><th>What it does</th><th>Cost shape</th></tr></thead>
+            <tbody>
+              <tr><td><code>verified-steps</code></td><td>Decomposes the task, then executes each step behind the verification gate above.</td><td>1 + 2 calls per step</td></tr>
+              <tr><td><code>reflexion</code></td><td>An actor attempts, an evaluator judges, and on failure a reflector writes one transferable lesson that is carried into the next attempt — a retry that names what went wrong instead of repeating the same coin flip.</td><td>up to 3 calls per attempt</td></tr>
+              <tr><td><code>tree-search</code></td><td>Proposes several candidate next steps, scores them, and searches breadth- or depth-first. A depth-first search that hits a dead end backtracks to the best node it has not yet opened.</td><td>1 + breadth per expansion</td></tr>
+            </tbody>
+          </table>
+          <p>Every model call inside these patterns passes through one meter. A pattern cannot under-provision a call or exceed its budget, because there is no unmetered path to a model.</p>
+          <h3 id="verified-against-a-live-model">Verified against a live model</h3>
+          <p>The patterns depend on a model replying in the shapes the parsers expect. That assumption was tested against a real model rather than a mock: across eight live runs the checks found and fixed a parser too strict for markdown, a call starved of tokens, and a platform-level signal that had been discarded. The final run graded eight formats with zero failures. That is one task on one day — a repeatable check with an exact signal, not a one-time guarantee.</p>
+
+          <h2 id="automation-authoring">Agents author automations</h2>
+          <p>For repeatable work, an agent that re-derives the procedure on every run pays for it twice: it pays tokens every run, and it accepts the model's error margin every run. A deterministic automation, once correct, costs nothing per run and has no margin. So the agent's job for that work is to <strong>write the automation once and review its output</strong>, not to be the automation every time. Same agents, new job: authors, engineers, and overseers.</p>
+          <p>This only applies where the task is deterministic given its inputs. Judgment — a new brief, a support question in someone's own words, a diagnosis — stays with the model. The move is to shrink the model's role inside each recurring task to its irreducibly judgmental core and compile everything around it.</p>
+          <h3 id="measured-on-a-real-task">Measured on a real task</h3>
+          <p>The daily intelligence brief was the test case. The original pipeline made eleven model calls, seven of them agents with web-search tools told to go find their provider's news. The automation-authored version fetches each provider's own changelog deterministically, removes what yesterday already reported, and makes <strong>one</strong> model call to write the statement.</p>
+          <table class="docs-table">
+            <thead><tr><th>Per run, same day</th><th>Eleven-call pipeline</th><th>Automation-authored</th><th>Ratio</th></tr></thead>
+            <tbody>
+              <tr><td>Cost</td><td>$1.10</td><td>$0.07</td><td>16×</td></tr>
+              <tr><td>Tokens</td><td>121,811</td><td>8,383</td><td>14.5×</td></tr>
+              <tr><td>Wall time</td><td>115 s</td><td>about 20 s</td><td>about 6×</td></tr>
+            </tbody>
+          </table>
+          <p>Cost was the smaller half of the result. The automation-authored statement contained 22 current-week entries from primary sources. The eleven-call pipeline's statement said, in its own words, that it had zero live-verified findings and was restating a stale knowledge pack. On its second run the automation-authored brief surfaced a provider pricing change that four other inputs had missed — and it was verified against the provider's release notes before anyone acted on it, because a model's claim about pricing is exactly the kind that needs verifying.</p>
+          <p><strong>Scope:</strong> one task, one day, one run of each. The automation-authored brief is available as a mode alongside the original pipeline. Whether it becomes the daily default is an operator decision.</p>
+          <h3 id="honesty-rules">The honesty rules that make it safe to trust</h3>
+          <ul>
+            <li><strong>Unparsed is not "no updates".</strong> A source that fetches fine but yields no dated entries is reported as unparsed — its page changed, the news did not. A model-driven consultant could not tell those apart; it would report quiet with full confidence.</li>
+            <li><strong>Truncated is not complete.</strong> Every agent result carries the API's own stop reason, so a reply that hit its ceiling is reported as cut off rather than passed as finished. An empty reply is a failure with its likely cause named.</li>
+            <li><strong>Per-source health is written down.</strong> Which sources fetched, parsed, timed out, or changed shape goes into the run's record. That is what the overseeing agent — and the operator — reads.</li>
+          </ul>
+
+          <p class="docs-lead" style="font-size:14px;">Both halves belong to the <a href="/#management-layer">management layer</a>: verification before action, and automation where reasoning is not the job. See also <a href="/docs/oversight">Oversight &amp; Approvals</a> and <a href="/docs/architecture">Architecture</a>.</p>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <footer class="site-footer">
+    <div class="footer-container">
+      <div class="footer-brand">
+        <img src="/assets/logo-mark.png" class="nav-logo" alt="" width="24" height="24" decoding="async">
+        <span class="nav-name">AI OS</span>
+        <p class="footer-tagline">The Agentic Operating System</p>
+        <p class="footer-mission">I fully recognize that in my God-led business, there is no separation between my spiritual life and my professional life. My enterprise is a direct reflection of my covenant with God. <a href="/corporate-mandate">more&nbsp;.&nbsp;.&nbsp;.</a></p>
+      </div>
+      <div class="footer-links">
+        <div class="footer-col">
+          <h4>Product</h4>
+          <a href="/#features">Features</a>
+          <a href="/#pricing">Pricing</a>
+          <a href="/docs">Documentation</a>
+        </div>
+        <div class="footer-col">
+          <h4>Resources</h4>
+          <a href="/blog">Blog</a>
+          <a href="/about">About</a>
+          <a href="/corporate-mandate">Corporate Mandate</a>
+          <a href="/contact">Contact</a>
+        </div>
+        <div class="footer-col">
+          <h4>Legal</h4>
+          <a href="/trust">Trust &amp; Security</a>
+          <a href="/terms">Terms of Service</a>
+          <a href="/privacy">Privacy Policy</a>
+        </div>
+      </div>
+    </div>
+    <div class="footer-bottom">
+      <p>&copy; 2026 AI OS Orchestration Lab. All rights reserved.</p>
+    </div>
+  </footer>
+</body>
+</html>
