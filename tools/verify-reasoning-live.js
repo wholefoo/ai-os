@@ -26,7 +26,7 @@
 //  in CI. It also defaults to a DRY RUN that makes zero calls and just prints the plan.
 //
 //    node tools/verify-reasoning-live.js              # dry run — 0 calls, 0 cost, shows the plan
-//    node tools/verify-reasoning-live.js --run        # ~8 real calls, a few cents
+//    node tools/verify-reasoning-live.js --run        # ~12 real calls, ~$0.30
 //    node tools/verify-reasoning-live.js --run --base http://localhost:3000
 //
 //  RUN IT ON THE VPS. This developer box has a stale truncated key in ~/.claude/settings.json that
@@ -196,7 +196,7 @@ function makeRunAgent(token) {
 
   const runAgent = makeRunAgent(token);
   const deps = { runAgent, broadcast: () => {}, log: () => {} };
-  const budget = createBudget({ maxCalls: 14 });   // a hard ceiling on what this can ever spend
+  const budget = createBudget({ maxCalls: 16 });   // hard ceiling: ~10 for the three engines + 2 for the forced reflect path in [2b]
 
   const TASK = 'Explain why a nightly export job might produce no output while reporting no errors.';
 
@@ -206,6 +206,34 @@ function makeRunAgent(token) {
 
     console.log('[2/3] reflexion engine (actor + evaluator + reflector)...');
     await reflexion.reflexionLoop(TASK, deps, { maxAttempts: 1, budget });
+
+    // ── [2b] THE REFLECTOR IS ONLY REACHABLE THROUGH A FAILURE ──
+    // reflexionLoop calls the reflector only when the evaluator says FAIL. A competent model on a
+    // plain task passes first time, so the reflector is never exercised and the run stays PARTIAL
+    // forever — "never reached" three runs running, for the OPPOSITE reason each time (run 4: the
+    // evaluator died; runs 5-6: the actor simply passed). Neither is evidence about the reflector.
+    //
+    // So force the path ONCE: intercept the first evaluator call with a synthetic FAIL that never
+    // touches a model and is never graded, so the REAL reflector is called and its reply can be.
+    // The real evaluator's format was already graded in [2/3]; this does not replace that.
+    const reflectionReached = () => captured.some((c) => /Write ONE sentence/.test(c.prompt));
+    if (!reflectionReached()) {
+      console.log('[2b/3] reflector not reached (actor passed first time) — forcing the reflect path once...');
+      let intercepted = false;
+      const forcing = {
+        ...deps,
+        runAgent: async (agent, task, opts) => {
+          if (!intercepted && /Evaluate the attempt/.test(task)) {
+            intercepted = true;
+            // Synthetic and LOCAL: costs nothing, hits no model, and is never pushed to `captured`
+            // (only makeRunAgent pushes there), so it cannot be mistaken for a model reply.
+            return { ok: true, content: 'VERDICT: FAIL\nSCORE: 0.2\nCRITIQUE: [synthetic — injected by verify-reasoning-live.js to force the reflect path]', inputTokens: 0, outputTokens: 0 };
+          }
+          return runAgent(agent, task, opts);
+        },
+      };
+      await reflexion.reflexionLoop(TASK, forcing, { maxAttempts: 1, budget });
+    }
 
     console.log('[3/3] tree-of-thoughts engine (propose + value scorer)...');
     // NO token overrides. An earlier version passed proposeTokens: 500 / scoreTokens: 300 — the
@@ -288,7 +316,20 @@ function makeRunAgent(token) {
   }
 
   for (const id of unseen) {
-    console.log(`SKIP ${id.padEnd(18)} never exercised — the engine short-circuited before reaching it`);
+    // "Never reached" has two OPPOSITE causes that printed identically for three runs: the step
+    // upstream FAILED (run 4 — the evaluator returned nothing), or the step upstream SUCCEEDED so
+    // there was nothing to do (runs 5-6 — the actor passed first time, so no reflection was
+    // needed). One is a defect, the other is the engine working. A diagnostic that gives them the
+    // same line has told you nothing. Read the upstream evaluator's reply and say which it was.
+    let why = 'the engine short-circuited before reaching it';
+    if (id === 'reflection') {
+      const evals = captured.filter((c) => /Evaluate the attempt/.test(c.prompt));
+      const last = evals[evals.length - 1];
+      if (!last) why = 'no evaluator call happened at all — the actor call before it must have failed';
+      else if (!last.ok || !last.content.trim()) why = `UPSTREAM FAILURE — the evaluator returned ${last.ok ? 'an empty reply' : `an error (${last.error})`}, so the loop never got a verdict to reflect on`;
+      else if (reflexion.parseEvaluation(last.content).passed) why = 'the actor PASSED on its first attempt, so there was nothing to reflect on — this is the engine working, not failing (and [2b] should have forced the path; if you see this line, [2b] did not run)';
+    }
+    console.log(`SKIP ${id.padEnd(18)} never exercised — ${why}`);
   }
 
   const cost = captured.reduce((s, c) => s + (c.cost || 0), 0);
