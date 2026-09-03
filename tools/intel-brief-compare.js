@@ -134,9 +134,8 @@ async function probe() {
   const C = require('../lib/intel-brief-compiled');
   const { safeFetch } = require('../lib/net/safe-fetch');
   const src = fs.readFileSync(path.join(ROOT, 'lib', 'net', 'safe-fetch.js'), 'utf8');
-  const ua = (src.match(/DEFAULT_UAs*=s*['"`]([^'"`]+)/) || [])[1] || '(unknown)';
-  console.log('safeFetch default User-Agent:', ua, '
-');
+  const ua = (src.match(/DEFAULT_UA\s*=\s*['"`]([^'"`]+)/) || [])[1] || '(unknown)';
+  console.log('safeFetch default User-Agent:', ua, '\n');
   const rows = await C.fetchAllSources({ fetch: safeFetch, now: Date.now() });
   for (const r of rows) {
     let head = '';
