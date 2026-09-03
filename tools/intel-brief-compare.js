@@ -156,6 +156,5 @@ async function probe() {
 const [cmd, arg] = process.argv.slice(2);
 if (cmd === 'probe') { probe(); }
 else if (cmd === 'run') run(arg || 'compiled');
-if (cmd === 'run') run(arg || 'compiled');
 else if (cmd === 'report' || !cmd) report();
 else { console.error('usage: node tools/intel-brief-compare.js run compiled|baseline  |  report  |  probe'); process.exit(2); }
