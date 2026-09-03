@@ -124,7 +124,39 @@ async function run(mode) {
   process.exit(1);
 }
 
+// `probe`: fetch every source through the SAME safeFetch production uses and show what came back.
+// Exists because the first VPS run reported all seven sources UNPARSED while the identical extractor
+// parsed all seven from the dev box minutes earlier — and the dev check had used Node's global
+// fetch(), not safeFetch. Different user-agent, different redirect handling: a seam nobody tested.
+// This prints status, body length, the first 200 chars of TEXT, and whether the page looks like a
+// bot challenge, so the difference is READ rather than guessed at.
+async function probe() {
+  const C = require('../lib/intel-brief-compiled');
+  const { safeFetch } = require('../lib/net/safe-fetch');
+  const src = fs.readFileSync(path.join(ROOT, 'lib', 'net', 'safe-fetch.js'), 'utf8');
+  const ua = (src.match(/DEFAULT_UAs*=s*['"`]([^'"`]+)/) || [])[1] || '(unknown)';
+  console.log('safeFetch default User-Agent:', ua, '
+');
+  const rows = await C.fetchAllSources({ fetch: safeFetch, now: Date.now() });
+  for (const r of rows) {
+    let head = '';
+    let challenge = false;
+    try {
+      const res = await safeFetch(r.url, { timeoutMs: 15000, maxBytes: 2_000_000, accept: 'text/html', headers: { 'Accept-Language': 'en-US,en;q=0.9' } });
+      const text = C.htmlToText(res.body);
+      head = text.slice(0, 200).replace(/s+/g, ' ');
+      challenge = /just a moment|checking your browser|enable javascript|cf-chl|attention required|access denied|verify you are human/i.test(res.body);
+      console.log(`${r.provider.padEnd(11)} HTTP ${res.status}  body ${String(res.body.length).padStart(7)}b  dated ${String(r.parsed).padStart(3)}  recent ${r.recent}${r.unparsed ? '  UNPARSED' : ''}${challenge ? '  <<< BOT CHALLENGE PAGE' : ''}${r.error ? '  ERROR ' + r.error : ''}`);
+      console.log(`             ${JSON.stringify(head)}`);
+    } catch (e) {
+      console.log(`${r.provider.padEnd(11)} FETCH THREW: ${e.message}`);
+    }
+  }
+}
+
 const [cmd, arg] = process.argv.slice(2);
+if (cmd === 'probe') { probe(); }
+else if (cmd === 'run') run(arg || 'compiled');
 if (cmd === 'run') run(arg || 'compiled');
 else if (cmd === 'report' || !cmd) report();
-else { console.error('usage: node tools/intel-brief-compare.js run compiled|baseline  |  report'); process.exit(2); }
+else { console.error('usage: node tools/intel-brief-compare.js run compiled|baseline  |  report  |  probe'); process.exit(2); }
