@@ -14,6 +14,13 @@
  *   R3 shell-injection (ERROR) — execSync/exec with an interpolated template string (use execFile/spawn arrays).
  *   R4 jsonld-breakout (ERROR) — set:html={JSON.stringify(...)} without a `< -> <` escape (generated-site XSS).
  *   R5 innerhtml-unescaped (WARN) — .innerHTML assigned a template literal with a ${...} not wrapped in escapeHtml/esc.
+ *   R6 handbook-privilege (ERROR) — an agent handbook (.claude/agents/*.md) whose PRIVILEGE frontmatter
+ *                              (tools:, gates:, escalates_to:) differs from the committed version. Prose
+ *                              edits and renames pass; a widened tool list, an emptied gate, or a rerouted
+ *                              escalation must be a human decision. Acknowledge one deliberately with
+ *                              HANDBOOK_PRIVILEGE_OK=1 for that run. Covered by --hook AND --handbooks
+ *                              (the latter runs from the test suite, so an edit made by a script rather
+ *                              than the Edit tool is caught at the gate, not just in review).
  *
  * Suppress a single line with a trailing:  // seclint-ok: <reason>   (or // seclint-disable-line [rule])
  *
@@ -21,6 +28,7 @@
  *   node tools/seclint.js [file ...]     scan given files (or the default set if none given)
  *   node tools/seclint.js --ci           scan the default set; exit 1 if any ERROR (WARN never fails)
  *   node tools/seclint.js --hook         read {tool_input:{file_path}} from stdin; scan that one file
+ *   node tools/seclint.js --handbooks    R6 over every handbook vs HEAD; exit 1 on an unacknowledged change
  */
 
 const fs = require('fs');
@@ -445,7 +453,77 @@ const fileRules = [
   },
 ];
 
+// ---- R6 handbook-privilege ----------------------------------------------------------------------
+//
+// WHY A DIFF AGAINST HEAD AND NOT A PATTERN. Every other rule judges a file on its own. A handbook's
+// `tools: [Read, Write, Bash]` is not wrong in itself — devops legitimately has it — so the only
+// question that matters is "did this CHANGE, and did a person decide it?". The committed version is
+// the last state a person reviewed, so that is the baseline.
+//
+// WHAT COUNTS AS PRIVILEGE. Exactly the frontmatter keys an agent could use to widen its own reach:
+// what it may call (tools), what it may do without approval (gates), and who it answers to
+// (escalates_to). `model:` is deliberately absent: a model swap is a cost decision, not an escalation,
+// and including it would make routine tier changes trip a security rule until people stopped reading it.
+//
+// A NEW handbook is reported for every privilege line it declares — a fresh agent with Bash and no
+// gates is the same grant as adding Bash to an old one, and a rule that only diffed existing files
+// would wave it through.
+const HANDBOOK_RE = /[\\/]\.claude[\\/]agents[\\/][^\\/]+\.md$/;
+const PRIVILEGE_KEYS = ['tools', 'gates', 'escalates_to'];
+
+/** The privilege lines of a handbook's frontmatter, comment-stripped and whitespace-normalised. */
+function privilegeOf(text) {
+  const src = String(text || '').replace(/\r\n?/g, '\n');
+  const fm = src.startsWith('---\n') ? src.slice(4, src.indexOf('\n---', 4)) : '';
+  const out = {};
+  for (const line of fm.split('\n')) {
+    const m = /^([a-z_]+):\s*(.*)$/.exec(line);
+    if (!m || !PRIVILEGE_KEYS.includes(m[1])) continue;
+    out[m[1]] = m[2].replace(/\s+#.*$/, '').replace(/\s+/g, ' ').trim();
+  }
+  return out;
+}
+
+/** Findings for one handbook: each privilege key whose value differs from `baseText` (null = new file). */
+function handbookPrivilegeDiff(baseText, currentText) {
+  const before = baseText == null ? {} : privilegeOf(baseText);
+  const after = privilegeOf(currentText);
+  const out = [];
+  for (const k of PRIVILEGE_KEYS) {
+    const was = before[k], now = after[k];
+    if (was === now) continue;
+    if (baseText == null && now === undefined) continue;
+    out.push(`${k}: ${was === undefined ? '(absent)' : was || '(empty)'} -> ${now === undefined ? '(absent)' : now || '(empty)'}`);
+  }
+  return out;
+}
+
+/** The committed text of `file` at HEAD, or null when git has no such path (new/untracked). */
+function committedText(file) {
+  const { execFileSync } = require('child_process');
+  const dir = path.dirname(file);
+  try {
+    const top = execFileSync('git', ['rev-parse', '--show-toplevel'], { cwd: dir, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
+    const rel = path.relative(top, file).split(path.sep).join('/');
+    return execFileSync('git', ['show', `HEAD:${rel}`], { cwd: top, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] });
+  } catch { return null; }
+}
+
+function scanHandbook(file) {
+  if (!fs.existsSync(file)) return [];
+  const diffs = handbookPrivilegeDiff(committedText(file), fs.readFileSync(file, 'utf8'));
+  if (!diffs.length) return [];
+  const ack = process.env.HANDBOOK_PRIVILEGE_OK === '1';
+  return [{
+    file: path.relative(ROOT, file), line: 1, rule: 'handbook-privilege', level: ack ? 'warn' : 'error',
+    msg: `privilege frontmatter differs from HEAD: ${diffs.join('; ')}. `
+      + 'A handbook may change what an agent MAY DO only by a human decision. If this is that decision, '
+      + 'rerun with HANDBOOK_PRIVILEGE_OK=1 and say so in the commit message.',
+  }];
+}
+
 function scanFile(file) {
+  if (HANDBOOK_RE.test(file)) return scanHandbook(file);
   let text;
   try { text = fs.readFileSync(file, 'utf8'); } catch { return []; }
   const findings = [];
@@ -512,8 +590,9 @@ function main() {
     process.stdin.on('end', () => {
       let file;
       try { file = JSON.parse(raw)?.tool_input?.file_path; } catch { /* ignore */ }
-      // Only scan code files inside this repo (ROOT-contained), regardless of the folder name.
-      if (!file || !/\.(js|mjs|astro)$/.test(file)) process.exit(0);
+      // Only scan code files inside this repo (ROOT-contained), regardless of the folder name —
+      // plus agent handbooks, which are .md but carry privilege (R6).
+      if (!file || !(/\.(js|mjs|astro)$/.test(file) || HANDBOOK_RE.test(file))) process.exit(0);
       const rel = path.relative(ROOT, path.resolve(file));
       if (rel.startsWith('..') || path.isAbsolute(rel)) process.exit(0);
       const findings = scanFile(file);
@@ -522,6 +601,14 @@ function main() {
       for (const f of findings) console.error(`  [${f.level}] ${f.file}:${f.line} (${f.rule}) — ${f.msg}`);
       process.exit(2);
     });
+    return;
+  }
+
+  if (args.includes('--handbooks')) {
+    const dir = path.join(ROOT, '.claude', 'agents');
+    const files = fs.existsSync(dir) ? fs.readdirSync(dir).filter((f) => f.endsWith('.md')).map((f) => path.join(dir, f)) : [];
+    const findings = files.flatMap(scanHandbook);
+    if (report(findings) > 0) process.exit(1);
     return;
   }
 
@@ -540,4 +627,5 @@ function main() {
   if (errorCount > 0) process.exit(1);
 }
 
-main();
+if (require.main === module) main();
+module.exports = { privilegeOf, handbookPrivilegeDiff };
