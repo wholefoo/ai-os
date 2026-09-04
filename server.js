@@ -1479,21 +1479,37 @@ app.get('/api/health', (req, res) => {
   res.json(getHealthSnapshot());
 });
 
+// WebSocket auth: the SAME two channels as the HTTP auth middleware — `Authorization: Bearer` (the
+// API token or a session token) and the `ai-os-session` cookie — and NOTHING in the URL.
+//
+// A `?token=` query string used to be accepted too (SOC 2 gap-list item 7). A token in a URL is
+// written to nginx access logs, proxy logs, and browser history by default, which is how a
+// bearer credential leaks without anyone doing anything wrong. The dashboard never needed it: its
+// cookie is httpOnly, so the client-side read that tried to build `?token=` always came back empty
+// and the browser has been sending the cookie on the upgrade by itself. Non-browser clients hold
+// the API token and can set the header. A query token is now REJECTED even when it is valid, and
+// the rejection is logged so an operator with an old external client can see why it stopped.
+function wsCredential(req) {
+  const bearer = (req.headers.authorization || '').replace(/^Bearer\s+/i, '').trim();
+  if (bearer && API_TOKEN && bearer === API_TOKEN) return { kind: 'api-token' };
+  if (bearer && isValidSession(bearer)) return { kind: 'session', session: isValidSession(bearer) };
+  const cookie = (req.headers.cookie || '').match(/ai-os-session=([^;]+)/)?.[1];
+  if (cookie && isValidSession(cookie)) return { kind: 'session', session: isValidSession(cookie) };
+  return null;
+}
+function wsHasQueryToken(req) {
+  try { return new URL(req.url, `http://${req.headers.host}`).searchParams.has('token'); } catch { return false; }
+}
 // WebSocket server with auth + heartbeat
 const wss = new WebSocketServer({
   server,
   verifyClient: (info, cb) => {
+    if (wsHasQueryToken(info.req)) {
+      logActivity('auth', 'WebSocket rejected: token in query string', { ip: info.req.socket?.remoteAddress || 'unknown' });
+      return cb(false, 401, 'Unauthorized: send the token as an Authorization: Bearer header, not in the URL');
+    }
     if (!API_TOKEN) return cb(true);
-    // Check ?token= query parameter (API token)
-    const url = new URL(info.req.url, `http://${info.req.headers.host}`);
-    const token = url.searchParams.get('token');
-    if (token === API_TOKEN) return cb(true);
-    // Check session token in query param (dashboard login)
-    if (token && isValidSession(token)) return cb(true);
-    // Check session cookie (same as HTTP auth middleware)
-    const cookies = info.req.headers.cookie || '';
-    const sessionMatch = cookies.match(/ai-os-session=([^;]+)/);
-    if (sessionMatch && isValidSession(sessionMatch[1])) return cb(true);
+    if (wsCredential(info.req)) return cb(true);
     cb(false, 401, 'Unauthorized');
   },
 });
@@ -13120,15 +13136,10 @@ wss.on('connection', (ws, req) => {
   // and admin-session sockets are operator-grade.
   ws.role = 'admin'; ws.email = null;
   try {
-    const url = new URL(req.url, `http://${req.headers.host}`);
-    const qtoken = url.searchParams.get('token');
-    const ctoken = (req.headers.cookie || '').match(/ai-os-session=([^;]+)/)?.[1];
-    if (qtoken && API_TOKEN && qtoken === API_TOKEN) { ws.role = 'admin'; }
-    else {
-      const session = isValidSession(qtoken) || isValidSession(ctoken);
-      if (session) { ws.role = session.role || 'user'; ws.email = session.email || null; }
-      else if (API_TOKEN) { ws.role = 'user'; } // authenticated upgrade but unresolvable session — least privilege
-    }
+    const cred = wsCredential(req); // same resolver verifyClient used — the two cannot disagree
+    if (cred && cred.kind === 'api-token') { ws.role = 'admin'; }
+    else if (cred && cred.session) { ws.role = cred.session.role || 'user'; ws.email = cred.session.email || null; }
+    else if (API_TOKEN) { ws.role = 'user'; } // authenticated upgrade but unresolvable session — least privilege
   } catch { if (API_TOKEN) ws.role = 'user'; }
   ws.on('pong', () => { ws.isAlive = true; });
   ws.on('error', () => { /* swallow client errors */ });

@@ -111,6 +111,7 @@
     "tools/test-seclint-route-auth.js",
     "tools/test-seclint-handbooks.js",
     "tools/test-auth-lockout.js",
+    "tools/test-ws-auth.js",
     "tools/test-public-cost-caps.js",
     "tools/test-pm2-login-shell.js",
     "tools/test-reasoning.js",

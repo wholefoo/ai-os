@@ -149,12 +149,11 @@ const WS_MAX_BACKOFF = 30000; // 30s max
 
 function setupWebSocket() {
   const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
-  // Pass session token so WebSocket verifyClient accepts the connection
-  const sessionToken = document.cookie.match(/ai-os-session=([^;]+)/)?.[1] || '';
-  const wsUrl = sessionToken
-    ? `${protocol}//${location.host}?token=${encodeURIComponent(sessionToken)}`
-    : `${protocol}//${location.host}`;
-  ws = new WebSocket(wsUrl);
+  // The browser sends the httpOnly ai-os-session cookie on the upgrade request by itself; that is
+  // the whole handshake. (An older version tried to read the cookie here and append it as ?token=.
+  // The cookie is httpOnly, so that read was always empty — and the server now rejects a token in
+  // the URL outright, because URLs end up in access logs.)
+  ws = new WebSocket(`${protocol}//${location.host}`);
 
   ws.onmessage = (event) => {
     const msg = JSON.parse(event.data);
