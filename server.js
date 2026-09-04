@@ -227,6 +227,10 @@ const authLimiter = rateLimit({
   skipSuccessfulRequests: true,
   message: { error: 'Too many login attempts. Please wait a few minutes and try again.' },
 });
+// Per-ACCOUNT lockout, the control the per-IP limiter above cannot be: it is keyed on the email, so
+// an attacker rotating IPs still gets at most 5 guesses per 15 minutes at any one account, with the
+// lock doubling on repeat. See lib/security/login-lockout.js for the policy and its trade-offs.
+const loginLockout = require('./lib/security/login-lockout').createLockout();
 
 // Auth middleware — if API_TOKEN is set, all /api/ routes require it
 function authMiddleware(req, res, next) {
@@ -736,15 +740,31 @@ app.post('/api/auth/login', authLimiter, async (req, res) => {
   const { email, password } = req.body;
   if (!email || !password) return res.status(400).json({ error: 'Email and password required' });
 
+  // Lock check FIRST — before the user lookup and before bcrypt — so a locked account costs no
+  // hashing and the response reveals nothing about whether the account exists or the password fit.
+  const lock = loginLockout.check(email);
+  if (lock.locked) {
+    res.set('Retry-After', String(Math.ceil(lock.retryAfterMs / 1000)));
+    return res.status(429).json({ error: 'Too many failed attempts. Please try again later.' });
+  }
+  // Every failure is counted against the account AND written to the activity log (email, IP,
+  // timestamp) — the evidence trail SOC 2 CC3.3/CC7.2 asks for. The client sees the same 401 either way.
+  const failed = (reason) => {
+    const state = loginLockout.recordFailure(email);
+    logActivity('auth', 'Login failed', { email: String(email).toLowerCase(), ip: req.ip, reason });
+    if (state.tripped) logActivity('auth', 'Account locked', { email: String(email).toLowerCase(), ip: req.ip, minutes: Math.round(state.retryAfterMs / 60000), locks: state.locks });
+  };
+
   const user = findUserByEmail(email);
-  if (!user) return res.status(401).json({ error: 'Invalid credentials' });
+  if (!user) { failed('unknown-user'); return res.status(401).json({ error: 'Invalid credentials' }); }
   if (!user.plan || user.plan === 'free') return res.status(403).json({ error: 'No active subscription. Please choose a plan.' });
 
   // Verify password with bcrypt
   // passwordHash (bcrypt) is required. The legacy plaintext-equality fallback was removed — no code path
   // sets user.password, so it was dead, and a plaintext comparison is a timing-unsafe auth-bypass footgun.
   const valid = user.passwordHash ? await bcrypt.compare(password, user.passwordHash) : false;
-  if (!valid) return res.status(401).json({ error: 'Invalid credentials' });
+  if (!valid) { failed('bad-password'); return res.status(401).json({ error: 'Invalid credentials' }); }
+  loginLockout.recordSuccess(email);
 
   const token = generateToken();
   sessions.set(token, {
