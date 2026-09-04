@@ -50,7 +50,7 @@ AI OS presents its agent fleet as a virtual company with named employees, depart
 | **Product & Innovation** | 3 | Product Manager, Research Analyst, Data Scientist |
 | **Operations & Hermes** | 6 | Hermes Director, Scheduler, Compliance Officer, Scout, Batch Processor, Intel Analyst |
 | **Knowledge & Records** | 4 | Chief Librarian (Athena), Archivist (Vellum), Knowledge Manager (Archive), Sync Steward (Tether) |
-| **Legal Department** | 4 | General Counsel (Justice), Compliance Officer (Shield), Licensing Attorney (Covenant), Contract Specialist (Clause) |
+| **Legal Department** | 4 | General Counsel (Justice), Compliance Officer (Shield), Commercial Licensing Specialist (Covenant), Contract Specialist (Clause) |
 
 Each virtual employee maps to an AI agent with a specific model tier, can receive dispatched tasks, and reports through a corporate hierarchy. The org chart above names the ~56 department-facing roles (including the seven LLM provider consultants and the Communications Director in Product & Marketing); the remaining ~11 are system and orchestration agents (e.g. orchestrator, safety, synthesis, factory, hosting-ops, web-studio-lead) plus the SEO Agency sub-agents and external-model worker agents (DeepSeek, Grok). The full fleet of 70 agents is broken down by model tier in **Agent Fleet** below.
 
@@ -184,7 +184,7 @@ A clone is a replica of one specific person — their voice, expertise, decision
 ### Legal Department
 - **General Counsel** — License agreements, IP protection, regulatory compliance, dispute resolution
 - **Compliance Officer** — GDPR/CCPA enforcement, audit trails, policy monitoring
-- **Licensing Attorney** — Software license agreements, software-licensing terms, SaaS licensing
+- **Commercial Licensing Specialist** — Software license agreements, software-licensing terms, SaaS licensing
 - **Contract Specialist** — Contract generation, review, lifecycle management, template library
 
 ### Knowledge & Records

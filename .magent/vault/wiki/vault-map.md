@@ -8,10 +8,15 @@
 | `vault/wiki/` | Synthesized knowledge: decision records, rosters, this map | Session start and before re-deriving anything |
 | `vault/outputs/` | Final deliverables already shipped | Before producing something similar — reuse, do not regenerate |
 
-## vault/wiki/ (4)
+## vault/wiki/ (9)
 
+- `agent-handbooks-design.md` (2026-08-03) — Agent Handbooks — from procedures to outcomes
 - `agent-roster.md` (2026-05-25) — Agent Roster Knowledge Base
-- `stack-decisions.md` (2026-06-12) — Stack Architecture Decisions
+- `graph-engineering-eval.md` (2026-08-05) — Graph engineering — evaluation against what AI OS already has
+- `library-department-design.md` (2026-07-31) — Knowledge & Records (Department #11) — Architecture & Delivery Plan
+- `model-fit-2026-design.md` (2026-08-04) — Model fit 2026 — applying the Creator Hacks delta
+- `p3-conversion-ledger.md` (2026-08-03) — P3 conversion ledger — where every `## Process` step went
+- `stack-decisions.md` (2026-08-05) — Stack Architecture Decisions
 - `vault-map.md` — this file
 - `web-studio-design.md` (2026-06-14) — AI Web Studio — Unified Architecture & Delivery Plan
 
