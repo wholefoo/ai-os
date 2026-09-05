@@ -1,6 +1,6 @@
 # AI OS — The Agentic Operating System
 
-A multi-agentic AI operating system built as a Virtual Corporate Headquarters, orchestrating 70 specialized AI agents across 11 departments, powered by 6 AI models across 4 routing tiers. Research, create, analyze, scrape, build and host websites, run an SEO + AEO agency, manage clients, manage a governed document library, and monetize — all from a single dashboard. Self-hosted, single-customer, open-source core (Community edition) with commercial licenses: Business $1,997 one-time (all 70 agents, all production tools, self-instance theming) and Enterprise $4,997 one-time (everything in Business + SSO/SAML, advanced security, custom agents). All tiers run on your own infrastructure.
+A multi-agentic AI operating system built as a Virtual Corporate Headquarters, orchestrating 73 specialized AI agents across 11 departments, powered by 6 AI models across 4 routing tiers. Research, create, analyze, scrape, build and host websites, run an SEO + AEO agency, manage clients, manage a governed document library, and monetize — all from a single dashboard. Self-hosted, single-customer, open-source core (Community edition) with commercial licenses: Business $1,997 one-time (all 73 agents, all production tools, self-instance theming) and Enterprise $4,997 one-time (everything in Business + SSO/SAML, advanced security, custom agents). All tiers run on your own infrastructure.
 
 ## Architecture
 
@@ -19,7 +19,7 @@ A multi-agentic AI operating system built as a Virtual Corporate Headquarters, o
           │                      │                      │
    ┌──────▼──────┐      ┌───────▼───────┐      ┌───────▼───────┐
    │  CEO Atlas   │      │  Agent Fleet  │      │  Memory Vault │
-   │(Opus 5 xh)│──────│  70 agents    │──────│  .magent/     │
+   │(Opus 5 xh)│──────│  73 agents    │──────│  .magent/     │
    └──────────────┘      └───────────────┘      └───────────────┘
           │                      │
    ┌──────▼──────────────────────▼──────┐
@@ -40,19 +40,19 @@ AI OS presents its agent fleet as a virtual company with named employees, depart
 
 | Department | Employees | Key Roles |
 |---|---|---|
-| **Executive Office** | 4 | CEO (Atlas), CTO (Nova), CFO (Ledger), COO (Meridian) |
+| **Executive Office** | 5 | CEO (Atlas), CTO (Nova), CFO (Ledger), COO (Meridian), Growth Specialist (Summit) |
 | **Board of Directors** | 3 | Quality Director, Security Director, Research Director |
 | **Engineering** | 5 | Engineering Lead, QA, Data Engineer, Automation, DevOps |
-| **Marketing & Communications** | 6 | Marketing Director, Communications Director (Herald), Content Lead, SEO Lead, Social Manager, Sales Director |
+| **Marketing & Communications** | 7 | Marketing Strategist (Vector), Marketing Director, Communications Director (Herald), Content Lead, SEO Lead, Social Manager, Sales Director |
 | **Creative Studio** | 6 | Creative Director, UI/UX Designer, Video Producer, 3D Artist, Audio Engineer, Brand Designer |
-| **Customer Service** | 3 | Support Lead, Tier 1, Tier 2 |
+| **Customer Service** | 4 | Support Lead, Tier 1, Tier 2, Customer Success (Keel) |
 | **Tech Support & IT** | 3 | IT Director, SysAdmin, Help Desk |
 | **Product & Innovation** | 3 | Product Manager, Research Analyst, Data Scientist |
 | **Operations & Hermes** | 6 | Hermes Director, Scheduler, Compliance Officer, Scout, Batch Processor, Intel Analyst |
 | **Knowledge & Records** | 4 | Chief Librarian (Athena), Archivist (Vellum), Knowledge Manager (Archive), Sync Steward (Tether) |
 | **Legal Department** | 4 | General Counsel (Justice), Compliance Officer (Shield), Commercial Licensing Specialist (Covenant), Contract Specialist (Clause) |
 
-Each virtual employee maps to an AI agent with a specific model tier, can receive dispatched tasks, and reports through a corporate hierarchy. The org chart above names the ~56 department-facing roles (including the seven LLM provider consultants and the Communications Director in Product & Marketing); the remaining ~11 are system and orchestration agents (e.g. orchestrator, safety, synthesis, factory, hosting-ops, web-studio-lead) plus the SEO Agency sub-agents and external-model worker agents (DeepSeek, Grok). The full fleet of 70 agents is broken down by model tier in **Agent Fleet** below.
+Each virtual employee maps to an AI agent with a specific model tier, can receive dispatched tasks, and reports through a corporate hierarchy. The org chart above names the ~56 department-facing roles (including the seven LLM provider consultants and the Communications Director in Product & Marketing); the remaining ~11 are system and orchestration agents (e.g. orchestrator, safety, synthesis, factory, hosting-ops, web-studio-lead) plus the SEO Agency sub-agents and external-model worker agents (DeepSeek, Grok). The full fleet of 73 agents is broken down by model tier in **Agent Fleet** below.
 
 ## Features
 
@@ -200,7 +200,7 @@ A governed company document library — not a fourth physical store, but a catal
 
 **Community Edition (Free)** — Open-source core, self-hosted with custom domain support. Perpetual, royalty-free license for personal and commercial use. Includes 19 agents, 6 departments, Scout + Professional effort tiers, **1 hosted site**, **1 SEO audit/month**, Knowledge & Records library, Knowledge Graph, Tech Radar, and community support via GitHub Issues. Must retain "Powered by AI OS" attribution. You provide your own API keys and are responsible for hosting, security, and backups. [Full license](/docs/license-community)
 
-**Business License ($1,997 one-time)** — the management layer enterprises build for themselves, at a price a small business can justify: everything in Community plus all 70 agents, all 11 departments, all 6 AI models (4 routing tiers), server-enforced approval gating with risk classes, and the operator oversight ledger — the dashboard that measures the work agents create for YOU (decisions per day, median time-to-decision, pending-queue age, remediation cost logging), **up to 100 hosted sites**, unlimited SEO + AEO audits, AI Web Studio, Gemini Omni Creative Studio, YouTube Intelligence, Agent Builder, CRM + client-account management, self-instance theming (brand your own private instance with custom name, logo, colors, and domain — no attribution required), lead generation, product factory, marketing hub, advanced reporting, browser agent, Grok Intel, design system, video meetings, and batch queue. Priority email support included. Self-hosted, single-customer license (one production deployment per key). Lifetime software updates. 14-day refund policy. [Full license](/docs/license-business)
+**Business License ($1,997 one-time)** — the management layer enterprises build for themselves, at a price a small business can justify: everything in Community plus all 73 agents, all 11 departments, all 6 AI models (4 routing tiers), server-enforced approval gating with risk classes, and the operator oversight ledger — the dashboard that measures the work agents create for YOU (decisions per day, median time-to-decision, pending-queue age, remediation cost logging), **up to 100 hosted sites**, unlimited SEO + AEO audits, AI Web Studio, Gemini Omni Creative Studio, YouTube Intelligence, Agent Builder, CRM + client-account management, self-instance theming (brand your own private instance with custom name, logo, colors, and domain — no attribution required), lead generation, product factory, marketing hub, advanced reporting, browser agent, Grok Intel, design system, video meetings, and batch queue. Priority email support included. Self-hosted, single-customer license (one production deployment per key). Lifetime software updates. 14-day refund policy. [Full license](/docs/license-business)
 
 **Enterprise License ($4,997 one-time)** — Everything in Business plus **unlimited hosted sites**, SSO/SAML integration, advanced security configurations, custom agent development assistance (up to 5 custom agents in Year 1), early access to new features, and a deployment architecture review. Upgrade from Business: $3,000 difference. [Full license](/docs/license-enterprise)
 
@@ -258,7 +258,7 @@ AI OS follows an open-core model. The Community edition is free and open-source 
 |---|---|---|---|
 | Free Demo | $0 | Hosted at aiosorchestrationlab.com | Limited preview, 3 agents, 1 SEO audit/mo |
 | Community | Free | Self-hosted | 19 agents, 6 departments, 1 hosted site, 1 SEO audit/mo, full source code |
-| Business | $1,997 one-time | Self-hosted | All 70 agents, up to 100 hosted sites, unlimited SEO + AEO audits, all production tools, self-instance theming |
+| Business | $1,997 one-time | Self-hosted | All 73 agents, up to 100 hosted sites, unlimited SEO + AEO audits, all production tools, self-instance theming |
 | Enterprise | $4,997 one-time | Self-hosted | Everything in Business + unlimited hosted sites, SSO/SAML, advanced security, custom agents |
 | Managed Website | $997 setup + $250/mo | Done-for-you on the VPS | We design, build, host & maintain your site (custom domain + TLS); agent-buyable via Auto-Mode |
 
@@ -348,7 +348,7 @@ ssh root@your-vps-ip 'sudo -u aios git -C /opt/ai-os pull origin master && sudo 
 
 ```
 .claude/
-  agents/        70 agent role definitions (YAML frontmatter + instructions)
+  agents/        73 agent role definitions (YAML frontmatter + instructions)
   skills/        22 procedural skill files
   rules/         Guardrails, cost routing, security
   identity/      Soul, user preferences, personality
@@ -374,7 +374,7 @@ ecosystem.config.js  PM2 process manager config
 
 ## Agent Fleet — 6 AI Models across 4 Routing Tiers
 
-All 70 agents run on **6 AI models** routed through **4 effort/routing tiers**. Claude runs
+All 73 agents run on **6 AI models** routed through **4 effort/routing tiers**. Claude runs
 the three Claude tiers — in the default `balanced` routing, **Opus 5** for Strategic (xhigh) and
 **Sonnet 5** for Professional (high) and Scout (low); switchable to all-Opus or all-Sonnet in
 Settings. The remaining models are routed in for specialized work. Five additional providers are wired in: OpenAI GPT, Gemini Omni,

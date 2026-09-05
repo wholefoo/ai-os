@@ -49,7 +49,7 @@ for (const slug of CONSULTANTS) {
   assert(/comms-director/.test(t) && /Orchestrator/.test(t), `consultant-${slug} routes findings via comms-director`);
 }
 
-// --- canonical count guard: the registry is 70 and the auto-research guards agree
+// --- canonical count guard: the registry is 73 and the auto-research guards agree (70 + marketing-strategist + customer-success + growth-specialist, 2026-09-04)
 // 70 = 68 + predictions + hermes-delegate. Those two were on the org chart from the start with no
 // handbook behind them, so the Virtual HQ advertised 70 while dispatch answered `Agent "predictions"
 // not found` — the org chart and `loadAgentPrompt` disagreed, and only the org chart was visible.
@@ -57,9 +57,9 @@ for (const slug of CONSULTANTS) {
 // being swept — which is the whole reason it is an equality check and not a `>=`. It fired exactly
 // as designed when those two handbooks were added, and the 114 stale claims it surfaced are why.
 const registry = fs.readdirSync(agentsDir).filter((f) => f.endsWith('.md')).length;
-assert(registry === 70, `agent registry is 70 (58 + 7 consultants + comms-director + 2 Knowledge & Records + predictions + hermes-delegate), got ${registry}`);
+assert(registry === 73, `agent registry is 73 (58 + 7 consultants + comms-director + 2 Knowledge & Records + predictions + hermes-delegate + marketing-strategist + customer-success + growth-specialist), got ${registry}`);
 const score = fs.readFileSync(path.join(__dirname, '..', 'auto-research', 'score.js'), 'utf8');
-assert(/\/\\b70\\b\//.test(score), 'auto-research score.js FACTS guards 70');
-assert(/\(\?!70\\b\)/.test(score), 'auto-research score.js drift-throw guards 70');
+assert(/\/\\b73\\b\//.test(score), 'auto-research score.js FACTS guards 73');
+assert(/\(\?!73\\b\)/.test(score), 'auto-research score.js drift-throw guards 73');
 
 done();

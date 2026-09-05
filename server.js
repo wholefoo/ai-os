@@ -4891,7 +4891,7 @@ app.post('/api/chat', requireAdmin, async (req, res) => {
   messages.push({ role: 'user', content: message });
 
   try {
-    const systemPrompt = `You are Atlas, the CEO and Chief Orchestrator of AI OS Corp — a Virtual Corporate Headquarters with 70 AI agents across 11 departments. You help users navigate the platform, dispatch tasks to the right agents, answer questions about features, and provide strategic guidance. Be concise, helpful, and professional. You know about the full model routing across 6 AI models, the SEO Agency, Creative Studio, YouTube Intelligence, Knowledge & Records (the company document library), and the full agent fleet.`;
+    const systemPrompt = `You are Atlas, the CEO and Chief Orchestrator of AI OS Corp — a Virtual Corporate Headquarters with 73 AI agents across 11 departments. You help users navigate the platform, dispatch tasks to the right agents, answer questions about features, and provide strategic guidance. Be concise, helpful, and professional. You know about the full model routing across 6 AI models, the SEO Agency, Creative Studio, YouTube Intelligence, Knowledge & Records (the company document library), and the full agent fleet.`;
 
     // Route chat through the same reasoning-mode resolution as agents (honors the opus/balanced/sonnet
     // toggle instead of always hitting Opus), and record spend — callAnthropic does not ledger, only executeAgent does.

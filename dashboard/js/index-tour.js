@@ -11,7 +11,7 @@
     greeting: "Hey there! I'm Atlas, the CEO of AI OS Corp. I run a virtual company with 70 AI employees across 11 departments — and you stay in control, approving every important action. Want me to show you around?",
     tours: {
       overview: [
-        { msg: "AI OS is a Virtual Corporate Headquarters — imagine a full company staffed by 70 AI agents, each with a name, role, and department. And you stay in the loop: important actions wait for your approval in Auto-Mode.", delay: 0 },
+        { msg: "AI OS is a Virtual Corporate Headquarters — imagine a full company staffed by 73 AI agents, each with a name, role, and department. And you stay in the loop: important actions wait for your approval in Auto-Mode.", delay: 0 },
         { msg: "We have 11 departments: Executive, Legal, Engineering, Marketing, Creative, Customer Service, IT, Product, Operations, Knowledge & Records, and a Board of Directors.", delay: 2000 },
         { msg: "Every agent runs on one of 6 AI models across 4 routing tiers — Claude Opus 5 (our default), OpenAI GPT, Gemini, DeepSeek, Grok, and Perplexity. The orchestrator picks the right brain for each task.", delay: 4000 },
         { msg: "Want to hear about a specific department, or should I tell you about our licensing options?", delay: 6000, options: ['Tell me about SEO Agency', 'Creative Studio', 'Licensing options', 'How does pricing work?'] },
@@ -31,7 +31,7 @@
       licensing: [
         { msg: "AI OS follows the open-core model — like n8n or ViaSocket. The Community edition is free and open-source. You self-host on your own infrastructure.", delay: 0 },
         { msg: "Community is free — 19 agents across 6 departments, full source code, community support. Perfect for individuals and small teams.", delay: 2000 },
-        { msg: "Business license is a one-time $1,997 — unlocks all 70 agents, all production tools, and self-instance theming so you can brand your own private instance with your name, logo, and colors.", delay: 4000 },
+        { msg: "Business license is a one-time $1,997 — unlocks all 73 agents, all production tools, and self-instance theming so you can brand your own private instance with your name, logo, and colors.", delay: 4000 },
         { msg: "Enterprise license is $4,997 one-time — everything in Business plus SSO/SAML and advanced security, custom agent development, and the self-improving platform with agent builder.", delay: 6000 },
         { msg: "Neither license has recurring fees — both include lifetime software updates.", delay: 8000 },
         { msg: "Prefer done-for-you? Our Managed Website is $997 one-time setup plus $250/month — we build and host your site on our VPS, with a scoped client dashboard. No self-hosting needed.", delay: 10000, options: ['How do I get started?', 'What\'s included exactly?', 'Show me the pricing page', 'Back to overview'] },
@@ -40,7 +40,7 @@
         { msg: "We keep it simple — open-source core with commercial licenses:", delay: 0 },
         { msg: "Free Demo — try AI OS in your browser at aiosorchestrationlab.com. Limited access, no self-hosting needed.", delay: 1500 },
         { msg: "Community — free, open-source, self-hosted. 19 agents, 6 departments, SEO Agency, skills and pipelines. Full source code access.", delay: 3000 },
-        { msg: "Business — $1,997 one-time license. All 70 agents, all production tools, and self-instance theming to brand your own private instance.", delay: 4500 },
+        { msg: "Business — $1,997 one-time license. All 73 agents, all production tools, and self-instance theming to brand your own private instance.", delay: 4500 },
         { msg: "Enterprise — $4,997 one-time license. Everything in Business plus SSO/SAML and advanced security, custom agents, and 25 AI business clones.", delay: 6000 },
         { msg: "Managed Website (done-for-you) — $997 one-time setup plus $250/month hosting & maintenance. We build and host your site on our VPS with a scoped client dashboard.", delay: 7500, options: ['How do I self-host?', 'Tell me more about features', 'Back to overview'] },
       ],

@@ -54,9 +54,13 @@ const git = (...a) => execFileSync('git', a, { cwd: tmp, encoding: 'utf8', stdio
 const agentsDir = path.join(tmp, '.claude', 'agents');
 fs.mkdirSync(agentsDir, { recursive: true });
 const hbFile = path.join(agentsDir, 'sample.md');
+// The fixtures must not inherit an operator's acknowledgement: `HANDBOOK_PRIVILEGE_OK=1 node
+// tools/test-all.js` is exactly how a deliberate handbook change is run, and it must not turn the
+// "CLI exits 1" fixtures below into silent passes. Only the final repo gate (bottom) inherits it.
+const { HANDBOOK_PRIVILEGE_OK: _ack, ...CLEAN_ENV } = process.env;
 const cli = (env = {}) => {
   try {
-    const out = execFileSync('node', [SECLINT, hbFile], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], env: { ...process.env, ...env } });
+    const out = execFileSync('node', [SECLINT, hbFile], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], env: { ...CLEAN_ENV, ...env } });
     return { code: 0, out };
   } catch (e) { return { code: e.status, out: String(e.stdout || '') + String(e.stderr || '') }; }
 };
@@ -86,7 +90,7 @@ try {
 // --- 3. the shipped wiring over THIS repo -------------------------------------------------------
 const hook = (filePath) => {
   try {
-    execFileSync('node', [SECLINT, '--hook'], { input: JSON.stringify({ tool_input: { file_path: filePath } }), encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'] });
+    execFileSync('node', [SECLINT, '--hook'], { input: JSON.stringify({ tool_input: { file_path: filePath } }), encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'], env: CLEAN_ENV });
     return { code: 0, err: '' };
   } catch (e) { return { code: e.status, err: String(e.stderr || '') }; }
 };
