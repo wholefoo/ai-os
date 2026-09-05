@@ -278,6 +278,9 @@ function authMiddleware(req, res, next) {
   res.status(401).json({ error: 'Unauthorized. Provide Authorization: Bearer <token> header.' });
 }
 app.use('/api/', authMiddleware);
+// CSRF defence in depth: a cookie-authenticated mutation from another origin is refused here even
+// though SameSite=Lax + closed CORS + JSON-only parsing already stop it (lib/security/csrf.js).
+app.use('/api/', require('./lib/security/csrf').sameOriginGuard({ log: (reason, d) => logActivity('auth', 'Refused: cross-site cookie request', { reason, ...d }) }));
 
 // --- Client surface guard: DENY-BY-DEFAULT for the managed CLIENT role ---
 // A logged-in client (role:'client') may reach ONLY this allowlist of client-facing /api surfaces;
