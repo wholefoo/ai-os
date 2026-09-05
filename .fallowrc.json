@@ -113,6 +113,7 @@
     "tools/test-auth-lockout.js",
     "tools/test-ws-auth.js",
     "tools/test-user-disable.js",
+    "tools/test-adversarial-verify.js",
     "tools/test-public-cost-caps.js",
     "tools/test-pm2-login-shell.js",
     "tools/test-reasoning.js",

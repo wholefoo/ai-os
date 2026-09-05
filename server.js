@@ -5972,16 +5972,23 @@ async function runRealVerification(report, rubric, output, strictness, depth) {
     adversarial = await orchestrator.adversarialVerify(
       `Rubric "${rubric.name}". The work output below is claimed to satisfy this rubric's quality bar. Is that claim SOUND?\n\nOUTPUT:\n${String(output || '').slice(0, 12000)}`,
       { runAgent: executeAgent, log: appendLog },
-      { n: 3, verifier: 'reviewer', agentOpts: { maxTokens: 500, skill: 'verification' } }
+      // No maxTokens cap: a 500-token cap shared with the reviewer's own thinking produced empty
+      // replies, and an empty reply used to count as a SOUND vote (SOC 2 gap item 19).
+      { n: 3, verifier: 'reviewer', agentOpts: { skill: 'verification' } }
     );
-  } catch (e) { /* adversarial pass is best-effort — never blocks the score */ }
+  } catch (e) {
+    // Best-effort in the sense that a THROWN panel never changes the score — but it is disclosed on
+    // the result, not swallowed into `null`, so "verified" and "verification never ran" stay distinct.
+    adversarial = { error: e.message || String(e), inconclusive: true, answered: 0, n: 3 };
+  }
 
   // Strictness-adjusted verdict bands.
   const [passBar, reviewBar] = strictness === 'strict' ? [85, 70]
     : strictness === 'lenient' ? [70, 50] : [80, 60];
   let verdict = aggregateScore >= passBar ? 'pass' : aggregateScore >= reviewBar ? 'review' : 'fail';
-  // A majority-refute downgrades a clean pass to human review.
-  if (adversarial && adversarial.refuted && verdict === 'pass') verdict = 'review';
+  // A majority-refute downgrades a clean pass to human review — and so does a panel that could not
+  // reach a verdict. A pass the skeptics never actually examined is a score, not a verification.
+  if (adversarial && (adversarial.refuted || adversarial.inconclusive) && verdict === 'pass') verdict = 'review';
 
   return { results, aggregateScore, verdict, strictness, adversarial };
 }
