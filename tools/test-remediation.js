@@ -19,7 +19,8 @@ ok('a retry route exists, gated, and only accepts status failed', () => {
   const at = src.indexOf("app.post('/api/approvals/:id/retry'");
   assert.notStrictEqual(at, -1, 'retry route missing — failed approvals are terminal again');
   const route = src.slice(at, src.indexOf('});', src.indexOf('res.json', at)));
-  assert.ok(/requireAdmin, heavyLimiter/.test(src.slice(at, at + 120)));
+  // requireHuman in the chain since 2026-09-05 — retrying re-executes, so it is a human decision.
+  assert.ok(/requireAdmin, requireHuman, heavyLimiter/.test(src.slice(at, at + 140)));
   assert.ok(/status !== 'failed'/.test(route), 'retry must refuse anything not failed');
   assert.ok(/executeApprovedAction\(a, secrets, actor\)/.test(route),
     'retry re-runs the SHARED executor — no third implementation');

@@ -9010,7 +9010,8 @@ app.post('/api/pipelines/:name/execute', requireAdmin, (req, res) => {
   res.json(run);
 });
 
-app.post('/api/pipelines/runs/:id/approve', requireAdmin, (req, res) => {
+// A pipeline gate stage is a human decision too — same rule as the approvals inbox.
+app.post('/api/pipelines/runs/:id/approve', requireAdmin, requireHuman, (req, res) => {
   const run = pipelineRuns.get(req.params.id);
   if (!run) return res.status(404).json({ error: 'Run not found' });
   if (run.status !== 'awaiting_approval') return res.status(400).json({ error: 'Not awaiting approval' });
@@ -10186,6 +10187,20 @@ function requireAdmin(req, res, next) {
   next();
 }
 
+// Middleware: require a HUMAN admin — a signed-in session, not the API token. Stack it after
+// requireAdmin on the routes that ARE the human-in-the-loop: approving a gated action, retrying
+// one, and changing the automation mode that decides what gets gated at all. Before this existed
+// the service token resolved to an admin session, so any automation holding it (an n8n workflow,
+// Hermes, a leaked token) could queue an action and then approve it itself, or simply switch the
+// instance to `auto` and have nothing queued in the first place. SOC 2 gap item 21 (CC8.1-h).
+function requireHuman(req, res, next) {
+  if (req.session && req.session.service) {
+    logActivity('approval', 'Refused: API token attempted a human-only decision', { route: req.originalUrl, ip: req.ip });
+    return res.status(403).json({ error: 'This decision requires a signed-in operator, not the API token. Approvals and automation-mode changes are human-in-the-loop by design.' });
+  }
+  next();
+}
+
 // Web Studio is client-facing: a managed CLIENT (role:'client') OR the ADMIN may use it. Attaches
 // req.session so the ownership predicate (wsOwns) scopes every site to its owner. Everything
 // NON-web-studio stays requireAdmin — a client must never reach the admin surface.
@@ -10407,9 +10422,16 @@ app.put('/api/settings/:section', requireAdmin, (req, res) => {
   if (!settings[section]) return res.status(400).json({ error: `Unknown section: ${section}` });
 
   // Validate the Auto-Mode setting (gateAction also falls back to 'supervised' for bad values).
-  if (section === 'automation' && req.body && 'mode' in req.body && !approvalPolicy.MODES[req.body.mode]) {
+  const modeChange = section === 'automation' && req.body && 'mode' in req.body;
+  if (modeChange && !approvalPolicy.MODES[req.body.mode]) {
     return res.status(400).json({ error: `mode must be one of: ${Object.keys(approvalPolicy.MODES).join(', ')}` });
   }
+  // The mode decides what gets gated; changing it is itself the most consequential decision on
+  // the instance, so it is human-only (requireHuman) and gets its own audit line with from → to.
+  // Pending approvals are NOT flushed by a switch to `auto`: gateAction reads the mode at decision
+  // time, so what was queued stays queued until a human acts on it.
+  const previousMode = modeChange ? ((settings.automation && settings.automation.mode) || 'supervised') : null;
+  if (modeChange && req.session && req.session.service) return requireHuman(req, res, () => {});
   if (section === 'ai' && req.body && 'reasoning_mode' in req.body && !['opus', 'balanced', 'sonnet'].includes(req.body.reasoning_mode)) {
     return res.status(400).json({ error: 'reasoning_mode must be one of: opus, balanced, sonnet' });
   }
@@ -10433,6 +10455,13 @@ app.put('/api/settings/:section', requireAdmin, (req, res) => {
   if (updated.length > 0) {
     saveState('settings', settings);
     logActivity('settings', `Settings updated: ${section} → ${updated.join(', ')}`, { section, actor: reqActor(req) });
+  }
+  if (modeChange && updated.includes('mode') && previousMode !== req.body.mode) {
+    const to = req.body.mode;
+    logActivity('approval', `Automation mode changed: ${previousMode} → ${to}`, { from: previousMode, to, actor: reqActor(req), ip: req.ip });
+    if (to === 'auto') {
+      sendNotification('Automation mode set to AUTO', `${reqActor(req)} switched this instance to auto mode: gated actions now run without approval (except the always-gated destructive and self-modifying ones). Previous mode: ${previousMode}.`, 'high');
+    }
   }
 
   res.json({ ok: true, updated, skipped });
@@ -10898,7 +10927,7 @@ async function executeApprovedAction(a, secrets, actor) {
   }
 }
 
-app.post('/api/approvals/:id/approve', requireAdmin, heavyLimiter, async (req, res) => {
+app.post('/api/approvals/:id/approve', requireAdmin, requireHuman, heavyLimiter, async (req, res) => {
   const a = pendingApprovals.find(x => x.id === req.params.id && x.kind === 'action');
   if (!a) return res.status(404).json({ error: 'Approval not found' });
   if (a.status !== 'pending') return res.status(409).json({ error: `Already ${a.status}` });
@@ -10946,7 +10975,7 @@ app.get('/api/decisions/summary', requireAdmin, (req, res) => {
 // never written to run concurrently with themselves. Items needing secrets take the per-item route
 // unless the same secrets apply. Per-item outcomes — one failure does not stop the rest, and the
 // caller sees exactly which items landed where.
-app.post('/api/approvals/batch', requireAdmin, heavyLimiter, async (req, res) => {
+app.post('/api/approvals/batch', requireAdmin, requireHuman, heavyLimiter, async (req, res) => {
   const ids = Array.isArray(req.body && req.body.ids) ? req.body.ids.slice(0, 100).map(String) : [];
   if (!ids.length) return res.status(400).json({ error: 'Provide { "ids": [...] } (max 100)' });
   const secrets = (req.body && req.body.secrets) || {};
@@ -10974,7 +11003,7 @@ app.post('/api/approvals/batch', requireAdmin, heavyLimiter, async (req, res) =>
 // UNATTENDED, precisely because a duplicate send is irreversible): here the human reads the error
 // and judges whether the failure was clean. retryCount makes repeated failure visible instead of
 // each attempt overwriting the last.
-app.post('/api/approvals/:id/retry', requireAdmin, heavyLimiter, async (req, res) => {
+app.post('/api/approvals/:id/retry', requireAdmin, requireHuman, heavyLimiter, async (req, res) => {
   const a = pendingApprovals.find(x => x.id === req.params.id && x.kind === 'action');
   if (!a) return res.status(404).json({ error: 'Approval not found' });
   if (a.status !== 'failed') return res.status(409).json({ error: `Only failed actions can be retried (status: ${a.status})` });

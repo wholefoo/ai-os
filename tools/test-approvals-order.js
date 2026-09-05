@@ -76,7 +76,9 @@ ok('single and batch approve share ONE executor (no drift possible)', () => {
 
 ok('batch route is admin-gated, rate-limited, capped, and sequential', () => {
   const batch = src.slice(src.indexOf("app.post('/api/approvals/batch'"), src.indexOf("app.post('/api/approvals/:id/reject'"));
-  assert.ok(/requireAdmin, heavyLimiter/.test(batch));
+  // requireHuman sits between them since 2026-09-05: approving is a human decision, the API token
+  // may not do it (tools/test-human-decisions.js). The property asserted HERE is admin + limited.
+  assert.ok(/requireAdmin, requireHuman, heavyLimiter/.test(batch));
   assert.ok(/slice\(0, 100\)/.test(batch), 'ids capped at 100');
   assert.ok(/for \(const id of ids\)/.test(batch) && /await executeApprovedAction/.test(batch),
     'sequential for..of with await — executors mutate shared state and must not interleave');
