@@ -13979,6 +13979,58 @@ function runRetentionPurge(trigger = 'scheduler') {
   }
   return report;
 }
+// --- Subject access / export: the "Access" and "Export" rights, as code (SOC 2 gap item 22 / P5) --
+// One JSON document of everything this instance holds keyed to an email. Two doors: the person
+// themselves (their own record only — the session decides the subject, not the URL), and an admin
+// acting on a request. Both are human-only; the export is logged but its CONTENT never is.
+const subjectExport = require('./lib/security/subject-export');
+function buildSubjectExport(email) {
+  const e = String(email || '').trim().toLowerCase();
+  return subjectExport.collectSubjectData(e, {
+    users,
+    sessionsFor: (em) => { const out = []; for (const sess of _sessionMap.values()) if (sess && String(sess.email || '').toLowerCase() === em) out.push({ expiresAt: sess.expiresAt }); return out; },
+    clones: businessClones,
+    sites: webStudioSites,
+    crmContact: (em) => {
+      if (!(crm && crm.isReady && crm.isReady() && crm.repo && crm.repo.contacts)) return null;
+      const contact = crm.repo.contacts.findByEmail(em);
+      return contact ? { contact, activities: crm.repo.activities.forContact(contact.id) } : null;
+    },
+    enrollments: emailEnrollments,
+    suppression: emailSuppression,
+    bookings,
+    tickets: contactTickets,
+    freeAudits: freeAuditLog,
+    activity: activityLog,
+  });
+}
+function sendSubjectExport(res, bundle) {
+  const stamp = bundle.generatedAt.slice(0, 10);
+  res.setHeader('Content-Type', 'application/json; charset=utf-8');
+  res.setHeader('Content-Disposition', `attachment; filename="ai-os-data-export-${bundle.subject.replace(/[^a-z0-9.@_-]/gi, '_')}-${stamp}.json"`);
+  res.setHeader('Cache-Control', 'no-store');
+  res.send(JSON.stringify(bundle, null, 2));
+}
+// The person's own export. The subject is the SESSION's email — a caller cannot name someone else.
+app.get('/api/auth/me/export', (req, res) => {
+  const session = resolveSession(req);
+  if (!session) return res.status(401).json({ error: 'Not authenticated' });
+  if (session.service) return res.status(403).json({ error: 'The API token has no personal data to export. An admin exports a named account via /api/admin/users/:email/export.' });
+  const bundle = buildSubjectExport(session.email);
+  logActivity('auth', `Data export (self-service): ${session.email}`, { email: session.email, ip: req.ip, counts: bundle.counts });
+  sendSubjectExport(res, bundle);
+});
+// An admin exporting on a subject's request. Human-only like every other decision about a person.
+app.get('/api/admin/users/:email/export', requireAdmin, requireHuman, (req, res) => {
+  const addr = String(req.params.email || '').trim().toLowerCase();
+  if (!findUserByEmail(addr) && !(crm && crm.isReady && crm.isReady() && crm.repo.contacts.findByEmail(addr))) {
+    return res.status(404).json({ error: 'no account or contact with that email' });
+  }
+  const bundle = buildSubjectExport(addr);
+  logActivity('auth', `Data export (admin): ${addr}`, { email: addr, by: req.session.email, ip: req.ip, counts: bundle.counts });
+  sendSubjectExport(res, bundle);
+});
+
 app.post('/api/admin/users/:email/request-deletion', requireAdmin, requireHuman, (req, res) => {
   const user = adminUserTarget(req, res);
   if (!user) return;

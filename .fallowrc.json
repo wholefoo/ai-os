@@ -116,6 +116,7 @@
     "tools/test-adversarial-verify.js",
     "tools/test-human-decisions.js",
     "tools/test-retention.js",
+    "tools/test-subject-export.js",
     "tools/test-public-cost-caps.js",
     "tools/test-pm2-login-shell.js",
     "tools/test-reasoning.js",
