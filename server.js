@@ -1751,12 +1751,29 @@ const orgExtract = require('./lib/org/extract');
 // case generated sites simply carry no signed sidecar (provenance degrades gracefully).
 const PROVENANCE_ISSUER = (process.env.AIOS_PUBLIC_URL || (process.env.AIOS_PRIMARY_DOMAIN ? 'https://' + process.env.AIOS_PRIMARY_DOMAIN : '')).replace(/\/+$/, '');
 let provenanceKeys = null;
+let provenanceKeyMissing = null; // set when the keyring says a key existed and the private key is gone
+// Fixed at .magent/provenance: moving it would orphan every existing instance's key and read as a
+// fresh bootstrap. AIOS_PROVENANCE_DIR exists for isolated test instances only.
+const PROVENANCE_DIR = process.env.AIOS_PROVENANCE_DIR || path.join(MAGENT_DIR, 'provenance');
+function installProvenanceKey(privateKey, publicKey) {
+  provenanceKeys = { privateKey, publicKey, publicKeyId: provenanceLib.getPublicKeyId(publicKey, PROVENANCE_ISSUER) };
+  provenanceLib.registerActive(PROVENANCE_DIR, publicKey, provenanceKeys.publicKeyId); // idempotent: the keyring records every key ever active
+  return provenanceKeys;
+}
 try {
-  const _kp = provenanceLib.ensureKeypair(path.join(MAGENT_DIR, 'provenance'));
-  provenanceKeys = { privateKey: _kp.privateKey, publicKey: _kp.publicKey, publicKeyId: provenanceLib.getPublicKeyId(_kp.publicKey, PROVENANCE_ISSUER) };
-  if (_kp.generated) console.log(`[PROVENANCE] generated Ed25519 signing key (kid ${provenanceKeys.publicKeyId})`);
+  const _kp = provenanceLib.ensureKeypair(PROVENANCE_DIR);
+  if (_kp.missing) {
+    // NO SILENT REGENERATION (SOC 2 gap item 20). Signing stays OFF until the operator restores the
+    // key from backup (.magent/ is in deploy/backup.sh) or rotates explicitly via the admin route.
+    provenanceKeyMissing = { expectedKids: _kp.expectedKids, since: new Date().toISOString() };
+    console.error(`[PROVENANCE] SIGNING KEY MISSING — the keyring expects ${_kp.expectedKids.join(', ')} but no private key is present. Provenance signing is DISABLED. Restore .magent/provenance/ed25519-priv.pem from backup, or rotate explicitly (POST /api/admin/provenance/rotate). Nothing was regenerated.`);
+  } else {
+    installProvenanceKey(_kp.privateKey, _kp.publicKey);
+    if (_kp.generated) console.log(`[PROVENANCE] generated Ed25519 signing key on a fresh instance (kid ${provenanceKeys.publicKeyId}) — back up .magent/provenance/`);
+  }
 } catch (e) { console.error('[PROVENANCE] keypair init failed — provenance disabled:', e.message); }
-const signProvenance = provenanceKeys ? (payload) => provenanceLib.sign(payload, provenanceKeys.privateKey, { publicKeyId: provenanceKeys.publicKeyId }) : null;
+// Signing reads the CURRENT key at call time, so a rotation takes effect without a restart.
+const signProvenance = (payload) => (provenanceKeys ? provenanceLib.sign(payload, provenanceKeys.privateKey, { publicKeyId: provenanceKeys.publicKeyId }) : null);
 
 const webStudioSites = loadState('web_studio_sites', []); // [{id,name,brief,status,domain,createdAt,...}]
 const webStudioTemplates = loadState('web_studio_templates', []); // operator-saved starter templates [{id,name,category,description,plan,ownerEmail,createdAt}]
@@ -1992,14 +2009,21 @@ app.get('/api/provenance/public-key', (req, res) => {
 });
 
 app.post('/api/provenance/verify', heavyLimiter, (req, res) => {
-  if (!provenanceKeys) return res.status(503).json({ error: 'provenance verification not available' });
+  // Verification needs the KEYRING (public halves), not the private key — so it keeps working while
+  // the signing key is missing after a restore, which is precisely when people will want to check
+  // what was already published. Only an instance that has never had a key at all cannot verify.
+  if (!provenanceKeys && !provenanceLib.loadKeyring(PROVENANCE_DIR).length) return res.status(503).json({ error: 'provenance verification not available' });
   const sidecar = (req.body && req.body.credential) ? req.body.credential : req.body;
   if (!sidecar || typeof sidecar !== 'object' || !sidecar.signature) {
     return res.status(400).json({ error: 'POST a signed credential (the .well-known/aios-provenance.json sidecar), optionally { credential, content }' });
   }
   const sigKid = sidecar.signature.public_key_id || null;
-  const key_trusted_for_origin = sigKid === provenanceKeys.publicKeyId; // v1: only OUR origin key
-  const v = provenanceLib.verify(sidecar, provenanceKeys.publicKey);
+  // Verify against the KEYRING: a retired (rotated-out) key still verifies; a revoked one verifies
+  // cryptographically but is not trusted; an unknown kid is not trusted. Before the keyring, only
+  // the current key was trusted, which made rotation impossible without breaking every site.
+  const kv = provenanceLib.verifyWithKeyring(sidecar, provenanceLib.loadKeyring(PROVENANCE_DIR));
+  const key_trusted_for_origin = kv.key_trusted;
+  const v = { ok: kv.signature_valid, reasons: kv.reasons };
   // Optional content-hash binding check if the caller supplies the raw content bytes.
   let content_hash_matches = null;
   const bound = sidecar.content_binding && sidecar.content_binding.hash;
@@ -2018,9 +2042,44 @@ app.post('/api/provenance/verify', heavyLimiter, (req, res) => {
 
 // Publish the origin's public key(s) so third-party verifiers can resolve a sidecar's kid.
 // Outside /api/ so authMiddleware does not gate it. This is the key-to-domain trust root.
+// Every key this instance has signed with, with status — so a verifier elsewhere can accept a
+// sidecar signed under a retired key and reject one signed under a revoked key. Served even while
+// the private key is missing: verification of what was already published must not depend on it.
 app.get('/.well-known/provenance-keys.json', (req, res) => {
-  if (!provenanceKeys) return res.status(503).json({ error: 'provenance not initialized' });
-  res.json({ keys: [{ kid: provenanceKeys.publicKeyId, alg: 'Ed25519', public_key_pem: provenanceLib.getPublicKeyPem(provenanceKeys.publicKey) }] });
+  const ring = provenanceLib.loadKeyring(PROVENANCE_DIR);
+  if (!ring.length && !provenanceKeys) return res.status(503).json({ error: 'provenance not initialized' });
+  res.json({ keys: ring.map((k) => ({ kid: k.kid, alg: 'Ed25519', status: k.status, created_at: k.created_at, retired_at: k.retired_at, revoked_at: k.revoked_at, public_key_pem: k.public_key_pem })) });
+});
+
+// --- Admin: provenance key lifecycle (SOC 2 gap item 20) — status, rotate, revoke. Human-only. ---
+app.get('/api/admin/provenance', requireAdmin, (req, res) => {
+  const ring = provenanceLib.loadKeyring(PROVENANCE_DIR);
+  res.json({
+    signing: !!provenanceKeys, current_kid: provenanceKeys ? provenanceKeys.publicKeyId : null,
+    missing: provenanceKeyMissing, source: process.env.AIOS_PROVENANCE_PRIVATE_KEY ? 'env' : 'file',
+    keys: ring.map((k) => ({ kid: k.kid, status: k.status, created_at: k.created_at, retired_at: k.retired_at, revoked_at: k.revoked_at, reason: k.reason })),
+    backup: 'The private key lives at .magent/provenance/ed25519-priv.pem (mode 0600); .magent/ is included by deploy/backup.sh. It is never returned by any API. Restore it from a backup, or rotate.',
+  });
+});
+app.post('/api/admin/provenance/rotate', requireAdmin, requireHuman, (req, res) => {
+  const reason = String((req.body && req.body.reason) || '').slice(0, 200);
+  const revokeCurrent = !!(req.body && req.body.revokeCurrent);
+  const r = provenanceLib.rotateKeypair(PROVENANCE_DIR, { issuerOrigin: PROVENANCE_ISSUER, reason, revokeCurrent });
+  if (!r.ok) return res.status(409).json({ error: r.error });
+  const previous = provenanceKeys ? provenanceKeys.publicKeyId : null;
+  provenanceKeys = { privateKey: r.privateKey, publicKey: r.publicKey, publicKeyId: r.kid };
+  provenanceKeyMissing = null;
+  logActivity('auth', `Provenance key rotated: ${previous || '(none)'} → ${r.kid} (${revokeCurrent ? 'previous REVOKED' : 'previous retired'})${reason ? ' — ' + reason : ''}`, { by: req.session.email, ip: req.ip, previous, kid: r.kid, revokeCurrent });
+  sendNotification('Provenance signing key rotated', `${req.session.email} rotated the site-provenance signing key${revokeCurrent ? ' and REVOKED the previous one' : ''}. New sites sign under ${r.kid}. Sites already published keep verifying under the retired key; rebuild a site to re-sign it under the new one. Back up .magent/provenance/.`, 'high');
+  res.json({ ok: true, kid: r.kid, previous, revokedPrevious: revokeCurrent, keys: r.ring.map((k) => ({ kid: k.kid, status: k.status })) });
+});
+app.post('/api/admin/provenance/revoke', requireAdmin, requireHuman, (req, res) => {
+  const kid = String((req.body && req.body.kid) || '');
+  const reason = String((req.body && req.body.reason) || '').slice(0, 200);
+  const r = provenanceLib.revokeKey(PROVENANCE_DIR, kid, { reason });
+  if (!r.ok) return res.status(r.error === 'unknown key id' ? 404 : 409).json({ error: r.error });
+  logActivity('auth', `Provenance key REVOKED: ${r.key.kid}${reason ? ' — ' + reason : ''}`, { by: req.session.email, ip: req.ip, kid: r.key.kid });
+  res.json({ ok: true, key: { kid: r.key.kid, status: r.key.status, revoked_at: r.key.revoked_at } });
 });
 
 // Admin: the stored provenance record (incl. model list) for a generated site.
@@ -7578,8 +7637,8 @@ app.post('/api/library/record/:id/publish', requireAdmin, (req, res) => {
   if (idx < 0) return res.status(404).json({ error: 'No such record' });
   const rec = libraryCatalog[idx];
 
-  if (!signProvenance) {
-    return res.status(503).json({ error: 'provenance signing is unavailable on this instance (no signing key)' });
+  if (!provenanceKeys) {
+    return res.status(503).json({ error: provenanceKeyMissing ? 'provenance signing key is MISSING — restore it from backup or rotate (POST /api/admin/provenance/rotate)' : 'provenance signing is unavailable on this instance (no signing key)' });
   }
   if (!rec.contentHash) {
     return res.status(409).json({ error: 'that record has no contentHash to sign' });

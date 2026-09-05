@@ -124,12 +124,17 @@
           <div class="docs-endpoint">
             <span class="docs-endpoint-method get">GET</span>
             <span class="docs-endpoint-path">/api/provenance/public-key</span>
-            <p class="docs-endpoint-desc">The platform's Ed25519 public key for verifying site provenance sidecars.</p>
+            <p class="docs-endpoint-desc">The platform's current Ed25519 public key for verifying site provenance sidecars.</p>
+          </div>
+          <div class="docs-endpoint">
+            <span class="docs-endpoint-method get">GET</span>
+            <span class="docs-endpoint-path">/.well-known/provenance-keys.json</span>
+            <p class="docs-endpoint-desc">Every key this instance has ever signed with, each marked active, retired, or revoked, with dates. A sidecar's key id points here. A sidecar signed under a retired key still verifies; one signed under a revoked key verifies cryptographically but is reported as not trusted. Keys are rotated and revoked by a signed-in operator, and a rotation takes effect without a restart; sites already published keep verifying under the retired key until they are rebuilt and re-signed.</p>
           </div>
           <div class="docs-endpoint">
             <span class="docs-endpoint-method post">POST</span>
             <span class="docs-endpoint-path">/api/provenance/verify</span>
-            <p class="docs-endpoint-desc">Verify a provenance credential against served content.</p>
+            <p class="docs-endpoint-desc">Verify a provenance credential against served content. Reports whether the signature is valid and whether the signing key is trusted, which are different questions once a key has been rotated or revoked.</p>
           </div>
           <div class="docs-endpoint">
             <span class="docs-endpoint-method get">GET</span>

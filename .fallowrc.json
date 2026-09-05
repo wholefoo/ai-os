@@ -119,6 +119,7 @@
     "tools/test-subject-export.js",
     "tools/test-csrf-posture.js",
     "tools/test-service-keys.js",
+    "tools/test-provenance-keys.js",
     "tools/test-public-cost-caps.js",
     "tools/test-pm2-login-shell.js",
     "tools/test-reasoning.js",
