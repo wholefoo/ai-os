@@ -95,6 +95,7 @@ assert(helper.includes('loginLockout.recordFailure(') && helper.includes("logAct
 assert(/failed\('unknown-user'\)/.test(route) && /failed\('bad-password'\)/.test(route), 'BOTH 401 branches (unknown user, wrong password) call failed()');
 assert(at("failed('unknown-user')") < at('bcrypt.compare(') && at("failed('bad-password')") > at('bcrypt.compare('), 'unknown-user is counted before bcrypt, bad-password after');
 assert(at('loginLockout.recordSuccess(') > at('bcrypt.compare('), 'success is recorded only after the password verified');
+assert(at("user.plan === 'free'") > at('bcrypt.compare('), 'the subscription check runs AFTER the password check — plan status is not learnable without the password');
 assert(/logActivity\('auth', 'Account locked'/.test(route), 'a tripped lock is written to the activity log as its own event');
 assert(!/error: 'Invalid credentials'[^}]*email/.test(route), 'the 401 body never echoes the email');
 assert(/require\('\.\/lib\/security\/login-lockout'\)/.test(src), 'server.js constructs the lockout from the module');

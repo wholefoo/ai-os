@@ -776,7 +776,6 @@ app.post('/api/auth/login', authLimiter, async (req, res) => {
 
   const user = findUserByEmail(email);
   if (!user) { failed('unknown-user'); return res.status(401).json({ error: 'Invalid credentials' }); }
-  if (!user.plan || user.plan === 'free') return res.status(403).json({ error: 'No active subscription. Please choose a plan.' });
 
   // Verify password with bcrypt
   // passwordHash (bcrypt) is required. The legacy plaintext-equality fallback was removed — no code path
@@ -790,6 +789,9 @@ app.post('/api/auth/login', authLimiter, async (req, res) => {
     logActivity('auth', 'Login refused: account disabled', { email: user.email, ip: req.ip });
     return res.status(403).json({ error: 'Account disabled. Contact your administrator.' });
   }
+  // Same rule for the subscription check. This used to run BEFORE the password check, so anyone could
+  // learn whether an address had a paid plan by posting any password to it.
+  if (!user.plan || user.plan === 'free') return res.status(403).json({ error: 'No active subscription. Please choose a plan.' });
 
   const token = generateToken();
   sessions.set(token, {
