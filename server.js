@@ -374,6 +374,18 @@ const sessions = {
   clear: () => { _sessionMap.clear(); _persistSessions(); },
   get size() { return _sessionMap.size; },
 }; // token -> { email, plan, role, ownerEmail, stripeCustomerId?, expiresAt }
+// Every session belonging to one account, gone in one persist. This is what makes "disable" and
+// "offboard" mean now rather than "within 30 days, when their cookie happens to expire" — before it
+// existed, employee offboarding deleted the user record and left every session it had minted valid.
+function revokeSessionsFor(email) {
+  const e = String(email || '').trim().toLowerCase();
+  let n = 0;
+  for (const [k, sess] of _sessionMap) {
+    if (sess && String(sess.email || '').toLowerCase() === e) { _sessionMap.delete(k); n++; }
+  }
+  if (n) _persistSessions();
+  return n;
+}
 
 // Seed admin account if not present. Production FAILS CLOSED: it never falls back to a baked-in,
 // offline-crackable default credential — ADMIN_EMAIL + ADMIN_PASSWORD_HASH must be set explicitly,
@@ -408,6 +420,13 @@ function isValidSession(token) {
   const session = sessions.get(token);
   if (!session) return false;
   if (session.expiresAt && new Date(session.expiresAt) < new Date()) {
+    sessions.delete(token);
+    return false;
+  }
+  // A disabled account's session is dead even if a revocation was somehow missed: the flag on the
+  // user record is the source of truth, the session map is a cache of it.
+  const owner = findUserByEmail(session.email);
+  if (owner && owner.disabled) {
     sessions.delete(token);
     return false;
   }
@@ -765,6 +784,12 @@ app.post('/api/auth/login', authLimiter, async (req, res) => {
   const valid = user.passwordHash ? await bcrypt.compare(password, user.passwordHash) : false;
   if (!valid) { failed('bad-password'); return res.status(401).json({ error: 'Invalid credentials' }); }
   loginLockout.recordSuccess(email);
+  // Only a caller who proved the password learns the account is disabled. Anyone else gets the same
+  // 401 as a wrong password, so "disabled" is not an enumeration oracle.
+  if (user.disabled) {
+    logActivity('auth', 'Login refused: account disabled', { email: user.email, ip: req.ip });
+    return res.status(403).json({ error: 'Account disabled. Contact your administrator.' });
+  }
 
   const token = generateToken();
   sessions.set(token, {
@@ -811,6 +836,7 @@ app.post('/api/auth/set-password', heavyLimiter, async (req, res) => {
   if (user.setupToken.expiresAt && new Date(user.setupToken.expiresAt) < new Date()) {
     return res.status(400).json({ error: 'this setup link has expired — ask the operator to resend it' });
   }
+  if (user.disabled) return res.status(403).json({ error: 'Account disabled. Contact your administrator.' });
   user.passwordHash = await bcrypt.hash(String(password), 12);
   user.role = user.role || 'client';
   delete user.setupToken; // single-use
@@ -13827,11 +13853,68 @@ app.delete('/api/org/members/:email', requireAdmin, (req, res) => {
 
   users.splice(users.indexOf(user), 1);
   saveState('users', users);
+  const revokedSessions = revokeSessionsFor(addr); // their cookie stops working NOW, not at expiry
 
-  logActivity('auth', `Employee offboarded: ${addr} — ${personaDeleted} persona(s) deleted, ${retained} drafts retained as company records`, { org: orgKey });
+  logActivity('auth', `Employee offboarded: ${addr} — ${personaDeleted} persona(s) deleted, ${retained} drafts retained as company records, ${revokedSessions} session(s) revoked`, { org: orgKey });
   // 'recordsRetained', not 'draftsRetained': it counts commissioned work as well as drafts, and has
   // done since dispatches existed. The old name under-described what the company keeps.
-  res.json({ ok: true, offboarded: addr, personaDeleted, recordsRetained: retained });
+  res.json({ ok: true, offboarded: addr, personaDeleted, recordsRetained: retained, revokedSessions });
+});
+
+// --- Admin: account state (SOC 2 gap-list item 15 — deprovisioning) --------------------------
+// Disable is reversible and keeps the record (clones, drafts, CRM links stay attached); offboarding
+// above is the delete. Every action here revokes the account's sessions in the same request, so
+// "disabled" takes effect on the very next request the person makes.
+function adminUserSummary(u) {
+  // Never the hash, never a setup token — this list is for an operator's eyes and an audit trail.
+  return {
+    email: u.email, role: u.role || 'user', plan: u.plan || null,
+    disabled: !!u.disabled, disabledAt: u.disabledAt || null, disabledBy: u.disabledBy || null,
+    createdAt: u.createdAt || null, hasPassword: !!u.passwordHash, pendingSetup: !!u.setupToken,
+  };
+}
+app.get('/api/admin/users', requireAdmin, (req, res) => {
+  res.json({ users: users.filter(Boolean).map(adminUserSummary) });
+});
+// Resolve the target and refuse the two changes an admin must not be able to make by accident:
+// their own account, and the last enabled admin (which would lock everyone out of this surface).
+function adminUserTarget(req, res) {
+  const addr = String(req.params.email || '').trim().toLowerCase();
+  const user = findUserByEmail(addr);
+  if (!user) { res.status(404).json({ error: 'user not found' }); return null; }
+  if (req.session && req.session.email && String(req.session.email).toLowerCase() === addr) {
+    res.status(400).json({ error: 'you cannot change the state of your own account' }); return null;
+  }
+  return user;
+}
+app.post('/api/admin/users/:email/disable', requireAdmin, (req, res) => {
+  const user = adminUserTarget(req, res);
+  if (!user) return;
+  if (user.role === 'admin' && !users.some((u) => u && u !== user && u.role === 'admin' && !u.disabled && u.passwordHash)) {
+    return res.status(400).json({ error: 'cannot disable the last enabled admin' });
+  }
+  user.disabled = true;
+  user.disabledAt = new Date().toISOString();
+  user.disabledBy = req.session.email;
+  saveState('users', users);
+  const revokedSessions = revokeSessionsFor(user.email);
+  logActivity('auth', `Account disabled: ${user.email} — ${revokedSessions} session(s) revoked`, { by: req.session.email, ip: req.ip });
+  res.json({ ok: true, user: adminUserSummary(user), revokedSessions });
+});
+app.post('/api/admin/users/:email/enable', requireAdmin, (req, res) => {
+  const user = adminUserTarget(req, res);
+  if (!user) return;
+  delete user.disabled; delete user.disabledAt; delete user.disabledBy;
+  saveState('users', users);
+  logActivity('auth', `Account enabled: ${user.email}`, { by: req.session.email, ip: req.ip });
+  res.json({ ok: true, user: adminUserSummary(user) });
+});
+app.post('/api/admin/users/:email/revoke-sessions', requireAdmin, (req, res) => {
+  const user = adminUserTarget(req, res);
+  if (!user) return;
+  const revokedSessions = revokeSessionsFor(user.email);
+  logActivity('auth', `Sessions revoked: ${user.email} — ${revokedSessions}`, { by: req.session.email, ip: req.ip });
+  res.json({ ok: true, email: user.email, revokedSessions });
 });
 
 // --- Onboarding -------------------------------------------------------------
