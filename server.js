@@ -13908,6 +13908,7 @@ function adminUserSummary(u) {
   return {
     email: u.email, role: u.role || 'user', plan: u.plan || null,
     disabled: !!u.disabled, disabledAt: u.disabledAt || null, disabledBy: u.disabledBy || null,
+    deletionRequestedAt: u.deletionRequestedAt || null,
     createdAt: u.createdAt || null, hasPassword: !!u.passwordHash, pendingSetup: !!u.setupToken,
   };
 }
@@ -13953,6 +13954,64 @@ app.post('/api/admin/users/:email/revoke-sessions', requireAdmin, (req, res) => 
   const revokedSessions = revokeSessionsFor(user.email);
   logActivity('auth', `Sessions revoked: ${user.email} — ${revokedSessions}`, { by: req.session.email, ip: req.ip });
   res.json({ ok: true, email: user.email, revokedSessions });
+});
+
+// --- Retention: the deletion promise, as code (SOC 2 gap item 23 / counsel-prep P-2) ----------
+// The privacy notice: "Account data — retained while your account is active and for 30 days after
+// deletion request." A request disables the account and revokes its sessions NOW; the daily job
+// purges the record after the grace. Human-only: erasure is a decision, not an automation.
+// Hosted sites are never deleted here (gated infra action) — they are HELD and reported by name.
+const retention = require('./lib/security/retention');
+function runRetentionPurge(trigger = 'scheduler') {
+  const report = retention.purgeDueAccounts({
+    users,
+    revokeSessions: revokeSessionsFor,
+    clearLockout: (email) => loginLockout.recordSuccess(email),
+    clonesFor: (email) => businessClones.filter((c) => String(c.clientId || '').toLowerCase() === email),
+    deleteClone: deleteCloneRecords,
+    sitesFor: (email) => webStudioSites.filter((s) => s.ownerEmail && String(s.ownerEmail).toLowerCase() === email),
+    eraseCrmContact: (email) => (crm && crm.isReady && crm.isReady() && crm.repo && crm.repo.contacts) ? crm.repo.contacts.eraseByEmail(email) : null,
+    log: (msg, details) => logActivity('auth', msg, { ...details, trigger }),
+    save: () => saveState('users', users),
+  });
+  if (report.held.length) {
+    sendNotification('Retention purge: hosted sites held', `${report.held.length} purged account(s) still own hosted sites: ${report.held.map((h) => `${h.email} (${h.heldSites.join(', ')})`).join('; ')}. Delete them through the gated site-delete action.`, 'high');
+  }
+  return report;
+}
+app.post('/api/admin/users/:email/request-deletion', requireAdmin, requireHuman, (req, res) => {
+  const user = adminUserTarget(req, res);
+  if (!user) return;
+  if (user.role === 'admin' && !users.some((u) => u && u !== user && u.role === 'admin' && !u.disabled && u.passwordHash)) {
+    return res.status(400).json({ error: 'cannot request deletion of the last enabled admin' });
+  }
+  if (user.deletionRequestedAt) return res.status(409).json({ error: 'deletion already requested', requestedAt: user.deletionRequestedAt });
+  user.deletionRequestedAt = new Date().toISOString();
+  user.deletionRequestedBy = req.session.email;
+  user.disabled = true; user.disabledAt = user.disabledAt || user.deletionRequestedAt; user.disabledBy = user.disabledBy || req.session.email;
+  saveState('users', users);
+  const revokedSessions = revokeSessionsFor(user.email);
+  const dueAt = new Date(Date.parse(user.deletionRequestedAt) + retention.GRACE_MS).toISOString();
+  logActivity('auth', `Deletion requested: ${user.email} — disabled now, purge due ${dueAt.slice(0, 10)}, ${revokedSessions} session(s) revoked`, { by: req.session.email, ip: req.ip, dueAt });
+  res.json({ ok: true, user: adminUserSummary(user), revokedSessions, dueAt, graceDays: retention.GRACE_DAYS });
+});
+app.post('/api/admin/users/:email/cancel-deletion', requireAdmin, requireHuman, (req, res) => {
+  const user = adminUserTarget(req, res);
+  if (!user) return;
+  if (!user.deletionRequestedAt) return res.status(409).json({ error: 'no deletion request pending' });
+  const was = user.deletionRequestedAt;
+  delete user.deletionRequestedAt; delete user.deletionRequestedBy;
+  saveState('users', users);
+  // The account stays DISABLED: cancelling the erasure is not the same decision as reactivating.
+  logActivity('auth', `Deletion request cancelled: ${user.email} (requested ${was}); account remains disabled until enabled`, { by: req.session.email, ip: req.ip });
+  res.json({ ok: true, user: adminUserSummary(user) });
+});
+app.get('/api/admin/retention', requireAdmin, (req, res) => {
+  const pending = retention.pendingDeletions(users);
+  res.json({ graceDays: retention.GRACE_DAYS, pending, heldSites: pending.map((p) => ({ email: p.email, sites: webStudioSites.filter((s) => s.ownerEmail && String(s.ownerEmail).toLowerCase() === String(p.email).toLowerCase()).map((s) => s.id) })).filter((h) => h.sites.length) });
+});
+app.post('/api/admin/retention/run', requireAdmin, requireHuman, (req, res) => {
+  res.json({ ok: true, ...runRetentionPurge(`manual:${req.session.email}`) });
 });
 
 // --- Onboarding -------------------------------------------------------------
@@ -14816,6 +14875,15 @@ app.use('/api/*splat', (req, res) => {
   });
   appendLog(`[security] self-scan cron registered (${expr}); runs when scan_enabled=true`);
 })();
+
+// Retention purge, daily at 03:20 server time — after the backup window, before anyone is awake.
+// Registered unconditionally: the promise it enforces is unconditional.
+cron.schedule('20 3 * * *', () => {
+  try {
+    const r = runRetentionPurge('scheduler');
+    if (r.purged.length) appendLog(`[retention] purged ${r.purged.length} account(s)`);
+  } catch (e) { appendLog(`[retention] purge failed: ${e.message}`); }
+});
 
 // --- Graceful Shutdown ---
 function gracefulShutdown(signal) {
