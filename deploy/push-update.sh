@@ -20,11 +20,18 @@ fi
 echo "━━━ AI OS — Deploying to ${VPS} ━━━"
 
 # Step 1: Push latest to GitHub
-echo "[1/7] Pushing to GitHub..."
+echo "[1/8] Pushing to GitHub..."
 git push origin master
 
-# Step 2: Pull on VPS
-echo "[2/7] Pulling latest core on VPS..."
+# Step 2: Record what is running, THEN pull.
+#
+# The SHAs captured here are the rollback targets for step 8. They are read BEFORE the pull on
+# purpose: after it, "what was running" is only in the reflog, and a rollback that has to go
+# looking for its target is a rollback that gets skipped under pressure.
+echo "[2/8] Recording the running commit, then pulling latest core on VPS..."
+PREV_SHA="$(ssh "${VPS}" "cd ${APP_DIR} && sudo -u ${APP_USER} git rev-parse HEAD" | tr -d '[:space:]')"
+PREV_COMMERCIAL_SHA="$(ssh "${VPS}" "if [ -d ${APP_DIR}/commercial/.git ]; then cd ${APP_DIR}/commercial && sudo -u ${APP_USER} git rev-parse HEAD; fi" | tr -d '[:space:]')"
+echo "  running: core ${PREV_SHA:-unknown}${PREV_COMMERCIAL_SHA:+ / commercial ${PREV_COMMERCIAL_SHA}}"
 ssh "${VPS}" "cd ${APP_DIR} && sudo -u ${APP_USER} git pull origin master"
 
 # Step 3: Pull the PRIVATE commercial repo too.
@@ -40,7 +47,7 @@ ssh "${VPS}" "cd ${APP_DIR} && sudo -u ${APP_USER} git pull origin master"
 # Guarded on the directory existing, so Community installs (which have no commercial/ mount) skip it
 # silently rather than failing. Run as APP_USER, matching install-vps.sh — a root pull here leaves
 # root-owned objects in a tree the app user has to write to later.
-echo "[3/7] Pulling commercial modules (skipped if Community)..."
+echo "[3/8] Pulling commercial modules (skipped if Community)..."
 ssh "${VPS}" "if [ -d ${APP_DIR}/commercial/.git ]; then cd ${APP_DIR}/commercial && sudo -u ${APP_USER} git pull origin master; else echo 'no commercial/ mount — Community tier, skipping'; fi"
 
 # Step 4: Install dependencies EXACTLY as pinned, then PROVE the tree is complete.
@@ -68,7 +75,7 @@ ssh "${VPS}" "if [ -d ${APP_DIR}/commercial/.git ]; then cd ${APP_DIR}/commercia
 # encodes (tools/test-deploy-determinism.js asserts no non-global `npm install` survives in these
 # scripts, and it caught an earlier version of this very change). Stopping the deploy is the fix
 # for the outage; auto-repairing was convenience beyond the requirement, at the cost of a guard.
-echo "[4/7] Installing dependencies (npm ci — exact lockfile versions)..."
+echo "[4/8] Installing dependencies (npm ci — exact lockfile versions)..."
 ssh "${VPS}" "set -e
   cd ${APP_DIR}
   sudo -u ${APP_USER} npm ci --omit=dev --quiet || echo '  npm ci reported failure — the completeness check below is what decides'
@@ -88,7 +95,7 @@ ssh "${VPS}" "set -e
 # a root escalation. `install` enforces owner and mode on every deploy, so a hand-chmod drifts back.
 # The sudoers file is validated as a STAGED copy before being moved into place; a malformed
 # /etc/sudoers.d entry can lock the box out of sudo entirely.
-echo "[5/7] Installing hosting scripts (root-owned privilege boundary)..."
+echo "[5/8] Installing hosting scripts (root-owned privilege boundary)..."
 ssh "${VPS}" "set -e
   if [ -d ${APP_DIR}/deploy/hosting ]; then
     sudo install -o root -g root -m 755 ${APP_DIR}/deploy/hosting/site-vhost.sh  /usr/local/sbin/aios-site-vhost
@@ -120,7 +127,7 @@ ssh "${VPS}" "set -e
 #
 # Non-fatal on purpose: a header regression must not block shipping an unrelated hotfix. It is loud
 # instead, and `|| true` is what keeps a report-only step from failing the deploy under `set -e`.
-echo "[6/7] Auditing live nginx security headers (report only)..."
+echo "[6/8] Auditing live nginx security headers (report only)..."
 ssh "${VPS}" "sudo cat /etc/nginx/sites-available/ai-os 2>/dev/null | sudo -u ${APP_USER} node ${APP_DIR}/tools/check-nginx-headers.js" || true
 
 # Step 7: Restart PM2
@@ -130,9 +137,67 @@ ssh "${VPS}" "sudo cat /etc/nginx/sites-available/ai-os 2>/dev/null | sudo -u ${
 # empty registry, and reports "Process or Namespace not found" as though the app name were wrong.
 # `-iu` runs a login shell and sets HOME correctly. Same trap as running pm2 as root outright, which
 # has already cost a diagnostic round trip on this box.
-echo "[7/7] Restarting AI OS..."
+echo "[7/8] Restarting AI OS..."
 ssh "${VPS}" "sudo -iu ${APP_USER} pm2 restart ai-os --update-env"
 
-echo ""
-echo "━━━ Deployment complete! ━━━"
-echo "Verify: ssh ${VPS} 'curl -s http://localhost:3000/api/health | jq .'"
+# Step 8: PROVE the restarted process serves, or put the previous commit back.
+#
+# Until 2026-09-04 this script ended by printing a curl command for the operator to run by hand.
+# Two incidents already in the record are exactly what an automated check exists for: a restart
+# against a partial tree that died at require() (2026-08-11, ~40 min down), and a revert that
+# "did not work" because the CDN was still serving a cached error (2026-08). So:
+#
+#   - The check hits the ORIGIN on localhost, not the public hostname. A CDN in front can cache a
+#     failure and make a healthy origin look down (and vice versa); the origin is the truth about
+#     whether THIS deploy is serving.
+#   - It polls, because pm2 returns before the app has finished booting.
+#   - On failure it rolls BOTH repos back to the SHAs recorded in step 2, reinstalls that commit's
+#     pinned dependencies (the lockfile may have changed with the code), restarts, and checks again.
+#     `git reset --hard` rather than `checkout`, so the box stays on master and the next pull
+#     fast-forwards instead of failing on a detached HEAD.
+#   - The deploy exits non-zero whenever the NEW commit failed health, even if the rollback restored
+#     service: a rolled-back deploy is a failed deploy, and the exit code must say so.
+HEALTH_TRIES="${HEALTH_TRIES:-12}"
+HEALTH_INTERVAL="${HEALTH_INTERVAL:-5}"
+health_ok() {
+  ssh "${VPS}" "for i in \$(seq 1 ${HEALTH_TRIES}); do
+    if curl -sf --max-time 5 http://localhost:3000/api/health | grep -q '\"status\":\"ok\"'; then exit 0; fi
+    sleep ${HEALTH_INTERVAL}
+  done; exit 1"
+}
+echo "[8/8] Health check on the origin (up to ${HEALTH_TRIES}x${HEALTH_INTERVAL}s)..."
+if health_ok; then
+  DEPLOYED_SHA="$(ssh "${VPS}" "cd ${APP_DIR} && sudo -u ${APP_USER} git rev-parse --short HEAD" | tr -d '[:space:]')"
+  echo ""
+  echo "━━━ Deployment complete — origin healthy at ${DEPLOYED_SHA:-unknown} ━━━"
+  echo "Public check: curl -s https://<your-domain>/api/health | jq .  (if this disagrees with the origin, purge the CDN)"
+else
+  echo "" >&2
+  echo "!!! HEALTH CHECK FAILED after restart — the new commit is not serving." >&2
+  if [ -z "${PREV_SHA}" ]; then
+    echo "!!! No previous commit was recorded in step 2, so there is nothing to roll back to automatically." >&2
+    echo "!!! Manual: ssh ${VPS} 'sudo -iu ${APP_USER} pm2 logs ai-os --lines 50'" >&2
+    exit 1
+  fi
+  echo "!!! Rolling back to core ${PREV_SHA}${PREV_COMMERCIAL_SHA:+ / commercial ${PREV_COMMERCIAL_SHA}} ..." >&2
+  ssh "${VPS}" "cd ${APP_DIR} && sudo -u ${APP_USER} git reset --hard ${PREV_SHA}"
+  if [ -n "${PREV_COMMERCIAL_SHA}" ]; then
+    ssh "${VPS}" "cd ${APP_DIR}/commercial && sudo -u ${APP_USER} git reset --hard ${PREV_COMMERCIAL_SHA}"
+  fi
+  # The previous commit's dependencies. If THIS install is incomplete the box is already down, so
+  # the restart goes ahead regardless — but say so, loudly, because it changes what the operator
+  # does next (the 2026-08-11 recovery was `npm install --omit=dev`, by hand, on purpose).
+  ssh "${VPS}" "cd ${APP_DIR} && sudo -u ${APP_USER} npm ci --omit=dev --quiet || echo '  npm ci reported failure during rollback'" || true
+  ssh "${VPS}" "cd ${APP_DIR} && sudo -u ${APP_USER} node tools/check-deps-installed.js" \
+    || echo "!!! Dependency tree is INCOMPLETE after rollback install — restarting anyway; expect to run the manual repair." >&2
+  ssh "${VPS}" "sudo -iu ${APP_USER} pm2 restart ai-os --update-env"
+  if health_ok; then
+    echo "!!! ROLLED BACK. Origin is healthy again at ${PREV_SHA}. The deploy of the new commit FAILED — fix it before deploying again." >&2
+    echo "!!! Logs from the failed boot: ssh ${VPS} 'sudo -iu ${APP_USER} pm2 logs ai-os --lines 100'" >&2
+  else
+    echo "!!! ROLLBACK ALSO FAILED — the origin is DOWN. This needs hands now." >&2
+    echo "!!!   ssh ${VPS} 'sudo -iu ${APP_USER} pm2 logs ai-os --lines 100'" >&2
+    echo "!!!   ssh ${VPS} 'cd ${APP_DIR} && sudo -u ${APP_USER} node tools/check-deps-installed.js'" >&2
+  fi
+  exit 1
+fi
