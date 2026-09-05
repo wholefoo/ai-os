@@ -322,7 +322,7 @@ ssh root@your-vps-ip 'sudo -u aios git -C /opt/ai-os pull origin master && sudo 
 | `PORT` | No | Server port (default: 3000) |
 | `NODE_ENV` | No | `development` or `production` |
 | `DEMO_MODE` | No | `true` for simulated data (default: true) |
-| `API_TOKEN` | Prod | Bearer token for API auth — grants **admin** (service principal) on protected routes; keep it secret and rotate on exposure |
+| `API_TOKEN` | Prod | Master bearer token for API auth — grants **admin** (service principal) on protected routes; keep it secret. For each automation mint a **scoped service key** instead (`POST /api/admin/service-keys`, scopes `read` / `agent` / `admin`, rotatable, revocable, hashed at rest) — see [API docs](https://aiosorchestrationlab.com/docs/api#service-keys) |
 | `ADMIN_EMAIL` | Yes | Admin login email |
 | `ADMIN_PASSWORD_HASH` | Yes | bcrypt hash of admin password |
 | `ANTHROPIC_API_KEY` | For AI | Claude Opus 5 API key (all effort tiers) |

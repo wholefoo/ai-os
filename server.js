@@ -274,10 +274,35 @@ function authMiddleware(req, res, next) {
   // operator instead of failing closed on an absent session — a token caller has always been able to
   // read the vault, and the library must not quietly take that away.
   if (bearerToken === API_TOKEN) { req.isServiceToken = true; return next(); }
+  // A scoped service key is the operator's automation too — same isServiceToken marking — but it
+  // also carries a scope, enforced by serviceScopeGuard below, and a label for attribution.
+  const sk = bearerToken ? serviceKeyFor(bearerToken) : null;
+  if (sk) {
+    req.isServiceToken = true; req.serviceKey = sk;
+    const day = new Date().toISOString().slice(0, 10);
+    if (!sk.lastUsedAt || sk.lastUsedAt.slice(0, 10) !== day) { sk.lastUsedAt = new Date().toISOString(); saveServiceKeys(); } // persist once a day, not per request
+    return next();
+  }
   if (bearerToken && isValidSession(bearerToken)) return next();
   res.status(401).json({ error: 'Unauthorized. Provide Authorization: Bearer <token> header.' });
 }
 app.use('/api/', authMiddleware);
+// Scope enforcement + attribution for service keys. read: GET only; agent: GET + the work routes;
+// admin: everything (still never a human decision — requireHuman checks session.service).
+// Every MUTATION by a key is written to the activity log with the key's label, which is the
+// "log its actions" half of SOC 2 gap item 11; reads are not logged (volume, no state change).
+app.use('/api/', (req, res, next) => {
+  if (!req.serviceKey) return next();
+  const d = serviceKeys.decideScope(req.serviceKey, req.method, req.originalUrl);
+  if (!d.allow) {
+    logActivity('auth', `Refused: service key "${req.serviceKey.label}" out of scope`, { keyId: req.serviceKey.id, scope: req.serviceKey.scope, method: req.method, path: req.originalUrl.split('?')[0], ip: req.ip });
+    return res.status(403).json({ error: `This service key has scope "${req.serviceKey.scope}" and may not ${req.method} this route.` });
+  }
+  if (req.method !== 'GET' && req.method !== 'HEAD' && req.method !== 'OPTIONS') {
+    logActivity('auth', `Service key "${req.serviceKey.label}": ${req.method} ${req.originalUrl.split('?')[0]}`, { keyId: req.serviceKey.id, scope: req.serviceKey.scope, ip: req.ip });
+  }
+  next();
+});
 // CSRF defence in depth: a cookie-authenticated mutation from another origin is refused here even
 // though SameSite=Lax + closed CORS + JSON-only parsing already stop it (lib/security/csrf.js).
 app.use('/api/', require('./lib/security/csrf').sameOriginGuard({ log: (reason, d) => logActivity('auth', 'Refused: cross-site cookie request', { reason, ...d }) }));
@@ -363,6 +388,12 @@ const STRIPE_PLANS = {
 };
 
 // In-memory user/session store (replace with DB in production)
+// Scoped service keys: the per-caller replacement for handing automations the one static token.
+// Records are loaded with the other state (STATE_DIR exists by now; the auth middleware only calls serviceKeyFor at request time) and persisted under state.
+const serviceKeys = require('./lib/security/service-keys');
+let serviceKeyList = loadState('service-keys', []);
+const saveServiceKeys = () => saveState('service-keys', serviceKeyList);
+function serviceKeyFor(bearer) { return serviceKeys.findByToken(serviceKeyList, bearer); }
 const users = loadState('users', []);
 // Durable session store: an in-memory Map (hot path) persisted to .magent/state/sessions.json so
 // client + admin logins survive a server restart (the old in-memory-only Map dropped every login).
@@ -1523,6 +1554,8 @@ app.get('/api/health', (req, res) => {
 function wsCredential(req) {
   const bearer = (req.headers.authorization || '').replace(/^Bearer\s+/i, '').trim();
   if (bearer && API_TOKEN && bearer === API_TOKEN) return { kind: 'api-token' };
+  const sk = bearer ? serviceKeyFor(bearer) : null;
+  if (sk) return sk.scope === 'admin' ? { kind: 'api-token' } : { kind: 'service-key', session: null };
   if (bearer && isValidSession(bearer)) return { kind: 'session', session: isValidSession(bearer) };
   const cookie = (req.headers.cookie || '').match(/ai-os-session=([^;]+)/)?.[1];
   if (cookie && isValidSession(cookie)) return { kind: 'session', session: isValidSession(cookie) };
@@ -10178,6 +10211,11 @@ function resolveSession(req) {
   if (API_TOKEN && token && token === API_TOKEN) {
     return { email: 'service@api-token', plan: 'enterprise', role: 'admin', service: true };
   }
+  // A scoped service key resolves to a NAMED service principal — the label is what the activity log
+  // and every `actor` field will carry. role:'admin' so the route guards behave as for the static
+  // token; the scope guard above has already refused anything outside the key's scope.
+  const sk = token ? serviceKeyFor(token) : null;
+  if (sk) return { email: `service:${sk.label}`, plan: 'enterprise', role: 'admin', service: true, serviceKey: { id: sk.id, label: sk.label, scope: sk.scope } };
   return isValidSession(token);
 }
 
@@ -14061,6 +14099,41 @@ app.post('/api/admin/users/:email/cancel-deletion', requireAdmin, requireHuman, 
   logActivity('auth', `Deletion request cancelled: ${user.email} (requested ${was}); account remains disabled until enabled`, { by: req.session.email, ip: req.ip });
   res.json({ ok: true, user: adminUserSummary(user) });
 });
+// --- Service keys: scoped, rotatable, per-caller (SOC 2 gap item 11) ----------------------------
+// Minting, rotating and revoking are human decisions. The raw token is returned ONCE.
+app.get('/api/admin/service-keys', requireAdmin, (req, res) => {
+  res.json({ scopes: serviceKeys.SCOPES, keys: serviceKeyList.map(serviceKeys.publicView), masterTokenConfigured: !!API_TOKEN });
+});
+app.post('/api/admin/service-keys', requireAdmin, requireHuman, (req, res) => {
+  const v = serviceKeys.validateNew(req.body || {});
+  if (v.error) return res.status(400).json({ error: v.error });
+  const { key, token } = serviceKeys.createKey({ id: uuidv4(), ...v, createdBy: req.session.email });
+  serviceKeyList.push(key); saveServiceKeys();
+  logActivity('auth', `Service key minted: "${key.label}" (scope ${key.scope}${key.expiresAt ? ', expires ' + key.expiresAt.slice(0, 10) : ''})`, { keyId: key.id, by: req.session.email, ip: req.ip });
+  res.json({ ok: true, token, key: serviceKeys.publicView(key), note: 'Store this token now. It is not recoverable — only its hash is kept.' });
+});
+app.post('/api/admin/service-keys/:id/revoke', requireAdmin, requireHuman, (req, res) => {
+  const k = serviceKeyList.find((x) => x.id === req.params.id);
+  if (!k) return res.status(404).json({ error: 'key not found' });
+  if (k.revoked) return res.status(409).json({ error: 'already revoked', revokedAt: k.revokedAt });
+  k.revoked = true; k.revokedAt = new Date().toISOString(); saveServiceKeys();
+  logActivity('auth', `Service key revoked: "${k.label}"`, { keyId: k.id, by: req.session.email, ip: req.ip });
+  res.json({ ok: true, key: serviceKeys.publicView(k) });
+});
+// Rotation = a new token with the same label and scope, and the old one revoked in the same
+// request. The new record points back at the old (rotatedFrom) so the chain is auditable.
+app.post('/api/admin/service-keys/:id/rotate', requireAdmin, requireHuman, (req, res) => {
+  const old = serviceKeyList.find((x) => x.id === req.params.id);
+  if (!old) return res.status(404).json({ error: 'key not found' });
+  if (old.revoked) return res.status(409).json({ error: 'cannot rotate a revoked key — mint a new one' });
+  const { key, token } = serviceKeys.createKey({ id: uuidv4(), label: old.label, scope: old.scope, expiresAt: old.expiresAt, createdBy: req.session.email });
+  key.rotatedFrom = old.id;
+  old.revoked = true; old.revokedAt = new Date().toISOString();
+  serviceKeyList.push(key); saveServiceKeys();
+  logActivity('auth', `Service key rotated: "${old.label}" — old revoked, new issued`, { oldKeyId: old.id, keyId: key.id, by: req.session.email, ip: req.ip });
+  res.json({ ok: true, token, key: serviceKeys.publicView(key), revoked: serviceKeys.publicView(old) });
+});
+
 app.get('/api/admin/retention', requireAdmin, (req, res) => {
   const pending = retention.pendingDeletions(users);
   res.json({ graceDays: retention.GRACE_DAYS, pending, heldSites: pending.map((p) => ({ email: p.email, sites: webStudioSites.filter((s) => s.ownerEmail && String(s.ownerEmail).toLowerCase() === String(p.email).toLowerCase()).map((s) => s.id) })).filter((h) => h.sites.length) });
@@ -14990,7 +15063,8 @@ process.on('unhandledRejection', (reason) => {
 // --- Start ---
 server.listen(PORT, HOST, () => {
   console.log(`AI OS Dashboard running at http://${HOST}:${PORT}`);
-  console.log(`Environment: ${process.env.NODE_ENV || 'development'} | Demo mode: ${DEMO_MODE} | Auth: ${API_TOKEN ? 'enabled' : 'disabled'}`);
+  console.log(`Environment: ${process.env.NODE_ENV || 'development'} | Demo mode: ${DEMO_MODE} | Auth: ${API_TOKEN ? 'enabled' : 'disabled'} | Service keys: ${serviceKeyList.filter((k) => !k.revoked).length} active`);
+  if (API_TOKEN) console.log('[AUTH] The static API_TOKEN is a master credential. Prefer scoped service keys for automations: POST /api/admin/service-keys (signed-in admin).');
   console.log(`Schedules active: ${[...schedules.values()].filter(s => s.enabled).length}`);
   console.log(`Pipelines available: ${loadPipelines().length}`);
   console.log(`Identity files: ${fs.existsSync(IDENTITY_DIR) ? fs.readdirSync(IDENTITY_DIR).filter(f => f.endsWith('.md')).length : 0}`);

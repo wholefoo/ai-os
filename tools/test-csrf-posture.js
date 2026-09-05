@@ -45,7 +45,10 @@ assert(!/app\.use\(express\.urlencoded/.test(src), 'no global urlencoded parser'
 // --- 3. the guard is mounted, after auth, on the API ---------------------------------------------------
 const authAt = src.indexOf("app.use('/api/', authMiddleware);");
 const guardAt = src.indexOf("app.use('/api/', require('./lib/security/csrf').sameOriginGuard(");
-assert(authAt !== -1 && guardAt !== -1 && guardAt > authAt && guardAt - authAt < 400, 'sameOriginGuard is mounted on /api/ immediately after authMiddleware');
+// Between them sits the service-key scope guard (2026-09-05); the property is ORDER — auth, then scope,
+// then origin — and that nothing route-shaped is mounted before the origin guard.
+const between = src.slice(authAt, guardAt);
+assert(authAt !== -1 && guardAt !== -1 && guardAt > authAt && !/app\.(get|post|put|delete|patch)\(/.test(between), 'sameOriginGuard is mounted on /api/ after authMiddleware, with no ROUTE mounted in between');
 assert(/Refused: cross-site cookie request/.test(src.slice(guardAt, guardAt + 400)), 'refusals are written to the activity log');
 
 // --- 4. state-changing GET routes: exactly the two that are safe by construction -----------------------

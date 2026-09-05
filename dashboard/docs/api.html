@@ -64,6 +64,21 @@
             <li><strong><code>/api/health</code></strong> — exempt from authentication, so uptime checks work without a token</li>
             <li><strong>Dashboard sessions</strong> — use a session cookie set during login instead of a Bearer token</li>
           </ul>
+          <h3 id="service-keys">Scoped service keys</h3>
+          <p>The <code>API_TOKEN</code> is a master credential. For each automation you connect (an n8n workflow, a monitor, a script), mint a <strong>service key</strong> instead: a separate bearer token with a label, a scope, and an optional expiry, that you can rotate or revoke without touching anything else. Keys are hashed at rest and shown once at creation. Minting, rotating and revoking require a signed-in administrator; the master token and other keys cannot do it.</p>
+          <table class="docs-table">
+            <thead><tr><th>Scope</th><th>May do</th><th>Typical use</th></tr></thead>
+            <tbody>
+              <tr><td><code>read</code></td><td>GET and HEAD only</td><td>Dashboards, exporters, uptime and cost monitors</td></tr>
+              <tr><td><code>agent</code></td><td>Read, plus running agents, skills and pipelines, Hermes delegation, and A2A</td><td>n8n and Zapier workflows that dispatch work</td></tr>
+              <tr><td><code>admin</code></td><td>Everything the master token can do</td><td>Operator tooling</td></tr>
+            </tbody>
+          </table>
+          <p>Whatever its scope, a service key is never a person: approving a gated action, retrying one, changing the automation mode, requesting a deletion, or exporting someone's data always requires a signed-in operator. Every mutation a key makes is written to the activity log under the key's label, and an out-of-scope attempt is refused and logged the same way.</p>
+          <pre><code>POST /api/admin/service-keys            { "label": "n8n lead sync", "scope": "agent", "expiresInDays": 90 }
+GET  /api/admin/service-keys            list (labels, scopes, last use — never the token)
+POST /api/admin/service-keys/:id/rotate  new token for the same label and scope; the old one is revoked in the same step
+POST /api/admin/service-keys/:id/revoke</code></pre>
 
           <h2 id="rate-limits">Rate Limits</h2>
           <table class="docs-table">
