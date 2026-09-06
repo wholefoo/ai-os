@@ -97,6 +97,7 @@ function switchView(view) {
     org: loadOrg,
     analytics: loadAnalytics,
     security: loadSecurity,
+    access: loadAccess,
     mission: loadMission,
     inbox: loadInbox,
     timeline: loadTimeline,

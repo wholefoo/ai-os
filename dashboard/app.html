@@ -86,6 +86,9 @@
         <a href="#" class="nav-item" data-view="security">
           <span class="nav-icon">&#128737;</span> Security
         </a>
+        <a href="#" class="nav-item" data-view="access">
+          <span class="nav-icon">&#128273;</span> Access &amp; Keys
+        </a>
         <a href="#" class="nav-item" data-view="mission">
           <span class="nav-icon">&#9733;</span> Mission
         </a>
@@ -2063,6 +2066,52 @@
           </div>
         </div>
 
+        <!-- Access & Keys View (admin) — accounts, service keys, retention, provenance keyring -->
+        <div class="view" id="view-access">
+          <div class="radar-header">
+            <div class="radar-header-left">
+              <h2 class="radar-title">Access &amp; Keys</h2>
+              <span class="radar-subtitle">Who and what can act on this instance. Every action here is a human decision: an API token or service key gets 403 on these buttons.</span>
+            </div>
+            <div class="radar-actions">
+              <button class="btn" id="accRefresh">Refresh</button>
+            </div>
+          </div>
+          <div id="accMsg" class="crm-muted" style="min-height:16px;margin-bottom:8px;"></div>
+          <div class="crm-grid">
+            <section class="panel">
+              <h3 class="panel-title">Accounts</h3>
+              <p class="crm-muted" style="margin:0 0 8px;">Disable ends sessions now and keeps the record. Request deletion disables now and purges after the 30-day grace the privacy notice promises. Export downloads everything held about the person.</p>
+              <div id="accUsers"><div class="empty-state">Loading…</div></div>
+            </section>
+            <section class="panel">
+              <h3 class="panel-title">Service keys</h3>
+              <p class="crm-muted" style="margin:0 0 8px;">One key per automation. <strong>read</strong> = GET only · <strong>agent</strong> = read + running agents, skills, pipelines, Hermes, A2A · <strong>admin</strong> = everything the master token can do. None can approve, change the automation mode, or touch a person.</p>
+              <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:8px;">
+                <input id="accKeyLabel" class="form-input" placeholder="label, e.g. n8n lead sync" style="flex:1;min-width:160px;" maxlength="80">
+                <select id="accKeyScope" class="form-input" style="width:auto;"><option value="read">read</option><option value="agent" selected>agent</option><option value="admin">admin</option></select>
+                <input id="accKeyDays" class="form-input" placeholder="expires in days (optional)" style="width:190px;" type="number" min="1" max="365">
+                <button class="btn btn-primary" id="accMintBtn">Mint key</button>
+              </div>
+              <div id="accMasterNote" class="crm-muted" style="margin-bottom:8px;"></div>
+              <div id="accKeys"><div class="empty-state">Loading…</div></div>
+            </section>
+            <section class="panel">
+              <h3 class="panel-title">Retention</h3>
+              <p class="crm-muted" style="margin:0 0 8px;">Deletion requests waiting out their grace period. Hosted sites are never deleted by the purge; they are listed here for the gated site-delete.</p>
+              <div style="margin-bottom:8px;"><button class="btn" id="accPurgeBtn">Run purge now</button></div>
+              <div id="accRetention"><div class="empty-state">Loading…</div></div>
+            </section>
+            <section class="panel">
+              <h3 class="panel-title">Provenance signing keys</h3>
+              <p class="crm-muted" style="margin:0 0 8px;">The Ed25519 key that signs generated sites' provenance sidecars, and every key that ever did. Rotating keeps the old key's public half so published sites still verify; revoking marks its signatures untrusted.</p>
+              <div id="accProvStatus" style="margin-bottom:8px;"></div>
+              <div style="margin-bottom:8px;"><button class="btn" id="accProvRotateBtn">Rotate signing key</button></div>
+              <div id="accProvKeys"><div class="empty-state">Loading…</div></div>
+            </section>
+          </div>
+        </div>
+
         <!-- SEO Agency View -->
         <div class="view" id="view-client-security">
           <div class="radar-header">
@@ -3023,6 +3072,7 @@
   <script src="js/crm.js?v=3"></script>
   <script src="js/analytics.js?v=2"></script>
   <script src="js/security.js?v=2"></script>
+  <script src="js/access.js?v=1"></script>
   <script src="js/brand-kits.js?v=1"></script>
   <script src="js/clones.js?v=13"></script>
   <script src="js/org.js?v=4"></script>
