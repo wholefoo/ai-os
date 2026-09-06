@@ -131,6 +131,7 @@ pm2 save</code></pre>
               <tr><td>Input validation</td><td>Built-in on all POST endpoints</td></tr>
               <tr><td>Bearer token auth</td><td>Via <code>API_TOKEN</code> env var</td></tr>
               <tr><td>Session cookie auth</td><td>HTTP-only, 30-day expiry</td></tr>
+              <tr><td>Secrets at rest</td><td>Opt-in: set <code>AIOS_SECRETS_KEY</code> (32 bytes, or a 16+ character passphrase) and provider keys, tokens and webhook secrets are AES-256-GCM sealed in the state files from the next save. Without it they are plaintext JSON on your own disk. A lost key makes sealed values unreadable; they are reported by name at startup and must be re-entered.</td></tr>
               <tr><td>Stripe webhook signature verification</td><td>Built-in</td></tr>
               <tr><td>Graceful shutdown (SIGTERM/SIGINT)</td><td>Built-in</td></tr>
               <tr><td>Uncaught exception handler</td><td>Built-in</td></tr>

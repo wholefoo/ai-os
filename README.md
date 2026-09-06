@@ -332,6 +332,7 @@ ssh root@your-vps-ip 'sudo -u aios git -C /opt/ai-os pull origin master && sudo 
 | `XAI_API_KEY` | For AI | Grok-3 realtime tier |
 | `FIRECRAWL_API_KEY` | For AI | Firecrawl web scraping |
 | `TAVILY_API_KEY` | For AI | Tavily AI-optimized search |
+| `AIOS_SECRETS_KEY` | Optional | **Encrypts secret fields at rest** (provider keys, tokens, webhook secrets in the settings, email-secrets and integrations state files) with AES-256-GCM. 32 bytes as 64 hex / 44 base64, or a passphrase of 16+ chars (scrypt-derived). Without it those files are plaintext JSON (masked only in API responses). **Losing it makes sealed values unreadable** — they are reported by path at startup and in `GET /api/settings`, and must be re-entered. Back it up with the instance. |
 | `APIFY_API_TOKEN` | For AI | Apify platform scraping (YouTube, Maps, etc.) |
 | `DATAFORSEO_LOGIN` | For SEO | DataForSEO account email |
 | `DATAFORSEO_PASSWORD` | For SEO | DataForSEO API password |

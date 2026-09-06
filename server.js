@@ -39,6 +39,14 @@ const STATE_SUBDIR = /^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(process.env.AIOS_STATE_
   ? process.env.AIOS_STATE_SUBDIR
   : 'state';
 const STATE_DIR = path.join(MAGENT_DIR, STATE_SUBDIR);
+// --- Secrets at rest (opt-in via AIOS_SECRETS_KEY; lib/security/secrets-at-rest.js) -------------
+// The three stores that carry credentials are SEALED on write and OPENED on read. Without the env
+// var both are no-ops and the files stay plaintext, as they always were. The in-memory objects are
+// never encrypted. `secretsAtRestStatus` is what the settings API and the startup line report.
+const secretsAtRest = require('./lib/security/secrets-at-rest');
+const SEALED_STORES = new Set(['settings', 'email_secrets', 'integrations']);
+const _secretsKey = secretsAtRest.keyFromEnv(process.env.AIOS_SECRETS_KEY);
+const secretsAtRestStatus = { enabled: !!_secretsKey.key, form: _secretsKey.form || null, reason: _secretsKey.reason, unreadable: [] };
 let crm = null; // CRM facade (lib/crm) — assigned in the CRM init block once node:sqlite opens; live seams call crm?.*
 
 // Ensure state directory exists for persistence
@@ -1595,7 +1603,8 @@ function saveState(key, data) {
   const fp = path.join(STATE_DIR, `${key}.json`);
   const tmp = `${fp}.tmp`;
   try {
-    fs.writeFileSync(tmp, JSON.stringify(data, null, 2));
+    const payload = SEALED_STORES.has(key) ? secretsAtRest.seal(data, _secretsKey.key) : data;
+    fs.writeFileSync(tmp, JSON.stringify(payload, null, 2));
     fs.renameSync(tmp, fp); // atomic replace — a crash mid-write can't truncate/corrupt the live file
     return true;
   } catch (e) {
@@ -1610,8 +1619,19 @@ function loadState(key, fallback) {
   try {
     const fp = path.join(STATE_DIR, `${key}.json`);
     if (fs.existsSync(fp)) {
-      const data = JSON.parse(fs.readFileSync(fp, 'utf-8'));
-      console.log(`[STATE] Loaded ${key} from disk`);
+      let data = JSON.parse(fs.readFileSync(fp, 'utf-8'));
+      let note = '';
+      if (SEALED_STORES.has(key)) {
+        const sealedCount = secretsAtRest.countSealed(data);
+        const unreadable = [];
+        data = secretsAtRest.open(data, _secretsKey.key, key, unreadable);
+        if (unreadable.length) {
+          secretsAtRestStatus.unreadable.push(...unreadable);
+          console.error(`[SECRETS] ${unreadable.length} sealed value(s) in ${key} could not be opened (${_secretsKey.key ? 'wrong key or tampered' : 'AIOS_SECRETS_KEY not set'}): ${unreadable.join(', ')} — re-enter them in Settings, or restore the key.`);
+          note = ` (${unreadable.length} sealed value(s) UNREADABLE)`;
+        } else if (sealedCount) note = ` (${sealedCount} sealed value(s) opened)`;
+      }
+      console.log(`[STATE] Loaded ${key} from disk${note}`);
       // Deep-merge: ensure any new default keys are present in loaded data
       if (defaults && typeof defaults === 'object' && !Array.isArray(defaults)) {
         for (const [section, vals] of Object.entries(defaults)) {
@@ -10135,9 +10155,11 @@ app.delete('/api/hermes/cron/:id', requireAdmin, (req, res) => {
 
 // --- Settings (Admin-only API key & connection management) ---
 
-// Settings persist to a plaintext JSON state file (.magent/state/settings.json). Keys are masked in
-// API responses (maskKey) but are NOT encrypted at rest — at-rest protection is the operator's
-// responsibility (host disk encryption + filesystem permissions; deploy/install-vps.sh chmods .env 600).
+// Settings persist to a JSON state file (.magent/state/settings.json). Keys are masked in API
+// responses (maskKey). AT REST they are plaintext UNLESS the operator sets AIOS_SECRETS_KEY, in which
+// case every secret-shaped field is AES-256-GCM sealed on write and opened on read (lib/security/
+// secrets-at-rest.js; see `secretsAtRestStatus`). Host disk encryption and file permissions
+// (deploy/install-vps.sh chmods .env 600) remain the operator's responsibility either way.
 const settings = loadState('settings', {
   ai: {
     reasoning_mode: process.env.AIOS_REASONING_MODE || 'balanced', // opus | balanced | sonnet — Anthropic reasoning-model routing (resolveAnthropicModel)
@@ -10511,6 +10533,11 @@ app.get('/api/settings', requireAdmin, (req, res) => {
       demo_mode: settings.general.demo_mode,
       cors_origin: settings.general.cors_origin,
       api_token: { value: maskKey(settings.general.api_token), configured: !!settings.general.api_token },
+    },
+    secrets_at_rest: {
+      enabled: secretsAtRestStatus.enabled, form: secretsAtRestStatus.form, reason: secretsAtRestStatus.reason,
+      unreadable: secretsAtRestStatus.unreadable,
+      note: secretsAtRestStatus.enabled ? 'Secret fields are AES-256-GCM sealed on disk under AIOS_SECRETS_KEY.' : 'Secret fields are plaintext on disk. Set AIOS_SECRETS_KEY (32 bytes hex/base64, or a 16+ char passphrase) and restart to seal them on the next save.',
     },
   };
   res.json(masked);
@@ -15124,6 +15151,7 @@ server.listen(PORT, HOST, () => {
   console.log(`AI OS Dashboard running at http://${HOST}:${PORT}`);
   console.log(`Environment: ${process.env.NODE_ENV || 'development'} | Demo mode: ${DEMO_MODE} | Auth: ${API_TOKEN ? 'enabled' : 'disabled'} | Service keys: ${serviceKeyList.filter((k) => !k.revoked).length} active`);
   if (API_TOKEN) console.log('[AUTH] The static API_TOKEN is a master credential. Prefer scoped service keys for automations: POST /api/admin/service-keys (signed-in admin).');
+  console.log(`[SECRETS] at-rest encryption: ${secretsAtRestStatus.enabled ? `ON (AES-256-GCM, key form ${secretsAtRestStatus.form})` : `OFF — ${secretsAtRestStatus.reason}`}${secretsAtRestStatus.unreadable.length ? ` | ${secretsAtRestStatus.unreadable.length} UNREADABLE sealed value(s)` : ''}`);
   console.log(`Schedules active: ${[...schedules.values()].filter(s => s.enabled).length}`);
   console.log(`Pipelines available: ${loadPipelines().length}`);
   console.log(`Identity files: ${fs.existsSync(IDENTITY_DIR) ? fs.readdirSync(IDENTITY_DIR).filter(f => f.endsWith('.md')).length : 0}`);
