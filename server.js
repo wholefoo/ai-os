@@ -2225,10 +2225,12 @@ function wsCleanAffiliateUrl(raw) {
 app.post('/api/web-studio/sites', requireClientOrAdmin, heavyLimiter, async (req, res) => {
   const { name, brief, siteType, domain, cloneUrl, brandKitId, redesignUrl, maintainBranding, features, researchUrl, affiliateUrl, checkoutUrl, model, templateId } = req.body || {};
   if (!brief || String(brief).trim().length < 10) return res.status(400).json({ error: 'A brief of at least 10 characters is required' });
-  // Optional model choice for this build: 'fable' routes the design agents to Claude Fable 5 (premium);
-  // anything else (default) keeps the operator's normal reasoning-mode routing. Mapped to an allowlisted
-  // Anthropic model here so only a known/priced model can reach executeAgent's override.
-  const modelOverride = model === 'fable' ? FABLE_MODEL : null;
+  // Model choice for this build. DEFAULT since 2026-09-07 is GPT-6 Astra at reasoning_effort 'low'
+  // (operator decision). 'fable' routes the design agents to Claude Fable 5; 'claude' opts back out to
+  // the operator's normal reasoning-mode routing (Opus 5 for the lead, Sonnet 5 for the writer).
+  // Every branch maps to a KNOWN, PRICED model string so an override can never reach executeAgent as
+  // arbitrary caller input.
+  const modelOverride = model === 'fable' ? FABLE_MODEL : model === 'claude' ? null : ASTRA_MODEL;
   // Optional starter template: resolve now (with the requester's access) so a bad/foreign id fails fast.
   let template = null;
   if (templateId) {
@@ -2255,7 +2257,7 @@ app.post('/api/web-studio/sites', requireClientOrAdmin, heavyLimiter, async (req
 
   const cleanFeatures = wsCleanFeatures(features);
   const id = uuidv4();
-  const site = { id, name: String(name || 'Untitled site').slice(0, 80), brief: String(brief).slice(0, 4000), siteType: wsCleanType(siteType), kind: 'generated', status: 'building', domain: cfgDomain, hostingSetup: false, published: false, ownerEmail: wsIsClient(req.session) ? (req.session.ownerEmail || req.session.email) : null, createdAt: new Date().toISOString(), lastBuiltAt: null, pages: [], features: cleanFeatures, chatEnabled: cleanFeatures.enableChat, buildModel: modelOverride ? 'Fable 5' : null, templateId: template ? template.id : null, templateName: template ? template.name : null };
+  const site = { id, name: String(name || 'Untitled site').slice(0, 80), brief: String(brief).slice(0, 4000), siteType: wsCleanType(siteType), kind: 'generated', status: 'building', domain: cfgDomain, hostingSetup: false, published: false, ownerEmail: wsIsClient(req.session) ? (req.session.ownerEmail || req.session.email) : null, createdAt: new Date().toISOString(), lastBuiltAt: null, pages: [], features: cleanFeatures, chatEnabled: cleanFeatures.enableChat, buildModel: modelOverride === FABLE_MODEL ? 'Fable 5' : modelOverride === ASTRA_MODEL ? 'GPT-6 Astra (low)' : null, templateId: template ? template.id : null, templateName: template ? template.name : null };
   webStudioSites.push(site);
   saveState('web_studio_sites', webStudioSites);
   logActivity('web-studio', `Site build started: ${site.name}`, { id });
@@ -4022,6 +4024,17 @@ const FABLE_MODEL = 'claude-fable-5';
 // Anthropic models that a caller may request per-call via executeAgent's options.modelOverride. Kept
 // as an allowlist so an override can never smuggle in an arbitrary/unpriced model string.
 const OVERRIDABLE_ANTHROPIC_MODELS = new Set([FABLE_MODEL, OPUS_MODEL, SONNET_MODEL]);
+// OpenAI's GPT-6 Astra — the Web Studio build model since 2026-09-07 (operator decision).
+// Confirmed against developers.openai.com/api/docs/models/gpt-6-astra on that date: id `gpt-6-astra`,
+// reasoning_effort accepts low|medium|high|xhigh|max, 1,050,000 context, 128,000 max output,
+// $10/$50 per 1M on /v1/chat/completions.
+//
+// ⚠️ "LOW" IS THE REASONING EFFORT, NOT A PRICE TIER. At $10/$50 this is DOUBLE Opus 5's $5/$25 and
+// five times Sonnet 5's $2/$10 per token. Low effort spends fewer output tokens, which is where the
+// saving has to come from — it is not a cheaper rate. Do not read "low" as "budget".
+const ASTRA_MODEL = 'gpt-6-astra';
+const ASTRA_EFFORT = 'low';
+let _warnedAstraFallback = false; // one line per process when the key is missing, not one per build
 const OPUS_API_VERSION = '2023-06-01';
 const GEMINI_OMNI_MODEL = 'gemini-omni-flash';
 // xAI's dev-planning-tuned model (2026 release, agentic-coding-focused, 256k context). Reachability
@@ -4361,7 +4374,22 @@ async function executeAgent(agentName, task, options = {}) {
       // DeepSeek — economy tier
       result = await callDeepSeek(fullSystem + volatileSystem, fullTask, maxTokens);
       model = 'deepseek-v4';
+    } else if (options.modelOverride === ASTRA_MODEL && settings.ai.openai_api_key) {
+      // CROSS-PROVIDER per-call override: Web Studio's build agents (web-studio-lead, content-writer)
+      // run on GPT-6 Astra at reasoning_effort 'low'. Deliberately the same shape as the consultant
+      // branch above — take the other provider only when its key is configured, and otherwise fall
+      // through to Anthropic so a missing key degrades the model choice instead of failing every
+      // site build. The agent keeps its own effort routing everywhere else; only the model moves.
+      result = await callOpenAI(fullSystem + volatileSystem, fullTask, maxTokens, { model: ASTRA_MODEL, reasoningEffort: ASTRA_EFFORT });
+      model = `${ASTRA_MODEL}-${ASTRA_EFFORT}`;
     } else {
+      // Reached with an Astra override only when the OpenAI key is missing. Say so ONCE per process:
+      // silently building on a different model than the operator selected is the kind of invisible
+      // substitution that takes days to notice in the ledger.
+      if (options.modelOverride === ASTRA_MODEL && !_warnedAstraFallback) {
+        _warnedAstraFallback = true;
+        appendLog('[web-studio] GPT-6 Astra was requested but no OpenAI API key is configured — building on the default Anthropic routing instead. Add the key in Settings → AI.');
+      }
       // Default: Anthropic — Opus 5 or Sonnet 5 per the operator's reasoning_mode (balanced by default:
       // Opus for strategic, Sonnet 5 for professional/scout). Optionally with the operator's connected MCP
       // tools (opt-in); side-effectful tool calls route through the Auto-Mode approval gate below.
@@ -4973,10 +5001,15 @@ async function callGemini(systemPrompt, task, maxTokens) {
   };
 }
 
-async function callOpenAI(systemPrompt, task, maxTokens) {
+// `opts.model` / `opts.reasoningEffort` exist for GPT-6 Astra (the Web Studio build model). Default
+// stays gpt-5.6-terra so the OpenAI consultant is unchanged. reasoning_effort is only sent when a
+// caller asks for it — gpt-5.6-terra has no such parameter and would reject an unexpected field.
+async function callOpenAI(systemPrompt, task, maxTokens, opts = {}) {
   const { content, inputTokens, outputTokens } = await callChatCompletions({
-    provider: 'OpenAI', keyName: 'OpenAI', url: 'https://api.openai.com/v1/chat/completions', model: 'gpt-5.6-terra',
+    provider: 'OpenAI', keyName: 'OpenAI', url: 'https://api.openai.com/v1/chat/completions',
+    model: opts.model || 'gpt-5.6-terra',
     apiKey: settings.ai.openai_api_key, systemPrompt, task, maxTokens, tokenParam: 'max_completion_tokens',
+    extraBody: opts.reasoningEffort ? { reasoning_effort: opts.reasoningEffort } : null,
   });
   return { content, inputTokens, outputTokens };
 }
@@ -5130,6 +5163,17 @@ const COST_RATES = {
   'gpt-5.6-sol':       { input: 5.00,  output: 30.00 },
   'gpt-5.6-terra':     { input: 2.50,  output: 15.00 },
   'gpt-5.6-luna':      { input: 1.00,  output: 6.00  },
+  // GPT-6 Astra — $10/$50 per 1M, confirmed 2026-09-07 against
+  // developers.openai.com/api/docs/models/gpt-6-astra (1.05M context, 128k max output).
+  // FLAT PER FAMILY, exactly like the Opus rungs above: reasoning_effort changes how many tokens
+  // are spent, not the per-token rate. All five efforts are listed for the P4 reason written in the
+  // Opus block — a rung missing from this table does not error, it silently re-bills at the
+  // opus-5-high fallback ($5/$25), which for THIS model would under-report by half.
+  'gpt-6-astra-low':   { input: 10.00, output: 50.00 },
+  'gpt-6-astra-medium': { input: 10.00, output: 50.00 },
+  'gpt-6-astra-high':  { input: 10.00, output: 50.00 },
+  'gpt-6-astra-xhigh': { input: 10.00, output: 50.00 },
+  'gpt-6-astra-max':   { input: 10.00, output: 50.00 },
   // Gemini 3.5 Flash (text path in callGemini) — verified against ai.google.dev pricing 2026-07-12.
   'gemini-3.5-flash':  { input: 1.50,  output: 9.00  },
   // Grok 4.5 — xAI flagship, GA 2026-07-08; $2/$6 verified against launch coverage 2026-07-12
