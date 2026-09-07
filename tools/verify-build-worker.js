@@ -23,6 +23,8 @@ const canary = path.join(workspace, 'host-secret');
     fs.writeFileSync(path.join(workspace, 'src/pages/index.astro'), '<html><body>isolated-build-ok</body></html>');
     fs.writeFileSync(path.join(workspace, 'astro.config.mjs'), `
       import fs from 'node:fs'; import net from 'node:net'; import assert from 'node:assert/strict';
+      import { lookup } from 'node:dns/promises';
+      assert.equal((await lookup('localhost', {family:4})).address, '127.0.0.1');
       assert.equal(fs.existsSync(${JSON.stringify(canary)}), false);
       assert.equal(fs.existsSync('/home/aios'), false);
       assert.equal(process.env.AIOS_VERIFY_SECRET, undefined);

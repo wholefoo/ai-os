@@ -92,7 +92,16 @@ function response() { return { statusCode: 200, status(code) { this.statusCode =
     const archive = Buffer.alloc(2048); archive.write('index.html'); archive.write('00000000002', 124); archive.write('0', 156); archive.write('ok', 512);
     const commands = [];
     const worker = vm.createContext({ Buffer, module: { exports: {} }, process: { platform: 'linux', getuid: () => 1001, env: { AIOS_BUILD_BACKEND: 'bubblewrap' } },
-      require: name => name === 'child_process' ? { execFile: (file, args, options, done) => { commands.push({ file, args, options }); done(null, archive, Buffer.from('')); } } : require(name) });
+      require: name => name === 'child_process' ? { execFile: (file, args, options, done) => {
+        if (file === '/usr/bin/systemd-run') {
+          const resolver = args[args.indexOf('/etc') - 1];
+          assert.equal(args[args.indexOf('/etc') - 2], '--ro-bind');
+          assert.equal(fs.readFileSync(path.join(resolver, 'hosts'), 'utf8'), '127.0.0.1 localhost\n::1 localhost\n');
+          assert.equal(fs.readFileSync(path.join(resolver, 'nsswitch.conf'), 'utf8'), 'hosts: files\n');
+          assert(!fs.existsSync(path.join(resolver, 'resolv.conf')), 'No external DNS configuration');
+        }
+        commands.push({ file, args, options }); done(null, archive, Buffer.from(''));
+      } } : require(name) });
     vm.runInContext(readRepoFile('lib/web-studio/isolated-build.js'), worker);
     fs.mkdirSync(path.join(tmp, 'site'));
     fs.writeFileSync(path.join(tmp, 'site/package.json'), '{}');
