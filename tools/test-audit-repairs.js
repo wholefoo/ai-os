@@ -11,7 +11,7 @@ const rootRequire = require('module').createRequire(path.join(root, 'server.js')
 function context(extra = {}) {
   return vm.createContext({ console, Date, Math, JSON, Set, Map, URL, path, fs, require: rootRequire,
     process: { env: { NODE_ENV: 'production' } }, logActivity: noop, broadcast: noop,
-    saveState: () => true, sendNotification: noop, appendLog: noop, ...extra });
+    saveState: () => true, scheduleAutoSave: noop, sendNotification: noop, appendLog: noop, ...extra });
 }
 function load(c, ...names) {
   for (const name of names) {

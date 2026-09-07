@@ -26,7 +26,7 @@ ok('endpoint is admin-gated', () => {
 
 ok('every counted surface uses the discovered pending predicate, not a guess', () => {
   // Each of these predicates was DISCOVERED from the writing site, not assumed:
-  assert.ok(/kind === 'action' && a\.status === 'pending'/.test(route), 'action approvals');
+  assert.ok(/kind === 'action' && \['pending', 'interrupted'\]\.includes\(a.status\)/.test(route), 'pending and interrupted action approvals require attention');
   assert.ok(/kind === 'proposal' && a\.status === 'pending'/.test(route), 'platform proposals');
   assert.ok(/pipelineRuns\.values\(\)\]\.filter\(r => r\.status === 'awaiting_approval'\)/.test(route),
     'pipeline gates count awaiting_approval runs (the status set at server.js stage/run gating)');

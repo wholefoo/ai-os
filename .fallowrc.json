@@ -4,6 +4,9 @@
     "server.js",
     "tools/test-audit-repairs.js",
     "tools/test-audit-smoke.js",
+    "tools/test-review-followup.js",
+    "tools/verify-build-worker.js",
+    "tools/update-nginx-microphone.js",
     "agent-worker/agent.js",
     "tools/generate-maps.js",
     "tools/test-analytics.js",
@@ -154,7 +157,8 @@
     "/js/**",
     "/vendor/**",
     "./commercial/loader",
-    "./commercial/**"
+    "./commercial/**",
+    "../commercial/**"
   ],
   "ignoreExports": [
     {

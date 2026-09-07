@@ -109,6 +109,14 @@ ok('...and it stops at step 4, not after quietly doing steps 5 and 6', () => {
 });
 
 // --- MUST NOT BREAK THE HAPPY PATH. -----------------------------------------------------------
+ok('worker verification or nginx policy failure stops before restarting the application', () => {
+  for (const step of ['verify-build-worker.js', 'update-nginx-microphone.js']) {
+    const r = runDeploy(step);
+    assert.notStrictEqual(r.code, 0);
+    assert.ok(!r.restarted, `${step} failure must stop the restart`);
+  }
+});
+
 ok('a clean run still reaches the restart and reports completion', () => {
   const r = runDeploy('');
   assert.strictEqual(r.code, 0, `clean deploy must exit 0, got ${r.code}:\n${r.stdout.slice(0, 400)}`);

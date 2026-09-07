@@ -113,7 +113,8 @@ ssh "${VPS}" "set -e
     echo '  no deploy/hosting — skipping'
   fi"
 
-# Step 6: Audit the LIVE nginx config. Report only — never overwritten.
+# Step 6: Apply only the reviewed microphone directive change; audit remaining headers.
+# The updater makes a backup, validates nginx, and restores on failure. It never copies the template.
 #
 # Deliberately NOT a copy of deploy/nginx.conf. The live file is legitimately not the template:
 # install-vps.sh seds the domain in (:353) and conditionally appends an n8n block (:364-381), and it
@@ -127,7 +128,10 @@ ssh "${VPS}" "set -e
 #
 # Non-fatal on purpose: a header regression must not block shipping an unrelated hotfix. It is loud
 # instead, and `|| true` is what keeps a report-only step from failing the deploy under `set -e`.
-echo "[6/8] Auditing live nginx security headers (report only)..."
+echo "[6/8] Applying the targeted microphone policy update and verifying build readiness..."
+ssh "${VPS}" "sudo node ${APP_DIR}/tools/update-nginx-microphone.js --apply"
+ssh "${VPS}" "sudo -iu ${APP_USER} sh -c 'cd ${APP_DIR} && node tools/verify-build-worker.js --if-configured'"
+echo 'Auditing the remaining nginx security headers (report only)...'
 ssh "${VPS}" "sudo cat /etc/nginx/sites-available/ai-os 2>/dev/null | sudo -u ${APP_USER} node ${APP_DIR}/tools/check-nginx-headers.js" || true
 
 # Step 7: Restart PM2

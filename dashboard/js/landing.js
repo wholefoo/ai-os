@@ -37,7 +37,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const loginBtn = document.getElementById('loginSubmitBtn');
   if (loginModal && new URLSearchParams(window.location.search).get('checkout') === 'received') {
     const notice = document.createElement('p');
-    notice.textContent = 'Your checkout has been received. Existing customers can sign in. If this is your first purchase, contact the operator for your account setup invitation. Access is activated after payment confirmation.';
+    notice.textContent = 'Your checkout has been received. Existing customers can sign in. After payment confirmation, new customers receive an email with a single-use account setup link. Check your inbox and spam folder; contact the operator if it does not arrive.';
     loginModal.querySelector('.modal-body')?.prepend(notice);
     loginModal.classList.add('active');
   }

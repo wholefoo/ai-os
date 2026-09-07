@@ -1,79 +1,65 @@
-// tools/test-run-history-durable.js
-// ============================================================
-//  THE LIST AND THE DETAIL MUST AGREE. Every run the list offers must be openable.
-//
-//  `GET /api/pipelines/runs` merges live runs with archived ones read from `.magent/runs/`, marking
-//  the archived ones `fromTrail`. `GET /api/pipelines/runs/:id` read ONLY the in-memory Map. So
-//  after any restart the UI listed runs and every one of them 404'd on click.
-//
-//  NOT COSMETIC: two of the three runs on this machine were `awaiting_approval` — work parked at a
-//  HUMAN GATE that could not be opened in order to approve it. A gate you cannot reach never clears.
-//
-//  WHY THIS TEST BOOTS THE SERVER. The bug was in a ROUTE, not in the trail module. `readManifest`
-//  and `listRuns` both worked perfectly the whole time — a module-level test would have passed
-//  while the feature was broken. The invariant only exists where the two endpoints meet, so the
-//  test has to go through HTTP.
-// ============================================================
-
-const assert = require('assert');
+// Prove archived pipeline runs remain openable through HTTP, using only synthetic state.
+'use strict';
+const assert = require('assert/strict');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const http = require('http');
-
-const trail = require('../lib/pipeline-trail.js');
-
-let pass = 0;
-const ok = (label) => { console.log(`ok  : ${label}`); pass++; };
-
-// AUTHENTICATE PROPERLY rather than trying to disable auth. server.js opens the API only when
-// there is NO API_TOKEN, but dotenv runs INSIDE server.js and re-populates it from .env — deleting
-// the var before require() does not survive. Setting it first does: dotenv will not override an
-// existing value. So the test supplies its own token and sends it, exercising the real auth path.
-process.env.API_TOKEN = 'test-token-run-history';
-const PORT = 3391;
-process.env.PORT = String(PORT);
-
-const get = (p) => new Promise((resolve) => {
-  http.get({ host: '127.0.0.1', port: PORT, path: p, headers: { Authorization: 'Bearer test-token-run-history' } }, (res) => {
-    let d = '';
-    res.on('data', (c) => (d += c));
-    res.on('end', () => { let j = null; try { j = JSON.parse(d); } catch {} resolve({ status: res.statusCode, body: j }); });
-  }).on('error', () => resolve({ status: 0, body: null }));
+const cp = require('child_process');
+const trail = require('../lib/pipeline-trail');
+const root = path.resolve(__dirname, '..');
+const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'aios-history-test-'));
+let child, port;
+const get = p => new Promise(resolve => {
+  const req = http.get({host:'127.0.0.1',port,path:p,headers:{Authorization:'Bearer synthetic-history-token'}}, res => {
+    let data = '';
+    res.on('data', chunk => { data += chunk; });
+    res.on('end', () => { let body; try { body = JSON.parse(data); } catch {} resolve({status:res.statusCode,body}); });
+  });
+  req.on('error',()=>resolve({status:0}));
+  req.setTimeout(2000,()=>req.destroy());
 });
-
 (async () => {
-  // A trail written by the real module, so the fixture cannot drift from the writer's format.
-  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'runhist-'));
-  const run = { id: 'run-fixture-1', pipeline: 'security-sweep', status: 'awaiting_approval', startedAt: new Date(0).toISOString(), params: {} };
-  trail.writeStage(tmp, run, { id: 'architecture', agent: 'security-auditor', output: 'stub output' }, 1);
-  trail.writeManifest(tmp, run, []);
-  assert.ok(trail.readManifest(tmp, run.id), 'fixture trail must be readable by the module itself');
-  ok('a run trail written by the real module reads back');
-
-  require('../server.js');
-  await new Promise((r) => setTimeout(r, 6000));
-
-  const list = await get('/api/pipelines/runs');
-  assert.strictEqual(list.status, 200, 'the runs list must respond');
-  ok(`the list responds (${(list.body || []).length} run(s))`);
-
-  // THE INVARIANT. Anything the list offers must open.
-  const unopenable = [];
-  for (const r of list.body || []) {
-    const one = await get('/api/pipelines/runs/' + encodeURIComponent(r.id));
-    if (one.status !== 200) unopenable.push(`${r.id} -> HTTP ${one.status} (${one.body && one.body.error})`);
+  for (const file of ['server.js','package.json','ecosystem.config.js']) fs.copyFileSync(path.join(root,file),path.join(tmp,file));
+  for (const dir of ['lib','.claude','dashboard']) fs.cpSync(path.join(root,dir),path.join(tmp,dir),{recursive:true});
+  fs.symlinkSync(path.join(root,'node_modules'),path.join(tmp,'node_modules'),'junction');
+  const stateRoot = path.join(tmp,'.magent','runs');
+  const run = {id:'run-fixture-1',pipeline:'security-sweep',status:'awaiting_approval',startedAt:new Date(0).toISOString(),params:{}};
+  trail.writeStage(stateRoot,run,{id:'architecture',agent:'security-auditor',output:'synthetic output'},1);
+  trail.writeManifest(stateRoot,run,[]);
+  assert(trail.readManifest(stateRoot,run.id));
+  const preload = path.join(tmp,'test-preload.cjs');
+  fs.writeFileSync(preload, `global.fetch=async()=>{throw Error('Test: external network disabled');};
+    for(const protocol of ['http','https'])require(protocol).request=()=>{throw Error('Test: external requests disabled');};
+    const cp=require('child_process');for(const method of ['exec','execSync','execFile','execFileSync','spawn','spawnSync'])cp[method]=()=>{throw Error('Test: subprocess disabled');};`);
+  const probe = http.createServer();
+  await new Promise(resolve=>probe.listen(0,'127.0.0.1',resolve));
+  port = probe.address().port;
+  await new Promise(resolve=>probe.close(resolve));
+  const env = {NODE_ENV:'production',DEMO_MODE:'true',PORT:String(port),API_TOKEN:'synthetic-history-token',AIOS_SECRETS_KEY:'0'.repeat(64)};
+  for(const key of ['PATH','Path','SystemRoot','WINDIR','TEMP','TMP'])if(process.env[key])env[key]=process.env[key];
+  let output = '';
+  child=cp.spawn(process.execPath,['--require',preload,path.join(tmp,'server.js')],{cwd:tmp,env,windowsHide:true,stdio:['ignore','pipe','pipe']});
+  child.stdout.on('data',b=>{output+=b;}); child.stderr.on('data',b=>{output+=b;});
+  let list;
+  for(let n=0;n<100;n++) {
+    list=await get('/api/pipelines/runs');
+    if(list.status===200)break;
+    if(child.exitCode!==null)throw Error(output);
+    await new Promise(resolve=>setTimeout(resolve,100));
   }
-  assert.deepStrictEqual(unopenable, [],
-    'every listed run must be openable — the list reads the trail, so the detail must too:\n  ' + unopenable.join('\n  '));
-  ok('EVERY listed run is openable — list and detail agree');
-
-  // A run that genuinely does not exist must still 404, or the fallback is hiding real errors.
-  const missing = await get('/api/pipelines/runs/run-definitely-not-here');
-  assert.strictEqual(missing.status, 404, 'an unknown run id must still 404');
-  ok('an unknown run id still 404s — the fallback did not swallow real misses');
-
-  fs.rmSync(tmp, { recursive: true, force: true });
-  console.log(`\nALL TESTS PASSED\n${pass} assertions`);
-  process.exit(0);
-})();
+  assert.equal(list.status,200,output);
+  assert(list.body.some(item=>item.id===run.id),'The synthetic archived run must actually appear in the list');
+  for(const item of list.body) {
+    const detail=await get('/api/pipelines/runs/'+encodeURIComponent(item.id));
+    assert.equal(detail.status,200,'Listed run must be openable: '+item.id);
+  }
+  assert.equal((await get('/api/pipelines/runs/run-does-not-exist')).status,404);
+  console.log('PASS: archived fixture appears in list, every listed run opens, unknown run returns 404');
+})().catch(error=>{console.error(error);process.exitCode=1;}).finally(async()=>{
+  if(child&&child.exitCode===null){child.kill();await new Promise(resolve=>{child.once('exit',resolve);setTimeout(resolve,2000).unref();});}
+  assert.equal(path.dirname(tmp),os.tmpdir());
+  assert(path.basename(tmp).startsWith('aios-history-test-'));
+  const deps=path.join(tmp,'node_modules');if(fs.existsSync(deps))fs.unlinkSync(deps);
+  fs.rmSync(tmp,{recursive:true,force:true});
+});

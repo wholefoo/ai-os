@@ -796,6 +796,10 @@ if [ "$WITH_CODEX" = true ]; then
   echo ""
 fi
 echo -e "  ${CYAN}━━━ Useful Commands ━━━${NC}"
+echo 'Generated-site builds need the non-Docker worker (install and verify before enabling):'
+echo "     sudo bash ${APP_DIR}/deploy/hosting/install-build-worker.sh"
+echo "     sudo -iu ${APP_USER} sh -c 'cd ${APP_DIR} && node tools/verify-build-worker.js'"
+echo "     Then set AIOS_BUILD_BACKEND=bubblewrap in ${APP_DIR}/.env and restart PM2."
 echo -e "     pm2 logs ai-os          # Live log stream"
 echo -e "     pm2 monit               # CPU/RAM monitor"
 echo -e "     pm2 restart ai-os       # Restart server"

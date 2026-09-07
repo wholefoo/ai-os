@@ -753,8 +753,8 @@ function renderInbox(filter = 'all') {
   const container = document.getElementById('inboxList');
   if (!container) return;
   let items = state.inbox || [];
-  if (filter === 'pending') items = items.filter(i => i.status === 'pending');
-  else if (filter === 'resolved') items = items.filter(i => i.status !== 'pending');
+  if (filter === 'pending') items = items.filter(i => ['pending', 'executing', 'interrupted'].includes(i.status));
+  else if (filter === 'resolved') items = items.filter(i => !['pending', 'executing', 'interrupted'].includes(i.status));
 
   if (!items.length) {
     container.innerHTML = '<div class="empty-state">No pending approvals. All clear.</div>';
@@ -817,6 +817,8 @@ function renderInbox(filter = 'all') {
     if (item.status === 'approved') outcome = `Approved by ${escapeHtml(item.approvedBy || 'operator')}`;
     else if (item.status === 'rejected') outcome = `Rejected by ${escapeHtml(item.rejectedBy || 'operator')}${item.rejectReason ? ' — ' + escapeHtml(item.rejectReason) : ''}`;
     else if (item.status === 'failed') outcome = `Failed: ${escapeHtml(item.error || 'unknown error')}`;
+    else if (item.status === 'executing') outcome = 'Execution in progress. Do not submit again.';
+    else if (item.status === 'interrupted') outcome = 'Execution interrupted. Verify the external result before resolving.';
     return `
     <div class="inbox-item ${risk}">
       <div class="inbox-item-header">
@@ -838,6 +840,7 @@ function renderInbox(filter = 'all') {
       ` : `
         <div class="inbox-actions">
           <span style="font-size:12px;color:var(--text-muted);">${outcome}</span>
+          ${item.status === 'interrupted' ? `<button class="btn btn-sm btn-secondary" data-approval-id="${item.id}" onclick="reconcileAction(this.dataset.approvalId)">Resolve interrupted action</button>` : ''}
           ${item.status === 'failed' ? `
             <button class="btn btn-sm btn-secondary" data-approval-id="${item.id}" data-needs="${(item.needsSecrets || []).join(',')}" onclick="retryAction(this.dataset.approvalId, this.dataset.needs)">Retry${item.retryCount ? ` (${item.retryCount} tried)` : ''}</button>
           ` : ''}
@@ -6275,9 +6278,10 @@ async function loadSettings() {
 async function loadApprovals() {
   const box = document.getElementById('approvals-list');
   if (!box) return;
-  const items = await fetchJSON('/api/approvals?status=pending');
-  if (!Array.isArray(items)) { box.innerHTML = '<p class="settings-desc">Could not load approvals.</p>'; return; }
-  if (!items.length) { box.innerHTML = '<p class="settings-desc">No pending approvals.</p>'; return; }
+  const response = await fetchJSON('/api/approvals');
+  if (!Array.isArray(response)) { box.innerHTML = '<p class="settings-desc">Could not load approvals.</p>'; return; }
+  const items = response.filter(a => ['pending', 'executing', 'interrupted', 'failed'].includes(a.status));
+  if (!items.length) { box.innerHTML = '<p class="settings-desc">No approvals requiring attention.</p>'; return; }
   box.innerHTML = items.map(a => {
     const risk = (a.risk || 'medium').toUpperCase();
     const color = risk === 'CRITICAL' ? '#ef4444' : risk === 'HIGH' ? '#f59e0b' : '#94a3b8';
@@ -6290,8 +6294,10 @@ async function loadApprovals() {
       </div>
       <div class="settings-desc" style="margin:4px 0;">${escapeHtml(a.type)} · requested by ${escapeHtml(a.requestedBy || 'operator')}${when ? ' · ' + escapeHtml(when) : ''}</div>
       <div style="display:flex;gap:8px;margin-top:6px;">
-        <button class="btn btn-success" style="padding:4px 12px;" onclick="approveAction('${a.id}','${needs}')">Approve</button>
-        <button class="btn btn-danger" style="padding:4px 12px;" onclick="rejectAction('${a.id}')">Reject</button>
+        ${a.status === 'pending' ? `<button class="btn btn-success" style="padding:4px 12px;" onclick="approveAction('${a.id}','${needs}')">Approve</button>
+        <button class="btn btn-danger" style="padding:4px 12px;" onclick="rejectAction('${a.id}')">Reject</button>` : `<span>${escapeHtml(a.error || 'Execution in progress')}</span>`}
+        ${a.status === 'interrupted' ? `<button class="btn btn-secondary" data-approval-id="${a.id}" onclick="reconcileAction(this.dataset.approvalId)">Resolve interrupted action</button>` : ''}
+        ${a.status === 'failed' ? `<button class="btn btn-secondary" data-approval-id="${a.id}" data-needs="${needs}" onclick="retryAction(this.dataset.approvalId, this.dataset.needs)">Retry</button>` : ''}
       </div>
     </div>`;
   }).join('');
@@ -6300,6 +6306,16 @@ async function loadApprovals() {
 // Retry a FAILED action (audit P3): the human reads the error on the card and judges whether the
 // failure was clean enough to re-run — this is deliberate operator intent, not an unattended
 // re-send. Secrets were never persisted, so a secret-bearing action prompts for them again.
+async function reconcileAction(id) {
+  const outcome = window.prompt('Check the external service first. Enter completed or not-completed. Leave this unresolved if the outcome is uncertain.');
+  if (!['completed', 'not-completed'].includes(outcome)) return;
+  const note = window.prompt('What evidence did you check? (required, up to 500 characters)');
+  if (!note || !note.trim()) return;
+  const r = await fetchJSON(`/api/approvals/${id}/reconcile`, { method: 'POST', body: { outcome, note: note.trim().slice(0, 500) } });
+  if (r && r.error) alert('Could not resolve action: ' + r.error);
+  await Promise.all([loadApprovals(), loadInbox()]);
+}
+
 async function retryAction(id, needsCsv) {
   const secrets = {};
   for (const k of (needsCsv ? needsCsv.split(',') : [])) {

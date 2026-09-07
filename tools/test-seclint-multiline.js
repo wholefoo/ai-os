@@ -36,61 +36,50 @@ function scan(src) {
 
 const BT = '`';
 
+// Preserve the exact multiline source being scanned while sharing the fixture envelope.
+function renderFixture(body, assignment, signature) {
+  return [signature, assignment, ...body, '  ' + BT + ';', '}'].join('\n');
+}
+
 // --- THE SHAPE THAT HID THREE REAL BUGS. ------------------------------------------------------
 ok('FLAGS an unescaped property read in a multi-line innerHTML assignment', () => {
-  const src = [
-    'function render(a) {',
-    '  el.innerHTML = ' + BT + '',
-    '    <div class="x">',
-    '      <span>${a.filename}</span>',
-    '    </div>',
-    '  ' + BT + ';',
-    '}',
-  ].join('\n');
+  const src = renderFixture([
+    "    <div class=\"x\">",
+    "      <span>${a.filename}</span>",
+    "    </div>"
+  ], "  el.innerHTML = `", "function render(a) {");
   const hits = scan(src);
   assert.ok(hits.some((h) => h.rule === 'innerhtml-multiline'), `expected a multiline finding, got ${JSON.stringify(hits)}`);
 });
 
 ok('does NOT flag when every property read is escaped', () => {
-  const src = [
-    'function render(a) {',
-    '  el.innerHTML = ' + BT + '',
-    '    <div>',
-    '      <span>${escapeHtml(a.filename)}</span>',
-    '    </div>',
-    '  ' + BT + ';',
-    '}',
-  ].join('\n');
+  const src = renderFixture([
+    "    <div>",
+    "      <span>${escapeHtml(a.filename)}</span>",
+    "    </div>"
+  ], "  el.innerHTML = `", "function render(a) {");
   assert.deepStrictEqual(scan(src).filter((h) => h.rule === 'innerhtml-multiline'), []);
 });
 
 // --- THE REFINEMENT. Bare locals are pre-built HTML / computed classes, not data. --------------
 ok('does NOT flag bare locals — that is what keeps this list reviewable', () => {
-  const src = [
-    'function render() {',
-    '  el.innerHTML = ' + BT + '',
-    '    <div class="${scoreClass}">',
-    '      ${agentCards}',
-    '    </div>',
-    '  ' + BT + ';',
-    '}',
-  ].join('\n');
+  const src = renderFixture([
+    "    <div class=\"${scoreClass}\">",
+    "      ${agentCards}",
+    "    </div>"
+  ], "  el.innerHTML = `", "function render() {");
   assert.deepStrictEqual(scan(src).filter((h) => h.rule === 'innerhtml-multiline'), []);
 });
 
 // --- The allowlisted formatters must not fire. ------------------------------------------------
 ok('does NOT flag timeAgo / Number / encodeURIComponent', () => {
-  const src = [
-    'function render(a) {',
-    '  el.innerHTML = ' + BT + '',
-    '    <div>',
-    '      <span>${timeAgo(a.created)}</span>',
-    '      <span>${Number(a.count)}</span>',
-    '      <a href="/x/${encodeURIComponent(a.slug)}">go</a>',
-    '    </div>',
-    '  ' + BT + ';',
-    '}',
-  ].join('\n');
+  const src = renderFixture([
+    "    <div>",
+    "      <span>${timeAgo(a.created)}</span>",
+    "      <span>${Number(a.count)}</span>",
+    "      <a href=\"/x/${encodeURIComponent(a.slug)}\">go</a>",
+    "    </div>"
+  ], "  el.innerHTML = `", "function render(a) {");
   assert.deepStrictEqual(scan(src).filter((h) => h.rule === 'innerhtml-multiline'), []);
 });
 
@@ -98,15 +87,11 @@ ok('does NOT flag timeAgo / Number / encodeURIComponent', () => {
 // It cost 8 unescaped sites (4edb175). If someone adds it to the allowlist "because it looks like a
 // formatter", this test is what stops them.
 ok('DOES flag capitalize() — it returns its input, so it is not a safe formatter', () => {
-  const src = [
-    'function render(a) {',
-    '  el.innerHTML = ' + BT + '',
-    '    <div>',
-    '      <span>${capitalize(a.name)}</span>',
-    '    </div>',
-    '  ' + BT + ';',
-    '}',
-  ].join('\n');
+  const src = renderFixture([
+    "    <div>",
+    "      <span>${capitalize(a.name)}</span>",
+    "    </div>"
+  ], "  el.innerHTML = `", "function render(a) {");
   // This test FAILED against the first draft of the rule, which checked property reads only: the
   // call fell through both rules. Including non-allowlisted calls is the fix, so assert the
   // MULTILINE rule specifically — asserting "something caught it" would pass again if the call
@@ -122,31 +107,23 @@ ok('DOES flag capitalize() — it returns its input, so it is not a safe formatt
 // pass-throughs (`.replace()` returns the input unchanged when the pattern misses), which is the
 // capitalize lesson wearing different clothes.
 ok('FLAGS a method call on a property path — the .replace() pass-through gap', () => {
-  const src = [
-    'function render(a) {',
-    '  el.innerHTML = ' + BT + '',
-    '    <div>',
+  const src = renderFixture([
+    "    <div>",
     "      <span>${a.model.replace('x', 'y')}</span>",
-    '    </div>',
-    '  ' + BT + ';',
-    '}',
-  ].join('\n');
+    "    </div>"
+  ], "  el.innerHTML = `", "function render(a) {");
   const hits = scan(src).filter((h) => h.rule === 'innerhtml-multiline');
   assert.ok(hits.length > 0, 'obj.prop.method(...) must be flagged — .replace() escapes nothing');
 });
 
 // Arithmetic is a language-level guarantee, so it must NOT fire once method calls are in scope.
 ok('does NOT flag Math.round(...) or .toFixed(n)', () => {
-  const src = [
-    'function render(a) {',
-    '  el.innerHTML = ' + BT + '',
-    '    <div>',
-    '      <span>${Math.round(a.confidence * 100)}%</span>',
-    '      <span>${a.cost.toFixed(2)}</span>',
-    '    </div>',
-    '  ' + BT + ';',
-    '}',
-  ].join('\n');
+  const src = renderFixture([
+    "    <div>",
+    "      <span>${Math.round(a.confidence * 100)}%</span>",
+    "      <span>${a.cost.toFixed(2)}</span>",
+    "    </div>"
+  ], "  el.innerHTML = `", "function render(a) {");
   assert.deepStrictEqual(scan(src).filter((h) => h.rule === 'innerhtml-multiline'), []);
 });
 
@@ -154,15 +131,11 @@ ok('does NOT flag Math.round(...) or .toFixed(n)', () => {
 // so on a string it returns that string unchanged. That is how v.score reached innerHTML unescaped
 // (8759382). If someone adds it beside .toFixed in safeInterp, this test is what stops them.
 ok('DOES flag .toLocaleString() — a no-op pass-through on a string, not a formatter', () => {
-  const src = [
-    'function render(a) {',
-    '  el.innerHTML = ' + BT + '',
-    '    <div>',
-    '      <span>${a.views.toLocaleString()}</span>',
-    '    </div>',
-    '  ' + BT + ';',
-    '}',
-  ].join('\n');
+  const src = renderFixture([
+    "    <div>",
+    "      <span>${a.views.toLocaleString()}</span>",
+    "    </div>"
+  ], "  el.innerHTML = `", "function render(a) {");
   const hits = scan(src).filter((h) => h.rule === 'innerhtml-multiline');
   assert.ok(hits.length > 0, '.toLocaleString() on a string returns it unchanged — must be flagged');
 });
@@ -170,29 +143,21 @@ ok('DOES flag .toLocaleString() — a no-op pass-through on a string, not a form
 // --- A nested template literal must not truncate the scan. ------------------------------------
 // A naive indexOf('`') stops at the first nested template and silently checks only part of the span.
 ok('handles a nested template literal without truncating the span', () => {
-  const src = [
-    'function render(rows, a) {',
-    '  el.innerHTML = ' + BT + '',
-    '    <ul>',
-    '      ${rows.map(r => ' + BT + '<li>${escapeHtml(r.n)}</li>' + BT + ').join("")}',
-    '    </ul>',
-    '    <span>${a.unsafeTail}</span>',
-    '  ' + BT + ';',
-    '}',
-  ].join('\n');
+  const src = renderFixture([
+    "    <ul>",
+    "      ${rows.map(r => `<li>${escapeHtml(r.n)}</li>`).join(\"\")}",
+    "    </ul>",
+    "    <span>${a.unsafeTail}</span>"
+  ], "  el.innerHTML = `", "function render(rows, a) {");
   const hits = scan(src).filter((h) => h.rule === 'innerhtml-multiline');
   assert.ok(hits.length > 0, 'the value AFTER the nested template must still be seen');
 });
 
 // --- Suppression works on the reported line. --------------------------------------------------
 ok('respects a seclint-ok comment on the innerHTML line', () => {
-  const src = [
-    'function render(a) {',
-    '  el.innerHTML = ' + BT + '' + '  // seclint-ok: fixture',
-    '    <span>${a.filename}</span>',
-    '  ' + BT + ';',
-    '}',
-  ].join('\n');
+  const src = renderFixture([
+    "    <span>${a.filename}</span>"
+  ], "  el.innerHTML = `  // seclint-ok: fixture", "function render(a) {");
   assert.deepStrictEqual(scan(src).filter((h) => h.rule === 'innerhtml-multiline'), []);
 });
 

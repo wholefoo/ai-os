@@ -369,7 +369,7 @@ const stripe = STRIPE_SECRET ? require('stripe')(STRIPE_SECRET) : null;
 // 'sk_'+'live_' is split so the CI secret-scan (which greps for the literal key prefix) doesn't
 // false-positive on this mode check — there is no key here, only a prefix comparison.
 if (STRIPE_SECRET.startsWith('sk_' + 'live_') && !STRIPE_WEBHOOK_SECRET) {
-  console.warn('[STRIPE] WARNING: live key set but STRIPE_WEBHOOK_SECRET is empty — the webhook fulfillment backstop is DISABLED (the success redirect is the only fulfillment path). Configure the webhook endpoint + signing secret in the Stripe Dashboard.');
+  console.warn('[STRIPE] WARNING: STRIPE_WEBHOOK_SECRET is empty — paid purchases cannot be fulfilled. Configure the webhook endpoint and signing secret before accepting payments.');
 }
 
 const STRIPE_PLANS = {
@@ -484,7 +484,7 @@ app.get('/api/stripe/checkout', async (req, res) => {
   const plan = STRIPE_PLANS[planKey];
   if (!plan) return res.status(400).json({ error: 'Invalid plan' });
 
-  if (!stripe) {
+  if (!stripe || !STRIPE_WEBHOOK_SECRET) {
     // Stripe not configured — redirect to landing with message
     return res.redirect('/?stripe=not-configured');
   }
@@ -521,8 +521,17 @@ function managedOfferConfig() {
     plan: c.managed_plan === 'enterprise' ? 'enterprise' : 'business',
   };
 }
+function accountInviteOrigin() {
+  try {
+    const url = new URL(process.env.AIOS_PUBLIC_URL || (process.env.AIOS_PRIMARY_DOMAIN ? 'https://' + process.env.AIOS_PRIMARY_DOMAIN : ''));
+    return url.protocol === 'https:' && !url.username && !url.password && url.pathname === '/' && !url.search && !url.hash ? url.origin : '';
+  } catch { return ''; }
+}
 function managedOfferActive() {
   return !!stripe
+    && !!STRIPE_WEBHOOK_SECRET
+    && emailLib.isConfigured(settings.email)
+    && !!accountInviteOrigin()
     && (ACTIVE_TIER === 'business' || ACTIVE_TIER === 'enterprise')
     && String((settings.commerce || {}).managed_enabled) !== 'false';
 }
@@ -603,9 +612,7 @@ app.post('/api/commerce/checkout', heavyLimiter, async (req, res) => {
 // Public buy page (outside /api/ so authMiddleware does not gate it).
 app.get('/buy', (req, res) => { res.sendFile(path.join(BASE, 'dashboard', 'buy.html')); });
 
-// Fulfill a PAID checkout session — idempotent, shared by the success redirect
-// and the checkout.session.completed webhook (the backstop when the customer
-// never returns to the success URL).
+// Fulfill a PAID checkout session from a verified webhook. Redirects never grant access.
 function fulfillCheckoutSession(stripeSession, source) {
   // Only verified webhook delivery provisions entitlements. Redirect parameters are not authority.
   if (source !== 'webhook') return null;
@@ -656,8 +663,7 @@ function fulfillCheckoutSession(stripeSession, source) {
   }
   // Managed-site CLIENT account (metadata.account === 'client'): a scoped client ON THIS instance,
   // distinct from a license buyer who runs their OWN instance. Provision a login-capable client role
-  // + a one-time set-password token. IDEMPOTENT — fulfillment double-fires (success redirect + the
-  // webhook backstop), so only mint the token once and NEVER overwrite a password the client set.
+  // + a one-time set-password token. Webhook retries must NEVER overwrite a client's password.
   if (stripeSession.metadata?.account === 'client') {
     user.role = user.role || 'client';
     if (stripeSession.metadata.buyerName && !user.name) user.name = String(stripeSession.metadata.buyerName).slice(0, 120);
@@ -698,7 +704,7 @@ app.get('/api/stripe/success', async (req, res) => {
 
   try {
     // Neither an old paid receipt nor a buyer-entered email proves account ownership.
-    // Existing customers sign in; new customers receive an operator-issued onboarding invite.
+    // Existing customers sign in; new managed clients receive a single-use invitation by email.
     return res.redirect('/login?checkout=received');
   } catch (e) {
     console.error('[STRIPE] Success callback error:', e.message);
@@ -720,8 +726,7 @@ app.post('/api/stripe/webhook', express.raw({ type: 'application/json' }), (req,
 
   switch (event.type) {
     case 'checkout.session.completed': {
-      // Backstop fulfillment: guarantees the purchase lands even if the customer never reaches the
-      // success redirect. Idempotent with it.
+      // Verified webhooks fulfill purchases even if the customer never returns to the site.
       const sess = event.data.object;
       try {
         const u = fulfillCheckoutSession(sess, 'webhook');
@@ -729,6 +734,10 @@ app.post('/api/stripe/webhook', express.raw({ type: 'application/json' }), (req,
         // alerted inside). A genuinely-unpaid session (async pre-payment; not used by the card-only
         // managed offer) falls through to the 200 below so Stripe does not retry-loop a pending charge.
         if (!u && sess.payment_status === 'paid') return res.status(500).send('fulfillment failed');
+        if (u && !u.ignored && !u.passwordHash && sess.metadata?.account === 'client') {
+          accountInvites.enqueue(sess.id, u.email);
+          setImmediate(() => accountInvites.drain().catch(() => console.error('[BILLING] Invite queue unavailable; delivery will retry')));
+        }
       } catch (e) {
         console.error('[STRIPE] Webhook fulfillment threw:', e.message);
         logActivity('billing', `Webhook fulfillment ERROR: session ${sess.id} — ${e.message}`, { sessionId: sess.id, alert: true });
@@ -1565,9 +1574,11 @@ function wsCredential(req) {
   if (bearer && API_TOKEN && bearer === API_TOKEN) return { kind: 'api-token' };
   const sk = bearer ? serviceKeyFor(bearer) : null;
   if (sk) return sk.scope === 'admin' ? { kind: 'api-token' } : { kind: 'service-key', session: null };
-  if (bearer && isValidSession(bearer)) return { kind: 'session', session: isValidSession(bearer) };
+  const bearerSession = bearer && isValidSession(bearer);
+  if (bearerSession) return { kind: 'session', session: bearerSession };
   const cookie = (req.headers.cookie || '').match(/ai-os-session=([^;]+)/)?.[1];
-  if (cookie && isValidSession(cookie)) return { kind: 'session', session: isValidSession(cookie) };
+  const cookieSession = cookie && isValidSession(cookie);
+  if (cookieSession) return { kind: 'session', session: cookieSession };
   return null;
 }
 function closeSessionSockets(token) {
@@ -3132,7 +3143,12 @@ const ACTION_EXECUTORS = {
     if (site.domain && webStudioSites.some(s => s.id !== site.id && s.domain === site.domain)) throw new Error('Domain ownership conflict; teardown refused');
     site.status = 'deleting';
     if (site.domain && (site.hostingSetup || site.published)) {
-      try { await webStudioHosting.removeSite(site.domain, { dropCert: true }); } catch (e) { site.status = 'delete_failed'; throw e; }
+      try { await webStudioHosting.removeSite(site.domain, { dropCert: true }); } catch (e) {
+        site.status = 'delete_failed'; site.error = e.message;
+        saveState('web_studio_sites', webStudioSites);
+        broadcast({ event: 'web_studio_site', data: site });
+        throw e;
+      }
       try { webStudioPublish.removeSiteRoot(WS_SITES_ROOT, site.domain); } catch {}
     }
     try { fs.rmSync(wsWorkspaceDir(site.id), { recursive: true, force: true }); } catch {}
@@ -3715,7 +3731,7 @@ app.post('/api/web-studio/sites/:id/publish', requireClientOrAdmin, async (req, 
   // Collision guards: never the control-plane domain, never one another site already serves.
   const primary = (process.env.AIOS_PRIMARY_DOMAIN || '').trim().toLowerCase();
   if (primary && domain === primary) return res.status(400).json({ error: 'that domain hosts the AI OS control plane and cannot be used for a site' });
-  const claimed = webStudioSites.find(s => s.id !== site.id && s.domain === domain && (s.published || s.hostingSetup));
+  const claimed = webStudioSites.find(s => s.id !== site.id && s.domain === domain);
   if (claimed) return res.status(409).json({ error: 'that domain is already in use by another site' });
 
   // Mandatory DNS pre-check — never start certbot against a domain that isn't pointed here.
@@ -3747,7 +3763,7 @@ app.post('/api/web-studio/sites/:id/publish', requireClientOrAdmin, async (req, 
     if (gate.pending) return res.status(202).json({ pending: true, approvalId: gate.approval.id, risk: gate.approval.risk, domain, dns, message: 'Publish queued for approval.' });
     res.json({ ok: true, status: 'publishing', domain, dns });
   } catch (e) {
-    res.status(500).json({ error: e.message });
+    res.status(e.code === 'DOMAIN_CLAIMED' ? 409 : e.code === 'DOMAIN_RESERVED' ? 400 : 500).json({ error: e.message });
   }
 });
 
@@ -3759,7 +3775,12 @@ app.post('/api/web-studio/sites/:id/unpublish', requireClientOrAdmin, async (req
   if (webStudioSites.some(s => s.id !== site.id && s.domain === site.domain)) return res.status(409).json({ error: 'Domain ownership conflict' });
   site.status = 'unpublishing';
   try { await webStudioHosting.removeSite(site.domain, { dropCert: false }); }
-  catch (e) { site.status = 'unpublish_failed'; return res.status(500).json({ error: e.message }); }
+  catch (e) {
+    site.status = 'unpublish_failed'; site.error = e.message;
+    saveState('web_studio_sites', webStudioSites);
+    broadcast({ event: 'web_studio_site', data: site });
+    return res.status(500).json({ error: e.message });
+  }
   site.published = false;
   site.hostingSetup = false;
   site.status = 'ready';
@@ -4222,7 +4243,10 @@ async function loadAgentPrompt(agentName) {
 
 function attributeUsage(result, attribution) {
   const entry = result?.usageId && costLedger.find(row => row.id === result.usageId);
-  if (entry) Object.assign(entry, attribution);
+  if (entry) {
+    Object.assign(entry, attribution);
+    scheduleAutoSave();
+  }
 }
 
 async function executeAgent(agentName, task, options = {}) {
@@ -9917,6 +9941,20 @@ app.get('/api/hermes/status', (req, res) => {
 });
 
 // Delegate a task to Hermes
+function finishHermesRun(delegated, runEntry, message, event = 'hermes_complete') {
+  if (runEntry.status === 'completed') {
+    delegated.status = 'complete';
+    delegated.progress = 100;
+    delegated.completedAt = new Date().toISOString();
+    delegated.log.push(message);
+    delegated.result = runEntry.summary;
+  } else {
+    delegated.status = 'failed';
+    delegated.log.push(`Run failed: ${runEntry.error}`);
+  }
+  broadcast({ event, data: delegated });
+}
+
 app.post('/api/hermes/delegate', requireAdmin, (req, res) => {
   const errors = validateBody(req.body, {
     task: { type: 'string', required: true, maxLength: 2000 },
@@ -9992,36 +10030,14 @@ app.post('/api/hermes/delegate', requireAdmin, (req, res) => {
     delegated.log.push(`Handed off to ${agent} for real execution`);
     broadcast({ event: 'hermes_progress', data: delegated });
 
-    dispatchSkillRun({ agent, skill, task: realTask }).then((runEntry) => {
-      if (runEntry.status === 'completed') {
-        delegated.status = 'complete';
-        delegated.progress = 100;
-        delegated.completedAt = new Date().toISOString();
-        delegated.log.push('Run completed — see result below');
-        delegated.result = runEntry.summary;
-      } else {
-        delegated.status = 'failed';
-        delegated.log.push(`Run failed: ${runEntry.error}`);
-      }
-      broadcast({ event: 'hermes_complete', data: delegated });
-    });
+    dispatchSkillRun({ agent, skill, task: realTask }).then(runEntry => finishHermesRun(delegated, runEntry, 'Run completed — see result below'));
   } else if (mode === 'intel-brief-compiled') {
     // THE EXPERIMENT — same document, three-stage split, one model call. See lib/intel-brief-compiled.js.
     delegated.status = 'running';
     delegated.progress = 20;
     delegated.log.push('Handed off to the compiled (fetch → one comms-director call → docx) pipeline');
     broadcast({ event: 'hermes_progress', data: delegated });
-    dispatchIntelBriefCompiledRun().then((runEntry) => {
-      if (runEntry.status === 'completed') {
-        delegated.status = 'complete'; delegated.progress = 100; delegated.completedAt = new Date().toISOString();
-        delegated.log.push('Statement written — download the .docx from Schedules → Intel Briefs');
-        delegated.result = runEntry.summary;
-      } else {
-        delegated.status = 'failed';
-        delegated.log.push(`Run failed: ${runEntry.error}`);
-      }
-      broadcast({ event: 'hermes_progress', data: delegated });
-    });
+    dispatchIntelBriefCompiledRun().then(runEntry => finishHermesRun(delegated, runEntry, 'Statement written — download the .docx from Schedules → Intel Briefs', 'hermes_progress'));
   } else if (mode === 'intel-brief') {
     // REAL dispatch (see HERMES_REAL_SKILLS) — same multi-step run the 8 AM schedule fires
     // (consultants → synthesis → orchestrator/architect → comms-director → .docx), on demand.
@@ -10030,19 +10046,7 @@ app.post('/api/hermes/delegate', requireAdmin, (req, res) => {
     delegated.log.push('Handed off to the consultant → comms-director pipeline for real execution');
     broadcast({ event: 'hermes_progress', data: delegated });
 
-    dispatchIntelBriefRun().then((runEntry) => {
-      if (runEntry.status === 'completed') {
-        delegated.status = 'complete';
-        delegated.progress = 100;
-        delegated.completedAt = new Date().toISOString();
-        delegated.log.push('Statement written — download the .docx from Schedules → Intel Briefs');
-        delegated.result = runEntry.summary;
-      } else {
-        delegated.status = 'failed';
-        delegated.log.push(`Run failed: ${runEntry.error}`);
-      }
-      broadcast({ event: 'hermes_complete', data: delegated });
-    });
+    dispatchIntelBriefRun().then(runEntry => finishHermesRun(delegated, runEntry, 'Statement written — download the .docx from Schedules → Intel Briefs'));
   } else if (DEMO_MODE && mode !== 'cron') {
     // Simulated progress — these skills (background/walkaway) have no real execution backend yet.
     setTimeout(() => {
@@ -11044,6 +11048,15 @@ app.post('/api/hq/dispatch/:employeeId', requireAdmin, (req, res) => {
 // --- Self-Improving Platform (Telegram/Slack Approval Bot) ---
 
 const pendingApprovals = loadState('pending_approvals', []);
+// A process restart cannot tell whether an external action completed. Never re-send it automatically.
+if (pendingApprovals.some(a => a.kind === 'action' && a.status === 'executing')) {
+  for (const a of pendingApprovals) {
+    if (a.kind !== 'action' || a.status !== 'executing') continue;
+    a.status = 'interrupted';
+    a.error = 'The server restarted during execution. Verify the external result before resolving this action.';
+  }
+  saveState('pending_approvals', pendingApprovals);
+}
 // Oversight ledger counters (lib/oversight.js). Only the auto-approve branch writes these; the
 // gated side needs no counter because every gated action IS a pendingApprovals record.
 const oversightCounters = loadState('oversight_counters', { autoApproved: 0, autoByDay: {} });
@@ -11121,7 +11134,7 @@ app.post('/api/approvals/:id/approve', requireAdmin, requireHuman, heavyLimiter,
 // hot endpoint.
 app.get('/api/decisions/summary', requireAdmin, (req, res) => {
   const surfaces = {
-    approvals: pendingApprovals.filter(a => a.kind === 'action' && a.status === 'pending').length,
+    approvals: pendingApprovals.filter(a => a.kind === 'action' && ['pending', 'interrupted'].includes(a.status)).length,
     proposals: pendingApprovals.filter(a => a.kind === 'proposal' && a.status === 'pending').length,
     pipelineGates: [...pipelineRuns.values()].filter(r => r.status === 'awaiting_approval').length,
     automations: automationLog.filter(e => e.status === 'pending_approval').length,
@@ -11169,6 +11182,29 @@ app.post('/api/approvals/batch', requireAdmin, requireHuman, heavyLimiter, async
 // UNATTENDED, precisely because a duplicate send is irreversible): here the human reads the error
 // and judges whether the failure was clean. retryCount makes repeated failure visible instead of
 // each attempt overwriting the last.
+app.post('/api/approvals/:id/reconcile', requireAdmin, requireHuman, heavyLimiter, (req, res) => {
+  const a = pendingApprovals.find(x => x.id === req.params.id && x.kind === 'action');
+  if (!a) return res.status(404).json({ error: 'Approval not found' });
+  if (a.status !== 'interrupted') return res.status(409).json({ error: 'Only interrupted actions can be reconciled' });
+  const { outcome, note } = req.body || {};
+  if (!['completed', 'not-completed'].includes(outcome) || typeof note !== 'string' || !note.trim() || note.length > 500) {
+    return res.status(400).json({ error: 'Provide outcome completed or not-completed and a verification note (1–500 characters)' });
+  }
+  const previous = { ...a };
+  a.reconciliation = { outcome, note: note.trim(), by: req.session.email, at: new Date().toISOString() };
+  a.status = outcome === 'completed' ? 'approved' : 'failed';
+  if (outcome === 'completed') { a.approvedAt = a.reconciliation.at; delete a.error; }
+  else a.error = 'Operator verified the interrupted action did not complete. Retry is available.';
+  if (!saveState('pending_approvals', pendingApprovals)) {
+    for (const key of Object.keys(a)) delete a[key];
+    Object.assign(a, previous);
+    return res.status(503).json({ error: 'Could not persist reconciliation' });
+  }
+  logActivity('approval', `Reconciled interrupted action: ${outcome}`, { approvalId: a.id, actor: req.session.email, note: a.reconciliation.note });
+  broadcast({ event: 'approval_update', data: a });
+  res.json({ ok: true, approval: a });
+});
+
 app.post('/api/approvals/:id/retry', requireAdmin, requireHuman, heavyLimiter, async (req, res) => {
   const a = pendingApprovals.find(x => x.id === req.params.id && x.kind === 'action');
   if (!a) return res.status(404).json({ error: 'Approval not found' });
@@ -11177,6 +11213,7 @@ app.post('/api/approvals/:id/retry', requireAdmin, requireHuman, heavyLimiter, a
   const actor = (req.session && (req.session.email || req.session.name)) || 'operator';
   a.retryCount = (a.retryCount || 0) + 1;
   a.lastError = a.error;   // keep the failure that prompted the retry; executeApprovedAction may overwrite a.error
+  a.status = 'pending';
   const r = await executeApprovedAction(a, secrets, actor);
   logActivity('approval', `Retry ${a.retryCount} ${r.ok ? 'succeeded' : 'failed'}: ${a.summary}`, { type: a.type, approvalId: a.id, actor });
   if (!r.ok) return res.status(r.code).json({ error: r.error, retryCount: a.retryCount });
@@ -11541,9 +11578,7 @@ async function sendTelegramApproval(proposal) {
     `Risk: ${riskEmoji} ${proposal.risk}\n\n` +
     (proposal.description ? `${proposal.description}\n\n` : '') +
     (proposal.diff ? `<pre>${proposal.diff.substring(0, 500)}</pre>\n\n` : '') +
-    `Reply with:\n` +
-    `✅ <code>/approve ${proposal.id.substring(0, 8)}</code>\n` +
-    `❌ <code>/reject ${proposal.id.substring(0, 8)}</code>`;
+    `Sign in to your AI OS dashboard and review this proposal in the Platform view. Telegram replies cannot approve or reject proposals.`;
 
   try {
     await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
@@ -12245,6 +12280,20 @@ app.get('/api/security/scan/:id', requireAdmin, (req, res) => {
 // These mutate the USER record / Stripe, so they live in server scope (not lib/crm). Admin-only
 // (requireAdmin); clientSurfaceGuard already 403s clients from every /api/crm/* path.
 const CRM_PUBLIC_BASE = (process.env.AIOS_PUBLIC_URL || (process.env.AIOS_PRIMARY_DOMAIN ? 'https://' + process.env.AIOS_PRIMARY_DOMAIN : 'https://aiosorchestrationlab.com')).replace(/\/+$/, '');
+const accountInvites = require('./lib/account-invites')({
+  filename: path.join(MAGENT_DIR, 'account-invites.sqlite'), findUser: findUserByEmail,
+  persistUsers: () => saveState('users', users), newToken: generateToken,
+  publicUrl: accountInviteOrigin, emailConfig: () => settings.email, send: emailLib.send,
+  report: message => logActivity('billing', message, { alert: true }),
+});
+const inviteTimer = setInterval(() => accountInvites.drain().catch(() => console.error('[BILLING] Invite queue unavailable')), 60000);
+inviteTimer.unref();
+// Deliver invitations for clients provisioned before automatic delivery was introduced.
+for (const user of users) {
+  const receipt = user.managedPurchases?.[0]?.sessionId;
+  if (receipt && user.setupToken && !user.passwordHash) accountInvites.enqueue(receipt, user.email);
+}
+setImmediate(() => accountInvites.drain().catch(() => console.error('[BILLING] Invite queue unavailable')));
 // Resolve a CRM contact (by id) + its managed-client user. Case-insensitive email match: contact
 // emails are normalized lowercase, but user emails are stored as entered.
 function crmContactUser(contactId) {
@@ -12276,10 +12325,13 @@ app.post('/api/crm/contacts/:id/resend-invite', requireAdmin, (req, res) => {
   // Refuse if they already have a password — set-password performs no current-password check,
   // so re-issuing a token to an active account would be an account-takeover vector.
   if (user.passwordHash) return res.status(409).json({ error: 'client already has a password — use a password reset, not an invite' });
+  const previousToken = user.setupToken;
   user.setupToken = { token: generateToken(), expiresAt: new Date(Date.now() + 7 * 86400000).toISOString() };
-  saveState('users', users);
-  crmLogAction(contact, 'invite', 'Set-password invite issued', req);
-  res.json({ ok: true, link: `${CRM_PUBLIC_BASE}/set-password?token=${encodeURIComponent(user.setupToken.token)}`, expiresAt: user.setupToken.expiresAt });
+  if (!saveState('users', users)) { user.setupToken = previousToken; return res.status(503).json({ error: 'Could not save invitation' }); }
+  accountInvites.enqueue(`manual-${uuidv4()}`, user.email);
+  setImmediate(() => accountInvites.drain().catch(() => console.error('[BILLING] Invite queue unavailable')));
+  crmLogAction(contact, 'invite', 'Set-password invite queued for email delivery', req);
+  res.json({ ok: true, queued: true, link: `${CRM_PUBLIC_BASE}/set-password?token=${encodeURIComponent(user.setupToken.token)}`, expiresAt: user.setupToken.expiresAt });
 });
 
 // Change a managed client's service tier (business <-> enterprise). For clients the site limit

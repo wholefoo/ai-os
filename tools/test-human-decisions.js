@@ -21,7 +21,7 @@ assert(/logActivity\('approval', 'Refused: API token attempted a human-only deci
 
 // Every decision route stacks requireHuman AFTER requireAdmin (admin first, so an anonymous caller
 // still gets 401, and a non-admin human 403 for the usual reason).
-for (const route of ['/api/approvals/:id/approve', '/api/approvals/batch', '/api/approvals/:id/retry', '/api/pipelines/runs/:id/approve']) {
+for (const route of ['/api/approvals/:id/approve', '/api/approvals/batch', '/api/approvals/:id/retry', '/api/approvals/:id/reconcile', '/api/pipelines/runs/:id/approve']) {
   const re = new RegExp(`app\\.post\\('${route.replace(/[/:]/g, (c) => '\\' + c)}', requireAdmin, requireHuman`);
   assert(re.test(src), `${route} is requireAdmin, requireHuman`);
 }

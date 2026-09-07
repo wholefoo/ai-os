@@ -163,7 +163,7 @@ function wsRenderSites(data) {
       <div>
         <div><strong>${escapeHtml(s.name)}</strong> <span class="ws-badge ${s.status}">${escapeHtml(s.status)}</span></div>
         <div class="ws-site-meta">${s.domain ? escapeHtml(s.domain) + ' &middot; ' : ''}${s.redesignedFrom ? 'redesigned from ' + escapeHtml(s.redesignedFrom) + ' &middot; ' : ''}${s.researchedFrom ? 'affiliate page (researched ' + escapeHtml(s.researchedFrom) + ') &middot; ' : ''}${s.chatEnabled ? '&#128172; chat &middot; ' : ''}${s.lastBuiltAt ? 'built ' + timeAgo(s.lastBuiltAt) : 'created ' + timeAgo(s.createdAt)}</div>
-        ${(s.status === 'failed' || s.status === 'build_failed') && s.error ? `<div class="ws-site-error">${escapeHtml(s.error)}</div>` : ''}
+        ${['failed', 'build_failed', 'delete_failed', 'unpublish_failed'].includes(s.status) && s.error ? `<div class="ws-site-error">${escapeHtml(s.error)}</div>` : ''}
       </div>
       <div class="ws-row">
         <button class="btn" onclick="wsOpen('${s.id}')">Open</button>
@@ -578,7 +578,8 @@ function wsRenderPublishState(site) {
     else { httpLink.style.display = 'none'; }
   }
   if (pub) pub.textContent = isPub ? 'Re-publish' : 'Publish with TLS';
-  if (isPub) wsPublishHint(`Live (HTTPS) at ${site.url}`);
+  if (['delete_failed', 'unpublish_failed'].includes(site.status)) wsPublishHint(`The operation failed: ${site.error || 'check the server logs'}. The previous publication may still be live.`);
+  else if (isPub) wsPublishHint(`Live (HTTPS) at ${site.url}`);
   else if (isHosted) wsPublishHint(`HTTP hosting live at http://${site.domain}. Publish to add HTTPS.`);
   else if (site.status === 'publish_failed') wsPublishHint('Publish failed: ' + (site.publishError || 'see server logs.'));
   else if (site.security && site.security.available && site.security.counts && site.security.counts.error > 0) wsPublishHint(`⚠ ${site.security.counts.error} error-severity security finding(s) — resolve before publishing if the gate is set to block.`);
@@ -590,7 +591,7 @@ async function wsSetupHosting() {
   wsPublishHint('Setting up HTTP hosting…');
   const r = await fetchJSON(`/api/web-studio/sites/${wsState.currentId}/domain`, { method: 'POST', body: { domain } });
   if (r && r.error) { wsPublishHint('Hosting setup failed: ' + r.error); return; }
-  wsPublishHint(r.served ? `Live over HTTP at http://${domain}` : `nginx configured for ${domain} — build to serve content (404 until then).`);
+  wsPublishHint(r.served ? `Domain saved: ${domain}. The site remains published.` : `Domain reserved: ${domain}. Build and publish the site to make it live.`);
 }
 
 async function wsDnsCheck() {
@@ -727,7 +728,7 @@ function onWebStudioEvent(msg) {
       // on a plain build/publish completion.
       if (wsState.aiEditing) { wsState.aiEditing = false; wsHint('Updated by AI.'); wsReloadFiles(false); wsLoadContent(); }
     }
-    if (d.status === 'failed' || d.status === 'build_failed') wsHint(d.error ? ('Import/build failed: ' + d.error) : 'Build failed.');
+    if (['failed', 'build_failed', 'delete_failed', 'unpublish_failed'].includes(d.status)) wsHint(d.error || 'The operation failed. Review the site status before retrying.');
     // web_studio_site carries the full site object (has d.id) — reflect publish-state changes live.
     if (d.id === wsState.currentId) { wsState.currentSite = d; wsRenderPublishState(d); wsRenderProvenance(d); wsRenderSecurity(d); }
   } else if (!inEditor) {
