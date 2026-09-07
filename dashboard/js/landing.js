@@ -35,6 +35,12 @@ document.addEventListener('DOMContentLoaded', () => {
   const loginModal = document.getElementById('loginModal');
   const loginClose = document.getElementById('loginModalClose');
   const loginBtn = document.getElementById('loginSubmitBtn');
+  if (loginModal && new URLSearchParams(window.location.search).get('checkout') === 'received') {
+    const notice = document.createElement('p');
+    notice.textContent = 'Your checkout has been received. Existing customers can sign in. If this is your first purchase, contact the operator for your account setup invitation. Access is activated after payment confirmation.';
+    loginModal.querySelector('.modal-body')?.prepend(notice);
+    loginModal.classList.add('active');
+  }
 
   // Open login modal from nav
   document.querySelectorAll('a[href="/login"]').forEach(a => {

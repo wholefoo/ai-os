@@ -18,17 +18,19 @@ assert(/searchParams\.has\('token'\)/.test(verify), 'a ?token= in the URL is det
 assert(/WebSocket rejected: token in query string/.test(verify), '...logged to the activity log...');
 assert(/wsHasQueryToken\(info\.req\)\)\s*\{[\s\S]*?return cb\(false, 401/.test(verify), '...and REJECTED with 401 (before any credential is even examined)');
 const rejectAt = verify.indexOf('wsHasQueryToken(info.req))');
-const openAt = verify.indexOf('if (!API_TOKEN) return cb(true)');
+const openAt = verify.indexOf("if (!API_TOKEN && process.env.NODE_ENV !== 'production') return cb(true)");
 assert(rejectAt !== -1 && openAt !== -1 && rejectAt < openAt, 'the query-token rejection runs even when API_TOKEN is unset — the no-auth dev mode does not re-open the URL channel');
 
 // The connection handler stamps role/email from the SAME resolver, so verifyClient and the
 // broadcast scoping cannot disagree about who a socket belongs to.
 const conn = src.slice(src.indexOf("wss.on('connection'"), src.indexOf('function wsClientCanReceive'));
-assert(/wsCredential\(req\)/.test(conn), 'the connection handler uses wsCredential');
-assert(!/qtoken|searchParams/.test(conn), 'the connection handler has no query-string token path left');
-assert(/cred\.kind === 'api-token'[\s\S]*ws\.role = 'admin'/.test(conn), 'API token → admin socket');
-assert(/cred\.session[\s\S]*ws\.email = cred\.session\.email/.test(conn), 'session → role + email stamped for broadcast scoping');
-assert(/else if \(API_TOKEN\) \{ ws\.role = 'user'; \}/.test(conn), 'authenticated-but-unresolvable falls to least privilege, as before');
+assert(/refreshSocketPrincipal\(ws\)/.test(conn), 'connection uses the same refreshed principal as broadcasts');
+const refresh = src.slice(src.indexOf('function refreshSocketPrincipal('), src.indexOf('function wsHasQueryToken('));
+assert(/wsCredential\(socket.authRequest\)/.test(refresh), 'the original credential is revalidated');
+assert(/socket.role = cred.kind === 'api-token' \? 'admin'/.test(refresh), 'API token receives admin scope');
+assert(/socket.email = cred.session\?\.ownerEmail/.test(refresh), 'organization ownership scopes client broadcasts');
+assert(/Authentication expired/.test(refresh), 'unresolved production credentials close the connection');
+assert(!/qtoken|searchParams/.test(conn), 'connection never uses query credentials');
 
 // The dashboard client no longer builds a ?token= URL (it never could — the cookie is httpOnly).
 const app = readRepoFile('dashboard/js/app.js');

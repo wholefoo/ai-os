@@ -32,7 +32,7 @@ assert(/evil\.example/.test(r.reason) && new RegExp(OWN).test(r.reason), 'the re
 // --- 2. the posture that already existed, pinned ------------------------------------------------------
 const src = serverSource();
 const cookieSets = src.match(/res\.cookie\('ai-os-session'[^\n]*\n?[^\n]*\n?[^\n]*\n?[^\n]*/g) || [];
-assert(cookieSets.length === 3, `the session cookie is set in exactly 3 places (found ${cookieSets.length})`);
+assert(cookieSets.length === 2, `the session cookie is set in exactly 2 places (found ${cookieSets.length})`);
 for (const c of cookieSets) {
   assert(/httpOnly: true/.test(c) && /sameSite: 'lax'/.test(c) && /secure: process\.env\.NODE_ENV === 'production'/.test(c), 'every set is httpOnly + SameSite=Lax + secure in production');
 }
@@ -67,7 +67,7 @@ for (let i = 0; i < lines.length; i++) {
   const body = lines.slice(i, end).join('\n');
   if (/saveState\(|sessions\.set\(|users\.push\(|persistEnrollments\(\)/.test(body)) mutatingGets.push(m[1]);
 }
-assert(JSON.stringify(mutatingGets) === JSON.stringify(['/api/stripe/success', '/api/public/email/unsubscribe']),
-  `state-changing GET routes are exactly the two argued safe (Stripe-verified redirect; email-link unsubscribe): ${JSON.stringify(mutatingGets)}`);
+assert(JSON.stringify(mutatingGets) === JSON.stringify(['/api/public/email/unsubscribe']),
+  `state-changing GET routes are limited to email-link unsubscribe; checkout redirects never mutate accounts: ${JSON.stringify(mutatingGets)}`);
 
 done();

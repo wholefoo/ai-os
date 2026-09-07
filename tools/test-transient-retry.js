@@ -218,12 +218,10 @@ async function behaviour() {
 // --- WIRING: the policy is reachable from a real provider call ------------------------------------------
 const src = serverSource();
 
-assert(/timedOut = true; ctrl\.abort\(\)/.test(src),
-  'fetchWithTimeout marks its OWN abort — the only thing separating our timeout from a caller cancel');
-const timeoutBranch = (src.match(/if \(timedOut && e && e\.name === 'AbortError'\)[\s\S]{0,700}?\n    \}/) || [''])[0];
-assert(/new Error\(/.test(timeoutBranch) && !/e\.message =/.test(timeoutBranch),
-  'the timeout error is a NEW Error, not a mutated DOMException — DOMException.message is getter-only, so assigning to it is a silent no-op');
-assert(/err\.timedOut = true/.test(timeoutBranch), 'and it carries timedOut so the classifier can see it');
+const timeoutSource = require('./test-util').readRepoFile('lib/net/bounded-fetch.js');
+assert(/boundedFetch\(url, opts, ms\)/.test(src), 'provider requests use the bounded response reader');
+assert(/timedOut = true; ctrl\.abort\(\)/.test(timeoutSource), 'the deadline marks only its own cancellation');
+assert(/new Error\(/.test(timeoutSource) && /error\.timedOut = true/.test(timeoutSource), 'deadline errors carry the retry classifier marker');
 
 assert(/throw transientErrors\.httpError\(res, await res\.json\(\)\.catch\(\(\) => \(\{\}\)\), 'Anthropic'\)/.test(src),
   'a non-OK response is turned into an error by transientErrors.httpError — which attaches the status the classifier decides on');

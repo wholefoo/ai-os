@@ -24,11 +24,13 @@ unset BASH_ENV ENV CDPATH 2>/dev/null || true
 DOMAIN="${1:-}"
 TLS=""
 ALLOW_SCHEME_CHANGE=0
+PRESERVE_EXISTING=0
 shift 2>/dev/null || true
 for a in "$@"; do
   case "$a" in
     --tls)                  TLS="--tls" ;;
     --allow-scheme-change)  ALLOW_SCHEME_CHANGE=1 ;;
+    --preserve-existing)    PRESERVE_EXISTING=1 ;;
     '')                     ;;
     *) echo "aios-site-vhost: bad flag '$a'" >&2; exit 2 ;;
   esac
@@ -73,6 +75,7 @@ CERT_DIR="/etc/letsencrypt/live/${DOMAIN}"
 # Only fires when a vhost ALREADY exists, so first-time renders are unaffected, and a re-render at
 # the SAME scheme — the routine case, e.g. picking up a template fix — is never blocked.
 if [ -f "$AVAIL" ]; then
+  if [ "$PRESERVE_EXISTING" = "1" ]; then echo "Existing vhost preserved"; exit 0; fi
   if grep -qE '^[[:space:]]*listen[[:space:]]+443' "$AVAIL"; then CURRENT_SCHEME=tls; else CURRENT_SCHEME=http; fi
   if [ "$TLS" = "--tls" ]; then WANTED_SCHEME=tls; else WANTED_SCHEME=http; fi
   if [ "$CURRENT_SCHEME" != "$WANTED_SCHEME" ] && [ "$ALLOW_SCHEME_CHANGE" != "1" ]; then

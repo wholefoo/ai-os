@@ -2,6 +2,8 @@
   "$schema": "https://raw.githubusercontent.com/fallow-rs/fallow/main/schema.json",
   "entry": [
     "server.js",
+    "tools/test-audit-repairs.js",
+    "tools/test-audit-smoke.js",
     "agent-worker/agent.js",
     "tools/generate-maps.js",
     "tools/test-analytics.js",
@@ -144,7 +146,8 @@
     "dashboard/css/**",
     "dashboard/vendor/**",
     "auto-research/**",
-    "commercial/**"
+    "commercial/**",
+    "docs/audits/**"
   ],
   "ignoreUnresolvedImports": [
     "/css/**",

@@ -23,7 +23,7 @@ assert(/toLowerCase\(\)/.test(rev), 'email match is case-insensitive');
 const ivs = between('function isValidSession(token)', '\n}\n');
 assert(/findUserByEmail\(session\.email\)/.test(ivs) && /owner\.disabled/.test(ivs), 'isValidSession consults the user record\'s disabled flag');
 assert(ivs.indexOf('owner.disabled') > ivs.indexOf('expiresAt'), 'the disabled check sits after the expiry check');
-assert(/owner && owner\.disabled\) \{\s*sessions\.delete\(token\);\s*return false;/.test(ivs), 'a disabled owner\'s session is deleted and the call returns false');
+assert(/!owner \|\| owner\.disabled\) \{\s*sessions\.delete\(token\);\s*return false;/.test(ivs), 'a disabled owner\'s session is deleted and the call returns false');
 
 // Login: disabled is only revealed after the password verified.
 const login = between("app.post('/api/auth/login'", "app.post('/api/auth/logout'");

@@ -31,6 +31,13 @@ function runDeploy(failOn, opts = {}) {
   const bin = path.join(dir, 'bin');
   fs.mkdirSync(bin);
   const D = dir.replace(/\\/g, '/');
+  // Execute a disposable copy, never from the real checkout. Configure PATH inside Bash:
+  // Windows PATH/Path aliases and semicolon separators must not select real git/ssh.
+  const scriptCopy = path.join(dir, 'push-update.sh');
+  fs.copyFileSync(SCRIPT, scriptCopy);
+  const shellPath = p => process.platform === 'win32' ? p.replace(/\\/g, '/').replace(/^([A-Za-z]):/, (_, drive) => '/' + drive.toLowerCase()) : p;
+  const wrapper = path.join(dir, 'run.sh');
+  fs.writeFileSync(wrapper, `#!/usr/bin/env bash\nset -euo pipefail\nexport PATH="${shellPath(bin)}:$PATH"\nhash -r\n[[ "$(command -v git)" == "${shellPath(bin)}/git" ]] || exit 97\n[[ "$(command -v ssh)" == "${shellPath(bin)}/ssh" ]] || exit 97\nsource "${shellPath(scriptCopy)}" deploy@example.invalid\n`);
 
   // ssh stub: logs the remote command, then fails if it matches `failOn`. With opts.failOnce only
   // the FIRST matching invocation fails (a counter file carries state between invocations) — that
@@ -56,7 +63,8 @@ exit 0
 
   let stdout = '', code = 0;
   try {
-    stdout = execFileSync('bash', [SCRIPT, 'deploy@example.invalid'], {
+    stdout = execFileSync(process.platform === 'win32' ? 'C:\\Program Files\\Git\\bin\\bash.exe' : 'bash', [wrapper], {
+      cwd: dir,
       encoding: 'utf8',
       // HEALTH_TRIES/INTERVAL only shape the remote loop text; the stub never sleeps. Kept small so
       // the logged command is short.
@@ -68,6 +76,8 @@ exit 0
     stdout = String(e.stdout || '') + String(e.stderr || '');
   }
   const calls = fs.existsSync(path.join(dir, 'calls.log')) ? fs.readFileSync(path.join(dir, 'calls.log'), 'utf8') : '';
+  assert.ok(calls.includes('GIT: push'), `deployment stubs were not active: ${stdout}`);
+  assert.ok(path.dirname(dir) === os.tmpdir() && path.basename(dir).startsWith('deployguard-'));
   fs.rmSync(dir, { recursive: true, force: true });
 
   // ⚠️ DO NOT ask "does the word 'pm2 restart' appear in calls" — step 4's own ERROR MESSAGE

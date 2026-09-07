@@ -21,7 +21,7 @@ const app = express();
 const server = http.createServer(app);
 
 const PORT = process.env.PORT || 3000;
-const HOST = process.env.NODE_ENV === 'production' ? '127.0.0.1' : '0.0.0.0';
+const HOST = process.env.HOST || (process.env.NODE_ENV === 'production' ? '127.0.0.1' : '0.0.0.0');
 const DEMO_MODE = process.env.DEMO_MODE !== 'false'; // default true until real APIs wired
 const API_TOKEN = process.env.API_TOKEN || null;
 const BASE = __dirname;
@@ -412,7 +412,7 @@ const _persistSessions = () => { try { saveState('sessions', Object.fromEntries(
 const sessions = {
   get: (k) => _sessionMap.get(k),
   set: (k, v) => { _sessionMap.set(k, v); _persistSessions(); return sessions; },
-  delete: (k) => { const r = _sessionMap.delete(k); _persistSessions(); return r; },
+  delete: (k) => { const r = _sessionMap.delete(k); _persistSessions(); closeSessionSockets(k); return r; },
   clear: () => { _sessionMap.clear(); _persistSessions(); },
   get size() { return _sessionMap.size; },
 }; // token -> { email, plan, role, ownerEmail, stripeCustomerId?, expiresAt }
@@ -423,7 +423,7 @@ function revokeSessionsFor(email) {
   const e = String(email || '').trim().toLowerCase();
   let n = 0;
   for (const [k, sess] of _sessionMap) {
-    if (sess && String(sess.email || '').toLowerCase() === e) { _sessionMap.delete(k); n++; }
+    if (sess && String(sess.email || '').toLowerCase() === e) { _sessionMap.delete(k); closeSessionSockets(k); n++; }
   }
   if (n) _persistSessions();
   return n;
@@ -468,10 +468,13 @@ function isValidSession(token) {
   // A disabled account's session is dead even if a revocation was somehow missed: the flag on the
   // user record is the source of truth, the session map is a cache of it.
   const owner = findUserByEmail(session.email);
-  if (owner && owner.disabled) {
+  if (!owner || owner.disabled) {
     sessions.delete(token);
     return false;
   }
+  session.plan = owner.plan;
+  session.role = owner.role || 'user';
+  session.ownerEmail = orgMembership.orgKeyFor(owner);
   return session;
 }
 
@@ -586,7 +589,8 @@ app.post('/api/commerce/checkout', heavyLimiter, async (req, res) => {
     };
     // Reuse the buyer's existing Stripe customer on a repeat purchase (avoid duplicate customers).
     const existing = findUserByEmail(email);
-    if (existing && existing.stripeCustomerId) params.customer = existing.stripeCustomerId;
+    const buyer = resolveSession(req);
+    if (existing && buyer && buyer.email === existing.email && existing.stripeCustomerId) params.customer = existing.stripeCustomerId;
     else params.customer_email = email;
     const session = await stripe.checkout.sessions.create(params);
     res.json({ ok: true, url: session.url, sessionId: session.id });
@@ -603,6 +607,12 @@ app.get('/buy', (req, res) => { res.sendFile(path.join(BASE, 'dashboard', 'buy.h
 // and the checkout.session.completed webhook (the backstop when the customer
 // never returns to the success URL).
 function fulfillCheckoutSession(stripeSession, source) {
+  // Only verified webhook delivery provisions entitlements. Redirect parameters are not authority.
+  if (source !== 'webhook') return null;
+  const history = require('./lib/billing-history').openBillingHistory(path.join(MAGENT_DIR, 'billing-history.sqlite'));
+  if (!stripeSession.id) return null;
+  if (history.cancelled(stripeSession.subscription)) return { ignored: true };
+  if (history.fulfilled(stripeSession.id)) return findUserByEmail(stripeSession.customer_details?.email || stripeSession.customer_email);
   if (stripeSession.payment_status !== 'paid') {
     // Not paid yet (async payment, or 'completed' fired before the charge settled). Logged, not
     // alerted — the webhook caller returns non-2xx so Stripe re-delivers once it settles.
@@ -626,6 +636,7 @@ function fulfillCheckoutSession(stripeSession, source) {
 
   // Create or update user
   let user = findUserByEmail(email);
+  const previousUser = user ? JSON.parse(JSON.stringify(user)) : null;
   if (!user) {
     user = { id: uuidv4(), email, plan, stripeCustomerId: customerId, createdAt: new Date().toISOString() };
     users.push(user);
@@ -664,7 +675,11 @@ function fulfillCheckoutSession(stripeSession, source) {
     // Disk write failed → the paid client exists only in memory and vanishes on restart. Alert loudly.
     logActivity('billing', `FULFILLMENT PERSIST FAILED (${source}): ${email} session ${stripeSession.id} — paid but users.json not written`, { sessionId: stripeSession.id, alert: true });
     sendNotification('Fulfillment not persisted', `Paid session ${stripeSession.id} for ${email} fulfilled in memory but the users.json write FAILED — recover before the next restart.`, 'critical');
+    if (previousUser) { for (const key of Object.keys(user)) delete user[key]; Object.assign(user, previousUser); }
+    else users.splice(users.indexOf(user), 1);
+    return null;
   }
+  history.recordFulfillment(stripeSession.id);
   crm?.syncUser(user, { sessionId: stripeSession.id }); // CRM: mirror license/plan + log purchase (idempotent)
   // amount_total is Stripe's own real charged amount (cents) — covers every checkout flow this
   // function fulfills (license purchases, upgrades, renewals, managed-client setup), unlike trying
@@ -682,27 +697,9 @@ app.get('/api/stripe/success', async (req, res) => {
   if (!sessionId || !stripe) return res.redirect('/');
 
   try {
-    const stripeSession = await stripe.checkout.sessions.retrieve(sessionId);
-    const user = fulfillCheckoutSession(stripeSession, 'success-redirect');
-    if (!user) return res.redirect('/?stripe=unpaid');
-
-    // A fresh managed-site client has no password yet → send them to set one before the dashboard.
-    if (user.role === 'client' && !user.passwordHash && user.setupToken) {
-      return res.redirect(`/set-password?token=${encodeURIComponent(user.setupToken.token)}`);
-    }
-
-    // A returning managed client (already onboarded with a password) → log into their client workspace.
-    if (user.role === 'client') {
-      const token = generateToken();
-      sessions.set(token, { email: user.email, plan: user.plan, role: 'client', ownerEmail: orgMembership.orgKeyFor(user), stripeCustomerId: user.stripeCustomerId, expiresAt: new Date(Date.now() + 30 * 86400000).toISOString() });
-      res.cookie('ai-os-session', token, { httpOnly: true, secure: process.env.NODE_ENV === 'production', sameSite: 'lax', maxAge: 30 * 86400000 });
-      return res.redirect('/app');
-    }
-
-    // Business/Enterprise are SELF-HOST licenses: never mint an operator session on THIS instance —
-    // the buyer deploys their own. Land on the marketing site with a purchase flag (license delivery
-    // is handled out-of-band by the operator), NOT the operator console.
-    return res.redirect(`/?purchased=${encodeURIComponent(user.plan)}`);
+    // Neither an old paid receipt nor a buyer-entered email proves account ownership.
+    // Existing customers sign in; new customers receive an operator-issued onboarding invite.
+    return res.redirect('/login?checkout=received');
   } catch (e) {
     console.error('[STRIPE] Success callback error:', e.message);
     res.redirect('/?stripe=error');
@@ -743,14 +740,17 @@ app.post('/api/stripe/webhook', express.raw({ type: 'application/json' }), (req,
     case 'customer.subscription.deleted':
     case 'customer.subscription.paused': {
       const sub = event.data.object;
+      require('./lib/billing-history').openBillingHistory(path.join(MAGENT_DIR, 'billing-history.sqlite')).recordCancellation(sub.id);
       // Managed-client subscription? Match the SPECIFIC subscription stored at purchase, drop that
       // one site's allowance, and only lock the client out once NO managed subscriptions remain —
       // a multi-site client who cancels one must keep access to the rest.
       const client = users.find(u => Array.isArray(u.managedPurchases) && u.managedPurchases.some(p => p && p.subscriptionId === sub.id));
       if (client) {
+        const previousPurchases = client.managedPurchases, previousPlan = client.plan;
         client.managedPurchases = client.managedPurchases.filter(p => p && p.subscriptionId !== sub.id);
         if (client.managedPurchases.length === 0) client.plan = 'free'; // no sites left → revoke access
-        saveState('users', users);
+        if (!saveState('users', users)) { client.managedPurchases = previousPurchases; client.plan = previousPlan; return res.status(500).send('cancellation persist failed'); }
+        revokeSessionsFor(client.email);
         // event:'subscription_cancelled' — real Predictive Analytics churn forecasting reads this.
         logActivity('billing', `Managed subscription cancelled for ${client.email} (${client.managedPurchases.length} site(s) remain)`, {
           event: 'subscription_cancelled', email: client.email,
@@ -764,7 +764,8 @@ app.post('/api/stripe/webhook', express.raw({ type: 'application/json' }), (req,
       const user = users.find(u => u.stripeCustomerId === sub.customer);
       if (user && user.role !== 'client') {
         user.plan = 'free';
-        saveState('users', users);
+        if (!saveState('users', users)) return res.status(500).send('cancellation persist failed');
+        revokeSessionsFor(user.email);
         logActivity('billing', `Subscription cancelled for ${user.email}`, {
           event: 'subscription_cancelled', email: user.email,
         });
@@ -1569,6 +1570,26 @@ function wsCredential(req) {
   if (cookie && isValidSession(cookie)) return { kind: 'session', session: isValidSession(cookie) };
   return null;
 }
+function closeSessionSockets(token) {
+  // Called only after startup, when the WebSocket server exists.
+  for (const socket of wss.clients) if (socket.authToken === token) socket.close(1008, 'Session revoked');
+}
+function refreshSocketPrincipal(socket) {
+  if (!socket.authRequest) return false;
+  const cred = wsCredential(socket.authRequest);
+  if (!cred) {
+    if (!API_TOKEN && process.env.NODE_ENV !== 'production') { socket.role = 'admin'; return true; }
+    socket.close(1008, 'Authentication expired');
+    return false;
+  }
+  if (cred.session?.role === 'client') {
+    const owner = findUserByEmail(cred.session.ownerEmail || cred.session.email);
+    if (!owner || owner.disabled || !owner.plan || owner.plan === 'free') { socket.close(1008, 'Plan inactive'); return false; }
+  }
+  socket.role = cred.kind === 'api-token' ? 'admin' : (cred.session?.role || 'user');
+  socket.email = cred.session?.ownerEmail || cred.session?.email || null;
+  return true;
+}
 function wsHasQueryToken(req) {
   try { return new URL(req.url, `http://${req.headers.host}`).searchParams.has('token'); } catch { return false; }
 }
@@ -1580,7 +1601,7 @@ const wss = new WebSocketServer({
       logActivity('auth', 'WebSocket rejected: token in query string', { ip: info.req.socket?.remoteAddress || 'unknown' });
       return cb(false, 401, 'Unauthorized: send the token as an Authorization: Bearer header, not in the URL');
     }
-    if (!API_TOKEN) return cb(true);
+    if (!API_TOKEN && process.env.NODE_ENV !== 'production') return cb(true);
     if (wsCredential(info.req)) return cb(true);
     cb(false, 401, 'Unauthorized');
   },
@@ -1590,6 +1611,7 @@ const wss = new WebSocketServer({
 const WS_HEARTBEAT_INTERVAL = 30000;
 const heartbeat = setInterval(() => {
   wss.clients.forEach(ws => {
+    if (!refreshSocketPrincipal(ws)) return;
     if (ws.isAlive === false) return ws.terminate();
     ws.isAlive = false;
     ws.ping();
@@ -1813,7 +1835,7 @@ function wsOwns(session, site) {
   if (!session || !site) return false;
   if (session.role === 'admin') return true;
   return wsIsClient(session) && !!site.ownerEmail
-    && String(site.ownerEmail).toLowerCase() === String(session.ownerEmail || session.email).toLowerCase();
+    && [session.ownerEmail, session.email].filter(Boolean).some(email => String(email).toLowerCase() === String(site.ownerEmail).toLowerCase());
 }
 function wsVisibleSites(session) {
   return (session && session.role === 'admin') ? webStudioSites : webStudioSites.filter(s => wsOwns(session, s));
@@ -1822,7 +1844,7 @@ function wsVisibleSites(session) {
 // Site limit. CLIENT: their managed-purchase count (1 site per purchase). ADMIN: the instance limit
 // from the commercial resolver (the control-plane domain is never a web-studio site, never counted).
 const wsSiteLimit = (session) => {
-  if (wsIsClient(session)) { const u = findUserByEmail(session.email); return (u && Array.isArray(u.managedPurchases)) ? Math.max(1, u.managedPurchases.length) : 1; }
+  if (wsIsClient(session)) { const u = findUserByEmail(session.ownerEmail || session.email); if (u?.role !== 'admin') return (u && Array.isArray(u.managedPurchases)) ? u.managedPurchases.length : 0; }
   return (commercial.limits && commercial.limits.sites != null) ? commercial.limits.sites : 1;
 };
 const wsActiveCount = (session) => wsVisibleSites(session).filter(s => s.status !== 'failed' && s.status !== 'build_failed').length;
@@ -1832,23 +1854,21 @@ const WS_SITE_TYPES = ['Landing Page', 'Business', 'Portfolio', 'Blog', 'E-comme
 const wsCleanType = (t) => { const s = String(t || '').trim(); return WS_SITE_TYPES.includes(s) ? s : ''; };
 const wsBriefWithType = (site) => site.siteType ? `Website type: ${site.siteType}.\n\n${site.brief}` : site.brief;
 
-// Write the HTTP nginx vhost for a domain NOW (TLS comes later at Publish), deploying the
-// current build if there is one so the domain serves over HTTP immediately. Throws with a
-// .code (DOMAIN_RESERVED / DOMAIN_CLAIMED) so callers can map a status code.
+// Reserve a domain synchronously and durably. Only the publish approval executor activates hosting.
+// Throws DOMAIN_RESERVED / DOMAIN_CLAIMED so callers can map a status code.
 async function wsSetupHosting(site, domainInput) {
   const domain = webStudioHosting.normalizeDomain(domainInput);
+  if (['publishing', 'deleting', 'unpublishing'].includes(site.status)) throw new Error('Site operation already in progress');
+  if (site.domain && site.domain !== domain && (site.published || site.hostingSetup)) throw new Error('Unpublish before changing domains');
   const primary = (process.env.AIOS_PRIMARY_DOMAIN || '').trim().toLowerCase();
   if (primary && domain === primary) { const e = new Error('that domain hosts the AI OS control plane and cannot be used for a site'); e.code = 'DOMAIN_RESERVED'; throw e; }
-  const claimed = webStudioSites.find(s => s.id !== site.id && s.domain === domain && (s.published || s.hostingSetup));
+  const claimed = webStudioSites.find(s => s.id !== site.id && s.domain === domain);
   if (claimed) { const e = new Error('that domain is already in use by another site'); e.code = 'DOMAIN_CLAIMED'; throw e; }
-  await webStudioHosting.createVhost(domain, { tls: false });
-  const distDir = path.join(wsWorkspaceDir(site.id), 'dist');
-  let served = false;
-  if (fs.existsSync(path.join(distDir, 'index.html'))) { await deployWithGate(site, distDir, domain); served = true; }
-  site.domain = domain; site.hostingSetup = true; site.httpUrl = `http://${domain}`;
-  saveState('web_studio_sites', webStudioSites);
+  const previous = site.domain;
+  site.domain = domain;
+  if (!saveState('web_studio_sites', webStudioSites)) { site.domain = previous; throw new Error('Could not persist domain reservation'); }
   broadcast({ event: 'web_studio_site', data: site });
-  return { domain, served, httpUrl: site.httpUrl };
+  return { domain, served: !!site.published, httpUrl: site.httpUrl || null };
 }
 
 // Path-guard: resolve a relative path INSIDE a site's workspace, rejecting traversal,
@@ -1858,6 +1878,12 @@ function wsResolveFile(id, rel) {
   const target = path.resolve(base, String(rel || ''));
   if (target !== base && !target.startsWith(base + path.sep)) return null;
   const within = path.relative(base, target);
+  if (!/^(src|public)[\\/]/.test(within) || within.includes(':')) return null;
+  let cursor = base;
+  for (const segment of within.split(/[\\/]/)) {
+    cursor = path.join(cursor, segment);
+    if (fs.existsSync(cursor) && fs.lstatSync(cursor).isSymbolicLink()) return null;
+  }
   if (/(^|[\\/])(node_modules|dist|\.astro)([\\/]|$)/.test(within)) return null;
   if (within.split(/[\\/]/).some(seg => seg.startsWith('.'))) return null;
   return target;
@@ -2212,11 +2238,13 @@ app.post('/api/web-studio/sites', requireClientOrAdmin, heavyLimiter, async (req
   if (domain != null && String(domain).trim() !== '') {
     try { cfgDomain = webStudioHosting.normalizeDomain(domain); }
     catch (e) { return res.status(400).json({ error: e.message }); }
+    if (cfgDomain === (process.env.AIOS_PRIMARY_DOMAIN || '').trim().toLowerCase()) return res.status(400).json({ error: 'Control-plane domain is reserved' });
+    if (webStudioSites.some(s => s.domain === cfgDomain)) return res.status(409).json({ error: 'Domain is already reserved by another site' });
   }
 
   const cleanFeatures = wsCleanFeatures(features);
   const id = uuidv4();
-  const site = { id, name: String(name || 'Untitled site').slice(0, 80), brief: String(brief).slice(0, 4000), siteType: wsCleanType(siteType), kind: 'generated', status: 'building', domain: cfgDomain, hostingSetup: false, published: false, ownerEmail: wsIsClient(req.session) ? req.session.email : null, createdAt: new Date().toISOString(), lastBuiltAt: null, pages: [], features: cleanFeatures, chatEnabled: cleanFeatures.enableChat, buildModel: modelOverride ? 'Fable 5' : null, templateId: template ? template.id : null, templateName: template ? template.name : null };
+  const site = { id, name: String(name || 'Untitled site').slice(0, 80), brief: String(brief).slice(0, 4000), siteType: wsCleanType(siteType), kind: 'generated', status: 'building', domain: cfgDomain, hostingSetup: false, published: false, ownerEmail: wsIsClient(req.session) ? (req.session.ownerEmail || req.session.email) : null, createdAt: new Date().toISOString(), lastBuiltAt: null, pages: [], features: cleanFeatures, chatEnabled: cleanFeatures.enableChat, buildModel: modelOverride ? 'Fable 5' : null, templateId: template ? template.id : null, templateName: template ? template.name : null };
   webStudioSites.push(site);
   saveState('web_studio_sites', webStudioSites);
   logActivity('web-studio', `Site build started: ${site.name}`, { id });
@@ -2877,7 +2905,7 @@ app.post('/api/web-studio/import/archive', requireClientOrAdmin, heavyLimiter,
   (req, res) => {
     if (wsActiveCount(req.session) >= wsSiteLimit(req.session)) return res.status(403).json({ error: `Site limit reached (${wsSiteLimit(req.session)}).` });
     if (!req.body || !req.body.length) return res.status(400).json({ error: 'empty upload (send the .zip as the raw request body)' });
-    const site = wsStartImport(req.query.name || 'Imported site', wsIsClient(req.session) ? req.session.email : null);
+    const site = wsStartImport(req.query.name || 'Imported site', wsIsClient(req.session) ? (req.session.ownerEmail || req.session.email) : null);
     res.json({ ok: true, site });
     wsFinishImport(site, webStudioImport.importToWorkspace({ workspaceDir: wsWorkspaceDir(site.id), zipBuffer: req.body }));
   });
@@ -2886,7 +2914,7 @@ app.post('/api/web-studio/import/github', requireClientOrAdmin, heavyLimiter, (r
   if (wsActiveCount(req.session) >= wsSiteLimit(req.session)) return res.status(403).json({ error: `Site limit reached (${wsSiteLimit(req.session)}).` });
   const { url, token, name } = req.body || {};
   if (!url) return res.status(400).json({ error: 'repo url required' });
-  const site = wsStartImport(name || 'Imported repo', wsIsClient(req.session) ? req.session.email : null);
+  const site = wsStartImport(name || 'Imported repo', wsIsClient(req.session) ? (req.session.ownerEmail || req.session.email) : null);
   site.importRepo = String(url).slice(0, 200); // store the repo URL, never the token
   res.json({ ok: true, site });
   wsFinishImport(site, webStudioImport.importToWorkspace({ workspaceDir: wsWorkspaceDir(site.id), githubUrl: url, githubToken: token }));
@@ -2950,11 +2978,14 @@ async function scanSiteSecurity(site) {
 // error-severity findings; fail-open on a scanner outage, logged so the silent no-op is auditable.
 // Report-only — semgrep never mutates the dist.
 async function deployWithGate(site, distDir, domain) {
+  if (site.domain !== domain || webStudioSites.some(s => s.id !== site.id && s.domain === domain)) throw new Error('Domain ownership changed; deploy refused');
   if (settings.security?.gate_publish === 'block') {
     const sec = await scanSiteSecurity(site);
     if (sec.available && !sec.ok) throw new Error(`security gate: ${sec.counts.error} error-severity finding(s) must be resolved before publishing`);
     if (!sec.available) appendLog(`[security] gate set to 'block' but scanner unavailable — deploying ${domain} unscanned (fail-open)`);
   }
+  // Re-check after the asynchronous scan: ownership may have changed while it ran.
+  if (site.domain !== domain || ['deleting', 'unpublishing'].includes(site.status) || webStudioSites.some(s => s.id !== site.id && s.domain === domain)) throw new Error('Domain ownership changed; deploy refused');
   webStudioPublish.deployRelease(distDir, WS_SITES_ROOT, domain);
 }
 
@@ -2973,14 +3004,15 @@ function startPublishBackground(site, domain) {
       emit('deploy');
       await deployWithGate(site, distDir, domain); // authoritative security gate + atomic release swap
       emit('vhost');
-      await webStudioHosting.createVhost(domain, { tls: false });
+      await webStudioHosting.createVhost(domain, { tls: false, preserveExisting: true });
       emit('cert');
       await webStudioHosting.issueCert(domain);
       emit('tls');
-      await webStudioHosting.createVhost(domain, { tls: true });
+      await webStudioHosting.createVhost(domain, { tls: true, allowSchemeChange: true });
 
       site.domain = domain;
       site.published = true;
+      site.hostingSetup = true;
       site.url = `https://${domain}`;
       site.publishedAt = new Date().toISOString();
       site.status = 'ready';
@@ -3065,11 +3097,7 @@ const ACTION_EXECUTORS = {
     saveCloneDispatches();
 
     if (result && result.ok) {
-      costLedger.push({
-        id: uuidv4(), agent: d.agent, model: result.model, skill: 'clone-dispatch', clientId: d.clientId,
-        inputTokens: result.inputTokens || 0, outputTokens: result.outputTokens || 0,
-        cost: result.cost || 0, timestamp: new Date().toISOString(),
-      });
+      attributeUsage(result, { skill: 'clone-dispatch', clientId: d.clientId });
     }
     logActivity('clone', `${clone.name} commissioned ${d.agent}: ${d.status}`, { cloneId: clone.id, dispatchId: d.id });
     broadcast({ event: 'clone_dispatch', data: d });
@@ -3091,6 +3119,8 @@ const ACTION_EXECUTORS = {
   'web-studio.publish': async ({ siteId, domain }) => {
     const site = webStudioSites.find(s => s.id === siteId);
     if (!site) throw new Error('Site not found');
+    await wsSetupHosting(site, domain);
+    if (site.status === 'publishing') throw new Error('Site publication already in progress');
     startPublishBackground(site, domain);
     return { status: 'publishing', domain };
   },
@@ -3098,12 +3128,15 @@ const ACTION_EXECUTORS = {
     const idx = webStudioSites.findIndex(s => s.id === siteId);
     if (idx < 0) throw new Error('Site not found');
     const site = webStudioSites[idx];
+    if (['publishing', 'deleting', 'unpublishing'].includes(site.status)) throw new Error('Site operation already in progress');
+    if (site.domain && webStudioSites.some(s => s.id !== site.id && s.domain === site.domain)) throw new Error('Domain ownership conflict; teardown refused');
+    site.status = 'deleting';
     if (site.domain && (site.hostingSetup || site.published)) {
-      try { await webStudioHosting.removeSite(site.domain, { dropCert: true }); } catch (e) { appendLog(`web-studio: vhost teardown failed for ${site.domain}: ${e.message}`); }
+      try { await webStudioHosting.removeSite(site.domain, { dropCert: true }); } catch (e) { site.status = 'delete_failed'; throw e; }
       try { webStudioPublish.removeSiteRoot(WS_SITES_ROOT, site.domain); } catch {}
     }
     try { fs.rmSync(wsWorkspaceDir(site.id), { recursive: true, force: true }); } catch {}
-    webStudioSites.splice(idx, 1);
+    webStudioSites.splice(webStudioSites.indexOf(site), 1);
     saveState('web_studio_sites', webStudioSites);
     crm?.unlinkSite(site.id); // CRM: prune any contact link to the deleted site
     return { deleted: true, id: siteId };
@@ -3565,7 +3598,7 @@ app.post('/api/web-studio/sites/:id/ai-edit', requireClientOrAdmin, heavyLimiter
     if (result.ok) { site.plan = result.plan; site.meta = result.meta || {}; if (result.provenance) site.provenance = result.provenance; }
     if (!result.ok) site.error = result.error;
     // Keep the live HTTP site in sync after an AI regen, if hosting is already wired.
-    if (result.ok && site.hostingSetup && site.domain) { try { await deployWithGate(site, path.join(wsWorkspaceDir(site.id), 'dist'), site.domain); } catch (e) { appendLog(`web-studio: redeploy failed for ${site.domain}: ${e.message}`); } }
+    if (result.ok && site.published && site.hostingSetup && site.domain) { try { await deployWithGate(site, path.join(wsWorkspaceDir(site.id), 'dist'), site.domain); } catch (e) { appendLog(`web-studio: redeploy failed for ${site.domain}: ${e.message}`); } }
   } catch (e) { site.status = 'failed'; site.error = e.message; }
   saveState('web_studio_sites', webStudioSites);
   broadcast({ event: 'web_studio_site', data: site });
@@ -3611,7 +3644,7 @@ app.put('/api/web-studio/sites/:id/content', requireClientOrAdmin, async (req, r
       try { const pr = webStudioPipeline.writeProvenanceSidecar(ws, path.join(ws, 'dist'), plan, provMeta, signProvenance); if (pr) site.provenance = { ...provMeta, contentHash: pr.contentHash, credential: pr.credential }; }
       catch (e) { appendLog(`web-studio: provenance re-sign skipped: ${e.message}`); }
     } else { site.error = result.error; }
-    if (result.ok && site.hostingSetup && site.domain) { try { await deployWithGate(site, path.join(ws, 'dist'), site.domain); } catch (e) { appendLog(`web-studio: redeploy failed for ${site.domain}: ${e.message}`); } }
+    if (result.ok && site.published && site.hostingSetup && site.domain) { try { await deployWithGate(site, path.join(ws, 'dist'), site.domain); } catch (e) { appendLog(`web-studio: redeploy failed for ${site.domain}: ${e.message}`); } }
     saveState('web_studio_sites', webStudioSites);
     broadcast({ event: 'web_studio_site', data: site });
     res.json({ ok: result.ok, status: site.status, log: result.log });
@@ -3641,13 +3674,13 @@ app.post('/api/web-studio/sites/:id/build', requireClientOrAdmin, async (req, re
     } catch (e) { appendLog(`web-studio: provenance re-sign skipped: ${e.message}`); }
   }
   // Keep the live HTTP site in sync after an edit-rebuild, if hosting is already wired.
-  if (result.ok && site.hostingSetup && site.domain) { try { await deployWithGate(site, path.join(wsWorkspaceDir(site.id), 'dist'), site.domain); } catch (e) { appendLog(`web-studio: redeploy failed for ${site.domain}: ${e.message}`); } }
+  if (result.ok && site.published && site.hostingSetup && site.domain) { try { await deployWithGate(site, path.join(wsWorkspaceDir(site.id), 'dist'), site.domain); } catch (e) { appendLog(`web-studio: redeploy failed for ${site.domain}: ${e.message}`); } }
   saveState('web_studio_sites', webStudioSites);
   broadcast({ event: 'web_studio_site', data: site });
   res.json({ ok: result.ok, status: site.status, log: result.log });
 });
 
-// --- Configure a domain: write its HTTP nginx vhost now (TLS still comes at Publish) ---
+// --- Reserve a domain; activation requires the publish approval gate ---
 app.post('/api/web-studio/sites/:id/domain', requireClientOrAdmin, async (req, res) => {
   const site = wsFindSite(req, res); if (!site) return;
   let domain;
@@ -3722,9 +3755,13 @@ app.post('/api/web-studio/sites/:id/publish', requireClientOrAdmin, async (req, 
 app.post('/api/web-studio/sites/:id/unpublish', requireClientOrAdmin, async (req, res) => {
   const site = wsFindSite(req, res); if (!site) return;
   if (!site.domain) return res.status(400).json({ error: 'site is not published' });
+  if (['publishing', 'deleting', 'unpublishing'].includes(site.status)) return res.status(409).json({ error: 'Site operation already in progress' });
+  if (webStudioSites.some(s => s.id !== site.id && s.domain === site.domain)) return res.status(409).json({ error: 'Domain ownership conflict' });
+  site.status = 'unpublishing';
   try { await webStudioHosting.removeSite(site.domain, { dropCert: false }); }
-  catch (e) { return res.status(500).json({ error: e.message }); }
+  catch (e) { site.status = 'unpublish_failed'; return res.status(500).json({ error: e.message }); }
   site.published = false;
+  site.hostingSetup = false;
   site.status = 'ready';
   saveState('web_studio_sites', webStudioSites);
   broadcast({ event: 'web_studio_site', data: site });
@@ -3847,7 +3884,8 @@ function broadcast(data) {
   }
   wss.clients.forEach(c => {
     if (c.readyState !== 1) return;
-    if (c.role && c.role !== 'admin' && !wsClientCanReceive(c, data)) return; // non-admin sockets: owner-scoped allowlist only
+    if (!refreshSocketPrincipal(c)) return;
+    if (c.role !== 'admin' && !wsClientCanReceive(c, data)) return;
     c.send(msg);
   });
 
@@ -4182,6 +4220,11 @@ async function loadAgentPrompt(agentName) {
   return bodyMatch ? bodyMatch[1].trim() : content.trim();
 }
 
+function attributeUsage(result, attribution) {
+  const entry = result?.usageId && costLedger.find(row => row.id === result.usageId);
+  if (entry) Object.assign(entry, attribution);
+}
+
 async function executeAgent(agentName, task, options = {}) {
   const { context = '', untrusted } = options;
   const maxTokens = Math.min(Math.max(parseInt(options.maxTokens, 10) || 4096, 1), AGENT_MAX_TOKENS_CEILING);
@@ -4273,26 +4316,26 @@ async function executeAgent(agentName, task, options = {}) {
     const consultantProvider = CONSULTANT_PROVIDER[agentName];
     const consultantKey = { openai: 'openai_api_key', gemini: 'gemini_api_key', deepseek: 'deepseek_api_key', grok: 'xai_api_key', perplexity: 'perplexity_api_key' }[consultantProvider];
     if (consultantKey && settings.ai[consultantKey]) {
-      if (consultantProvider === 'openai') { result = await callOpenAI(fullSystem, fullTask, maxTokens); model = 'gpt-5.6-terra'; }
-      else if (consultantProvider === 'gemini') { result = await callGemini(fullSystem, fullTask, maxTokens); model = 'gemini-3.5-flash'; }
-      else if (consultantProvider === 'deepseek') { result = await callDeepSeek(fullSystem, fullTask, maxTokens); model = 'deepseek-v4'; }
-      else if (consultantProvider === 'grok') { result = await callGrok(fullSystem, fullTask, maxTokens); model = 'grok-4.5'; }
-      else if (consultantProvider === 'perplexity') { result = await callPerplexity(fullSystem, fullTask, maxTokens); model = 'perplexity-sonar'; }
+      if (consultantProvider === 'openai') { result = await callOpenAI(fullSystem + volatileSystem, fullTask, maxTokens); model = 'gpt-5.6-terra'; }
+      else if (consultantProvider === 'gemini') { result = await callGemini(fullSystem + volatileSystem, fullTask, maxTokens); model = 'gemini-3.5-flash'; }
+      else if (consultantProvider === 'deepseek') { result = await callDeepSeek(fullSystem + volatileSystem, fullTask, maxTokens); model = 'deepseek-v4'; }
+      else if (consultantProvider === 'grok') { result = await callGrok(fullSystem + volatileSystem, fullTask, maxTokens); model = 'grok-4.5'; }
+      else if (consultantProvider === 'perplexity') { result = await callPerplexity(fullSystem + volatileSystem, fullTask, maxTokens); model = 'perplexity-sonar'; }
     } else if (routing.tier === 'creative') {
       // Gemini Omni — route to Google
-      result = await callGemini(fullSystem, fullTask, maxTokens);
+      result = await callGemini(fullSystem + volatileSystem, fullTask, maxTokens);
       model = 'gemini-omni';
     } else if (agentName === 'grok-realtime' || routing.tier === 'realtime') {
       // Grok — route to xAI
-      result = await callGrok(fullSystem, fullTask, maxTokens);
+      result = await callGrok(fullSystem + volatileSystem, fullTask, maxTokens);
       model = 'grok-4.5';
     } else if (agentName === 'dev-architect-grok') {
       // Grok Build's model (grok-build-0.1) — the platform's dev-project/upgrade planner
-      result = await callGrokBuild(fullSystem, fullTask, maxTokens);
+      result = await callGrokBuild(fullSystem + volatileSystem, fullTask, maxTokens);
       model = GROK_BUILD_MODEL;
     } else if (agentName === 'deepseek-worker' || routing.tier === 'economy') {
       // DeepSeek — economy tier
-      result = await callDeepSeek(fullSystem, fullTask, maxTokens);
+      result = await callDeepSeek(fullSystem + volatileSystem, fullTask, maxTokens);
       model = 'deepseek-v4';
     } else {
       // Default: Anthropic — Opus 5 or Sonnet 5 per the operator's reasoning_mode (balanced by default:
@@ -4381,8 +4424,9 @@ async function executeAgent(agentName, task, options = {}) {
     outputTokens = priced.outputTokens;
     const cost = priced.cost;
     const elapsed = Date.now() - startTime;
+    const usageId = uuidv4();
     costLedger.push({
-      id: uuidv4(), agent: agentName, model, skill: options.skill || 'dispatch',
+      id: usageId, agent: agentName, model, skill: options.skill || 'dispatch',
       inputTokens, outputTokens, cost: Math.round(cost * 10000) / 10000,
       elapsed, ok: true,
       // `discardedAttempts` = attempts thrown away (a reliability signal, free or not).
@@ -4406,7 +4450,7 @@ async function executeAgent(agentName, task, options = {}) {
 
     // stopReason/truncated ride through so a caller can tell a cut-off reply from a short one — see
     // callAnthropic for why that signal matters and how long it was being discarded.
-    return { ok: true, content: result.content, model, inputTokens, outputTokens, elapsed, cost: Math.round(cost * 10000) / 10000, stopReason: result.stopReason || null, truncated: !!result.truncated };
+    return { ok: true, usageId, content: result.content, model, inputTokens, outputTokens, elapsed, cost: Math.round(cost * 10000) / 10000, stopReason: result.stopReason || null, truncated: !!result.truncated };
 
   } catch (e) {
     const elapsed = Date.now() - startTime;
@@ -4472,30 +4516,7 @@ function releaseAgentSlot() {
   if (next) { _agentInFlight++; next(); }
 }
 async function fetchWithTimeout(url, opts = {}, ms = AGENT_FETCH_TIMEOUT_MS) {
-  const ctrl = new AbortController();
-  let timedOut = false;
-  const t = setTimeout(() => { timedOut = true; ctrl.abort(); }, ms);
-  try { return await fetch(url, { ...opts, signal: ctrl.signal }); }
-  catch (e) {
-    // Mark OUR timeout so the retry classifier can tell it from a caller-initiated abort. Without
-    // this flag the only evidence is the message "This operation was aborted", and classifying a
-    // retry decision on provider prose is exactly the fragility lib/transient-errors.js refuses.
-    // A deliberate cancel must NOT be retried against the canceller's wishes; a timeout should be.
-    if (timedOut && e && e.name === 'AbortError') {
-      // A NEW Error rather than mutating `e`: undici raises a DOMException here, whose `message` is a
-      // getter-only accessor — assigning to it fails SILENTLY in sloppy mode and throws in strict, so
-      // the "improved" message would have been a no-op nobody noticed. Re-wrapping also lets the
-      // message name its own cause: "This operation was aborted" gave no hint it was ours, and cost a
-      // diagnostic round trip looking for an Anthropic incident that never happened.
-      const err = new Error(`request exceeded the ${Math.round(ms / 1000)}s client timeout (${e.message})`);
-      err.timedOut = true;
-      err.timeoutMs = ms;
-      err.cause = e;
-      throw err;
-    }
-    throw e;
-  }
-  finally { clearTimeout(t); }
+  return require('./lib/net/bounded-fetch').boundedFetch(url, opts, ms);
 }
 
 // Override the API base (e.g. a local mock or proxy) via ANTHROPIC_BASE_URL; defaults to the real API.
@@ -7847,6 +7868,11 @@ function a2aKeyPublic(k) {
 // Auth for /api/a2a: admin (operator / master API_TOKEN) keeps FULL access; otherwise a valid, non-revoked
 // scoped A2A key is required. Sets req.a2aKey for scoped callers (skill + budget enforced in the handler).
 function a2aAuth(req, res, next) {
+  const bearer = (req.headers.authorization || '').replace(/^Bearer\s+/i, '');
+  const serviceKey = bearer ? serviceKeyFor(bearer) : null;
+  if (serviceKey && !serviceKeys.decideScope(serviceKey, req.method, req.originalUrl).allow) {
+    return res.status(403).json({ error: 'Service key scope does not permit A2A execution' });
+  }
   const session = resolveSession(req);
   if (session && session.role === 'admin') { req.session = session; return next(); }
   const token = (req.headers.authorization || '').replace('Bearer ', '');
@@ -10330,6 +10356,10 @@ function requireClientOrAdmin(req, res, next) {
   const session = resolveSession(req);
   if (!session) return res.status(401).json({ error: 'Not authenticated' });
   if (session.role !== 'admin' && session.role !== 'client') return res.status(403).json({ error: 'Access denied' });
+  if (session.role === 'client') {
+    const owner = findUserByEmail(session.ownerEmail || session.email);
+    if (!owner || owner.disabled || !owner.plan || owner.plan === 'free') return res.status(403).json({ error: 'An active plan is required' });
+  }
   req.session = session;
   next();
 }
@@ -11032,10 +11062,19 @@ app.get('/api/approvals', requireAdmin, (req, res) => {
 // batch routes so the two can never drift. Mutates `a`, persists, broadcasts. Returns
 // { ok, code?, error?, result? }; the caller owns the HTTP shape.
 async function executeApprovedAction(a, secrets, actor) {
+  if (a.status !== 'pending') return { ok: false, code: 409, error: `Already ${a.status}` };
   const exec = ACTION_EXECUTORS[a.type];
   if (!exec) return { ok: false, code: 400, error: `No executor for action type ${a.type}` };
   const missing = (a.needsSecrets || []).filter(k => !secrets[k]);
   if (missing.length) return { ok: false, code: 400, error: `This action needs: ${missing.join(', ')}. Send them as { "secrets": { ... } }.` };
+  // Persist the exclusive claim before any external work. Interrupted claims need reconciliation.
+  a.status = 'executing';
+  a.approvedBy = actor;
+  a.executionStartedAt = new Date().toISOString();
+  if (!saveState('pending_approvals', pendingApprovals)) {
+    a.status = 'pending';
+    return { ok: false, code: 503, error: 'Could not persist execution claim' };
+  }
   try {
     const result = await exec({ ...a.params, ...secrets });
     a.status = 'approved';
@@ -13325,13 +13364,11 @@ wss.on('connection', (ws, req) => {
   // Stamp the socket with the session's role/email so broadcast() can scope pushes: managed
   // clients must not receive other tenants' events (sites, builds, leads, analytics). API-token
   // and admin-session sockets are operator-grade.
-  ws.role = 'admin'; ws.email = null;
-  try {
-    const cred = wsCredential(req); // same resolver verifyClient used — the two cannot disagree
-    if (cred && cred.kind === 'api-token') { ws.role = 'admin'; }
-    else if (cred && cred.session) { ws.role = cred.session.role || 'user'; ws.email = cred.session.email || null; }
-    else if (API_TOKEN) { ws.role = 'user'; } // authenticated upgrade but unresolvable session — least privilege
-  } catch { if (API_TOKEN) ws.role = 'user'; }
+  ws.role = 'user'; ws.email = null;
+  ws.authRequest = req;
+  ws.authToken = (req.headers.authorization || '').replace(/^Bearer\s+/i, '').trim()
+    || (req.headers.cookie || '').match(/ai-os-session=([^;]+)/)?.[1];
+  if (!refreshSocketPrincipal(ws)) return;
   ws.on('pong', () => { ws.isAlive = true; });
   ws.on('error', () => { /* swallow client errors */ });
   ws.send(JSON.stringify({ event: 'connected', data: { health: getSystemHealth() } }));
@@ -13812,11 +13849,7 @@ app.post('/api/org/documents/:id/extract', requireAdmin, heavyLimiter, async (re
   orgProposals.push(proposal);
   saveOrgProposals();
 
-  costLedger.push({
-    id: uuidv4(), agent: 'business-clone', model: result.model, skill: 'org-extract', clientId: orgKey,
-    inputTokens: result.inputTokens || 0, outputTokens: result.outputTokens || 0,
-    cost: result.cost || 0, timestamp: new Date().toISOString(),
-  });
+  attributeUsage(result, { skill: 'org-extract', clientId: orgKey });
   logActivity('clone', `Read ${proposed.length} suggestion(s) out of ${doc.filename}${refused.length ? ` (${refused.length} refused)` : ''}`, { org: orgKey, documentId: doc.id });
   res.json({ ok: true, proposal, cost: result.cost || 0 });
 });
@@ -14594,11 +14627,7 @@ app.post('/api/clones/:id/drafts', requireCloneAccess, heavyLimiter, async (req,
   saveCloneDrafts();
   saveClones();
 
-  costLedger.push({
-    id: uuidv4(), agent: 'business-clone', model: result.model, skill: 'clone-draft', clientId: cloneClientOf(req.session),
-    inputTokens: result.inputTokens || 0, outputTokens: result.outputTokens || 0,
-    cost: result.cost || 0, timestamp: new Date().toISOString(),
-  });
+  attributeUsage(result, { skill: 'clone-draft', clientId: cloneClientOf(req.session) });
 
   logActivity('clone', `${clone.name} drafted a ${draft.channel} reply${check.blocked ? ' (RED LINE tripped)' : ''}`, { cloneId: clone.id, draftId: draft.id });
   res.json({ ok: true, draft });
@@ -14695,11 +14724,7 @@ app.post('/api/clones/:id/dispatch/plan', requireCloneAccess, requireCloneDispat
   const parsed = webStudioPipeline.extractJson(result.content);
   const choice = cloneDispatchLib.validateSelection(parsed, eff, { goal, context, companyBoundaries: cloneCompanyBoundaries(clone) });
 
-  costLedger.push({
-    id: uuidv4(), agent: 'business-clone', model: result.model, skill: 'clone-dispatch-plan', clientId: cloneClientOf(req.session),
-    inputTokens: result.inputTokens || 0, outputTokens: result.outputTokens || 0,
-    cost: result.cost || 0, timestamp: new Date().toISOString(),
-  });
+  attributeUsage(result, { skill: 'clone-dispatch-plan', clientId: cloneClientOf(req.session) });
 
   if (!choice.ok) {
     // A refusal still gets a record: it costs money and it is part of what the clone did. It is
@@ -14917,11 +14942,7 @@ app.post('/api/clones/:id/evolve', requireCloneAccess, heavyLimiter, async (req,
   const { proposed, refused } = cloneEvolve.computeProposed(clone.persona, suggestion);
   const changes = cloneEvolve.diffPersona(clone.persona, proposed);
 
-  costLedger.push({
-    id: uuidv4(), agent: 'business-clone', model: result.model, skill: 'clone-evolve', clientId: cloneClientOf(req.session),
-    inputTokens: result.inputTokens || 0, outputTokens: result.outputTokens || 0,
-    cost: result.cost || 0, timestamp: new Date().toISOString(),
-  });
+  attributeUsage(result, { skill: 'clone-evolve', clientId: cloneClientOf(req.session) });
 
   // "No clear pattern" is a real answer, not a failure. Recording a no-change proposal would give
   // the owner something to approve that does nothing, so say it and stop.
@@ -14995,7 +15016,7 @@ app.post('/api/clones/:id/proposals/:pid/decide', requireCloneAccess, (req, res)
 if (commercial.registerRoutes) {
   commercial.registerRoutes(app, {
     // Middleware
-    requireAdmin, requireClientOrAdmin, requirePlan, heavyLimiter,
+    requireAdmin, requireHuman, requireClientOrAdmin, requirePlan, heavyLimiter,
     owns: wsOwns, isClient: wsIsClient, // per-client ownership helpers (Web Studio + scoped audits)
     // Messaging & logging
     broadcast, logActivity, appendLog,
