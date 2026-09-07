@@ -61,7 +61,7 @@ ok('the ledger model string resolves to a priced COST_RATES key');
       promptCache: { priceUsage: () => ({ cost: 1, inputTokens: 1, outputTokens: 1 }) },
       costLedger: [], uuidv4: () => 'id',
       resolveAnthropicModel: () => ({ apiModel: 'claude-opus-5', effort: 'xhigh', modelString: 'opus-5-xhigh' }),
-      anthropicLedgerString: (m, e) => `${m}-${e}`,
+      FABLE_MODEL: 'claude-fable-5', SONNET_MODEL: 'claude-sonnet-5',
       OVERRIDABLE_ANTHROPIC_MODELS: new Set(['claude-fable-5']),
       ASTRA_MODEL: 'gpt-6-astra', ASTRA_EFFORT: 'low', _warnedAstraFallback: false,
       callOpenAI: async (system, task, maxTokens, opts) => { captured.push(opts); return { content: 'ok' }; },
@@ -72,6 +72,11 @@ ok('the ledger model string resolves to a priced COST_RATES key');
     });
   }
   function loadExecuteAgent(c) {
+    // The REAL anthropicLedgerString, not a stub: the ledger string is the only place the clamp is
+    // observable (cost is flat per family), so faking the formatter would fake the thing under test.
+    const led = src.search(/function anthropicLedgerString\(/);
+    assert(led >= 0);
+    vm.runInContext(src.slice(led, src.indexOf('\n}', led) + 2), c);
     const start = src.search(/async function executeAgent\(/);
     assert(start >= 0);
     vm.runInContext(src.slice(start, src.indexOf('\n}\n', start) + 3), c);
@@ -109,12 +114,55 @@ ok('the ledger model string resolves to a priced COST_RATES key');
     'reasoning_effort is omitted entirely unless a caller asks — gpt-5.6-terra would reject the field');
   ok('callOpenAI sends reasoning_effort only when requested; the consultant path is untouched');
 
-  // --- the route's three choices ----------------------------------------------------------------
-  assert(/const modelOverride = model === 'fable' \? FABLE_MODEL : model === 'claude' \? null : ASTRA_MODEL;/.test(src),
-    "the create route maps 'fable' -> Fable 5, 'claude' -> default routing, anything else -> Astra");
-  assert(/buildModel: modelOverride === FABLE_MODEL \? 'Fable 5' : modelOverride === ASTRA_MODEL \? 'GPT-6 Astra \(low\)' : null/.test(src),
-    'the stored build label distinguishes all three, so the UI cannot claim Fable for an Astra build');
-  ok("the route defaults to Astra, keeps 'fable', and 'claude' opts back out");
+  // --- explicitly choosing Sonnet must not skip the xhigh clamp ----------------------------------
+  // web-studio-lead is a STRATEGIC (xhigh) agent. resolveAnthropicModel clamps Sonnet off xhigh
+  // because Sonnet 5 may not expose that rung; an override that skipped the clamp would send an
+  // effort the model can reject. Cost is flat per family, so ONLY the ledger string reveals it.
+  captured.length = 0;
+  c = ctx({
+    settings: { ai: { openai_api_key: 'synthetic' } },
+    SONNET_MODEL: 'claude-sonnet-5',
+    OVERRIDABLE_ANTHROPIC_MODELS: new Set(['claude-sonnet-5', 'claude-opus-5', 'claude-fable-5']),
+  });
+  loadExecuteAgent(c);
+  r = await c.executeAgent('web-studio-lead', 'build a site', { modelOverride: 'claude-sonnet-5' });
+  assert.equal(r.ok, true);
+  assert.equal(c.costLedger[0].model, 'sonnet-5-high',
+    `an explicit Sonnet build clamps xhigh -> high like the normal path (got ${c.costLedger[0].model})`);
+  ok('choosing Sonnet 5 on an xhigh agent clamps to high, exactly as the non-override path does');
+
+  // --- the route's model table --------------------------------------------------------------------
+  const table = slice('const WS_BUILD_MODELS = {', '\n};');
+  for (const [key, override, label] of [
+    ['sonnet', 'SONNET_MODEL', 'Sonnet 5'],
+    ['opus', 'OPUS_MODEL', 'Opus 5'],
+    ['astra', 'ASTRA_MODEL', 'GPT-6 Astra \\(low\\)'],
+    ['fable', 'FABLE_MODEL', 'Fable 5'],
+  ]) {
+    assert(new RegExp(`${key}:\\s*\\{ override: ${override},\\s*label: '${label}' \\}`).test(table),
+      `${key} maps to ${override} and is labelled "${label.replace('\\', '')}"`);
+  }
+  ok('all four build choices map to a known model AND carry their own label');
+
+  assert(/const buildChoice = WS_BUILD_MODELS\[String\(model \|\| ''\)\.toLowerCase\(\)\] \|\| null;/.test(src),
+    'an absent or unknown model falls to null — the operator\'s normal reasoning-mode routing');
+  assert(/const modelOverride = buildChoice \? buildChoice\.override : null;/.test(src)
+    && /buildModel: buildChoice \? buildChoice\.label : null/.test(src),
+    'the override and the STORED LABEL come from the same row, so the UI cannot name a model the build did not use');
+  ok('unknown/absent model keeps the default routing; label and override share one source');
+
+  // --- the UI offers those choices and carries the price disclaimer -------------------------------
+  const appHtml = require('fs').readFileSync(path.join(__dirname, '..', 'dashboard', 'app.html'), 'utf8');
+  const picker = appHtml.slice(appHtml.indexOf('id="wsModel"'), appHtml.indexOf('id="wsModel"') + 1400);
+  for (const v of ['sonnet', 'opus', 'astra', 'fable']) {
+    assert(new RegExp(`<option value="${v}"`).test(picker), `the picker offers ${v}`);
+  }
+  assert(/\$2\/\$10 per 1M/.test(picker) && /\$5\/\$25 per 1M/.test(picker) && /\$10\/\$50 per 1M/.test(picker),
+    'every option states its real per-1M price');
+  assert(/&ldquo;low&rdquo; is the reasoning effort, not a price tier/.test(picker)
+    && /double Opus 5 and five times Sonnet 5/.test(picker),
+    'the disclaimer says plainly that Astra\'s "low" is effort, not price');
+  ok('the picker offers all four, prices each, and carries the Astra cost disclaimer');
 
   console.log(`\nALL TESTS PASSED\n${pass} assertions`);
 })().catch((e) => { console.error(e); process.exitCode = 1; });

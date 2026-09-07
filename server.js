@@ -2225,12 +2225,13 @@ function wsCleanAffiliateUrl(raw) {
 app.post('/api/web-studio/sites', requireClientOrAdmin, heavyLimiter, async (req, res) => {
   const { name, brief, siteType, domain, cloneUrl, brandKitId, redesignUrl, maintainBranding, features, researchUrl, affiliateUrl, checkoutUrl, model, templateId } = req.body || {};
   if (!brief || String(brief).trim().length < 10) return res.status(400).json({ error: 'A brief of at least 10 characters is required' });
-  // Model choice for this build. DEFAULT since 2026-09-07 is GPT-6 Astra at reasoning_effort 'low'
-  // (operator decision). 'fable' routes the design agents to Claude Fable 5; 'claude' opts back out to
-  // the operator's normal reasoning-mode routing (Opus 5 for the lead, Sonnet 5 for the writer).
-  // Every branch maps to a KNOWN, PRICED model string so an override can never reach executeAgent as
-  // arbitrary caller input.
-  const modelOverride = model === 'fable' ? FABLE_MODEL : model === 'claude' ? null : ASTRA_MODEL;
+  // Model choice for this build — the operator picks per build (WS_BUILD_MODELS, declared with the
+  // model constants). Anything absent or unrecognised means null: the operator's normal reasoning-mode
+  // routing (Opus 5 plans, Sonnet 5 writes), which is what an API caller sending no model still gets.
+  // Every accepted value maps to a KNOWN, PRICED model string, so a caller can never push an arbitrary
+  // or unpriced model into executeAgent's override.
+  const buildChoice = WS_BUILD_MODELS[String(model || '').toLowerCase()] || null;
+  const modelOverride = buildChoice ? buildChoice.override : null;
   // Optional starter template: resolve now (with the requester's access) so a bad/foreign id fails fast.
   let template = null;
   if (templateId) {
@@ -2257,7 +2258,7 @@ app.post('/api/web-studio/sites', requireClientOrAdmin, heavyLimiter, async (req
 
   const cleanFeatures = wsCleanFeatures(features);
   const id = uuidv4();
-  const site = { id, name: String(name || 'Untitled site').slice(0, 80), brief: String(brief).slice(0, 4000), siteType: wsCleanType(siteType), kind: 'generated', status: 'building', domain: cfgDomain, hostingSetup: false, published: false, ownerEmail: wsIsClient(req.session) ? (req.session.ownerEmail || req.session.email) : null, createdAt: new Date().toISOString(), lastBuiltAt: null, pages: [], features: cleanFeatures, chatEnabled: cleanFeatures.enableChat, buildModel: modelOverride === FABLE_MODEL ? 'Fable 5' : modelOverride === ASTRA_MODEL ? 'GPT-6 Astra (low)' : null, templateId: template ? template.id : null, templateName: template ? template.name : null };
+  const site = { id, name: String(name || 'Untitled site').slice(0, 80), brief: String(brief).slice(0, 4000), siteType: wsCleanType(siteType), kind: 'generated', status: 'building', domain: cfgDomain, hostingSetup: false, published: false, ownerEmail: wsIsClient(req.session) ? (req.session.ownerEmail || req.session.email) : null, createdAt: new Date().toISOString(), lastBuiltAt: null, pages: [], features: cleanFeatures, chatEnabled: cleanFeatures.enableChat, buildModel: buildChoice ? buildChoice.label : null, templateId: template ? template.id : null, templateName: template ? template.name : null };
   webStudioSites.push(site);
   saveState('web_studio_sites', webStudioSites);
   logActivity('web-studio', `Site build started: ${site.name}`, { id });
@@ -4035,6 +4036,23 @@ const OVERRIDABLE_ANTHROPIC_MODELS = new Set([FABLE_MODEL, OPUS_MODEL, SONNET_MO
 const ASTRA_MODEL = 'gpt-6-astra';
 const ASTRA_EFFORT = 'low';
 let _warnedAstraFallback = false; // one line per process when the key is missing, not one per build
+
+// The Web Studio build-model picker. ONE table drives the override, the stored label and the UI copy,
+// so the dashboard can never name a different model than the build actually used.
+//
+// Deliberately declared HERE, beside the model constants, and not next to the route that reads it at
+// line ~2230: a module-level const there would evaluate during load and hit the TDZ on these
+// constants, which is the boot trap this file has already been bitten by three times. Route bodies
+// run long after load, so referencing it "before" its declaration in source order is safe.
+//
+// An absent/unknown value maps to null = the operator's normal reasoning-mode routing, which is the
+// long-standing default and stays the behaviour for API callers that send no model at all.
+const WS_BUILD_MODELS = {
+  sonnet: { override: SONNET_MODEL, label: 'Sonnet 5' },
+  opus:   { override: OPUS_MODEL,   label: 'Opus 5' },
+  astra:  { override: ASTRA_MODEL,  label: 'GPT-6 Astra (low)' },
+  fable:  { override: FABLE_MODEL,  label: 'Fable 5' },
+};
 const OPUS_API_VERSION = '2023-06-01';
 const GEMINI_OMNI_MODEL = 'gemini-omni-flash';
 // xAI's dev-planning-tuned model (2026 release, agentic-coding-focused, 256k context). Reachability
@@ -4401,6 +4419,12 @@ async function executeAgent(agentName, task, options = {}) {
       model = picked.modelString;
       if (options.modelOverride && OVERRIDABLE_ANTHROPIC_MODELS.has(options.modelOverride)) {
         apiModel = options.modelOverride;
+        // Apply the SAME xhigh clamp resolveAnthropicModel applies. Without it, explicitly choosing
+        // "build with Sonnet 5" on a strategic agent (web-studio-lead is xhigh) would send Sonnet an
+        // effort rung it may not expose — the clamp exists in the normal path for exactly that doubt,
+        // and an override must not be the one route that skips it. Cost is unaffected (flat per
+        // family); the API call is not.
+        if (apiModel === SONNET_MODEL && effort === 'xhigh') effort = 'high';
         model = anthropicLedgerString(apiModel, effort);
       }
       const mcpSet = options.useMcpTools ? buildMcpToolset() : { tools: [], map: {} };
