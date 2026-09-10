@@ -111,6 +111,7 @@
     "tools/test-pipeline-memory.js",
     "tools/test-pipeline-events.js",
     "tools/test-zip-import.js",
+    "tools/test-import-root.js",
     "tools/test-deps-installed.js",
     "tools/check-deps-installed.js",
     "tools/test-deploy-guard.js",
