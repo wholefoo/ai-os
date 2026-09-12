@@ -196,9 +196,14 @@ app.use(cors({
 }));
 app.use(compression());
 app.use(cookieParser());
-// Skip JSON parsing for Stripe webhook (needs raw body for signature verification)
+// Skip JSON parsing for Stripe webhook (needs raw body for signature verification), and for the
+// article content routes, which mount their own larger parser: an article body legitimately runs to
+// hundreds of KB (the recovered Oregon constitution is ~394KB of markup) and would be rejected by
+// the 1mb default once JSON-escaped. Only the WRITE verbs are skipped — GET/DELETE carry no body.
+const WS_ARTICLE_WRITE = /^\/api\/web-studio\/sites\/[^/]+\/articles(?:\/[^/]+)?$/;
 app.use((req, res, next) => {
   if (req.originalUrl === '/api/stripe/webhook') return next();
+  if ((req.method === 'POST' || req.method === 'PUT') && WS_ARTICLE_WRITE.test(req.path)) return next();
   express.json({ limit: '1mb' })(req, res, next);
 });
 
@@ -1731,6 +1736,7 @@ function persistAllState() {
 // ============================================================
 const webStudioBuild = require('./lib/web-studio/build');
 const webStudioPipeline = require('./lib/web-studio/pipeline');
+const webStudioArticles = require('./lib/web-studio/articles');
 const { BUILTIN_TEMPLATES } = require('./lib/web-studio/templates');
 const webStudioHosting = require('./lib/web-studio/hosting');
 const webStudioPublish = require('./lib/web-studio/publish');
@@ -3673,6 +3679,178 @@ app.put('/api/web-studio/sites/:id/content', requireClientOrAdmin, async (req, r
     broadcast({ event: 'web_studio_site', data: site });
     res.status(500).json({ error: e.message });
   }
+});
+
+// ============================================================
+//  Content backend — articles
+//  A no-code CRUD surface over plan.articles (lib/web-studio/articles.js). Every mutation
+//  re-renders the plan, rebuilds, and redeploys when the site is already live, so "saved" and
+//  "published" are never out of step — the same contract the plan/Content editor already has.
+//
+//  Article bodies are large (the recovered Oregon constitution is ~394KB of markup), so these
+//  routes need a bigger JSON limit than the 1mb global. The global parser skips them (see the
+//  express.json mount near the top) and they carry their own.
+// ============================================================
+const wsArticleJson = express.json({ limit: '4mb' });
+
+// Re-render → rebuild → re-sign → redeploy. Shared by every article mutation.
+// NOTE: PUT /content does the same sequence inline; it is left alone here deliberately (no test
+// covers that route, and this change should not put it at risk). Worth unifying separately.
+async function wsApplyPlanChange(site, plan) {
+  const ws = wsWorkspaceDir(site.id);
+  if (!fs.existsSync(path.join(ws, 'package.json'))) {
+    const e = new Error('site workspace not found — this site has no editable build yet');
+    e.status = 409; throw e;
+  }
+  site.status = 'building';
+  broadcast({ event: 'web_studio_site', data: site });
+  const provMeta = wsProvMeta(site);
+  plan.provenance = { generatedAt: provMeta.generatedAt };
+  let result;
+  try {
+    webStudioPipeline.renderPlanToWorkspace(ws, plan, {});
+    result = await webStudioBuild.runBuild(ws);
+  } catch (e) {
+    // runBuild itself never throws (it returns {ok:false}), but renderPlanToWorkspace can — a
+    // workspace missing its src/ tree throws ENOENT, for one. Without this the site was left
+    // permanently at status:'building' with no error recorded and the plan unsaved: the dashboard
+    // would show a spinner forever with nothing to explain it. Found by a live probe, not a unit test.
+    site.status = 'build_failed';
+    site.error = e.message;
+    saveState('web_studio_sites', webStudioSites);
+    broadcast({ event: 'web_studio_site', data: site });
+    throw e;
+  }
+  site.status = result.ok ? 'ready' : 'build_failed';
+  site.lastBuiltAt = new Date().toISOString();
+  if (result.ok) {
+    site.plan = plan; delete site.error;
+    try {
+      const pr = webStudioPipeline.writeProvenanceSidecar(ws, path.join(ws, 'dist'), plan, provMeta, signProvenance);
+      if (pr) site.provenance = { ...provMeta, contentHash: pr.contentHash, credential: pr.credential };
+    } catch (e) { appendLog(`web-studio: provenance re-sign skipped: ${e.message}`); }
+    if (site.published && site.hostingSetup && site.domain) {
+      try { await deployWithGate(site, path.join(ws, 'dist'), site.domain); }
+      catch (e) { appendLog(`web-studio: redeploy failed for ${site.domain}: ${e.message}`); }
+    }
+  } else { site.error = result.error; }
+  saveState('web_studio_sites', webStudioSites);
+  broadcast({ event: 'web_studio_site', data: site });
+  return result;
+}
+
+// A site can only hold articles once it has a plan. Imported sites have none until adopted.
+function wsRequirePlan(site, res) {
+  if (site.plan && Array.isArray(site.plan.pages)) return site.plan;
+  res.status(409).json({
+    error: 'this site has no editable content model yet',
+    detail: site.kind === 'imported'
+      ? 'Imported sites are static files with no plan. Adopt it first to enable the content backend.'
+      : 'Regenerate the site to create its plan.',
+    code: 'NO_PLAN',
+  });
+  return null;
+}
+
+const wsArticleList = (plan) => (Array.isArray(plan.articles) ? plan.articles : []);
+// Summary view: everything except the body, which can be hundreds of KB. A list endpoint that
+// returned every body would ship megabytes to render a table of titles.
+const wsArticleSummary = (a) => ({
+  slug: a.slug, title: a.title, excerpt: a.excerpt, category: a.category, author: a.author,
+  image: a.image, draft: !!a.draft, publishedAt: a.publishedAt, updatedAt: a.updatedAt,
+  words: webStudioArticles.wordCount(a.html || ''),
+  readingMinutes: webStudioArticles.readingMinutes(a.html || ''),
+});
+
+app.get('/api/web-studio/sites/:id/articles', requireClientOrAdmin, (req, res) => {
+  const site = wsFindSite(req, res); if (!site) return;
+  const plan = site.plan || {};
+  const list = wsArticleList(plan).map(wsArticleSummary)
+    .sort((a, b) => String(b.publishedAt || '').localeCompare(String(a.publishedAt || '')));
+  res.json({
+    articles: list,
+    total: list.length,
+    drafts: list.filter((a) => a.draft).length,
+    hasPlan: !!(site.plan && Array.isArray(site.plan.pages)),
+    prefix: webStudioArticles.articlePath(plan, '').replace(/\/$/, ''),
+    max: webStudioArticles.MAX_ARTICLES,
+  });
+});
+
+app.get('/api/web-studio/sites/:id/articles/:slug', requireClientOrAdmin, (req, res) => {
+  const site = wsFindSite(req, res); if (!site) return;
+  const found = wsArticleList(site.plan || {}).find((a) => a.slug === req.params.slug);
+  if (!found) return res.status(404).json({ error: 'article not found' });
+  res.json({ article: found, path: webStudioArticles.articlePath(site.plan || {}, found.slug) });
+});
+
+app.post('/api/web-studio/sites/:id/articles', requireClientOrAdmin, wsArticleJson, async (req, res) => {
+  const site = wsFindSite(req, res); if (!site) return;
+  const plan = wsRequirePlan(site, res); if (!plan) return;
+  const list = wsArticleList(plan);
+  if (list.length >= webStudioArticles.MAX_ARTICLES) {
+    return res.status(400).json({ error: `this site is at the ${webStudioArticles.MAX_ARTICLES}-article limit` });
+  }
+  let article;
+  try { article = webStudioArticles.normalizeArticle(req.body || {}); }
+  catch (e) { return res.status(400).json({ error: e.message }); }
+  if (list.some((a) => a.slug === article.slug)) {
+    return res.status(409).json({ error: `an article with the slug "${article.slug}" already exists`, code: 'SLUG_TAKEN' });
+  }
+  const next = { ...plan, articles: [...list, article] };
+  try {
+    const result = await wsApplyPlanChange(site, next);
+    res.status(result.ok ? 201 : 500).json({
+      ok: result.ok, article, path: webStudioArticles.articlePath(next, article.slug),
+      status: site.status, error: result.ok ? undefined : site.error,
+    });
+  } catch (e) { res.status(e.status || 500).json({ error: e.message }); }
+});
+
+app.put('/api/web-studio/sites/:id/articles/:slug', requireClientOrAdmin, wsArticleJson, async (req, res) => {
+  const site = wsFindSite(req, res); if (!site) return;
+  const plan = wsRequirePlan(site, res); if (!plan) return;
+  const list = wsArticleList(plan);
+  const at = list.findIndex((a) => a.slug === req.params.slug);
+  if (at === -1) return res.status(404).json({ error: 'article not found' });
+  let article;
+  try { article = webStudioArticles.normalizeArticle(req.body || {}, { existing: list[at] }); }
+  catch (e) { return res.status(400).json({ error: e.message }); }
+  // A deliberate slug change must not silently collide with another article.
+  if (article.slug !== list[at].slug && list.some((a, i) => i !== at && a.slug === article.slug)) {
+    return res.status(409).json({ error: `an article with the slug "${article.slug}" already exists`, code: 'SLUG_TAKEN' });
+  }
+  const nextList = [...list]; nextList[at] = article;
+  const next = { ...plan, articles: nextList };
+  try {
+    const result = await wsApplyPlanChange(site, next);
+    res.status(result.ok ? 200 : 500).json({
+      ok: result.ok, article, path: webStudioArticles.articlePath(next, article.slug),
+      slugChanged: article.slug !== req.params.slug,
+      status: site.status, error: result.ok ? undefined : site.error,
+    });
+  } catch (e) { res.status(e.status || 500).json({ error: e.message }); }
+});
+
+// Removing an article unpublishes a live page. The deleted record is returned in full so the caller
+// can restore it, and the PREVIOUS release stays on disk (publish.js keeps 5), so this is
+// recoverable — but it is still a content deletion, so it is never implicit in another operation.
+app.delete('/api/web-studio/sites/:id/articles/:slug', requireClientOrAdmin, async (req, res) => {
+  const site = wsFindSite(req, res); if (!site) return;
+  const plan = wsRequirePlan(site, res); if (!plan) return;
+  const list = wsArticleList(plan);
+  const at = list.findIndex((a) => a.slug === req.params.slug);
+  if (at === -1) return res.status(404).json({ error: 'article not found' });
+  const removed = list[at];
+  const next = { ...plan, articles: list.filter((_, i) => i !== at) };
+  try {
+    const result = await wsApplyPlanChange(site, next);
+    res.status(result.ok ? 200 : 500).json({
+      ok: result.ok, deleted: removed, status: site.status,
+      note: 'the previous release is still on disk and can be rolled back',
+      error: result.ok ? undefined : site.error,
+    });
+  } catch (e) { res.status(e.status || 500).json({ error: e.message }); }
 });
 
 // --- Rebuild from current workspace source (after code-editor edits) ---
