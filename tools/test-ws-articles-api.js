@@ -7,7 +7,10 @@
 const { assert, done, serverSource } = require('./test-util');
 
 const src = serverSource();
-const block = src.slice(src.indexOf('//  Content backend — articles'), src.indexOf("// --- Rebuild from current workspace source"));
+// Bounded by the ADOPTION block, not the build route: adoption sits between them and its own
+// routes would otherwise be counted as article routes.
+const block = src.slice(src.indexOf('//  Content backend — articles'),
+  src.indexOf('//  Adoption — give an imported static site a plan'));
 assert(block.length > 500, 'the article content block was located in server.js');
 
 // ---------- routes exist, with the right verbs ----------------------------------------------------
@@ -82,8 +85,19 @@ assert(/if \(result\.ok\) \{\s*\n\s*site\.plan = plan;/.test(apply),
   'the plan is committed to the site ONLY when the build succeeded');
 
 // ---------- redeploy keeps live and saved in step --------------------------------------------------------------
-assert(/if \(site\.published && site\.hostingSetup && site\.domain\)/.test(apply),
-  'a published site is redeployed after a content change');
+assert(/if \(opts\.deploy !== false && site\.published && site\.hostingSetup && site\.domain\)/.test(apply),
+  'a published site is redeployed after a content change, unless the caller opts out');
 assert(/deployWithGate/.test(apply), 'redeploy goes through the gated deploy path');
+
+// Adoption opts out: it changes how the WHOLE site looks, so it must never redecorate a live site
+// as a side effect. And because it has already replaced the workspace src/, its plan is persisted
+// even when the build fails — otherwise a failed build (the sandbox worker being down, which the
+// handoff records happening on the VPS) leaves the old site gone AND no plan to rebuild from.
+assert(/opts\.persistPlanOnFailure/.test(apply),
+  'a caller can persist the plan across a failed build (adoption needs this to stay recoverable)');
+const adopt = src.slice(src.indexOf('//  Adoption — give an imported static site a plan'), src.indexOf('// --- Rebuild from current workspace source'));
+assert(adopt.length > 500, 'the adoption block was located');
+assert(/\{ deploy: false, persistPlanOnFailure: true \}/.test(adopt),
+  'adoption neither deploys nor discards its plan on a failed build');
 
 done();

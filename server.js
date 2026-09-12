@@ -1737,6 +1737,8 @@ function persistAllState() {
 const webStudioBuild = require('./lib/web-studio/build');
 const webStudioPipeline = require('./lib/web-studio/pipeline');
 const webStudioArticles = require('./lib/web-studio/articles');
+const webStudioAdopt = require('./lib/web-studio/adopt');
+const webStudioScaffold = require('./lib/web-studio/scaffold');
 const { BUILTIN_TEMPLATES } = require('./lib/web-studio/templates');
 const webStudioHosting = require('./lib/web-studio/hosting');
 const webStudioPublish = require('./lib/web-studio/publish');
@@ -3696,7 +3698,10 @@ const wsArticleJson = express.json({ limit: '4mb' });
 // Re-render → rebuild → re-sign → redeploy. Shared by every article mutation.
 // NOTE: PUT /content does the same sequence inline; it is left alone here deliberately (no test
 // covers that route, and this change should not put it at risk). Worth unifying separately.
-async function wsApplyPlanChange(site, plan) {
+// opts.deploy:false renders and builds WITHOUT pushing to the live domain. Adoption uses it: it
+// changes how the whole site looks, so it must never redecorate a live site as a side effect of
+// being adopted. Content edits leave it at the default (deploy when the site is already published).
+async function wsApplyPlanChange(site, plan, opts = {}) {
   const ws = wsWorkspaceDir(site.id);
   if (!fs.existsSync(path.join(ws, 'package.json'))) {
     const e = new Error('site workspace not found — this site has no editable build yet');
@@ -3729,11 +3734,20 @@ async function wsApplyPlanChange(site, plan) {
       const pr = webStudioPipeline.writeProvenanceSidecar(ws, path.join(ws, 'dist'), plan, provMeta, signProvenance);
       if (pr) site.provenance = { ...provMeta, contentHash: pr.contentHash, credential: pr.credential };
     } catch (e) { appendLog(`web-studio: provenance re-sign skipped: ${e.message}`); }
-    if (site.published && site.hostingSetup && site.domain) {
+    if (opts.deploy !== false && site.published && site.hostingSetup && site.domain) {
       try { await deployWithGate(site, path.join(ws, 'dist'), site.domain); }
       catch (e) { appendLog(`web-studio: redeploy failed for ${site.domain}: ${e.message}`); }
     }
-  } else { site.error = result.error; }
+  } else {
+    site.error = result.error;
+    // ADOPTION ONLY. Normally a plan that does not build is discarded, which is right for a content
+    // edit: the last good plan stays live. But adoption has ALREADY replaced the workspace src/,
+    // so discarding the plan leaves the worst possible half-state — the old static site gone, no
+    // plan to rebuild from. Builds legitimately fail here (the sandbox worker is down; the handoff
+    // records exactly that happening on the VPS), and that must be a RETRYABLE failure, not a
+    // destroyed site. The backup directory plus the persisted plan make it recoverable either way.
+    if (opts.persistPlanOnFailure) site.plan = plan;
+  }
   saveState('web_studio_sites', webStudioSites);
   broadcast({ event: 'web_studio_site', data: site });
   return result;
@@ -3851,6 +3865,118 @@ app.delete('/api/web-studio/sites/:id/articles/:slug', requireClientOrAdmin, asy
       error: result.ok ? undefined : site.error,
     });
   } catch (e) { res.status(e.status || 500).json({ error: e.message }); }
+});
+
+// ============================================================
+//  Adoption — give an imported static site a plan, so it gains the content backend
+//
+//  This KEEPS CONTENT and REPLACES PRESENTATION: the site stops being its own HTML/CSS and starts
+//  being rendered from the Astro templates. That is a real, visible change to a live site, so:
+//    * `dryRun` (the default) writes NOTHING and returns the full derivation report
+//    * a real run requires an explicit `confirm: true`
+//    * it NEVER auto-deploys, even for a published site — the operator previews, then publishes
+//    * the existing workspace src/ is kept as src.pre-adopt-<timestamp>/ so it can be restored
+// ============================================================
+
+// Collect { path, html } for every HTML file under a directory.
+function wsCollectHtml(root, cap = 500) {
+  const out = [];
+  if (!fs.existsSync(root)) return out;
+  (function walk(dir) {
+    for (const name of fs.readdirSync(dir)) {
+      if (out.length >= cap) return;
+      const full = path.join(dir, name);
+      let st; try { st = fs.statSync(full); } catch { continue; }
+      if (st.isDirectory()) { if (name !== 'node_modules' && !name.startsWith('.')) walk(full); }
+      else if (/\.html?$/i.test(name)) {
+        try { out.push({ path: path.relative(root, full).replace(/\\/g, '/'), html: fs.readFileSync(full, 'utf8') }); } catch { /* unreadable */ }
+      }
+    }
+  })(root);
+  return out;
+}
+
+// Where to read the site's HTML from. 'live' matters because a workspace can be STALE: a site
+// deployed by hand into a release directory serves content its workspace has never seen.
+function wsAdoptSource(site, which) {
+  if (which === 'live') {
+    if (!site.domain) return { error: 'this site has no domain, so it has no live release to adopt' };
+    const live = path.join(WS_SITES_ROOT, site.domain, 'current');
+    if (!fs.existsSync(live)) return { error: `no live release found at ${site.domain}` };
+    return { root: live, label: 'live release (' + site.domain + ')' };
+  }
+  const ws = wsWorkspaceDir(site.id);
+  for (const sub of ['src', 'dist', '']) {
+    const dir = path.join(ws, sub);
+    if (fs.existsSync(dir) && wsCollectHtml(dir, 1).length) return { root: dir, label: 'workspace/' + (sub || '.') };
+  }
+  return { error: 'no HTML found in this site workspace' };
+}
+
+app.post('/api/web-studio/sites/:id/adopt', requireClientOrAdmin, async (req, res) => {
+  const site = wsFindSite(req, res); if (!site) return;
+  const body = req.body || {};
+  const dryRun = body.dryRun !== false && body.confirm !== true;
+  const src = wsAdoptSource(site, body.source === 'live' ? 'live' : 'workspace');
+  if (src.error) return res.status(409).json({ error: src.error, code: 'NO_SOURCE' });
+
+  const files = wsCollectHtml(src.root);
+  if (!files.length) return res.status(409).json({ error: 'no HTML files found in ' + src.label, code: 'NO_SOURCE' });
+
+  let derived;
+  try {
+    derived = webStudioAdopt.derivePlan(files, {
+      siteName: site.name || 'Site',
+      domain: site.domain || '',
+      articlePrefix: body.articlePrefix,
+      base: site.plan && typeof site.plan === 'object' ? { tokens: site.plan.tokens, nav: site.plan.nav, features: site.plan.features } : {},
+    });
+  } catch (e) { return res.status(500).json({ error: 'derivation failed: ' + e.message }); }
+
+  const summary = {
+    source: src.label, ...derived.stats,
+    report: derived.report,
+    warning: 'Adoption keeps your content and REPLACES the site design with Web Studio templates. Preview before publishing.',
+  };
+
+  if (dryRun) {
+    return res.json({ dryRun: true, ...summary, plan: body.includePlan === true ? derived.plan : undefined });
+  }
+  // A real run must have found something, or it would replace a working site with an empty one.
+  if (!derived.stats.articlesAdopted && derived.stats.pagesAdopted <= 1) {
+    return res.status(422).json({
+      error: 'refusing to adopt: nothing substantial was extracted',
+      detail: 'Adopting this would replace the site with an empty shell. Check the report, or try source:"live".',
+      code: 'NOTHING_TO_ADOPT', ...summary,
+    });
+  }
+
+  const ws = wsWorkspaceDir(site.id);
+  try {
+    // Keep the original source so adoption is reversible, then CLEAR it: an imported src/ holds
+    // the old static site, and leaving those files behind would mix a stale copy of the old build
+    // into what should be a clean Astro project.
+    const srcDir = path.join(ws, 'src');
+    if (fs.existsSync(srcDir)) {
+      const backup = path.join(ws, 'src.pre-adopt-' + new Date().toISOString().replace(/[:.]/g, '-'));
+      fs.cpSync(srcDir, backup, { recursive: true });
+      fs.rmSync(srcDir, { recursive: true, force: true });
+      summary.backup = path.basename(backup);
+    }
+    // An imported workspace is not a scaffolded Astro project; make it one before rendering.
+    // scaffoldWorkspace only creates directories and writes fixed config, so it is safe to re-run.
+    webStudioScaffold.scaffoldWorkspace(ws, derived.plan);
+    summary.scaffolded = true;
+    site.kind = 'adopted';
+    const result = await wsApplyPlanChange(site, derived.plan, { deploy: false, persistPlanOnFailure: true });
+    return res.status(result.ok ? 200 : 500).json({
+      dryRun: false, ok: result.ok, status: site.status, ...summary,
+      note: 'Nothing was deployed. Preview the site, then publish when you are happy with it.',
+      error: result.ok ? undefined : site.error,
+    });
+  } catch (e) {
+    return res.status(e.status || 500).json({ error: e.message, ...summary });
+  }
 });
 
 // --- Rebuild from current workspace source (after code-editor edits) ---
