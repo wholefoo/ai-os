@@ -1738,6 +1738,7 @@ const webStudioBuild = require('./lib/web-studio/build');
 const webStudioPipeline = require('./lib/web-studio/pipeline');
 const webStudioArticles = require('./lib/web-studio/articles');
 const webStudioAdopt = require('./lib/web-studio/adopt');
+const webStudioAeo = require('./lib/web-studio/aeo-audit');
 const webStudioScaffold = require('./lib/web-studio/scaffold');
 const { BUILTIN_TEMPLATES } = require('./lib/web-studio/templates');
 const webStudioHosting = require('./lib/web-studio/hosting');
@@ -3977,6 +3978,88 @@ app.post('/api/web-studio/sites/:id/adopt', requireClientOrAdmin, async (req, re
   } catch (e) {
     return res.status(e.status || 500).json({ error: e.message, ...summary });
   }
+});
+
+// ============================================================
+//  AEO / SEO compliance
+//  Audits the site's BUILT HTML — what actually ships — rather than the plan, so the score is the
+//  one a crawler would compute. Source order: the built dist/, else the live release. Fixes are
+//  PROPOSED here and applied only when explicitly selected; applying re-renders and rebuilds
+//  through the same path as a content edit.
+// ============================================================
+
+// Built HTML for auditing: dist/ is what the last build produced; the live release is what the
+// domain is serving right now. They differ when a site was deployed by hand, or has not rebuilt
+// since its last content change.
+function wsAuditSource(site, which) {
+  const ws = wsWorkspaceDir(site.id);
+  if (which === 'live') {
+    if (!site.domain) return { error: 'this site has no domain, so it has no live release to audit' };
+    const live = path.join(WS_SITES_ROOT, site.domain, 'current');
+    if (!fs.existsSync(live)) return { error: `no live release found for ${site.domain}` };
+    return { root: live, label: 'live release (' + site.domain + ')' };
+  }
+  const dist = path.join(ws, 'dist');
+  if (fs.existsSync(dist) && wsCollectHtml(dist, 1).length) return { root: dist, label: 'last build (dist/)' };
+  if (site.domain) {
+    const live = path.join(WS_SITES_ROOT, site.domain, 'current');
+    if (fs.existsSync(live)) return { root: live, label: 'live release (' + site.domain + ') — no local build found' };
+  }
+  return { error: 'nothing to audit yet — build the site first' };
+}
+
+app.get('/api/web-studio/sites/:id/aeo', requireClientOrAdmin, (req, res) => {
+  const site = wsFindSite(req, res); if (!site) return;
+  const src = wsAuditSource(site, req.query.source === 'live' ? 'live' : 'dist');
+  if (src.error) return res.status(409).json({ error: src.error, code: 'NO_BUILD' });
+  const files = wsCollectHtml(src.root);
+  if (!files.length) return res.status(409).json({ error: 'no HTML found in ' + src.label, code: 'NO_BUILD' });
+
+  const audit = webStudioAeo.auditSite(files);
+  // Fix proposals need a plan to write back into; an un-adopted imported site can still be AUDITED.
+  const plan = site.plan && Array.isArray(site.plan.pages) ? site.plan : null;
+  const fixes = plan ? webStudioAeo.proposeFixes(plan, audit, files) : [];
+  res.json({
+    source: src.label,
+    summary: audit.summary,
+    pages: audit.pages.map((p) => ({
+      path: p.path, score: p.score, grade: p.grade,
+      recommendations: p.recommendations, signals: p.signals,
+    })),
+    fixes,
+    fixable: !!plan,
+    fixableNote: plan ? undefined : 'This site has no content model, so fixes cannot be written back. Adopt it first.',
+  });
+});
+
+app.post('/api/web-studio/sites/:id/aeo/fix', requireClientOrAdmin, async (req, res) => {
+  const site = wsFindSite(req, res); if (!site) return;
+  const plan = wsRequirePlan(site, res); if (!plan) return;
+  const ids = Array.isArray((req.body || {}).ids) ? req.body.ids : [];
+  if (!ids.length) return res.status(400).json({ error: 'select at least one fix to apply' });
+
+  const src = wsAuditSource(site, (req.body || {}).source === 'live' ? 'live' : 'dist');
+  if (src.error) return res.status(409).json({ error: src.error, code: 'NO_BUILD' });
+  const files = wsCollectHtml(src.root);
+  // Re-derive the proposals from the CURRENT plan rather than trusting ids from the client: a
+  // proposal carries a before/after pair, and accepting those from the request would let a caller
+  // write arbitrary copy into the plan through a route that only claims to apply its own fixes.
+  const proposals = webStudioAeo.proposeFixes(plan, webStudioAeo.auditSite(files), files);
+  const { plan: next, applied } = webStudioAeo.applyFixes(plan, proposals, ids);
+  const ok = applied.filter((a) => a.ok);
+  if (!ok.length) {
+    return res.status(409).json({
+      error: 'none of the selected fixes could be applied',
+      applied, hint: 'the page may have changed since the audit — re-run it',
+    });
+  }
+  try {
+    const result = await wsApplyPlanChange(site, next);
+    res.status(result.ok ? 200 : 500).json({
+      ok: result.ok, applied, status: site.status,
+      error: result.ok ? undefined : site.error,
+    });
+  } catch (e) { res.status(e.status || 500).json({ error: e.message, applied }); }
 });
 
 // --- Rebuild from current workspace source (after code-editor edits) ---

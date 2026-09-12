@@ -218,6 +218,14 @@ async function wsLoadManage() {
         <button class="btn" onclick="switchView('seo-agency')">Run SEO / AEO audit</button>
       </div>
     </div>`;
+  // AEO panel: appended after the Manage markup so this does not have to edit that template.
+  const aeoHost = document.createElement('div');
+  aeoHost.className = 'ws-aeo';
+  aeoHost.id = 'wsAeoPanel';
+  aeoHost.innerHTML = '<div class="empty-state">Loading AEO score…</div>';
+  pane.appendChild(aeoHost);
+  wsLoadAeo();
+
 }
 
 // ---------- Guided brief (Assist mode) ----------
@@ -1223,4 +1231,141 @@ async function wsAdopt(confirmRun) {
   wsHint(r.error ? r.error : (confirmRun ? 'Adopted. Nothing published yet — preview, then publish.' : 'Preview only — nothing was changed.'));
   if (confirmRun && !r.error) { await wsLoadArticles(); wsRefreshPreview(); return; }
   wsRenderAdopt(r);
+}
+
+// ============================================================
+//  AEO / SEO compliance panel (rendered inside the Manage tab)
+//  Scores the site's BUILT html with the same 8-dimension scorer as the public free audit, ranks
+//  the dimensions losing the most points across the whole site, and offers the deterministic fixes.
+//  It lives here rather than behind a fifth tab: the tab bar's min-content is already the pressure
+//  that caused the editor grid's documented overflow.
+// ============================================================
+
+const wsAeo = { data: null, selected: new Set(), loading: false };
+
+function wsAeoHost() { return document.getElementById('wsAeoPanel'); }
+
+async function wsLoadAeo() {
+  const host = wsAeoHost();
+  if (!host || !wsState.currentId) return;
+  wsAeo.loading = true;
+  host.innerHTML = '<div class="empty-state">Scoring every page…</div>';
+  const r = await fetchJSON(`/api/web-studio/sites/${wsState.currentId}/aeo`);
+  wsAeo.loading = false;
+  wsAeo.data = r;
+  wsAeo.selected = new Set();
+  wsRenderAeo();
+}
+
+function wsAeoBarMarkup(score) {
+  const pct = Math.max(0, Math.min(100, Number(score) || 0));
+  const tone = pct >= 80 ? 'good' : pct >= 60 ? 'ok' : 'bad';
+  return `<div class="ws-aeo-bar"><span class="ws-aeo-fill ${tone}" style="width:${pct}%"></span></div>`;
+}
+
+function wsRenderAeo() {
+  const host = wsAeoHost();
+  if (!host) return;
+  const d = wsAeo.data;
+  if (!d) { host.innerHTML = '<div class="empty-state">Not scored yet.</div>'; return; }
+  if (d.error) {
+    host.innerHTML = `<div class="empty-state">${escapeHtml(d.error)}
+      ${d.code === 'NO_BUILD' ? '<br /><span class="ws-hint">Build the site, then score it.</span>' : ''}
+      <div style="margin-top:10px;"><button class="btn" id="wsAeoRetry">Try again</button></div></div>`;
+    const b = document.getElementById('wsAeoRetry'); if (b) b.addEventListener('click', wsLoadAeo);
+    return;
+  }
+  const s = d.summary || {};
+  const weakest = (s.weakest || []).map((w) => `
+    <div class="ws-aeo-dim"><span>${escapeHtml(w.dimension)}</span>
+      <span class="ws-aeo-dim-loss">&minus;${escapeHtml(String(w.lostPoints))} pts <span class="ws-hint">(${escapeHtml(String(w.pctOfMax))}% of available)</span></span>
+    </div>`).join('');
+
+  const fixes = (d.fixes || []).map((f) => `
+    <label class="ws-aeo-fix">
+      <input type="checkbox" data-fix="${escapeHtml(f.id)}" ${wsAeo.selected.has(f.id) ? 'checked' : ''} />
+      <span>
+        <span class="ws-aeo-fix-issue">${escapeHtml(f.issue)}${f.review ? ' <span class="ws-aeo-review">review</span>' : ''}</span>
+        <span class="ws-aeo-fix-path">${escapeHtml(f.path)}</span>
+        <span class="ws-aeo-fix-why">${escapeHtml(f.reason)}</span>
+        <span class="ws-aeo-diff"><s>${escapeHtml(String(f.before || '(empty)').slice(0, 120))}</s>
+          <b>${escapeHtml(String(f.after || '').slice(0, 160))}</b></span>
+      </span>
+    </label>`).join('');
+
+  const pages = (d.pages || []).slice().sort((a, b) => a.score - b.score).map((p) => `
+    <div class="ws-aeo-page">
+      <span class="ws-aeo-page-path">${escapeHtml(p.path)}</span>
+      <span class="ws-aeo-page-score ${p.score >= 80 ? 'good' : p.score >= 60 ? 'ok' : 'bad'}">${escapeHtml(String(p.score))} ${escapeHtml(p.grade)}</span>
+    </div>`).join('');
+
+  const pct = Math.max(0, Math.min(100, Number(s.score) || 0));
+  const tone = pct >= 80 ? 'good' : pct >= 60 ? 'ok' : 'bad';
+  host.innerHTML = `
+    <div class="ws-aeo-head">
+      <div class="ws-aeo-score">
+        <div class="ws-aeo-score-num">${escapeHtml(String(s.score ?? '—'))}<span class="ws-aeo-grade">${escapeHtml(s.grade || '')}</span></div>
+        <div class="ws-aeo-bar"><span class="ws-aeo-fill ${tone}" style="width:${escapeHtml(String(pct))}%"></span></div>
+        <div class="ws-hint">${escapeHtml(String(s.pages || 0))} pages &middot; ${escapeHtml(d.source || '')}</div>
+      </div>
+      <button class="btn" id="wsAeoRefresh">Re-score</button>
+    </div>
+
+    <h4 class="ws-aeo-h">Where the points are going</h4>
+    <div class="ws-aeo-dims">${weakest || '<div class="ws-hint">Nothing significant is being lost.</div>'}</div>
+
+    <h4 class="ws-aeo-h">Safe fixes${d.fixes && d.fixes.length ? ` (${d.fixes.length})` : ''}</h4>
+    ${!d.fixable
+      ? `<div class="ws-hint">${escapeHtml(d.fixableNote || 'Fixes cannot be written back for this site.')}</div>`
+      : (d.fixes && d.fixes.length
+        ? `<div class="ws-hint ws-aeo-note">These change only page titles and meta descriptions, using words already on the page.
+             Nothing is invented — FAQ content and answer phrasing are left to you.</div>
+           <div class="ws-aeo-fixes">${fixes}</div>
+           <div class="ws-aeo-actions">
+             <button class="btn" id="wsAeoAll">Select all</button>
+             <button class="btn" id="wsAeoNone">Clear</button>
+             <button class="btn btn-primary" id="wsAeoApply" disabled>Apply &amp; rebuild</button>
+           </div>`
+        : '<div class="ws-hint">No deterministic fixes available — the remaining gaps need a human.</div>')}
+
+    <h4 class="ws-aeo-h">Pages, weakest first</h4>
+    <div class="ws-aeo-pages">${pages}</div>`;
+
+  const on = (id, ev, fn) => { const el = document.getElementById(id); if (el) el.addEventListener(ev, fn); };
+  on('wsAeoRefresh', 'click', wsLoadAeo);
+  on('wsAeoAll', 'click', () => { (d.fixes || []).forEach((f) => wsAeo.selected.add(f.id)); wsRenderAeo(); });
+  on('wsAeoNone', 'click', () => { wsAeo.selected.clear(); wsRenderAeo(); });
+  on('wsAeoApply', 'click', wsApplyAeoFixes);
+  host.querySelectorAll('input[data-fix]').forEach((cb) => {
+    cb.addEventListener('change', () => {
+      const id = cb.getAttribute('data-fix');
+      if (cb.checked) wsAeo.selected.add(id); else wsAeo.selected.delete(id);
+      const apply = document.getElementById('wsAeoApply');
+      if (apply) apply.disabled = wsAeo.selected.size === 0;
+    });
+  });
+  const apply = document.getElementById('wsAeoApply');
+  if (apply) apply.disabled = wsAeo.selected.size === 0;
+}
+
+async function wsApplyAeoFixes() {
+  const ids = [...wsAeo.selected];
+  if (!ids.length) return;
+  if (!confirm(`Apply ${ids.length} fix${ids.length === 1 ? '' : 'es'}?\n\nThis edits page titles and meta descriptions, then rebuilds the site.`)) return;
+  const btn = document.getElementById('wsAeoApply');
+  if (btn) { btn.disabled = true; btn.textContent = 'Applying…'; }
+  wsHint('Applying fixes and rebuilding…');
+  const r = await fetchJSON(`/api/web-studio/sites/${wsState.currentId}/aeo/fix`, {
+    method: 'POST', body: JSON.stringify({ ids }),
+  });
+  if (btn) { btn.textContent = 'Apply & rebuild'; btn.disabled = false; }
+  if (!r) { wsHint('Could not apply the fixes.'); return; }
+  const okCount = (r.applied || []).filter((a) => a.ok).length;
+  const skipped = (r.applied || []).filter((a) => !a.ok);
+  if (r.error && !okCount) { wsHint(r.error); return; }
+  wsHint(`Applied ${okCount} fix${okCount === 1 ? '' : 'es'}.`
+    + (skipped.length ? ` ${skipped.length} skipped — ${skipped[0].reason || 'unchanged'}.` : '')
+    + (r.ok === false ? ' The rebuild failed; the change is saved but not published.' : ''));
+  await wsLoadAeo();
+  wsRefreshPreview();
 }
