@@ -1272,6 +1272,45 @@
             .ws-badge.failed,.ws-badge.build_failed{color:#ef4444;border-color:#ef4444;}
             .ws-badge.gated{color:var(--warning,#eab308);border-color:var(--warning,#eab308);}
             .ws-limit-badge{font-size:12px;color:var(--text-secondary,#9aa);}
+            /* Articles tab. The tab bar's min-content width is load-bearing (see the
+               .ws-editor-grid note below): a FOURTH tab button widens it, so these buttons are
+               allowed to shrink and the bar may wrap rather than forcing the preview column out of
+               the grid. Verified at 917px, the width the original overflow was measured at. */
+            .ws-tabbar{flex-wrap:wrap;}
+            .ws-tabbar .btn{white-space:nowrap;flex-shrink:1;min-width:0;}
+            /* At narrow widths the editor column is ~186px, so each tab takes its own row and the
+               bar eats vertical space the editor needs. Measured at 917px: 3 tabs = 105px tall,
+               4 tabs = 142px. Compact tabs fit two per row and give that back. */
+            @media (max-width:1200px){ .ws-tabbar .btn{padding:4px 9px;font-size:12px;} }
+            .ws-art-toolbar{display:flex;gap:8px;align-items:center;margin-bottom:10px;flex-wrap:wrap;}
+            .ws-art-toolbar .ws-art-count{font-size:12px;color:var(--text-secondary,#9aa);margin-left:auto;}
+            .ws-art-list{display:grid;gap:6px;}
+            .ws-art-row{display:grid;grid-template-columns:1fr auto;gap:8px;align-items:center;
+              padding:9px 11px;border:1px solid var(--border,#2a2a35);border-radius:8px;cursor:pointer;background:transparent;text-align:left;width:100%;}
+            .ws-art-row:hover{border-color:var(--accent,#f59e0b);}
+            .ws-art-row .ws-art-title{font-weight:600;color:var(--text,#e6e6ef);word-break:break-word;}
+            .ws-art-row .ws-art-meta{font-size:12px;color:var(--text-secondary,#9aa);margin-top:2px;}
+            .ws-art-badge{font-size:11px;border:1px solid currentColor;border-radius:999px;padding:1px 7px;white-space:nowrap;}
+            .ws-art-badge.draft{color:var(--warning,#eab308);}
+            .ws-art-badge.live{color:var(--success,#22c55e);}
+            .ws-art-form{display:grid;gap:10px;}
+            .ws-art-form label{display:block;font-size:12px;color:var(--text-secondary,#9aa);margin-bottom:3px;}
+            /* .settings-input carries its own fixed width for the settings screens, which left every
+               field here at ~173px inside a 394px column — the HTML body textarea was 181px wide,
+               which is not usable for editing article markup. Measured, not guessed: the DOM check
+               passed (fields present and populated) while the panel was unusable. */
+            .ws-art-form .settings-input{width:100%;max-width:none;box-sizing:border-box;}
+            .ws-art-form > div{min-width:0;}
+            .ws-art-grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px;}
+            .ws-art-grid2 > div{min-width:0;}
+            .ws-art-body{min-height:260px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12.5px;line-height:1.5;}
+            .ws-art-actions{display:flex;gap:8px;align-items:center;flex-wrap:wrap;}
+            .ws-art-actions .ws-art-danger{margin-left:auto;color:#ef4444;border-color:#ef4444;}
+            .ws-adopt-report{max-height:220px;overflow:auto;border:1px solid var(--border,#2a2a35);border-radius:8px;padding:8px;font-size:12px;}
+            .ws-adopt-report div{padding:2px 0;border-bottom:1px solid rgba(255,255,255,.05);}
+            .ws-adopt-warn{color:var(--warning,#eab308);}
+            .ws-adopt-skip{color:#ef4444;}
+            @media (max-width:900px){ .ws-art-grid2{grid-template-columns:1fr;} }
             /* grid-template-rows is NOT decorative here. `height` alone does not constrain the ROW:
                with no explicit rows the single implicit row auto-sizes to its tallest child, the grid
                box stays 100vh-230px, and everything past that SPILLS (overflow is visible) over the
@@ -1483,6 +1522,7 @@
               <section class="panel">
                 <div class="ws-tabbar">
                   <button class="btn ws-tab-active" id="wsTabContent">Content</button>
+                  <button class="btn" id="wsTabArticles">Articles</button>
                   <button class="btn" id="wsTabCode">Code</button>
                   <button class="btn" id="wsTabManage">Manage</button>
                   <span style="flex:1"></span>
@@ -1490,6 +1530,7 @@
                   <span class="ws-hint" id="wsCurrentFile" style="display:none;"></span>
                 </div>
                 <div class="ws-content-pane" id="wsContentPane"></div>
+                <div class="ws-content-pane" id="wsArticlesPane" style="display:none;"></div>
                 <div class="ws-editor-host" id="wsEditorHost" style="display:none;"></div>
                 <div class="ws-content-pane" id="wsManagePane" style="display:none;"></div>
               </section>

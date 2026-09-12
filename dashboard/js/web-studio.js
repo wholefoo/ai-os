@@ -48,6 +48,7 @@ function loadWebStudio() {
     on('wsRefreshPreview', 'click', wsRefreshPreview);
     on('wsFileList', 'change', (e) => wsLoadFile(e.target.value));
     on('wsTabContent', 'click', () => wsSwitchTab('content'));
+    on('wsTabArticles', 'click', () => wsSwitchTab('articles'));
     on('wsTabCode', 'click', () => wsSwitchTab('code'));
     on('wsTabManage', 'click', () => wsSwitchTab('manage'));
     on('wsSaveContentBtn', 'click', wsSaveContent);
@@ -743,18 +744,23 @@ function wsSwitchTab(tab) {
   const isCode = tab === 'code';
   const isManage = tab === 'manage';
   const pane = document.getElementById('wsContentPane');
+  const arts = document.getElementById('wsArticlesPane');
   const mon = document.getElementById('wsEditorHost');
   const mgr = document.getElementById('wsManagePane');
   const saveBtn = document.getElementById('wsSaveContentBtn');
   const cur = document.getElementById('wsCurrentFile');
+  const isArticles = tab === 'articles';
   if (pane) pane.style.display = isContent ? '' : 'none';
+  if (arts) arts.style.display = isArticles ? '' : 'none';
   if (mon) mon.style.display = isCode ? '' : 'none';
   if (mgr) mgr.style.display = isManage ? '' : 'none';
   if (saveBtn) saveBtn.style.display = isContent ? '' : 'none';
   if (cur) cur.style.display = isCode ? '' : 'none';
   const tc = document.getElementById('wsTabContent'); if (tc) tc.classList.toggle('ws-tab-active', isContent);
+  const ta = document.getElementById('wsTabArticles'); if (ta) ta.classList.toggle('ws-tab-active', isArticles);
   const tk = document.getElementById('wsTabCode'); if (tk) tk.classList.toggle('ws-tab-active', isCode);
   const tm = document.getElementById('wsTabManage'); if (tm) tm.classList.toggle('ws-tab-active', isManage);
+  if (isArticles) { wsLoadArticles(); return; }
   if (isManage) { wsLoadManage(); return; }
   if (isCode) {
     // Code tab: open a file if none is loaded. The layout() call below was for Monaco, which
@@ -984,4 +990,237 @@ function wsGetEditor(cb) {
     getModel: () => null,
   };
   cb(wsState.editor);
+}
+
+// ============================================================
+//  Articles tab — the no-code content backend
+//  Two views in one pane: a LIST of the site's articles, and an EDITOR for one of them. A site with
+//  no plan (every imported site) cannot hold articles, so it gets the ADOPTION view instead, which
+//  runs a dry run first and shows exactly what would be extracted before anything is written.
+// ============================================================
+
+const wsArt = { list: [], editing: null, hasPlan: false, prefix: '/article', dirty: false };
+
+function wsArtPane() { return document.getElementById('wsArticlesPane'); }
+
+async function wsLoadArticles() {
+  const pane = wsArtPane();
+  if (!pane) return;
+  pane.innerHTML = '<div class="empty-state">Loading articles…</div>';
+  const r = await fetchJSON(`/api/web-studio/sites/${wsState.currentId}/articles`);
+  if (!r) { pane.innerHTML = '<div class="empty-state">Could not load articles.</div>'; return; }
+  wsArt.list = r.articles || [];
+  wsArt.hasPlan = !!r.hasPlan;
+  wsArt.prefix = r.prefix || '/article';
+  wsArt.editing = null;
+  if (!wsArt.hasPlan) { wsRenderAdopt(); return; }
+  wsRenderArticleList();
+}
+
+function wsRenderArticleList() {
+  const pane = wsArtPane();
+  if (!pane) return;
+  const rows = wsArt.list.map((a) => `
+    <button type="button" class="ws-art-row" data-slug="${escapeHtml(a.slug)}">
+      <span>
+        <span class="ws-art-title">${escapeHtml(a.title)}</span>
+        <span class="ws-art-meta">${escapeHtml(wsArt.prefix)}/${escapeHtml(a.slug)}
+          &middot; ${a.words ? a.words.toLocaleString() + ' words' : 'empty'}
+          ${a.readingMinutes ? '&middot; ' + a.readingMinutes + ' min read' : ''}
+          ${a.category ? '&middot; ' + escapeHtml(a.category) : ''}</span>
+      </span>
+      <span class="ws-art-badge ${a.draft ? 'draft' : 'live'}">${a.draft ? 'Draft' : 'Published'}</span>
+    </button>`).join('');
+  pane.innerHTML = `
+    <div class="ws-art-toolbar">
+      <button class="btn btn-primary" id="wsArtNew">New article</button>
+      <button class="btn" id="wsArtRefresh">Refresh</button>
+      <span class="ws-art-count">${wsArt.list.length} article${wsArt.list.length === 1 ? '' : 's'}</span>
+    </div>
+    ${wsArt.list.length
+      ? `<div class="ws-art-list">${rows}</div>`
+      : '<div class="empty-state">No articles yet. "New article" creates the first one.</div>'}`;
+  const nb = document.getElementById('wsArtNew'); if (nb) nb.addEventListener('click', () => wsEditArticle(null));
+  const rb = document.getElementById('wsArtRefresh'); if (rb) rb.addEventListener('click', wsLoadArticles);
+  pane.querySelectorAll('.ws-art-row').forEach((el) => {
+    el.addEventListener('click', () => wsEditArticle(el.getAttribute('data-slug')));
+  });
+}
+
+async function wsEditArticle(slug) {
+  const pane = wsArtPane();
+  if (!pane) return;
+  let article = { slug: '', title: '', excerpt: '', html: '', category: '', author: '', image: '', draft: false, publishedAt: '' };
+  if (slug) {
+    pane.innerHTML = '<div class="empty-state">Loading…</div>';
+    const r = await fetchJSON(`/api/web-studio/sites/${wsState.currentId}/articles/${encodeURIComponent(slug)}`);
+    if (!r || !r.article) { wsHint('Could not load that article.'); wsRenderArticleList(); return; }
+    article = r.article;
+  }
+  wsArt.editing = slug;
+  wsArt.dirty = false;
+  const date = article.publishedAt ? String(article.publishedAt).slice(0, 10) : '';
+  pane.innerHTML = `
+    <div class="ws-art-toolbar">
+      <button class="btn" id="wsArtBack">&larr; All articles</button>
+      <span class="ws-art-count">${slug ? escapeHtml(wsArt.prefix) + '/' + v(article.slug) : 'New article'}</span>
+    </div>
+    <div class="ws-art-form">
+      <div><label for="wsArtTitle">Title</label>
+        <input class="settings-input" id="wsArtTitle" value="${escapeHtml(article.title == null ? '' : String(article.title))}" placeholder="Article title" /></div>
+      <div class="ws-art-grid2">
+        <div><label for="wsArtSlug">URL slug</label>
+          <input class="settings-input" id="wsArtSlug" value="${escapeHtml(article.slug == null ? '' : String(article.slug))}"
+            placeholder="${slug ? '' : 'derived from the title'}" />
+          <div class="ws-hint">${slug ? 'Changing this changes a published URL.' : 'Leave blank to derive it from the title.'}</div></div>
+        <div><label for="wsArtDate">Publish date</label>
+          <input class="settings-input" id="wsArtDate" type="date" value="${escapeHtml(date == null ? '' : String(date))}" /></div>
+      </div>
+      <div class="ws-art-grid2">
+        <div><label for="wsArtCategory">Category</label>
+          <input class="settings-input" id="wsArtCategory" value="${escapeHtml(article.category == null ? '' : String(article.category))}" /></div>
+        <div><label for="wsArtAuthor">Author</label>
+          <input class="settings-input" id="wsArtAuthor" value="${escapeHtml(article.author == null ? '' : String(article.author))}" /></div>
+      </div>
+      <div><label for="wsArtImage">Hero image path</label>
+        <input class="settings-input" id="wsArtImage" value="${escapeHtml(article.image == null ? '' : String(article.image))}" placeholder="/images/example.webp" /></div>
+      <div><label for="wsArtExcerpt">Excerpt / meta description</label>
+        <textarea class="settings-input" id="wsArtExcerpt" rows="2"
+          placeholder="Left blank, this is derived from the body.">${escapeHtml(article.excerpt == null ? '' : String(article.excerpt))}</textarea></div>
+      <div><label for="wsArtBody">Body (HTML)</label>
+        <textarea class="settings-input ws-art-body" id="wsArtBody"
+          placeholder="&lt;p&gt;Your article…&lt;/p&gt;">${escapeHtml(article.html == null ? '' : String(article.html))}</textarea>
+        <div class="ws-hint">Scripts, event handlers and unsafe links are stripped on save.</div></div>
+      <div class="ws-art-actions">
+        <label style="display:flex;align-items:center;gap:6px;color:var(--text-secondary,#9aa);">
+          <input type="checkbox" id="wsArtDraft" ${article.draft ? 'checked' : ''} /> Draft (not published)
+        </label>
+        <button class="btn btn-primary" id="wsArtSave">Save &amp; rebuild</button>
+        ${slug ? '<button class="btn ws-art-danger" id="wsArtDelete">Delete</button>' : ''}
+      </div>
+    </div>`;
+  const on = (id, ev, fn) => { const el = document.getElementById(id); if (el) el.addEventListener(ev, fn); };
+  on('wsArtBack', 'click', () => {
+    if (wsArt.dirty && !confirm('Discard unsaved changes to this article?')) return;
+    wsLoadArticles();
+  });
+  on('wsArtSave', 'click', wsSaveArticle);
+  on('wsArtDelete', 'click', () => wsDeleteArticle(slug));
+  ['wsArtTitle', 'wsArtSlug', 'wsArtBody', 'wsArtExcerpt', 'wsArtCategory', 'wsArtAuthor', 'wsArtImage', 'wsArtDate']
+    .forEach((id) => on(id, 'input', () => { wsArt.dirty = true; }));
+  on('wsArtDraft', 'change', () => { wsArt.dirty = true; });
+  const t = document.getElementById('wsArtTitle'); if (t) t.focus();
+}
+
+function wsArtValue(id) { const el = document.getElementById(id); return el ? el.value.trim() : ''; }
+
+async function wsSaveArticle() {
+  const title = wsArtValue('wsArtTitle');
+  if (!title) { wsHint('An article needs a title.'); const t = document.getElementById('wsArtTitle'); if (t) t.focus(); return; }
+  const draftEl = document.getElementById('wsArtDraft');
+  const body = {
+    title,
+    slug: wsArtValue('wsArtSlug') || undefined,
+    excerpt: wsArtValue('wsArtExcerpt'),
+    html: (document.getElementById('wsArtBody') || {}).value || '',
+    category: wsArtValue('wsArtCategory'),
+    author: wsArtValue('wsArtAuthor'),
+    image: wsArtValue('wsArtImage'),
+    publishedAt: wsArtValue('wsArtDate') || undefined,
+    draft: !!(draftEl && draftEl.checked),
+  };
+  const editing = wsArt.editing;
+  const btn = document.getElementById('wsArtSave');
+  if (btn) { btn.disabled = true; btn.textContent = 'Saving…'; }
+  wsHint(editing ? 'Saving and rebuilding…' : 'Creating and rebuilding…');
+  const url = editing
+    ? `/api/web-studio/sites/${wsState.currentId}/articles/${encodeURIComponent(editing)}`
+    : `/api/web-studio/sites/${wsState.currentId}/articles`;
+  const r = await fetchJSON(url, { method: editing ? 'PUT' : 'POST', body: JSON.stringify(body) });
+  if (btn) { btn.disabled = false; btn.textContent = 'Save & rebuild'; }
+  if (!r) { wsHint('Save failed.'); return; }
+  if (r.error) { wsHint(r.error); return; }
+  wsArt.dirty = false;
+  wsHint(r.ok ? `Saved. ${r.path || ''}`.trim() : `Saved, but the build failed: ${r.error || 'unknown error'}`);
+  if (r.slugChanged) wsHint(`Saved. The URL is now ${r.path} — the old one will 404.`);
+  await wsLoadArticles();
+  wsRefreshPreview();
+}
+
+async function wsDeleteArticle(slug) {
+  if (!slug) return;
+  if (!confirm(`Delete "${slug}"?\n\nThe page stops being published. The previous release stays on disk, so this can be rolled back.`)) return;
+  wsHint('Deleting and rebuilding…');
+  const r = await fetchJSON(`/api/web-studio/sites/${wsState.currentId}/articles/${encodeURIComponent(slug)}`, { method: 'DELETE' });
+  if (!r) { wsHint('Delete failed.'); return; }
+  if (r.error) { wsHint(r.error); return; }
+  wsHint('Deleted. ' + (r.note || ''));
+  await wsLoadArticles();
+  wsRefreshPreview();
+}
+
+// ---------- adoption ----------
+// An imported site is static files with no plan, so it cannot hold articles. Adoption gives it one
+// by extracting its existing HTML. It REPLACES the site's design, so the dry run comes first and
+// the real run is a separate, explicit click.
+function wsRenderAdopt(result) {
+  const pane = wsArtPane();
+  if (!pane) return;
+  const site = wsState.currentSite || {};
+  const report = (result && result.report) || [];
+  pane.innerHTML = `
+    <div class="empty-state" style="text-align:left;">
+      <p><strong>This site has no editable content model yet.</strong></p>
+      <p>It was imported as static files, so Web Studio has no structured content to edit.
+         <em>Adopting</em> it reads the existing HTML and turns each page and article into editable content.</p>
+      <p class="ws-adopt-warn"><strong>Adoption keeps your content and replaces the site design</strong>
+         with Web Studio templates. Nothing is published until you choose to publish.</p>
+    </div>
+    <div class="ws-art-toolbar">
+      <label style="color:var(--text-secondary,#9aa);">Read from
+        <select class="settings-input" id="wsAdoptSource" style="width:auto;display:inline-block;margin-left:6px;">
+          <option value="workspace">the imported files</option>
+          <option value="live"${site.domain ? '' : ' disabled'}>what is live${site.domain ? ' (' + escapeHtml(site.domain) + ')' : ' — no domain'}</option>
+        </select>
+      </label>
+      <button class="btn" id="wsAdoptPreview">Preview what would be adopted</button>
+      ${result && !result.error ? '<button class="btn btn-primary" id="wsAdoptRun">Adopt this site</button>' : ''}
+    </div>
+    ${result ? wsAdoptSummary(result) : ''}
+    ${report.length ? `<div class="ws-adopt-report">${report.map((r) => `
+      <div class="${r.adopted ? (r.thin ? 'ws-adopt-warn' : '') : 'ws-adopt-skip'}">
+        ${r.adopted ? '&#10003;' : '&#10007;'} ${escapeHtml(r.file)}
+        ${r.adopted ? `&mdash; ${escapeHtml(r.kind)}${r.chars ? ', ' + r.chars.toLocaleString() + ' chars' : ''}${r.thin ? ' (thin)' : ''}`
+          : `&mdash; ${escapeHtml(r.reason || 'skipped')}`}
+      </div>`).join('')}</div>` : ''}`;
+  const on = (id, ev, fn) => { const el = document.getElementById(id); if (el) el.addEventListener(ev, fn); };
+  on('wsAdoptPreview', 'click', () => wsAdopt(false));
+  on('wsAdoptRun', 'click', () => wsAdopt(true));
+}
+
+function wsAdoptSummary(r) {
+  if (r.error) return `<div class="empty-state ws-adopt-skip" style="text-align:left;"><strong>${escapeHtml(r.error)}</strong>
+    ${r.detail ? '<br />' + escapeHtml(r.detail) : ''}</div>`;
+  return `<div class="empty-state" style="text-align:left;">
+    <strong>${r.articlesAdopted || 0} article${r.articlesAdopted === 1 ? '' : 's'}</strong> and
+    <strong>${r.pagesAdopted || 0} page${r.pagesAdopted === 1 ? '' : 's'}</strong> would be adopted
+    from ${escapeHtml(r.source || 'the site')}.
+    ${r.skipped ? `<span class="ws-adopt-skip">${r.skipped} skipped.</span>` : ''}
+    ${r.thin ? `<span class="ws-adopt-warn">${r.thin} very short.</span>` : ''}
+    ${r.dryRun === false ? `<br /><em>${escapeHtml(r.note || '')}</em>` : ''}
+  </div>`;
+}
+
+async function wsAdopt(confirmRun) {
+  const sel = document.getElementById('wsAdoptSource');
+  const source = sel ? sel.value : 'workspace';
+  if (confirmRun && !confirm('Adopt this site?\n\nYour content is kept. The site DESIGN is replaced with Web Studio templates.\nThe current files are backed up, and nothing is published until you publish it.')) return;
+  wsHint(confirmRun ? 'Adopting…' : 'Checking what can be adopted…');
+  const r = await fetchJSON(`/api/web-studio/sites/${wsState.currentId}/adopt`, {
+    method: 'POST', body: JSON.stringify(confirmRun ? { confirm: true, source } : { source }),
+  });
+  if (!r) { wsHint('Adoption request failed.'); return; }
+  wsHint(r.error ? r.error : (confirmRun ? 'Adopted. Nothing published yet — preview, then publish.' : 'Preview only — nothing was changed.'));
+  if (confirmRun && !r.error) { await wsLoadArticles(); wsRefreshPreview(); return; }
+  wsRenderAdopt(r);
 }
