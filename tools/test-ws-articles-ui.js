@@ -55,6 +55,24 @@ assert(/rolled back/.test(del), 'the delete prompt says the previous release can
 assert(/slugChanged/.test(js), 'a changed slug is reported back to the user');
 assert(/the old one will 404/.test(js), 'the slug-change message states the consequence');
 
+// ---------- the fetchJSON body contract ------------------------------------------------------------------
+// fetchJSON STRINGIFIES the body itself (`if (opts.body) options.body = JSON.stringify(opts.body)`),
+// so a caller passing JSON.stringify(...) double-encodes it and the server receives a JSON *string*
+// containing JSON. Every write in this module shipped that way and every one of them 500'd on the
+// live server with:
+//     Unexpected token '"', ""{\"source"... is not valid JSON
+// It survived a full round of testing because the API was probed with curl (raw JSON, correct) and
+// the UI was tested for SHAPE — the browser-to-server round trip was never exercised.
+assert(!/body:\s*JSON\.stringify/.test(js),
+  'a fetchJSON call double-encodes its body — pass the OBJECT, fetchJSON stringifies it');
+// And the writes must still send a body at all.
+for (const fn of ['wsSaveArticle', 'wsAdopt', 'wsApplyAeoFixes']) {
+  const src = js.slice(js.indexOf('async function ' + fn + '('), js.indexOf('async function ' + fn + '(') + 2000);
+  assert(/method: 'POST'|method: editing \? 'PUT' : 'POST'/.test(src), fn + ' issues a write');
+  // `body` may be shorthand (`{ method, body }`) or explicit (`body: { ids }`).
+  assert(/\bbody\b\s*[,:}]/.test(src), fn + ' sends a body');
+}
+
 // ---------- adoption view --------------------------------------------------------------------------------
 assert(/function wsRenderAdopt\(/.test(js), 'sites with no plan get the adoption view');
 assert(/Adoption keeps your content and replaces the site design/i.test(js),

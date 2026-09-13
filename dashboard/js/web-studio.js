@@ -1144,7 +1144,7 @@ async function wsSaveArticle() {
   const url = editing
     ? `/api/web-studio/sites/${wsState.currentId}/articles/${encodeURIComponent(editing)}`
     : `/api/web-studio/sites/${wsState.currentId}/articles`;
-  const r = await fetchJSON(url, { method: editing ? 'PUT' : 'POST', body: JSON.stringify(body) });
+  const r = await fetchJSON(url, { method: editing ? 'PUT' : 'POST', body });
   if (btn) { btn.disabled = false; btn.textContent = 'Save & rebuild'; }
   if (!r) { wsHint('Save failed.'); return; }
   if (r.error) { wsHint(r.error); return; }
@@ -1225,7 +1225,7 @@ async function wsAdopt(confirmRun) {
   if (confirmRun && !confirm('Adopt this site?\n\nYour content is kept. The site DESIGN is replaced with Web Studio templates.\nThe current files are backed up, and nothing is published until you publish it.')) return;
   wsHint(confirmRun ? 'Adopting…' : 'Checking what can be adopted…');
   const r = await fetchJSON(`/api/web-studio/sites/${wsState.currentId}/adopt`, {
-    method: 'POST', body: JSON.stringify(confirmRun ? { confirm: true, source } : { source }),
+    method: 'POST', body: confirmRun ? { confirm: true, source } : { source },
   });
   if (!r) { wsHint('Adoption request failed.'); return; }
   wsHint(r.error ? r.error : (confirmRun ? 'Adopted. Nothing published yet — preview, then publish.' : 'Preview only — nothing was changed.'));
@@ -1356,7 +1356,7 @@ async function wsApplyAeoFixes() {
   if (btn) { btn.disabled = true; btn.textContent = 'Applying…'; }
   wsHint('Applying fixes and rebuilding…');
   const r = await fetchJSON(`/api/web-studio/sites/${wsState.currentId}/aeo/fix`, {
-    method: 'POST', body: JSON.stringify({ ids }),
+    method: 'POST', body: { ids },
   });
   if (btn) { btn.textContent = 'Apply & rebuild'; btn.disabled = false; }
   if (!r) { wsHint('Could not apply the fixes.'); return; }
