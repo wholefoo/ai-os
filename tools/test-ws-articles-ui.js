@@ -78,6 +78,21 @@ assert(/function wsRenderAdopt\(/.test(js), 'sites with no plan get the adoption
 assert(/Adoption keeps your content and replaces the site design/i.test(js),
   'the adoption view states the cost before the button is pressed');
 assert(/wsAdopt\(false\)/.test(js) && /wsAdopt\(true\)/.test(js), 'preview and run are separate actions');
+
+// THE SOURCE CHOICE MUST SURVIVE THE RE-RENDER. wsRenderAdopt() rebuilds the whole panel after
+// every preview, which rebuilt the <select> with its DEFAULT option selected. On the live server
+// that silently reverted "what is live" to "the imported files", so the preview read the live
+// release (12 articles) and the ADOPT that followed read the stale workspace — and was correctly
+// refused as an app shell. The guard did its job; the UI had thrown the operator's choice away.
+assert(/const wsAdoptState = \{ source: 'workspace' \}/.test(js), 'the chosen adoption source is held in state');
+assert(/wsAdoptState\.source === 'workspace' \? ' selected' : ''/.test(js),
+  'the workspace option is re-selected from state after a re-render');
+assert(/wsAdoptState\.source === 'live' \? ' selected' : ''/.test(js),
+  'the live option is re-selected from state after a re-render');
+assert(/srcSel\.addEventListener\('change', \(\) => \{ wsAdoptState\.source = srcSel\.value; \}\)/.test(js),
+  'changing the dropdown updates the remembered source');
+assert(/const source = sel \? sel\.value : wsAdoptState\.source;/.test(js),
+  'the remembered source is the fallback when the select is absent');
 const adopt = js.slice(js.indexOf('async function wsAdopt('));
 assert(/if \(confirmRun && !confirm\(/.test(adopt), 'the real run confirms first');
 assert(/nothing is published until you publish it|nothing is published until you publish/i.test(adopt.replace(/\n/g, ' ')),

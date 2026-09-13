@@ -1187,8 +1187,8 @@ function wsRenderAdopt(result) {
     <div class="ws-art-toolbar">
       <label style="color:var(--text-secondary,#9aa);">Read from
         <select class="settings-input" id="wsAdoptSource" style="width:auto;display:inline-block;margin-left:6px;">
-          <option value="workspace">the imported files</option>
-          <option value="live"${site.domain ? '' : ' disabled'}>what is live${site.domain ? ' (' + escapeHtml(site.domain) + ')' : ' — no domain'}</option>
+          <option value="workspace"${wsAdoptState.source === 'workspace' ? ' selected' : ''}>the imported files</option>
+          <option value="live"${site.domain ? '' : ' disabled'}${wsAdoptState.source === 'live' ? ' selected' : ''}>what is live${site.domain ? ' (' + escapeHtml(site.domain) + ')' : ' — no domain'}</option>
         </select>
       </label>
       <button class="btn" id="wsAdoptPreview">Preview what would be adopted</button>
@@ -1202,6 +1202,8 @@ function wsRenderAdopt(result) {
           : `&mdash; ${escapeHtml(r.reason || 'skipped')}`}
       </div>`).join('')}</div>` : ''}`;
   const on = (id, ev, fn) => { const el = document.getElementById(id); if (el) el.addEventListener(ev, fn); };
+  const srcSel = document.getElementById('wsAdoptSource');
+  if (srcSel) srcSel.addEventListener('change', () => { wsAdoptState.source = srcSel.value; });
   on('wsAdoptPreview', 'click', () => wsAdopt(false));
   on('wsAdoptRun', 'click', () => wsAdopt(true));
 }
@@ -1221,7 +1223,8 @@ function wsAdoptSummary(r) {
 
 async function wsAdopt(confirmRun) {
   const sel = document.getElementById('wsAdoptSource');
-  const source = sel ? sel.value : 'workspace';
+  const source = sel ? sel.value : wsAdoptState.source;
+  wsAdoptState.source = source;
   if (confirmRun && !confirm('Adopt this site?\n\nYour content is kept. The site DESIGN is replaced with Web Studio templates.\nThe current files are backed up, and nothing is published until you publish it.')) return;
   wsHint(confirmRun ? 'Adopting…' : 'Checking what can be adopted…');
   const r = await fetchJSON(`/api/web-studio/sites/${wsState.currentId}/adopt`, {
@@ -1242,6 +1245,9 @@ async function wsAdopt(confirmRun) {
 // ============================================================
 
 const wsAeo = { data: null, selected: new Set(), loading: false };
+
+// Survives the panel re-render that follows every adoption preview.
+const wsAdoptState = { source: 'workspace' };
 
 function wsAeoHost() { return document.getElementById('wsAeoPanel'); }
 
