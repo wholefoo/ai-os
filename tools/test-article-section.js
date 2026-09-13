@@ -147,6 +147,39 @@ t('frontmatter expressions are untouched by the brace encoding', () => {
   assert.ok(out.includes('og={'), 'og expression was encoded and would no longer be an expression');
 });
 
+// ---------- the layout import must resolve from any depth -----------------------------------------
+// THE FIRST REAL BUILD DIED ON THIS. The layout import was hardcoded to '../layouts/Base.astro',
+// which only resolves for a page sitting directly in src/pages. Every nested page — every article,
+// every category, and every plan.dynamic page — emitted an unresolvable import:
+//   Could not resolve "../layouts/Base.astro" from "src/pages/article/<slug>.astro"
+// A pre-existing defect (plan.dynamic has always produced `${prefix}/${slug}`), invisible to every
+// string-level test because nothing ever tried to RESOLVE the path.
+t('the layout import climbs out of however deep the page sits', () => {
+  const cases = [
+    ['/', '../layouts/Base.astro'],
+    ['/about', '../layouts/Base.astro'],
+    ['/articles', '../layouts/Base.astro'],
+    ['/article/one', '../../layouts/Base.astro'],
+    ['/category/media-analysis', '../../layouts/Base.astro'],
+    ['/a/b/c', '../../../layouts/Base.astro'],
+  ];
+  for (const [path, expected] of cases) {
+    const out = renderPage({ path, title: 't', sections: [] }, {}, { siteName: 's' });
+    const got = (out.match(/import Base from '([^']+)'/) || [, ''])[1];
+    assert.strictEqual(got, expected, `wrong layout import for ${path}`);
+  }
+});
+
+t('an article page generated from the plan gets a resolvable import', () => {
+  const { expandArticlePages } = require('../lib/web-studio/pipeline');
+  const A = require('../lib/web-studio/articles');
+  const plan = { siteName: 'S', articles: [A.normalizeArticle({ title: 'One', html: '<p>body text here</p>' }, { now: '2026-01-01T00:00:00.000Z' })] };
+  const page = expandArticlePages(plan).pages.find((p) => p.path === '/article/one');
+  const out = renderPage(page, {}, plan);
+  assert.ok(out.includes("import Base from '../../layouts/Base.astro'"),
+    'the generated article page would not resolve its layout: ' + (out.match(/import Base from '[^']+'/) || [''])[0]);
+});
+
 // ---------- the prose stylesheet ------------------------------------------------------------------
 t('planHasArticle detects an article section anywhere in the plan', () => {
   assert.strictEqual(planHasArticle({ pages: [{ sections: [{ type: 'prose' }] }] }), false);
