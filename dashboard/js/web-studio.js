@@ -1287,8 +1287,8 @@ function wsRenderAeo() {
       <span>
         <span class="ws-aeo-fix-issue">${escapeHtml(f.issue)}${f.review ? ' <span class="ws-aeo-review">review</span>' : ''}</span>
         <span class="ws-aeo-fix-path">${escapeHtml(f.path)}</span>
-        <span class="ws-aeo-fix-why">${escapeHtml(f.reason)}</span>
-        <span class="ws-aeo-diff"><s>${escapeHtml(String(f.before || '(empty)').slice(0, 120))}</s>
+        <span class="ws-aeo-fix-why" title="${escapeHtml(f.reason)}">${escapeHtml(f.reason)}</span>
+        <span class="ws-aeo-diff" title="${escapeHtml(String(f.after || ''))}"><s>${escapeHtml(String(f.before || '(empty)').slice(0, 120))}</s>
           <b>${escapeHtml(String(f.after || '').slice(0, 160))}</b></span>
       </span>
     </label>`).join('');
