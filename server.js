@@ -4065,6 +4065,27 @@ app.post('/api/web-studio/sites/:id/aeo/fix', requireClientOrAdmin, async (req, 
 // --- Rebuild from current workspace source (after code-editor edits) ---
 app.post('/api/web-studio/sites/:id/build', requireClientOrAdmin, async (req, res) => {
   const site = wsFindSite(req, res); if (!site) return;
+
+  // `rerender` re-emits the workspace FROM THE PLAN before building, then deploys as usual.
+  // Without it this route only runs Astro over whatever is already on disk — so a fix to an emitter
+  // (canonical tags, sitemap.xml, llms.txt, robots.txt, the OKF bundle) never reaches a built site,
+  // because renderPlanToWorkspace is what writes all of those and it is not called here. That was
+  // not obvious from the outside: a plain rebuild reported ok:true and deployed a site whose
+  // canonical and sitemap were still the pre-fix ones.
+  // OPT-IN, because re-rendering overwrites files edited by hand through PUT /file or ai-edit.
+  if ((req.body || {}).rerender) {
+    if (!site.plan) return res.status(409).json({ error: 'site has no plan to render from — nothing to re-emit' });
+    try {
+      const result = await wsApplyPlanChange(site, site.plan);
+      saveState('web_studio_sites', webStudioSites);
+      broadcast({ event: 'web_studio_site', data: site });
+      return res.status(result.ok ? 200 : 500).json({
+        ok: result.ok, status: site.status, rerendered: true,
+        error: result.ok ? undefined : site.error,
+      });
+    } catch (e) { return res.status(e.status || 500).json({ error: e.message }); }
+  }
+
   site.status = 'building'; broadcast({ event: 'web_studio_site', data: site });
   const result = site.kind === 'imported' ? webStudioBuild.staticBuild(wsWorkspaceDir(site.id)) : await webStudioBuild.runBuild(wsWorkspaceDir(site.id));
   site.status = result.ok ? 'ready' : 'build_failed';
