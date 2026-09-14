@@ -171,7 +171,7 @@ t('the layout import climbs out of however deep the page sits', () => {
 });
 
 t('an article page generated from the plan gets a resolvable import', () => {
-  const { expandArticlePages } = require('../lib/web-studio/pipeline');
+  const { expandArticlePages } = require('../lib/web-studio/articles');   // its canonical home
   const A = require('../lib/web-studio/articles');
   const plan = { siteName: 'S', articles: [A.normalizeArticle({ title: 'One', html: '<p>body text here</p>' }, { now: '2026-01-01T00:00:00.000Z' })] };
   const page = expandArticlePages(plan).pages.find((p) => p.path === '/article/one');

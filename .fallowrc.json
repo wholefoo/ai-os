@@ -143,7 +143,16 @@
     "tools/test-seo-skipped-dimension.js",
     "tools/test-seo-unmeasured.js",
     "tools/test-seo-audit-repair.js",
-    "tools/seo-audit-repair.js"
+    "tools/seo-audit-repair.js",
+    "tools/test-sanitize-html.js",
+    "tools/test-articles.js",
+    "tools/test-article-section.js",
+    "tools/test-adopt.js",
+    "tools/test-aeo-audit.js",
+    "tools/test-ws-articles-api.js",
+    "tools/test-ws-adopt-api.js",
+    "tools/test-ws-aeo-api.js",
+    "tools/test-ws-articles-ui.js"
   ],
   "ignorePatterns": [
     "docs-export/**",

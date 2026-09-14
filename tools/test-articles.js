@@ -6,7 +6,8 @@
 'use strict';
 const assert = require('assert');
 const A = require('../lib/web-studio/articles');
-const { expandArticlePages, renderSection } = require('../lib/web-studio/pipeline');
+const { expandArticlePages } = require('../lib/web-studio/articles');
+const { renderSection } = require('../lib/web-studio/pipeline');
 
 let pass = 0, fail = 0;
 const t = (name, fn) => {
@@ -215,10 +216,10 @@ t('isoOrNull rejects junk instead of inventing a date', () => {
   assert.ok(A.isoOrNull('2026-01-01').startsWith('2026-01-01'));
 });
 
-t('slugify handles punctuation, unicode quotes and length', () => {
-  assert.strictEqual(A.slugify("Madison's Notes — Part 2"), 'madisons-notes-part-2');
-  assert.strictEqual(A.slugify('  '), '');
-  assert.ok(A.slugify('x'.repeat(200)).length <= 80);
+t('articleSlug handles punctuation, unicode quotes and length', () => {
+  assert.strictEqual(A.articleSlug("Madison's Notes — Part 2"), 'madisons-notes-part-2');
+  assert.strictEqual(A.articleSlug('  '), '');
+  assert.ok(A.articleSlug('x'.repeat(200)).length <= 80);
 });
 
 console.log('  ' + pass + ' passed, ' + fail + ' failed');
