@@ -152,7 +152,8 @@
     "tools/test-ws-articles-api.js",
     "tools/test-ws-adopt-api.js",
     "tools/test-ws-aeo-api.js",
-    "tools/test-ws-articles-ui.js"
+    "tools/test-ws-articles-ui.js",
+    "tools/test-canonical-slash.js"
   ],
   "ignorePatterns": [
     "docs-export/**",
