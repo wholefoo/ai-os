@@ -107,7 +107,19 @@ function response() { return { statusCode: 200, status(code) { this.statusCode =
     fs.writeFileSync(path.join(tmp, 'site/package.json'), '{}');
     await worker.module.exports.isolatedBuild(path.join(tmp, 'site'), 1000);
     assert.equal(commands[0].file, '/usr/bin/systemd-run');
-    for (const flag of ['--property=MemoryMax=768M', '--property=TasksMax=128', '--property=RuntimeMaxSec=1', '--unshare-all', '--clearenv']) assert(commands[0].args.includes(flag), flag);
+    for (const flag of ['--property=TasksMax=128', '--property=RuntimeMaxSec=1', '--unshare-all', '--clearenv']) assert(commands[0].args.includes(flag), flag);
+    // The memory cap is configurable, so pin the INVARIANT rather than a literal: a cap must be
+    // present, and the JS heap must sit far enough below it to leave room for the tmpfs copy of
+    // node_modules, the dist output and esbuild. A 512M heap under a 768M cgroup satisfied neither,
+    // and the kernel OOM-killed esbuild on a 19-article site.
+    const memFlag = commands[0].args.find(a => a.startsWith('--property=MemoryMax='));
+    assert(memFlag, 'no MemoryMax property — the build is unbounded');
+    const heapFlag = commands[0].args.find(a => typeof a === 'string' && a.startsWith('--max-old-space-size='));
+    assert(heapFlag, 'no heap cap');
+    const memMB = parseInt(memFlag.match(/(\d+)M$/)[1], 10);
+    const heapMB = parseInt(heapFlag.split('=')[1], 10);
+    assert(memMB >= 768, 'memory cap below the observed floor for a real site: ' + memMB);
+    assert(memMB - heapMB >= 512, `only ${memMB - heapMB}MB left outside the JS heap for tmpfs and esbuild`);
     assert.equal(commands.at(-1).file, '/usr/bin/systemctl');
     assert.equal(commands.at(-1).args[1], 'stop');
     assert.equal(fs.readFileSync(path.join(tmp, 'site/dist/index.html'), 'utf8'), 'ok');
