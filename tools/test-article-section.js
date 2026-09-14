@@ -188,6 +188,37 @@ t('planHasArticle detects an article section anywhere in the plan', () => {
   assert.strictEqual(planHasArticle(null), false);
 });
 
+// THE PROSE STYLES MUST BE GLOBAL, AND "CONTAINS .ws-article" DOES NOT PROVE THAT.
+// Two live sites shipped with every prose rule inert. Astro scopes a plain <style> by appending a
+// data-astro-cid attribute to the selector AND to the layout's own elements:
+//     .ws-article[data-astro-cid-X] p[data-astro-cid-X] { ... }
+// The article body is injected with `set:html`, so that markup never receives the attribute, and
+// the wrapper is emitted by the PAGE component, not this layout. The rules matched nothing while
+// the old assertion below — that renderBase contains ".ws-article" — stayed green throughout.
+t('the prose stylesheet is emitted as a GLOBAL style block, not a scoped one', () => {
+  const out = renderBase({ siteName: 'S', pages: [{ sections: [{ type: 'article' }] }] });
+  const blocks = [...out.matchAll(/<style([^>]*)>([\s\S]*?)<\/style>/g)]
+    .map((m) => ({ attrs: m[1], css: m[2] }));
+  const prose = blocks.filter((b) => b.css.includes('.ws-article'));
+  assert.ok(prose.length > 0, 'no style block contains the prose rules');
+  for (const b of prose) {
+    assert.ok(/\bis:global\b/.test(b.attrs),
+      'prose rules are in a SCOPED style block — Astro will append data-astro-cid to the selectors '
+      + 'and they will never match set:html content. attrs=' + JSON.stringify(b.attrs));
+  }
+});
+
+t('scoped and global blocks stay separated — only the prose goes global', () => {
+  // Dark-mode/motion/chat styles target the layout's OWN markup and are correctly scoped. Making
+  // everything global would leak site styles; making nothing global was the bug.
+  const out = renderBase({ siteName: 'S', enableDarkMode: true,
+    pages: [{ sections: [{ type: 'article' }] }] });
+  const global = [...out.matchAll(/<style is:global>([\s\S]*?)<\/style>/g)].map((m) => m[1]).join('');
+  assert.ok(global.includes('.ws-article'), 'prose is not in the global block');
+  assert.ok(!/prefers-color-scheme|\.ws-chat/.test(global),
+    'a non-prose style leaked into the global block');
+});
+
 t('Base emits the prose stylesheet only when an article section exists', () => {
   const withArticle = renderBase({ siteName: 'S', pages: [{ sections: [{ type: 'article' }] }] });
   const without = renderBase({ siteName: 'S', pages: [{ sections: [{ type: 'prose' }] }] });
