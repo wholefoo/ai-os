@@ -236,5 +236,66 @@ t('the report accounts for every file it looked at', () => {
   assert.ok(report.every((r) => typeof r.adopted === 'boolean'), 'a report entry has no adopted flag');
 });
 
+// ---------- entities in title/description ---------------------------------------------------------
+// Found on Oregon's real home page: `<title>... Citizenship &amp; Political Resources</title>`.
+// title and description are TEXT fields and every consumer escapes them for its own context, so an
+// entity left encoded here is escaped a SECOND time and renders as the literal "&amp;" — in the
+// heading, in the browser tab, and (worst) as wrong text inside JSON-LD, which is not an HTML
+// context at all. Truth Counters had no ampersand in any title, so adoption looked clean.
+t('decodes entities in the title', () => {
+  assert.strictEqual(extractPage('<title>A &amp; B</title>').title, 'A & B');
+  assert.strictEqual(extractPage('<title>&#39;q&#39; &#x27;h&#x27;</title>').title, "'q' 'h'");
+});
+
+t('decodes entities in the description', () => {
+  const ex = extractPage('<html><head><meta name="description" content="X &amp; Y"></head></html>');
+  assert.strictEqual(ex.description, 'X & Y');
+});
+
+t('decodes exactly one level, never re-running on its own output', () => {
+  assert.strictEqual(extractPage('<title>&amp;amp;</title>').title, '&amp;');
+});
+
+t('leaves unknown and malformed entities untouched rather than dropping them', () => {
+  for (const s of ['&notareal;', '&bogus;', '100% & rising', '&#0;', '&#999999999;', '&#xD800;']) {
+    assert.strictEqual(extractPage('<title>' + s + '</title>').title, s, 'mangled: ' + s);
+  }
+});
+
+t('a decoded title reaches the page body escaped', () => {
+  // Decoding turns "&lt;script&gt;" back into real text "<script>". That is correct — it is TEXT —
+  // and the renderer must escape it on the way out. Assert on the BODY region specifically: the
+  // same characters legitimately appear in the frontmatter as JS string contents (and the JSON-LD
+  // emitter has its own `<` escape), so a whole-file search reports a break-out that isn't one.
+  const { renderPage } = require('../lib/web-studio/pipeline');
+  const title = extractPage('<title>&lt;script&gt;alert(1)&lt;/script&gt;</title>').title;
+  assert.strictEqual(title, '<script>alert(1)</script>', 'did not decode to text');
+  const out = renderPage({ path: '/', title, sections: [{ type: 'prose', heading: title, html: '<p>x</p>' }] },
+    { title, description: '' }, { siteName: 'S' });
+  const h2 = (out.match(/<h2[^>]*>([\s\S]*?)<\/h2>/) || [, ''])[1];
+  assert.strictEqual(h2, '&lt;script&gt;alert(1)&lt;/script&gt;', 'heading not escaped: ' + h2);
+});
+
+t('a quote in the title cannot break out of the Base invocation', () => {
+  // &quot; decodes to a real ". JSON.stringify escapes it as \" — valid in JavaScript, NOT in an
+  // HTML attribute, where backslash means nothing and the attribute simply ends at the quote.
+  // So title/description must be emitted as Astro EXPRESSIONS. Pre-existing: any typed title with
+  // a quote hit this too; decoding is just what made it reachable from adoption.
+  const { renderPage } = require('../lib/web-studio/pipeline');
+  const title = extractPage('<title>Say &quot;hi&quot; now</title>').title;
+  assert.strictEqual(title, 'Say "hi" now', 'quote was not decoded');
+  const out = renderPage({ path: '/', title, sections: [] }, { title, description: 'a "b" c' }, { siteName: 'S' });
+  const base = (out.match(/<Base [^\n]*/) || [''])[0];
+  assert.ok(/title=\{"/.test(base), 'title is not an expression, so \\" will break the attribute: ' + base);
+  assert.ok(/description=\{"/.test(base), 'description is not an expression: ' + base);
+  assert.ok(!/title="/.test(base), 'title emitted as a quoted attribute: ' + base);
+});
+
+t('the body html keeps its entities — decoding is for text fields only', () => {
+  const ex = extractPage(page('T', `<main><p>Tom &amp; Jerry ${LONG}</p></main>`));
+  assert.ok(ex.html.includes('&amp;'), 'body entity was decoded, which would double-escape later: '
+    + ex.html.slice(0, 200));
+});
+
 console.log('  ' + pass + ' passed, ' + fail + ' failed');
 process.exit(fail ? 1 : 0);
