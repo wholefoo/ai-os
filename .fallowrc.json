@@ -154,7 +154,8 @@
     "tools/test-ws-aeo-api.js",
     "tools/test-ws-articles-ui.js",
     "tools/test-canonical-slash.js",
-    "tools/test-ws-rerender-api.js"
+    "tools/test-ws-rerender-api.js",
+    "tools/test-adopt-header.js"
   ],
   "ignorePatterns": [
     "docs-export/**",
