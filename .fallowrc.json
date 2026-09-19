@@ -160,7 +160,8 @@
     "tools/test-hub-render.js",
     "tools/test-content-keys.js",
     "tools/test-hub-ingest.js",
-    "tools/test-site-lock.js"
+    "tools/test-site-lock.js",
+    "tools/test-hub-newsletter.js"
   ],
   "ignorePatterns": [
     "docs-export/**",

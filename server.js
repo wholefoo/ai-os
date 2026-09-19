@@ -2795,11 +2795,13 @@ app.post('/api/public/site-lead/:siteId', siteLeadLimiter, express.urlencoded({ 
       const ref = new URL(String(req.get('referer') || ''));
       const h = ref.hostname.toLowerCase();
       if ((siteHost && (h === siteHost || h === 'www.' + siteHost)) || (platformHost && h === platformHost.split(':')[0])) {
-        ref.hash = 'lead-thanks';
+        // Its own anchor for a newsletter signup: a page can carry both forms, and a shared one would
+        // show a subscriber the contact form's "we'll be in touch" confirmation.
+        ref.hash = res.locals.thanksHash || 'lead-thanks';
         return res.redirect(303, ref.toString());
       }
     } catch { /* no/invalid referer */ }
-    return res.status(200).send(thanksPage('Thanks — your message is in. We&rsquo;ll be in touch shortly.'));
+    return res.status(200).send(thanksPage(res.locals.thanks || 'Thanks — your message is in. We&rsquo;ll be in touch shortly.'));
   };
 
   if (!site) return res.status(404).send(thanksPage('This form is no longer active.'));
@@ -2810,21 +2812,34 @@ app.post('/api/public/site-lead/:siteId', siteLeadLimiter, express.urlencoded({ 
   const message = String(body.message || '').trim().slice(0, 2000);
   if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return res.status(400).send(thanksPage('Please go back and enter a valid email address.'));
 
-  const contactId = crm?.ingestLead({ email, name, domain: site.domain, source: 'site-lead' });
+  // A newsletter signup (the hub integration) arrives on this same hardened route with kind=newsletter.
+  // ALLOW-LISTED, never passed through: the source decides which email sequences a person enters, so a
+  // visitor must not be able to name an arbitrary one. A subscriber is recorded as 'site-newsletter',
+  // which 'all-leads' sequences deliberately do not reach (see lib/sequences.js) — they asked for a
+  // newsletter, not a sales conversation.
+  const isNewsletter = body.kind === 'newsletter';
+  const source = isNewsletter ? 'site-newsletter' : 'site-lead';
+  if (isNewsletter) {
+    res.locals.thanks = 'Thanks — you&rsquo;re subscribed. Every email we send includes a one-click unsubscribe link.';
+    res.locals.thanksHash = 'newsletter-thanks';
+  }
+
+  const contactId = crm?.ingestLead({ email, name, domain: site.domain, source });
   if (contactId && crm?.isReady()) {
     try {
       let page = '';
       try { page = new URL(String(req.get('referer') || '')).pathname; } catch { /* optional */ }
       crm.repo.activities.add({
-        contactId, type: 'site_lead', author: 'site-form',
-        body: message ? `Lead from ${site.name}: ${message}` : `Lead from ${site.name} (no message)`,
+        contactId, type: isNewsletter ? 'newsletter_signup' : 'site_lead', author: 'site-form',
+        body: isNewsletter ? `Newsletter signup on ${site.name}`
+          : (message ? `Lead from ${site.name}: ${message}` : `Lead from ${site.name} (no message)`),
         meta: { siteId: site.id, siteName: site.name, domain: site.domain || null, page: page || null },
       });
     } catch (e) { appendLog(`[site-lead] activity failed: ${e.message}`); }
   }
-  appendLog(`[site-lead] ${site.name}: ${email}${message ? ' — ' + message.slice(0, 80) : ''}`);
-  broadcast({ event: 'crm_update', data: { kind: 'site_lead', siteId: site.id, siteName: site.name, email } });
-  enrollLead({ email, name, siteId: site.id, source: 'site-lead' }); // nurture: enroll into matching email sequences
+  appendLog(`[${source}] ${site.name}: ${email}${message ? ' — ' + message.slice(0, 80) : ''}`);
+  broadcast({ event: 'crm_update', data: { kind: isNewsletter ? 'newsletter_signup' : 'site_lead', siteId: site.id, siteName: site.name, email } });
+  enrollLead({ email, name, siteId: site.id, source }); // enroll into sequences whose trigger matches THIS source
   return finish();
 });
 
@@ -3929,6 +3944,34 @@ app.post('/api/web-studio/sites/:id/ingest', requireClientOrAdmin, wsArticleJson
       return { status: result.ok ? 200 : 500, body: { ok: result.ok, built: result.ok, ...summary, status: site.status, error: result.ok ? undefined : site.error } };
     });
     res.status(out.status).json(out.body);
+  } catch (e) { res.status(e.status || 500).json({ error: e.message }); }
+});
+
+// Hub settings: the newsletter block, ingest auto-publish, and Start-here copy. The OPERATOR's
+// decisions — deliberately outside the `content` service-key scope, so an ingest workflow cannot,
+// for instance, switch on auto-publish to bypass drafts-by-default.
+const webStudioHubSettings = require('./lib/web-studio/hub-settings');
+app.put('/api/web-studio/sites/:id/hub-settings', requireClientOrAdmin, async (req, res) => {
+  const site = wsFindSite(req, res); if (!site) return;
+  const plan = wsRequirePlan(site, res); if (!plan) return;
+  const r = webStudioHubSettings.normalizeHubSettings(req.body || {}, plan);
+  if (r.errors) return res.status(400).json({ error: r.errors.join('; '), errors: r.errors });
+  const next = { ...plan, ...r.settings };
+  // Native signup posts to this platform's lead route. Adopted and imported sites were never built
+  // through createSiteFromBrief, which is the only place that set plan.leadEndpoint — so without this,
+  // switching the newsletter on for an adopted site would render NO form at all. The base URL comes
+  // from the request, which is why this happens here and not at render time.
+  if (next.newsletter.enabled && !next.newsletter.action && !next.leadEndpoint) {
+    const base = process.env.AIOS_PUBLIC_URL || `${req.protocol}://${req.get('host')}`;
+    next.leadEndpoint = `${String(base).replace(/\/+$/, '')}/api/public/site-lead/${site.id}`;
+  }
+  try {
+    const result = await wsApplyPlanChange(site, next);
+    logActivity('web-studio', `Hub settings updated on "${site.name}" (newsletter ${next.newsletter.enabled ? 'on' : 'off'}, auto-publish ${next.ingestAutoPublish ? 'on' : 'off'})`, { siteId: site.id, by: req.session && req.session.email });
+    res.status(result.ok ? 200 : 500).json({
+      ok: result.ok, settings: r.settings, leadEndpoint: next.leadEndpoint || null,
+      status: site.status, error: result.ok ? undefined : site.error,
+    });
   } catch (e) { res.status(e.status || 500).json({ error: e.message }); }
 });
 
