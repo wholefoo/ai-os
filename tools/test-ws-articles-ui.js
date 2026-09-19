@@ -48,7 +48,16 @@ assert(/async function wsSaveArticle\(/.test(js) && /async function wsDeleteArti
 // An unsaved edit must not vanish on a stray click.
 assert(/wsArt\.dirty && !confirm\('Discard unsaved changes/.test(js), 'leaving a dirty editor asks first');
 // Deleting live content must be confirmed and must say it is recoverable.
-const del = js.slice(js.indexOf('async function wsDeleteArticle('), js.indexOf('// ---------- adoption'));
+// Bounded by the function's own end, not by the next section header: the site content settings
+// panel now sits between delete and adoption, and a header-bounded slice silently widened to cover it.
+const fnBody = (name) => {
+  const i = js.indexOf('function ' + name + '(');
+  if (i < 0) return '';
+  const next = js.slice(i + 1).search(/\n(?:async )?function |\n\/\/ -{6,}/);
+  return js.slice(i, next < 0 ? js.length : i + 1 + next);
+};
+const del = fnBody('wsDeleteArticle');
+assert(del.length > 100 && !/wsRenderHubSettings|wsSaveHubSettings/.test(del), 'the delete function was bounded to itself');
 assert(/confirm\(/.test(del), 'delete asks for confirmation');
 assert(/rolled back/.test(del), 'the delete prompt says the previous release can be rolled back');
 // A slug change moves a published URL — the operator must be told, not left to discover a 404.
@@ -67,7 +76,10 @@ assert(!/body:\s*JSON\.stringify/.test(js),
   'a fetchJSON call double-encodes its body — pass the OBJECT, fetchJSON stringifies it');
 // And the writes must still send a body at all.
 for (const fn of ['wsSaveArticle', 'wsAdopt', 'wsApplyAeoFixes']) {
-  const src = js.slice(js.indexOf('async function ' + fn + '('), js.indexOf('async function ' + fn + '(') + 2000);
+  // The whole function, not a fixed 2000-character window: wsSaveArticle grew past that when the hub
+  // fields were added, and its fetchJSON call fell outside the slice — a test failure with no defect.
+  const src = fnBody(fn);
+  assert(src.length > 100, fn + ' was located');
   assert(/method: 'POST'|method: editing \? 'PUT' : 'POST'/.test(src), fn + ' issues a write');
   // `body` may be shorthand (`{ method, body }`) or explicit (`body: { ids }`).
   assert(/\bbody\b\s*[,:}]/.test(src), fn + ' sends a body');
@@ -122,4 +134,62 @@ assert(unescaped.length === 0,
 assert(!/const v = \(x\) => escapeHtml/.test(editFn),
   'no local escaping alias — it hides the escaping from the static guard');
 
-done();
+// ---------- the editor must RUN, not just look right as text ----------------------------------------
+// A local `v` escaping alias was forced out of the editor by the assertion above. Its definition went
+// and ONE call site — `v(article.slug)` in the header of an existing entry — was left behind. `v` was
+// defined nowhere, so opening ANY existing article threw a ReferenceError and left the editor on
+// "Loading…" in production, while every regex check here stayed green. Found by rendering the editor
+// in a browser.
+//
+// A static "is every helper defined?" check was tried first and was wrong BOTH ways: it treated a
+// LOCAL `const v` inside a function in clones.js as a definition (so it missed the real bug), and it
+// flagged words inside template text like "page(s)" as calls. So this EXECUTES the real functions
+// against a permissive fake DOM instead: any ReferenceError or TypeError fails the test.
+{
+  const vm = require('vm');
+  const el = () => new Proxy(function () {}, {
+    get: (t, k) => (k === 'innerHTML' || k === 'value' || k === 'textContent' ? (t[k] || '')
+      : k === 'querySelectorAll' ? () => [] : k === 'classList' ? { toggle() {}, add() {}, remove() {} }
+      : k === 'style' || k === 'dataset' ? (t[k] = t[k] || {}) : k in t ? t[k] : () => el()),
+    set: (t, k, v) => { t[k] = v; return true; },
+  });
+  const panes = {};
+  const documentStub = {
+    getElementById: (id) => (panes[id] = panes[id] || el()),
+    querySelectorAll: () => [], querySelector: () => null, createElement: () => el(), addEventListener() {},
+  };
+  const now = '2026-09-18T12:00:00.000Z';
+  const existing = { slug: 'talk', title: 'Talk', excerpt: '', html: '<p>notes</p>', kind: 'video', youtubeId: 'dQw4w9WgXcQ',
+    duration: '12:34', tags: ['civic'], featured: true, source: { url: 'https://example.com', name: 'Ex' }, draft: false, publishedAt: now };
+  const ctx = {
+    console, setTimeout, clearTimeout, confirm: () => true, alert() {},
+    document: documentStub, window: {}, location: { hash: '' },
+    // The only globals supplied are ones app.js provably defines at top level; everything the editor
+    // itself calls must be defined by web-studio.js or it throws.
+    escapeHtml: (x) => String(x == null ? '' : x).replace(/[&<>"']/g, (c) => '&#' + c.charCodeAt(0) + ';'),
+    fetchJSON: async (url) => (/\/articles\/[^/]+$/.test(url) ? { article: existing }
+      : { articles: [{ ...existing, words: 1, readingMinutes: 1 }], hasPlan: true, prefix: '/article', hub: { newsletter: {} } }),
+  };
+  ctx.window = ctx;
+  vm.createContext(ctx);
+  let loadErr = null;
+  try { vm.runInContext(js, ctx, { filename: 'web-studio.js' }); } catch (e) { loadErr = e; }
+  assert(!loadErr, 'web-studio.js loads in the harness: ' + (loadErr && loadErr.message));
+  ctx.wsState = ctx.wsState || {}; ctx.wsState.currentId = 'site-1';
+  ctx.wsHint = () => {}; ctx.wsRefreshPreview = () => {};
+  const runs = [
+    ['wsRenderArticleList (list view)', async () => { await ctx.wsLoadArticles(); }],
+    ['wsEditArticle on an EXISTING entry', async () => { await ctx.wsEditArticle('talk'); }],
+    ['wsEditArticle for a new video', async () => { await ctx.wsEditArticle(null, 'video'); }],
+    ['wsRenderHubSettings', async () => { ctx.wsRenderHubSettings(); }],
+  ];
+  (async () => {
+    for (const [label, fn] of runs) {
+      let err = null;
+      try { await fn(); } catch (e) { err = e; }
+      assert(!err, label + ' runs without throwing' + (err ? ' — ' + err.name + ': ' + err.message : ''));
+    }
+    const editor = String((panes.wsArticlesPane || {}).innerHTML || '');
+    done();
+  })();
+}

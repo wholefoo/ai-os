@@ -17,6 +17,7 @@ function loadAccess() {
     const on = (id, fn) => { const el = document.getElementById(id); if (el) el.addEventListener('click', fn); };
     on('accRefresh', accessLoadAll);
     on('accMintBtn', accessMintKey);
+    const scopeSel = document.getElementById('accKeyScope'); if (scopeSel) scopeSel.addEventListener('change', accessOnScopeChange);
     on('accPurgeBtn', accessRunPurge);
     on('accProvRotateBtn', accessRotateProvenance);
     const users = document.getElementById('accUsers'); if (users) users.addEventListener('click', accessOnUserClick);
@@ -89,7 +90,7 @@ async function accessLoadKeys() {
   if (master) master.textContent = d && d.masterTokenConfigured ? 'A master API_TOKEN is configured. Prefer a scoped key per automation; actions still on the master token appear in the activity log as service@api-token.' : '';
   if (!keys.length) { el.innerHTML = '<div class="empty-state">No service keys yet. Mint one above.</div>'; return; }
   el.innerHTML = keys.map((k) => `<div class="crm-row" style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;">
-      <div style="flex:1;min-width:220px;"><strong>${escapeHtml(k.label)}</strong><div class="crm-muted">scope <strong>${escapeHtml(k.scope)}</strong> · created ${escapeHtml((k.createdAt || '').slice(0, 10))}${k.expiresAt ? ` · expires ${escapeHtml(k.expiresAt.slice(0, 10))}` : ''} · last used ${k.lastUsedAt ? escapeHtml(timeAgo(k.lastUsedAt)) : 'never'}${k.rotatedFrom ? ' · rotated' : ''}</div></div>
+      <div style="flex:1;min-width:220px;"><strong>${escapeHtml(k.label)}</strong><div class="crm-muted">scope <strong>${escapeHtml(k.scope)}</strong>${k.scope === 'content' ? ` · ${k.siteId ? 'site <code>' + escapeHtml(k.siteId.slice(0, 8)) + '</code>' : '<strong>all sites</strong>'}` : ''} · created ${escapeHtml((k.createdAt || '').slice(0, 10))}${k.expiresAt ? ` · expires ${escapeHtml(k.expiresAt.slice(0, 10))}` : ''} · last used ${k.lastUsedAt ? escapeHtml(timeAgo(k.lastUsedAt)) : 'never'}${k.rotatedFrom ? ' · rotated' : ''}</div></div>
       <span class="crm-tag"${k.revoked ? ' style="background:#7f1d1d;color:#fff;"' : ''}>${k.revoked ? 'revoked' : 'active'}</span>
       <div style="display:flex;gap:6px;">${k.revoked ? '' : `<button class="btn btn-sm" data-act="rotate" data-id="${escapeHtml(k.id)}" data-label="${escapeHtml(k.label)}">Rotate</button> <button class="btn btn-sm btn-danger" data-act="revoke" data-id="${escapeHtml(k.id)}" data-label="${escapeHtml(k.label)}">Revoke</button>`}</div>
     </div>`).join(''); // seclint-ok: every interpolation is escapeHtml()'d
@@ -103,11 +104,38 @@ function accessShowTokenOnce(token, key, extra) {
     <p class="crm-muted">Use it as <code>Authorization: Bearer &lt;token&gt;</code>.</p>`, [{ label: 'Done', class: 'btn-primary', action: closeModal }]);
 }
 
+// The `content` scope (Web Studio publishing) is confined to one site when a site is chosen. The site
+// list is loaded on demand, and "All sites" is an explicit choice rather than the silent default.
+async function accessOnScopeChange() {
+  const scope = (document.getElementById('accKeyScope') || {}).value;
+  const sel = document.getElementById('accKeySite');
+  const hint = document.getElementById('accKeyScopeHint');
+  const isContent = scope === 'content';
+  if (hint) hint.hidden = !isContent;
+  if (!sel) return;
+  sel.hidden = !isContent;
+  if (!isContent || sel.dataset.loaded) return;
+  const d = await fetchJSON('/api/web-studio/sites');
+  const sites = (d && (d.sites || d)) || [];
+  const opts = (Array.isArray(sites) ? sites : []).filter((s) => s && s.id)
+    .map((s) => `<option value="${escapeHtml(s.id)}">${escapeHtml(s.name || s.domain || s.id)}${s.domain ? ' (' + escapeHtml(s.domain) + ')' : ''}</option>`);
+  sel.innerHTML = '<option value="">Choose a site…</option>' + opts.join('')
+    + '<option value="*">All sites (not recommended)</option>'; // seclint-ok: every interpolation is escapeHtml()'d
+  sel.dataset.loaded = '1';
+}
+
 async function accessMintKey() {
   const label = (document.getElementById('accKeyLabel') || {}).value || '';
   const scope = (document.getElementById('accKeyScope') || {}).value || 'read';
   const days = (document.getElementById('accKeyDays') || {}).value || '';
-  const r = await fetchJSON('/api/admin/service-keys', { method: 'POST', body: { label, scope, expiresInDays: days || undefined } });
+  const body = { label, scope, expiresInDays: days || undefined };
+  if (scope === 'content') {
+    const site = (document.getElementById('accKeySite') || {}).value || '';
+    // No silent default: an unbound content key reaches every site, so it must be chosen on purpose.
+    if (!site) { accessMsg('Choose the site this content key may publish to (or "All sites").', true); return; }
+    if (site !== '*') body.siteId = site;
+  }
+  const r = await fetchJSON('/api/admin/service-keys', { method: 'POST', body });
   if (!r || r.error) { accessMsg((r && r.error) || 'Could not mint key', true); return; }
   const lbl = document.getElementById('accKeyLabel'); if (lbl) lbl.value = '';
   accessShowTokenOnce(r.token, r.key, 'Minted.');

@@ -1290,9 +1290,20 @@
             .ws-art-row:hover{border-color:var(--accent,#f59e0b);}
             .ws-art-row .ws-art-title{font-weight:600;color:var(--text,#e6e6ef);word-break:break-word;}
             .ws-art-row .ws-art-meta{font-size:12px;color:var(--text-secondary,#9aa);margin-top:2px;}
+            /* Both spans were inline, so the meta ran on after the title and its margin-top did nothing —
+               the intended layout (title, then path/length beneath) never rendered. Tag chips made it worse. */
+            .ws-art-row .ws-art-title,.ws-art-row .ws-art-meta{display:block;}
             .ws-art-badge{font-size:11px;border:1px solid currentColor;border-radius:999px;padding:1px 7px;white-space:nowrap;}
             .ws-art-badge.draft{color:var(--warning,#eab308);}
             .ws-art-badge.live{color:var(--success,#22c55e);}
+            /* hub integration: entry kind, featured flag, tags, and the video field block */
+            .ws-art-kind{display:inline-block;font-size:10px;letter-spacing:.06em;text-transform:uppercase;
+              background:var(--accent,#6366f1);color:#fff;border-radius:4px;padding:1px 6px;margin-right:7px;vertical-align:2px;}
+            .ws-art-kind.ws-art-feat{background:var(--warning,#eab308);color:#1a1300;}
+            .ws-art-tags{display:flex;flex-wrap:wrap;gap:5px;margin-top:5px;}
+            .ws-art-tag{font-size:11px;color:var(--text-secondary,#9aa);border:1px solid var(--border,#333);border-radius:999px;padding:0 7px;}
+            .ws-art-video{border-left:3px solid var(--accent,#6366f1);padding-left:12px;display:grid;gap:12px;}
+            .ws-art-video[hidden]{display:none;}
             .ws-art-form{display:grid;gap:10px;}
             .ws-art-form label{display:block;font-size:12px;color:var(--text-secondary,#9aa);margin-bottom:3px;}
             /* .settings-input carries its own fixed width for the settings screens, which left every
@@ -2218,10 +2229,12 @@
               <p class="crm-muted" style="margin:0 0 8px;">One key per automation. <strong>read</strong> = GET only · <strong>agent</strong> = read + running agents, skills, pipelines, Hermes, A2A · <strong>admin</strong> = everything the master token can do. None can approve, change the automation mode, or touch a person.</p>
               <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:8px;">
                 <input id="accKeyLabel" class="form-input" placeholder="label, e.g. n8n lead sync" style="flex:1;min-width:160px;" maxlength="80">
-                <select id="accKeyScope" class="form-input" style="width:auto;"><option value="read">read</option><option value="agent" selected>agent</option><option value="admin">admin</option></select>
+                <select id="accKeyScope" class="form-input" style="width:auto;"><option value="read">read</option><option value="agent" selected>agent</option><option value="content">content (Web Studio publishing)</option><option value="admin">admin</option></select>
+                <select id="accKeySite" class="form-input" style="width:auto;" hidden aria-label="Site this content key may publish to"></select>
                 <input id="accKeyDays" class="form-input" placeholder="expires in days (optional)" style="width:190px;" type="number" min="1" max="365">
                 <button class="btn btn-primary" id="accMintBtn">Mint key</button>
               </div>
+              <div id="accKeyScopeHint" class="crm-muted" style="margin-bottom:8px;" hidden>A <strong>content</strong> key can only publish articles and videos (the n8n ingest API) &mdash; it cannot read the CRM, settings or other keys. Bind it to one site so a workflow for one site can never touch another.</div>
               <div id="accMasterNote" class="crm-muted" style="margin-bottom:8px;"></div>
               <div id="accKeys"><div class="empty-state">Loading…</div></div>
             </section>

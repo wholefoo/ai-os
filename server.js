@@ -1742,6 +1742,7 @@ const webStudioBuild = require('./lib/web-studio/build');
 const webStudioPipeline = require('./lib/web-studio/pipeline');
 const webStudioArticles = require('./lib/web-studio/articles');
 const webStudioAdopt = require('./lib/web-studio/adopt');
+const webStudioHubSettings = require('./lib/web-studio/hub-settings');
 const webStudioAeo = require('./lib/web-studio/aeo-audit');
 const webStudioScaffold = require('./lib/web-studio/scaffold');
 const { BUILTIN_TEMPLATES } = require('./lib/web-studio/templates');
@@ -3794,6 +3795,11 @@ const wsArticleSummary = (a) => ({
   image: a.image, draft: !!a.draft, publishedAt: a.publishedAt, updatedAt: a.updatedAt,
   words: webStudioArticles.wordCount(a.html || ''),
   readingMinutes: webStudioArticles.readingMinutes(a.html || ''),
+  // Hub fields, so the list can show what each entry is without fetching it.
+  kind: a.kind === 'video' ? 'video' : 'article',
+  tags: Array.isArray(a.tags) ? a.tags : [],
+  featured: a.featured === true,
+  duration: a.duration || null,
 });
 
 app.get('/api/web-studio/sites/:id/articles', requireClientOrAdmin, (req, res) => {
@@ -3808,6 +3814,9 @@ app.get('/api/web-studio/sites/:id/articles', requireClientOrAdmin, (req, res) =
     hasPlan: !!(site.plan && Array.isArray(site.plan.pages)),
     prefix: webStudioArticles.articlePath(plan, '').replace(/\/$/, ''),
     max: webStudioArticles.MAX_ARTICLES,
+    // Current hub settings, for the settings panel. Read through the same validator that writes
+    // them, so the panel shows exactly the values a save would keep.
+    hub: (webStudioHubSettings.normalizeHubSettings({}, plan).settings || null),
   });
 });
 
@@ -3950,7 +3959,6 @@ app.post('/api/web-studio/sites/:id/ingest', requireClientOrAdmin, wsArticleJson
 // Hub settings: the newsletter block, ingest auto-publish, and Start-here copy. The OPERATOR's
 // decisions — deliberately outside the `content` service-key scope, so an ingest workflow cannot,
 // for instance, switch on auto-publish to bypass drafts-by-default.
-const webStudioHubSettings = require('./lib/web-studio/hub-settings');
 app.put('/api/web-studio/sites/:id/hub-settings', requireClientOrAdmin, async (req, res) => {
   const site = wsFindSite(req, res); if (!site) return;
   const plan = wsRequirePlan(site, res); if (!plan) return;

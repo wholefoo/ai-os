@@ -1020,6 +1020,7 @@ async function wsLoadArticles() {
   wsArt.list = r.articles || [];
   wsArt.hasPlan = !!r.hasPlan;
   wsArt.prefix = r.prefix || '/article';
+  wsArt.hub = r.hub || null;
   wsArt.editing = null;
   if (!wsArt.hasPlan) { wsRenderAdopt(); return; }
   wsRenderArticleList();
@@ -1028,37 +1029,51 @@ async function wsLoadArticles() {
 function wsRenderArticleList() {
   const pane = wsArtPane();
   if (!pane) return;
-  const rows = wsArt.list.map((a) => `
+  const rows = wsArt.list.map((a) => {
+    const isVideo = a.kind === 'video';
+    const path = (isVideo ? '/video' : wsArt.prefix) + '/' + a.slug;
+    const size = isVideo
+      ? (a.duration ? escapeHtml(a.duration) : 'video')
+      : `${a.words ? a.words.toLocaleString() + ' words' : 'empty'}${a.readingMinutes ? ' &middot; ' + a.readingMinutes + ' min read' : ''}`;
+    const tags = (a.tags || []).slice(0, 4).map((t) => `<span class="ws-art-tag">${escapeHtml(t)}</span>`).join('');
+    return `
     <button type="button" class="ws-art-row" data-slug="${escapeHtml(a.slug)}">
       <span>
-        <span class="ws-art-title">${escapeHtml(a.title)}</span>
-        <span class="ws-art-meta">${escapeHtml(wsArt.prefix)}/${escapeHtml(a.slug)}
-          &middot; ${a.words ? a.words.toLocaleString() + ' words' : 'empty'}
-          ${a.readingMinutes ? '&middot; ' + a.readingMinutes + ' min read' : ''}
+        <span class="ws-art-title">${isVideo ? '<span class="ws-art-kind">Video</span>' : ''}${a.featured ? '<span class="ws-art-kind ws-art-feat">Featured</span>' : ''}${escapeHtml(a.title)}</span>
+        <span class="ws-art-meta">${escapeHtml(path)} &middot; ${size}
           ${a.category ? '&middot; ' + escapeHtml(a.category) : ''}</span>
+        ${tags ? `<span class="ws-art-tags">${tags}</span>` : ''}
       </span>
       <span class="ws-art-badge ${a.draft ? 'draft' : 'live'}">${a.draft ? 'Draft' : 'Published'}</span>
-    </button>`).join('');
+    </button>`;
+  }).join('');
+  const nVid = wsArt.list.filter((a) => a.kind === 'video').length;
+  const nArt = wsArt.list.length - nVid;
   pane.innerHTML = `
     <div class="ws-art-toolbar">
       <button class="btn btn-primary" id="wsArtNew">New article</button>
+      <button class="btn" id="wsArtNewVideo">New video</button>
       <button class="btn" id="wsArtRefresh">Refresh</button>
-      <span class="ws-art-count">${wsArt.list.length} article${wsArt.list.length === 1 ? '' : 's'}</span>
+      <button class="btn" id="wsArtSettings">Site content settings</button>
+      <span class="ws-art-count">${nArt} article${nArt === 1 ? '' : 's'}${nVid ? ` &middot; ${nVid} video${nVid === 1 ? '' : 's'}` : ''}</span>
     </div>
     ${wsArt.list.length
       ? `<div class="ws-art-list">${rows}</div>`
-      : '<div class="empty-state">No articles yet. "New article" creates the first one.</div>'}`;
+      : '<div class="empty-state">No content yet. "New article" or "New video" creates the first entry.</div>'}`;
   const nb = document.getElementById('wsArtNew'); if (nb) nb.addEventListener('click', () => wsEditArticle(null));
+  const nv = document.getElementById('wsArtNewVideo'); if (nv) nv.addEventListener('click', () => wsEditArticle(null, 'video'));
+  const sb = document.getElementById('wsArtSettings'); if (sb) sb.addEventListener('click', wsRenderHubSettings);
   const rb = document.getElementById('wsArtRefresh'); if (rb) rb.addEventListener('click', wsLoadArticles);
   pane.querySelectorAll('.ws-art-row').forEach((el) => {
     el.addEventListener('click', () => wsEditArticle(el.getAttribute('data-slug')));
   });
 }
 
-async function wsEditArticle(slug) {
+async function wsEditArticle(slug, newKind) {
   const pane = wsArtPane();
   if (!pane) return;
-  let article = { slug: '', title: '', excerpt: '', html: '', category: '', author: '', image: '', draft: false, publishedAt: '' };
+  let article = { slug: '', title: '', excerpt: '', html: '', category: '', author: '', image: '', draft: false, publishedAt: '',
+    kind: newKind === 'video' ? 'video' : 'article', tags: [], featured: false, source: null, youtubeId: '', videoUrl: '', duration: '' };
   if (slug) {
     pane.innerHTML = '<div class="empty-state">Loading…</div>';
     const r = await fetchJSON(`/api/web-studio/sites/${wsState.currentId}/articles/${encodeURIComponent(slug)}`);
@@ -1068,14 +1083,37 @@ async function wsEditArticle(slug) {
   wsArt.editing = slug;
   wsArt.dirty = false;
   const date = article.publishedAt ? String(article.publishedAt).slice(0, 10) : '';
+  const isVideo = article.kind === 'video';
+  const src = article.source && typeof article.source === 'object' ? article.source : {};
   pane.innerHTML = `
     <div class="ws-art-toolbar">
-      <button class="btn" id="wsArtBack">&larr; All articles</button>
-      <span class="ws-art-count">${slug ? escapeHtml(wsArt.prefix) + '/' + v(article.slug) : 'New article'}</span>
+      <button class="btn" id="wsArtBack">&larr; All content</button>
+      <span class="ws-art-count">${slug ? escapeHtml(isVideo ? '/video' : wsArt.prefix) + '/' + escapeHtml(article.slug) : (isVideo ? 'New video' : 'New article')}</span>
     </div>
     <div class="ws-art-form">
+      <div class="ws-art-grid2">
+        <div><label for="wsArtKind">Type</label>
+          <select class="settings-input" id="wsArtKind">
+            <option value="article" ${isVideo ? '' : 'selected'}>Article</option>
+            <option value="video" ${isVideo ? 'selected' : ''}>Video</option>
+          </select>
+          <div class="ws-hint">Articles live at ${escapeHtml(wsArt.prefix)}/&hellip;, videos at /video/&hellip;</div></div>
+        <div><label style="display:flex;align-items:center;gap:6px;margin-top:22px;color:var(--text-secondary,#9aa);">
+          <input type="checkbox" id="wsArtFeatured" ${article.featured ? 'checked' : ''} /> Featured on the Start here page</label></div>
+      </div>
       <div><label for="wsArtTitle">Title</label>
-        <input class="settings-input" id="wsArtTitle" value="${escapeHtml(article.title == null ? '' : String(article.title))}" placeholder="Article title" /></div>
+        <input class="settings-input" id="wsArtTitle" value="${escapeHtml(article.title)}" placeholder="Title" /></div>
+      <div id="wsArtVideoFields" class="ws-art-video" ${isVideo ? '' : 'hidden'}>
+        <div class="ws-art-grid2">
+          <div><label for="wsArtYoutube">YouTube URL or video ID</label>
+            <input class="settings-input" id="wsArtYoutube" value="${escapeHtml(article.youtubeId)}" placeholder="https://youtu.be/…" /></div>
+          <div><label for="wsArtDuration">Duration</label>
+            <input class="settings-input" id="wsArtDuration" value="${escapeHtml(article.duration)}" placeholder="12:34" /></div>
+        </div>
+        <div><label for="wsArtVideoUrl">Or an MP4 file URL (https)</label>
+          <input class="settings-input" id="wsArtVideoUrl" value="${escapeHtml(article.videoUrl)}" placeholder="https://cdn.example.com/video.mp4" />
+          <div class="ws-hint">YouTube loads only when a visitor presses play, from the privacy-enhanced domain. Set a cover image below to avoid loading YouTube&rsquo;s thumbnail at all.</div></div>
+      </div>
       <div class="ws-art-grid2">
         <div><label for="wsArtSlug">URL slug</label>
           <input class="settings-input" id="wsArtSlug" value="${escapeHtml(article.slug == null ? '' : String(article.slug))}"
@@ -1090,8 +1128,17 @@ async function wsEditArticle(slug) {
         <div><label for="wsArtAuthor">Author</label>
           <input class="settings-input" id="wsArtAuthor" value="${escapeHtml(article.author == null ? '' : String(article.author))}" /></div>
       </div>
-      <div><label for="wsArtImage">Hero image path</label>
+      <div><label for="wsArtImage">Cover image path</label>
         <input class="settings-input" id="wsArtImage" value="${escapeHtml(article.image == null ? '' : String(article.image))}" placeholder="/images/example.webp" /></div>
+      <div><label for="wsArtTags">Tags</label>
+        <input class="settings-input" id="wsArtTags" value="${escapeHtml((article.tags || []).join(', '))}" placeholder="ai, security, oregon" />
+        <div class="ws-hint">Comma-separated, up to 10. Each tag gets its own page.</div></div>
+      <div class="ws-art-grid2">
+        <div><label for="wsArtSourceName">Originally published at (name)</label>
+          <input class="settings-input" id="wsArtSourceName" value="${escapeHtml(src.name)}" placeholder="Optional" /></div>
+        <div><label for="wsArtSourceUrl">Original URL</label>
+          <input class="settings-input" id="wsArtSourceUrl" value="${escapeHtml(src.url)}" placeholder="https://…" /></div>
+      </div>
       <div><label for="wsArtExcerpt">Excerpt / meta description</label>
         <textarea class="settings-input" id="wsArtExcerpt" rows="2"
           placeholder="Left blank, this is derived from the body.">${escapeHtml(article.excerpt == null ? '' : String(article.excerpt))}</textarea></div>
@@ -1114,9 +1161,16 @@ async function wsEditArticle(slug) {
   });
   on('wsArtSave', 'click', wsSaveArticle);
   on('wsArtDelete', 'click', () => wsDeleteArticle(slug));
-  ['wsArtTitle', 'wsArtSlug', 'wsArtBody', 'wsArtExcerpt', 'wsArtCategory', 'wsArtAuthor', 'wsArtImage', 'wsArtDate']
+  ['wsArtTitle', 'wsArtSlug', 'wsArtBody', 'wsArtExcerpt', 'wsArtCategory', 'wsArtAuthor', 'wsArtImage', 'wsArtDate',
+    'wsArtTags', 'wsArtSourceName', 'wsArtSourceUrl', 'wsArtYoutube', 'wsArtVideoUrl', 'wsArtDuration']
     .forEach((id) => on(id, 'input', () => { wsArt.dirty = true; }));
   on('wsArtDraft', 'change', () => { wsArt.dirty = true; });
+  on('wsArtFeatured', 'change', () => { wsArt.dirty = true; });
+  on('wsArtKind', 'change', () => {
+    wsArt.dirty = true;
+    const vf = document.getElementById('wsArtVideoFields');
+    if (vf) vf.hidden = (document.getElementById('wsArtKind') || {}).value !== 'video';
+  });
   const t = document.getElementById('wsArtTitle'); if (t) t.focus();
 }
 
@@ -1124,10 +1178,14 @@ function wsArtValue(id) { const el = document.getElementById(id); return el ? el
 
 async function wsSaveArticle() {
   const title = wsArtValue('wsArtTitle');
-  if (!title) { wsHint('An article needs a title.'); const t = document.getElementById('wsArtTitle'); if (t) t.focus(); return; }
+  if (!title) { wsHint('An entry needs a title.'); const t = document.getElementById('wsArtTitle'); if (t) t.focus(); return; }
   const draftEl = document.getElementById('wsArtDraft');
+  const featEl = document.getElementById('wsArtFeatured');
+  const kind = wsArtValue('wsArtKind') === 'video' ? 'video' : 'article';
+  const sourceUrl = wsArtValue('wsArtSourceUrl');
   const body = {
     title,
+    kind,
     slug: wsArtValue('wsArtSlug') || undefined,
     excerpt: wsArtValue('wsArtExcerpt'),
     html: (document.getElementById('wsArtBody') || {}).value || '',
@@ -1136,7 +1194,21 @@ async function wsSaveArticle() {
     image: wsArtValue('wsArtImage'),
     publishedAt: wsArtValue('wsArtDate') || undefined,
     draft: !!(draftEl && draftEl.checked),
+    featured: !!(featEl && featEl.checked),
+    // The editor now KNOWS these fields, so it sends them — including empty values, which is how a
+    // user clears them. (Before this UI existed the editor omitted them and the model carried them
+    // over, so ingest-set tags survived an edit; that carry-over still protects any older client.)
+    tags: wsArtValue('wsArtTags').split(',').map((x) => x.trim()).filter(Boolean),
+    source: sourceUrl ? { url: sourceUrl, name: wsArtValue('wsArtSourceName') || undefined } : null,
   };
+  if (kind === 'video') {
+    // youtubeUrl accepts a bare id or any YouTube URL; the server extracts the id. Empty fields are
+    // sent as empty so a user can switch a video from YouTube to MP4 and back.
+    const yt = wsArtValue('wsArtYoutube');
+    if (yt) body.youtubeUrl = yt; else body.youtubeId = null;   // an empty field CLEARS the id
+    body.videoUrl = wsArtValue('wsArtVideoUrl') || null;
+    body.duration = wsArtValue('wsArtDuration') || null;
+  }
   const editing = wsArt.editing;
   const btn = document.getElementById('wsArtSave');
   if (btn) { btn.disabled = true; btn.textContent = 'Saving…'; }
@@ -1164,6 +1236,79 @@ async function wsDeleteArticle(slug) {
   if (r.error) { wsHint(r.error); return; }
   wsHint('Deleted. ' + (r.note || ''));
   await wsLoadArticles();
+  wsRefreshPreview();
+}
+
+// ---------- site content settings (hub integration) ----------
+// Newsletter, ingest auto-publish and Start-here copy. Site POLICY, so it lives here for the operator
+// and is deliberately outside what a `content` service key can reach.
+function wsRenderHubSettings() {
+  const pane = wsArtPane();
+  if (!pane) return;
+  const h = wsArt.hub || {};
+  const n = h.newsletter || {};
+  pane.innerHTML = `
+    <div class="ws-art-toolbar">
+      <button class="btn" id="wsHubBack">&larr; All content</button>
+      <span class="ws-art-count">Site content settings</span>
+    </div>
+    <div class="ws-art-form">
+      <h4 style="margin:4px 0 0;">Newsletter signup</h4>
+      <label style="display:flex;align-items:center;gap:6px;color:var(--text-secondary,#9aa);">
+        <input type="checkbox" id="wsHubNlOn" ${n.enabled ? 'checked' : ''} /> Show a signup form under every article and video</label>
+      <div class="ws-art-grid2">
+        <div><label for="wsHubNlHeading">Heading</label>
+          <input class="settings-input" id="wsHubNlHeading" value="${escapeHtml(n.heading)}" placeholder="Stay in touch" /></div>
+        <div><label for="wsHubNlButton">Button</label>
+          <input class="settings-input" id="wsHubNlButton" value="${escapeHtml(n.button)}" placeholder="Subscribe" /></div>
+      </div>
+      <div><label for="wsHubNlBlurb">Text</label>
+        <input class="settings-input" id="wsHubNlBlurb" value="${escapeHtml(n.blurb)}" placeholder="Occasional emails from this site. One-click unsubscribe in every email." />
+        <div class="ws-hint">Promise only what will happen. Web Studio does not email subscribers each time you publish &mdash; use a provider below for that.</div></div>
+      <div><label for="wsHubNlAction">Newsletter provider form URL (optional)</label>
+        <input class="settings-input" id="wsHubNlAction" value="${escapeHtml(n.action)}" placeholder="https://buttondown.com/api/emails/embed-subscribe/you" />
+        <div class="ws-hint">Leave blank to collect subscribers in your CRM. They are kept separate from leads: &ldquo;All new leads&rdquo; sequences never reach them; a sequence with the <em>Newsletter signups</em> trigger does. Or paste a provider&rsquo;s form URL (https) &mdash; with RSS-to-email pointed at <code>/rss.xml</code>, subscribers get an email for every new post.</div></div>
+      <h4 style="margin:14px 0 0;">Content from automations</h4>
+      <label style="display:flex;align-items:center;gap:6px;color:var(--text-secondary,#9aa);">
+        <input type="checkbox" id="wsHubAutoPub" ${h.ingestAutoPublish ? 'checked' : ''} /> Publish ingested items immediately</label>
+      <div class="ws-hint">Off (recommended): items sent by n8n, scrapers or generators arrive as drafts until you review them here.</div>
+      <h4 style="margin:14px 0 0;">Start here page</h4>
+      <div><label for="wsHubStartTitle">Title</label>
+        <input class="settings-input" id="wsHubStartTitle" value="${escapeHtml(h.startHereTitle)}" placeholder="Start here" /></div>
+      <div><label for="wsHubStartIntro">Introduction</label>
+        <input class="settings-input" id="wsHubStartIntro" value="${escapeHtml(h.startHereIntro)}" placeholder="The best place to begin." />
+        <div class="ws-hint">The page lists every entry marked Featured, and only exists once something is.</div></div>
+      <div class="ws-art-actions">
+        <button class="btn btn-primary" id="wsHubSave">Save &amp; rebuild</button>
+      </div>
+    </div>`;
+  const back = document.getElementById('wsHubBack'); if (back) back.addEventListener('click', wsRenderArticleList);
+  const save = document.getElementById('wsHubSave'); if (save) save.addEventListener('click', wsSaveHubSettings);
+}
+
+async function wsSaveHubSettings() {
+  const on = (id) => { const el = document.getElementById(id); return !!(el && el.checked); };
+  const body = {
+    newsletter: {
+      enabled: on('wsHubNlOn'),
+      heading: wsArtValue('wsHubNlHeading'),
+      blurb: wsArtValue('wsHubNlBlurb'),
+      button: wsArtValue('wsHubNlButton'),
+      action: wsArtValue('wsHubNlAction') || null,
+    },
+    ingestAutoPublish: on('wsHubAutoPub'),
+    startHereTitle: wsArtValue('wsHubStartTitle'),
+    startHereIntro: wsArtValue('wsHubStartIntro'),
+  };
+  const btn = document.getElementById('wsHubSave');
+  if (btn) { btn.disabled = true; btn.textContent = 'Saving…'; }
+  wsHint('Saving settings and rebuilding…');
+  const r = await fetchJSON(`/api/web-studio/sites/${wsState.currentId}/hub-settings`, { method: 'PUT', body });
+  if (btn) { btn.disabled = false; btn.textContent = 'Save & rebuild'; }
+  if (!r) { wsHint('Save failed.'); return; }
+  if (r.error && !r.settings) { wsHint(r.error); return; }
+  if (r.settings) wsArt.hub = r.settings;
+  wsHint(r.ok ? 'Settings saved.' : `Settings saved, but the build failed: ${r.error || 'unknown error'}`);
   wsRefreshPreview();
 }
 

@@ -164,6 +164,18 @@ t('an explicit empty tag list does clear tags', () => {
   assert.deepStrictEqual(norm({ title: 'T', tags: [] }, { existing: prev }).tags, []);
 });
 
+t('a video can switch from YouTube to MP4 — youtubeId: null clears the carried-over id', () => {
+  const prev = norm({ title: 'T', kind: 'video', youtubeId: 'dQw4w9WgXcQ' });
+  const next = norm({ title: 'T', youtubeId: null, videoUrl: 'https://cdn.example/a.mp4' }, { existing: prev });
+  assert.strictEqual(next.youtubeId, null, 'the old YouTube id survived being cleared');
+  assert.strictEqual(next.videoUrl, 'https://cdn.example/a.mp4');
+});
+
+t('clearing every media source is still refused', () => {
+  const prev = norm({ title: 'T', kind: 'video', youtubeId: 'dQw4w9WgXcQ' });
+  assert.throws(() => norm({ title: 'T', youtubeId: null, videoUrl: null }, { existing: prev }), /needs a youtubeId/);
+});
+
 t('switching a video back to an article drops its media', () => {
   const prev = norm({ title: 'T', kind: 'video', youtubeId: 'dQw4w9WgXcQ', duration: '1:00' });
   const next = norm({ title: 'T', kind: 'article' }, { existing: prev });
@@ -184,6 +196,34 @@ t('every problem in one item is reported at once', () => {
 t('existing callers reading e.message still get a readable string', () => {
   const e = throws(() => norm({ title: 'T', kind: 'nope' }), /kind must be/, 'message');
   assert.strictEqual(typeof e.message, 'string');
+});
+
+// ---------- dates through the EDITOR path ---------------------------------------------------------
+// Both found while building the editor UI; both are the fabricated/shifted-date class this project
+// has fixed twice already, arriving by a third route.
+t('an editor date (YYYY-MM-DD) lands at midday UTC, not midnight', () => {
+  // <input type=date> sends a bare date. Midnight UTC displays as the previous day in the Americas.
+  assert.strictEqual(norm({ title: 'T', publishedAt: '2023-06-24' }).publishedAt, '2023-06-24T12:00:00.000Z');
+  assert.strictEqual(A.isoOrNull('2023-06-24'), '2023-06-24T12:00:00.000Z');
+  assert.strictEqual(A.isoOrNull('2023-06-24T03:15:00Z'), '2023-06-24T03:15:00.000Z', 'a full timestamp was altered');
+});
+
+t('editing an UNDATED entry keeps it undated — it is never stamped with today', () => {
+  // Every adopted article whose source had no date is undated. The editor sends no date for it, and
+  // the old `existing.publishedAt || now` chain stamped today on the first save.
+  const prev = A.normalizeArticle({ title: 'Old', html: '<p>x</p>' }, { now: NOW, undatedOk: true });
+  assert.strictEqual(prev.publishedAt, null);
+  const edited = norm({ title: 'Old (edited)', html: '<p>y</p>' }, { existing: prev });
+  assert.strictEqual(edited.publishedAt, null, 'the edit invented a publication date: ' + edited.publishedAt);
+});
+
+t('a dated entry keeps its date through an edit that omits it', () => {
+  const prev = norm({ title: 'T', publishedAt: '2023-06-24' });
+  assert.strictEqual(norm({ title: 'T2' }, { existing: prev }).publishedAt, '2023-06-24T12:00:00.000Z');
+});
+
+t('a brand-new entry with no date is still published now', () => {
+  assert.strictEqual(norm({ title: 'Fresh' }).publishedAt, NOW);
 });
 
 // ---------- featured -------------------------------------------------------------------------------
