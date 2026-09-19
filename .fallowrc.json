@@ -155,7 +155,8 @@
     "tools/test-ws-articles-ui.js",
     "tools/test-canonical-slash.js",
     "tools/test-ws-rerender-api.js",
-    "tools/test-adopt-header.js"
+    "tools/test-adopt-header.js",
+    "tools/test-hub-model.js"
   ],
   "ignorePatterns": [
     "docs-export/**",
