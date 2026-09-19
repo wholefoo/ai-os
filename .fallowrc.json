@@ -157,7 +157,9 @@
     "tools/test-ws-rerender-api.js",
     "tools/test-adopt-header.js",
     "tools/test-hub-model.js",
-    "tools/test-hub-render.js"
+    "tools/test-hub-render.js",
+    "tools/test-content-keys.js",
+    "tools/test-hub-ingest.js"
   ],
   "ignorePatterns": [
     "docs-export/**",

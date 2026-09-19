@@ -9,8 +9,13 @@ const { assert, done, serverSource } = require('./test-util');
 const src = serverSource();
 // Bounded by the ADOPTION block, not the build route: adoption sits between them and its own
 // routes would otherwise be counted as article routes.
-const block = src.slice(src.indexOf('//  Content backend — articles'),
-  src.indexOf('//  Adoption — give an imported static site a plan'));
+// The block ends at the NEXT section: the hub ingest route now sits between the article routes and
+// adoption. It is not an article route (it is guarded and tested on its own in test-hub-ingest.js),
+// so the block stops before it — and the "exactly five" count below stays meaningful, instead of
+// being loosened to let an unreviewed sixth route through.
+const blockEnd = [src.indexOf('//  Hub ingest'), src.indexOf('//  Adoption — give an imported static site a plan')]
+  .filter((i) => i > 0).sort((a, b) => a - b)[0];
+const block = src.slice(src.indexOf('//  Content backend — articles'), blockEnd);
 assert(block.length > 500, 'the article content block was located in server.js');
 
 // ---------- routes exist, with the right verbs ----------------------------------------------------

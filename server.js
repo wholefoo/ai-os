@@ -201,9 +201,13 @@ app.use(cookieParser());
 // hundreds of KB (the recovered Oregon constitution is ~394KB of markup) and would be rejected by
 // the 1mb default once JSON-escaped. Only the WRITE verbs are skipped — GET/DELETE carry no body.
 const WS_ARTICLE_WRITE = /^\/api\/web-studio\/sites\/[^/]+\/articles(?:\/[^/]+)?$/;
+// The hub ingest route takes a batch of up to 50 entries, which exceeds 1mb as easily as one long
+// article does. It mounts the same larger parser.
+const WS_INGEST_WRITE = /^\/api\/web-studio\/sites\/[^/]+\/ingest$/;
 app.use((req, res, next) => {
   if (req.originalUrl === '/api/stripe/webhook') return next();
   if ((req.method === 'POST' || req.method === 'PUT') && WS_ARTICLE_WRITE.test(req.path)) return next();
+  if (req.method === 'POST' && WS_INGEST_WRITE.test(req.path)) return next();
   express.json({ limit: '1mb' })(req, res, next);
 });
 
@@ -3865,6 +3869,73 @@ app.delete('/api/web-studio/sites/:id/articles/:slug', requireClientOrAdmin, asy
       note: 'the previous release is still on disk and can be rolled back',
       error: result.ok ? undefined : site.error,
     });
+  } catch (e) { res.status(e.status || 500).json({ error: e.message }); }
+});
+
+// ============================================================
+//  Hub ingest — the standalone hub's POST /ingest, on Web Studio's content model.
+//
+//  One item, an array, or {items:[...]} (max 50). All or nothing. Upsert by slug REPLACES the
+//  entry. Drafts by default unless the plan sets ingestAutoPublish. ?build=false saves without
+//  building, so a workflow can send several batches and then POST /build {"rerender":true} once.
+//  The rules live in lib/web-studio/ingest.js (pure, tested); this route adds only what a pure
+//  function cannot: locking, persistence and the build.
+//
+//  Intended caller: a `content` service key bound to this site — never the admin API_TOKEN.
+// ============================================================
+const webStudioIngest = require('./lib/web-studio/ingest');
+const wsArticleJsonIngest = express.json({ limit: '4mb' });
+
+// One ingest at a time PER SITE. Without this, two concurrent workflow runs both read the same
+// entry list, both append, and the second write silently discards the first batch. A promise chain
+// rather than a flag, so a burst queues instead of failing. (The editor's article routes do not
+// take this lock; an editor save racing an ingest is a pre-existing gap noted, not closed, here.)
+const wsIngestChains = new Map();
+function wsWithSiteLock(siteId, fn) {
+  const prev = wsIngestChains.get(siteId) || Promise.resolve();
+  const run = prev.catch(() => {}).then(fn);
+  const tail = run.catch(() => {});
+  wsIngestChains.set(siteId, tail);
+  tail.then(() => { if (wsIngestChains.get(siteId) === tail) wsIngestChains.delete(siteId); });
+  return run;
+}
+
+app.post('/api/web-studio/sites/:id/ingest', requireClientOrAdmin, wsArticleJsonIngest, async (req, res) => {
+  const site = wsFindSite(req, res); if (!site) return;
+  if (!wsRequirePlan(site, res)) return;
+  const build = String(req.query.build || '').toLowerCase() !== 'false';
+  try {
+    const out = await wsWithSiteLock(site.id, async () => {
+      // Re-read INSIDE the lock: the plan may have changed while this request waited its turn.
+      const plan = site.plan;
+      const prepared = webStudioIngest.prepareBatch(req.body, wsArticleList(plan), {
+        autoPublish: plan.ingestAutoPublish === true,
+      });
+      if (prepared.errors) return { status: 422, body: { ok: false, error: 'nothing was written — fix the items below and resend the batch', items: prepared.errors } };
+
+      const next = { ...plan, articles: prepared.next };
+      const summary = {
+        created: prepared.results.filter((r) => r.action === 'created').length,
+        updated: prepared.results.filter((r) => r.action === 'updated').length,
+        drafts: prepared.results.filter((r) => r.draft).length,
+        items: prepared.results.map((r) => ({ ...r, path: r.kind === 'video' ? '/video/' + r.slug : webStudioArticles.articlePath(next, r.slug) })),
+      };
+      const actor = req.session && req.session.email;
+      if (!build) {
+        // Saved, not built. wsApplyPlanChange only persists on a successful build, so the deferred
+        // path persists the plan itself. The live site is untouched until a later build.
+        site.plan = next;
+        saveState('web_studio_sites', webStudioSites);
+        logActivity('web-studio', `Ingest (deferred build): ${summary.created} created, ${summary.updated} updated on "${site.name}"`, { siteId: site.id, by: actor });
+        return { status: 200, body: { ok: true, built: false, ...summary, note: 'saved without building — POST /build {"rerender":true} to publish' } };
+      }
+      // persistPlanOnFailure: a failed build must not throw away a validated batch. The LIVE site
+      // is safe either way — deployment only happens after a successful build.
+      const result = await wsApplyPlanChange(site, next, { persistPlanOnFailure: true });
+      logActivity('web-studio', `Ingest: ${summary.created} created, ${summary.updated} updated on "${site.name}" (build ${result.ok ? 'ok' : 'failed'})`, { siteId: site.id, by: actor });
+      return { status: result.ok ? 200 : 500, body: { ok: result.ok, built: result.ok, ...summary, status: site.status, error: result.ok ? undefined : site.error } };
+    });
+    res.status(out.status).json(out.body);
   } catch (e) { res.status(e.status || 500).json({ error: e.message }); }
 });
 
@@ -14754,9 +14825,13 @@ app.get('/api/admin/service-keys', requireAdmin, (req, res) => {
 app.post('/api/admin/service-keys', requireAdmin, requireHuman, (req, res) => {
   const v = serviceKeys.validateNew(req.body || {});
   if (v.error) return res.status(400).json({ error: v.error });
+  // A binding to a site that does not exist would mint a key that silently works for nothing.
+  if (v.siteId && !webStudioSites.some((s) => s.id === v.siteId)) {
+    return res.status(400).json({ error: 'siteId does not match any Web Studio site' });
+  }
   const { key, token } = serviceKeys.createKey({ id: uuidv4(), ...v, createdBy: req.session.email });
   serviceKeyList.push(key); saveServiceKeys();
-  logActivity('auth', `Service key minted: "${key.label}" (scope ${key.scope}${key.expiresAt ? ', expires ' + key.expiresAt.slice(0, 10) : ''})`, { keyId: key.id, by: req.session.email, ip: req.ip });
+  logActivity('auth', `Service key minted: "${key.label}" (scope ${key.scope}${key.siteId ? ', site ' + key.siteId : ''}${key.expiresAt ? ', expires ' + key.expiresAt.slice(0, 10) : ''})`, { keyId: key.id, by: req.session.email, ip: req.ip });
   res.json({ ok: true, token, key: serviceKeys.publicView(key), note: 'Store this token now. It is not recoverable — only its hash is kept.' });
 });
 app.post('/api/admin/service-keys/:id/revoke', requireAdmin, requireHuman, (req, res) => {
@@ -14767,13 +14842,15 @@ app.post('/api/admin/service-keys/:id/revoke', requireAdmin, requireHuman, (req,
   logActivity('auth', `Service key revoked: "${k.label}"`, { keyId: k.id, by: req.session.email, ip: req.ip });
   res.json({ ok: true, key: serviceKeys.publicView(k) });
 });
-// Rotation = a new token with the same label and scope, and the old one revoked in the same
-// request. The new record points back at the old (rotatedFrom) so the chain is auditable.
+// Rotation = a new token with the same label, scope AND SITE BINDING, and the old one revoked in the
+// same request. The new record points back at the old (rotatedFrom) so the chain is auditable.
+// siteId must be carried: dropping it would turn a key confined to one site into one that reaches
+// every site — a privilege escalation hidden inside a routine security operation.
 app.post('/api/admin/service-keys/:id/rotate', requireAdmin, requireHuman, (req, res) => {
   const old = serviceKeyList.find((x) => x.id === req.params.id);
   if (!old) return res.status(404).json({ error: 'key not found' });
   if (old.revoked) return res.status(409).json({ error: 'cannot rotate a revoked key — mint a new one' });
-  const { key, token } = serviceKeys.createKey({ id: uuidv4(), label: old.label, scope: old.scope, expiresAt: old.expiresAt, createdBy: req.session.email });
+  const { key, token } = serviceKeys.createKey({ id: uuidv4(), label: old.label, scope: old.scope, siteId: old.siteId || null, expiresAt: old.expiresAt, createdBy: req.session.email });
   key.rotatedFrom = old.id;
   old.revoked = true; old.revokedAt = new Date().toISOString();
   serviceKeyList.push(key); saveServiceKeys();
