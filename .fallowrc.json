@@ -159,7 +159,8 @@
     "tools/test-hub-model.js",
     "tools/test-hub-render.js",
     "tools/test-content-keys.js",
-    "tools/test-hub-ingest.js"
+    "tools/test-hub-ingest.js",
+    "tools/test-site-lock.js"
   ],
   "ignorePatterns": [
     "docs-export/**",

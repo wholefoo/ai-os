@@ -3887,18 +3887,11 @@ const webStudioIngest = require('./lib/web-studio/ingest');
 const wsArticleJsonIngest = express.json({ limit: '4mb' });
 
 // One ingest at a time PER SITE. Without this, two concurrent workflow runs both read the same
-// entry list, both append, and the second write silently discards the first batch. A promise chain
-// rather than a flag, so a burst queues instead of failing. (The editor's article routes do not
-// take this lock; an editor save racing an ingest is a pre-existing gap noted, not closed, here.)
-const wsIngestChains = new Map();
-function wsWithSiteLock(siteId, fn) {
-  const prev = wsIngestChains.get(siteId) || Promise.resolve();
-  const run = prev.catch(() => {}).then(fn);
-  const tail = run.catch(() => {});
-  wsIngestChains.set(siteId, tail);
-  tail.then(() => { if (wsIngestChains.get(siteId) === tail) wsIngestChains.delete(siteId); });
-  return run;
-}
+// entry list, both append, and the second write silently discards the first batch. The race only
+// exists on the BUILD path (the await on wsApplyPlanChange); see lib/web-studio/site-lock.js for why
+// its test drives an explicit await gap. (The editor's article routes do not take this lock; an
+// editor save racing an ingest is a pre-existing gap noted, not closed, here.)
+const wsWithSiteLock = require('./lib/web-studio/site-lock').createSiteLock();
 
 app.post('/api/web-studio/sites/:id/ingest', requireClientOrAdmin, wsArticleJsonIngest, async (req, res) => {
   const site = wsFindSite(req, res); if (!site) return;
