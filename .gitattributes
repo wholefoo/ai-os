@@ -1,0 +1,10 @@
+# Files that run or are read on a Linux server must keep LF line endings, even in a checkout made
+# on Windows with core.autocrlf=true. A CRLF shell script fails with
+#   /usr/bin/env: 'bash\r': No such file or directory
+# and a CRLF systemd unit, nginx config or sudoers file can fail to parse or mis-read a value.
+# Scoped deliberately to these types: a repo-wide `* text=auto` would renormalise every file.
+*.sh        text eol=lf
+*.service   text eol=lf
+*.conf      text eol=lf
+*.sudoers   text eol=lf
+deploy/**   text eol=lf

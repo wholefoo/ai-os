@@ -1,0 +1,68 @@
+[Unit]
+Description=AI OS (Hermes coding instance — isolated, non-production)
+Documentation=https://github.com/wholefoo/ai-os
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=@HERMES_USER@
+Group=@HERMES_USER@
+WorkingDirectory=@APP_DIR@
+
+# nvm's node is not on systemd's PATH; point at it explicitly rather than
+# relying on a login shell.
+Environment=PATH=@NODE_BIN@:/usr/local/bin:/usr/bin:/bin
+Environment=NODE_ENV=production
+EnvironmentFile=@APP_DIR@/.env
+ExecStart=@NODE_BIN@/node server.js
+
+# ---- Restart policy ------------------------------------------------------
+# on-failure, not always: a clean exit is a deliberate stop and should stay
+# stopped. The burst limit keeps a crash-loop from hammering the API key.
+Restart=on-failure
+RestartSec=10s
+StartLimitIntervalSec=300
+StartLimitBurst=5
+
+# NOTE: there is deliberately no RuntimeMaxSec. A wall clock here would kill
+# the SERVER on a timer, which is not what we want — the per-TASK ceiling is
+# AGENT_CALL_MAX_TOTAL_MS in .env (default 15 min), which is the knob that
+# actually stops a runaway job.
+
+# ---- Resource limits -----------------------------------------------------
+# 3G of 4G. Leaves headroom for the OS and an `npm ci` run by hand in an SSH
+# session, and makes the agent the thing that dies under pressure rather than
+# sshd. MemoryHigh throttles before MemoryMax kills.
+MemoryHigh=2500M
+MemoryMax=3G
+# Stay below 100% of both cores so an interactive session is always responsive.
+CPUQuota=150%
+TasksMax=512
+LimitNOFILE=8192
+# Be the first thing the OOM killer reaches for, ahead of sshd.
+OOMScoreAdjust=300
+
+# ---- Hardening -----------------------------------------------------------
+# Modest by design: this process runs builds and spawns bubblewrap, so the
+# aggressive sandboxing directives (ProtectSystem=strict, PrivateUsers,
+# RestrictNamespaces, MemoryDenyWriteExecute) would break it. The isolation
+# that matters here is the unprivileged user and the absent credentials,
+# not systemd confinement.
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=false
+ProtectKernelTunables=true
+ProtectControlGroups=true
+ProtectClock=true
+RestrictSUIDSGID=true
+RemoveIPC=true
+
+# ---- Logging -------------------------------------------------------------
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=ai-os-hermes
+
+[Install]
+WantedBy=multi-user.target

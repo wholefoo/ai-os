@@ -1,10 +1,16 @@
 #!/usr/bin/env bash
 # ============================================================
 #  AI OS Virtual Corporate HQ — Complete VPS Setup Script
-#  Tested on: Ubuntu 22.04 / 24.04 LTS (Hostinger KVM 2+)
+#  Targets: Ubuntu 22.04 / 24.04 LTS and Debian 12 / 13 (KVM; 2 GB RAM minimum, 4 GB recommended)
 #  Usage: sudo bash install-vps.sh yourdomain.com [--with-n8n] [--with-codex] [--harden-ssh]
 #  Optional env: COMMERCIAL_REPO_URL=<authenticated-url>  → also mount the private commercial
 #                modules at /opt/ai-os/commercial (Business/Enterprise). Omit for Community tier.
+#                LE_EMAIL=<you@example.com>  → Let's Encrypt registration email.
+#
+#  Copied this file from a Windows machine? Strip carriage returns first, or bash fails with
+#  "bad interpreter: /usr/bin/env: 'bash\r'":   sed -i 's/\r$//' install-vps.sh
+#  (.gitattributes keeps *.sh as LF in a git checkout; a copy through an editor or the
+#  clipboard can still reintroduce CRLF.)
 # ============================================================
 
 set -euo pipefail
@@ -53,6 +59,34 @@ if [ "$EUID" -ne 0 ]; then
   err "This script must be run as root — use sudo"
 fi
 
+# --- SSH-hardening lockout guard (runs BEFORE any work) ---
+# --harden-ssh disables root login AND password authentication. If no OTHER account can get in
+# with a working key and then become root, that locks you out of the box — recoverable only
+# through the provider's web console. This used to be a printed warning followed by hardening
+# anyway; a warning does not stop the next step, so this is now a refusal.
+#
+# "Working key" is checked by PARSING the file (ssh-keygen -l), not by it being non-empty: a
+# pasted key fingerprint ("256 SHA256:... (ED25519)") is a non-empty authorized_keys that
+# authenticates nothing, and passed the old check in the field.
+if [ "$HARDEN_SSH" = true ]; then
+  SSH_OK_USER=""
+  for u in $(getent group sudo | cut -d: -f4 | tr ',' ' '); do
+    home=$(getent passwd "$u" | cut -d: -f6)
+    [ -n "$home" ] && [ -s "$home/.ssh/authorized_keys" ] || continue
+    if ssh-keygen -l -f "$home/.ssh/authorized_keys" >/dev/null 2>&1; then SSH_OK_USER="$u"; break; fi
+  done
+  if [ -z "$SSH_OK_USER" ]; then
+    err "--harden-ssh REFUSED: no non-root user in the 'sudo' group has a valid SSH key.
+     Hardening would disable root login and passwords and lock you out. First:
+       adduser <you> && usermod -aG sudo <you>
+       install your PUBLIC key in /home/<you>/.ssh/authorized_keys (a line starting ssh-ed25519 / ssh-rsa)
+       ssh-keygen -l -f /home/<you>/.ssh/authorized_keys     # must print a fingerprint, not an error
+       log in as <you> from a SECOND terminal and run 'sudo -v'
+     Then re-run with --harden-ssh. Or re-run without it and keep password login (fail2ban still applies)."
+  fi
+  log "SSH lockout guard: ${SSH_OK_USER} has a parseable key and sudo"
+fi
+
 echo ""
 echo -e "${CYAN}══════════════════════════════════════════════════════════${NC}"
 echo -e "${CYAN}  AI OS Virtual Corporate HQ — Production VPS Installer  ${NC}"
@@ -71,7 +105,9 @@ step "[1/${TOTAL_STEPS}] System Updates"
 # ============================================================
 apt-get update -qq
 apt-get upgrade -y -qq
-apt-get install -y -qq curl wget git build-essential unzip jq software-properties-common cron
+# No software-properties-common: nothing here uses add-apt-repository (NodeSource is added by
+# hand in step 7), and a package that is absent from a release fails the whole install under -e.
+apt-get install -y -qq curl wget git build-essential unzip jq cron openssl
 # Minimal cloud images often ship without cron; the health-check and backup
 # schedules depend on it. Ensure the daemon is installed and running.
 systemctl enable --now cron 2>/dev/null || true
@@ -146,8 +182,13 @@ log "Firewall configured: SSH, HTTP, HTTPS"
 # ============================================================
 step "[5/${TOTAL_STEPS}] Fail2ban"
 # ============================================================
-apt-get install -y -qq fail2ban
+# python3-systemd: the journal backend below needs it.
+apt-get install -y -qq fail2ban python3-systemd
 
+# backend = systemd, NOT logpath = /var/log/auth.log. Debian 12+ no longer installs rsyslog, so
+# there is no auth.log at all: a jail pointed at it fails to start, `systemctl restart fail2ban`
+# returns non-zero, and under `set -e` the whole installer stopped here. The journal exists on
+# every target (Ubuntu too), so reading sshd from it works everywhere.
 cat > /etc/fail2ban/jail.local <<'F2BCFG'
 [DEFAULT]
 bantime  = 600
@@ -157,16 +198,24 @@ ignoreip = 127.0.0.1/8 ::1
 
 [sshd]
 enabled  = true
+backend  = systemd
 port     = ssh
-filter   = sshd
-logpath  = /var/log/auth.log
 maxretry = 5
-bantime  = 600
+bantime  = 1h
+# Repeat offenders get progressively longer bans instead of retrying forever.
+bantime.increment = true
+bantime.factor    = 2
+bantime.maxtime   = 1w
 F2BCFG
 
 systemctl enable fail2ban
-systemctl restart fail2ban
-log "Fail2ban active — SSH: 5 retries, 10-min ban"
+if systemctl restart fail2ban && sleep 2 && fail2ban-client status sshd >/dev/null 2>&1; then
+  log "Fail2ban active — sshd jail RUNNING (5 retries, 1h ban, doubling to 1 week)"
+else
+  # Not fatal: ufw is up and the install should finish. But say so loudly — "installed" is not
+  # "protecting", and the old step reported success whether or not the jail ever started.
+  warn "Fail2ban installed but the sshd jail is NOT running — check: journalctl -u fail2ban -n 30"
+fi
 
 # ============================================================
 step "[6/${TOTAL_STEPS}] SSH Hardening"
@@ -186,25 +235,36 @@ if [ "$HARDEN_SSH" = true ]; then
   warn "=========================================================="
   echo ""
 
-  # Backup sshd_config before modifying
-  cp /etc/ssh/sshd_config /etc/ssh/sshd_config.bak.$(date +%Y%m%d%H%M%S)
-
-  # Disable root login
-  sed -i 's/^#\?PermitRootLogin.*/PermitRootLogin no/' /etc/ssh/sshd_config
-  # Disable password authentication
-  sed -i 's/^#\?PasswordAuthentication.*/PasswordAuthentication no/' /etc/ssh/sshd_config
-  # Disable empty passwords
-  sed -i 's/^#\?PermitEmptyPasswords.*/PermitEmptyPasswords no/' /etc/ssh/sshd_config
-  # Use protocol 2 only
-  if ! grep -q '^Protocol 2' /etc/ssh/sshd_config; then
-    echo 'Protocol 2' >> /etc/ssh/sshd_config
+  # A DROP-IN, not sed on sshd_config. sshd takes the FIRST value it reads for each keyword, and
+  # Ubuntu/Debian's sshd_config `Include`s sshd_config.d/*.conf at the TOP. Cloud images ship a
+  # drop-in there (e.g. 50-cloud-init.conf: PasswordAuthentication yes), so editing the main file
+  # could be silently overridden — "hardened" printed while passwords still worked. 00- sorts
+  # first, so these values win. (The obsolete `Protocol 2` line is gone: modern OpenSSH ignores
+  # it with a deprecation warning.) The pre-flight guard above has already proved a sudo user
+  # with a working key exists.
+  DROPIN=/etc/ssh/sshd_config.d/00-aios-hardening.conf
+  install -d -m 0755 /etc/ssh/sshd_config.d
+  cat > "$DROPIN" <<'SSHD'
+PermitRootLogin no
+PasswordAuthentication no
+KbdInteractiveAuthentication no
+PermitEmptyPasswords no
+MaxAuthTries 3
+SSHD
+  if ! sshd -t 2>/dev/null; then
+    # Remove it rather than leave a broken file for the next reboot/upgrade to apply unattended.
+    rm -f "$DROPIN"
+    warn "sshd -t FAILED — hardening drop-in REMOVED, sshd unchanged"
+  else
+    systemctl reload ssh 2>/dev/null || systemctl reload sshd
+    # Verify against the EFFECTIVE config, not the file we wrote.
+    if sshd -T 2>/dev/null | grep -qi '^passwordauthentication no' && sshd -T 2>/dev/null | grep -qi '^permitrootlogin no'; then
+      log "SSH hardened (verified with sshd -T): root login + password auth disabled"
+    else
+      warn "sshd reloaded but sshd -T still allows passwords or root — check: grep -r . /etc/ssh/sshd_config.d/"
+    fi
+    warn "Log in as ${SSH_OK_USER} from ANOTHER terminal now, before closing this one"
   fi
-  # Limit auth attempts
-  sed -i 's/^#\?MaxAuthTries.*/MaxAuthTries 3/' /etc/ssh/sshd_config
-
-  sshd -t && systemctl reload sshd
-  log "SSH hardened: root login disabled, password auth disabled"
-  warn "VERIFY you can still log in from another terminal NOW"
 else
   log "SSH hardening skipped (pass --harden-ssh to enable)"
 fi
@@ -377,9 +437,16 @@ log "Dependencies installed from lockfile"
 # ============================================================
 step "[13/${TOTAL_STEPS}] Nginx Configuration"
 # ============================================================
-# Replace domain placeholder
-sed "s/yourdomain\.com/${DOMAIN}/g" "${APP_DIR}/deploy/nginx.conf" > /etc/nginx/sites-available/ai-os
-ln -sf /etc/nginx/sites-available/ai-os /etc/nginx/sites-enabled/ai-os
+# TWO PHASES, because the full vhost cannot pass `nginx -t` on a fresh box:
+#   * it logs in the `aios_vhost` format, which lives in deploy/aios-logformat.conf and was never
+#     installed by this script ("unknown log format"); and
+#   * it names /etc/letsencrypt/live/<domain>/fullchain.pem, which does not exist until certbot
+#     has run — and certbot used to be a "next step" AFTER this script.
+# Either one failed `nginx -t && systemctl reload nginx` under `set -e`, so a fresh install
+# stopped here and never reached .env, PM2, tuning or the health check. Now: install the log
+# format, bring up a plain-HTTP bootstrap vhost that answers the ACME challenge, obtain the
+# certificate, then swap in the full vhost — and never leave a config that does not parse.
+install -o root -g root -m 644 "${APP_DIR}/deploy/aios-logformat.conf" /etc/nginx/conf.d/aios-logformat.conf
 rm -f /etc/nginx/sites-enabled/default
 
 # Add rate limit zone to nginx.conf if not present
@@ -387,10 +454,39 @@ if ! grep -q "zone=api" /etc/nginx/nginx.conf; then
   sed -i '/http {/a\    limit_req_zone $binary_remote_addr zone=api:10m rate=30r/s;' /etc/nginx/nginx.conf
 fi
 
-# n8n reverse proxy block (injected if --with-n8n)
-if [ "$WITH_N8N" = true ]; then
-  if ! grep -q 'location /n8n/' /etc/nginx/sites-available/ai-os; then
-    # Insert n8n location block before the final closing brace of the HTTPS server
+ACME_ROOT=/var/www/aios-acme
+mkdir -p "${ACME_ROOT}/.well-known/acme-challenge"
+VHOST=/etc/nginx/sites-available/ai-os
+CERT="/etc/letsencrypt/live/${DOMAIN}/fullchain.pem"
+TLS_READY=false
+
+write_bootstrap_vhost() {
+  cat > "$VHOST" <<BOOTSTRAP
+# Bootstrap vhost (HTTP only) — written by install-vps.sh until a certificate exists.
+# Login will NOT work here: the session cookie is Secure in production and browsers drop it
+# over plain HTTP. It exists to answer the ACME challenge and serve /api/health.
+server {
+    listen 80;
+    listen [::]:80;
+    server_name ${DOMAIN};
+    location /.well-known/acme-challenge/ { root ${ACME_ROOT}; }
+    location / {
+        proxy_pass http://127.0.0.1:3000;
+        proxy_set_header Host \$host;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
+    }
+}
+BOOTSTRAP
+  ln -sf "$VHOST" /etc/nginx/sites-enabled/ai-os
+}
+
+write_full_vhost() {
+  sed "s/yourdomain\.com/${DOMAIN}/g" "${APP_DIR}/deploy/nginx.conf" > "$VHOST"
+  ln -sf "$VHOST" /etc/nginx/sites-enabled/ai-os
+
+  # n8n reverse proxy block (injected if --with-n8n)
+  if [ "$WITH_N8N" = true ] && ! grep -q 'location /n8n/' "$VHOST"; then
     sed -i '/# --- Block sensitive paths ---/i\
     # --- n8n Workflow Automation ---\
     location /n8n/ {\
@@ -406,13 +502,50 @@ if [ "$WITH_N8N" = true ]; then
         proxy_send_timeout 300s;\
         client_max_body_size 50M;\
     }\
-' /etc/nginx/sites-available/ai-os
+' "$VHOST"
     log "Nginx: n8n reverse proxy block added at /n8n/"
+  fi
+}
+
+# Phase 1 — a certificate. Skipped if one already exists (re-runs, or a cert obtained by hand).
+if [ ! -f "$CERT" ]; then
+  write_bootstrap_vhost
+  nginx -t && systemctl reload nginx
+
+  # Only ask Let's Encrypt when the name points HERE. Behind Cloudflare's proxy (orange cloud) it
+  # resolves to Cloudflare, and the challenge fails or is redirected by "Always Use HTTPS".
+  MY_IPS=$(ip -4 -o addr show scope global | awk '{print $4}' | cut -d/ -f1)
+  DNS_IP=$(getent ahostsv4 "${DOMAIN}" | awk 'NR==1{print $1}')
+  if [ -n "$DNS_IP" ] && echo "$MY_IPS" | grep -qx "$DNS_IP"; then
+    if [ -n "${LE_EMAIL:-}" ]; then LE_ARGS=(--email "${LE_EMAIL}"); else LE_ARGS=(--register-unsafely-without-email); fi
+    if certbot certonly --webroot -w "$ACME_ROOT" -d "${DOMAIN}" --agree-tos --non-interactive "${LE_ARGS[@]}"; then
+      log "Certificate issued for ${DOMAIN}"
+    else
+      warn "certbot failed — staying on the HTTP bootstrap vhost (see /var/log/letsencrypt/letsencrypt.log)"
+    fi
+  else
+    warn "${DOMAIN} resolves to '${DNS_IP:-nothing}', not this server ($(echo $MY_IPS | tr '\n' ' '))."
+    warn "Certificate NOT requested. Point an A record here (in Cloudflare: 'DNS only', grey cloud,"
+    warn "at least while issuing), then finish TLS with the three commands printed at the end."
   fi
 fi
 
-nginx -t && systemctl reload nginx
-log "Nginx configured for ${DOMAIN}"
+# Phase 2 — the full HTTPS vhost, only once the certificate is really there.
+if [ -f "$CERT" ]; then
+  cp "$VHOST" "${VHOST}.prev" 2>/dev/null || true
+  write_full_vhost
+  if nginx -t 2>/dev/null; then
+    systemctl reload nginx
+    TLS_READY=true
+    log "Nginx configured for https://${DOMAIN}"
+  else
+    nginx -t || true
+    # A config that does not parse must never replace one that does.
+    if [ -f "${VHOST}.prev" ]; then cp "${VHOST}.prev" "$VHOST"; else write_bootstrap_vhost; fi
+    nginx -t && systemctl reload nginx
+    warn "Full vhost failed nginx -t — kept the previous config. Fix, then: nginx -t && systemctl reload nginx"
+  fi
+fi
 
 # ============================================================
 # Web Studio — multi-site static hosting substrate
@@ -485,6 +618,25 @@ if [ ! -f "${APP_DIR}/.env" ]; then
 else
   log ".env already exists"
 fi
+
+# Random secrets for anything left BLANK, so the first boot is not "Auth: disabled". A value that
+# is already set is never overwritten (that would log everyone out / break automations).
+# AIOS_SECRETS_KEY is deliberately NOT generated: losing it makes sealed settings unreadable, so it
+# must be a key the operator chose and backed up, not one that exists only on this disk.
+fill_if_blank() {
+  local key="$1" val="$2" f="${APP_DIR}/.env"
+  if grep -q "^${key}=$" "$f"; then
+    sed -i "s|^${key}=$|${key}=${val}|" "$f"; log "${key} generated"
+  elif ! grep -q "^${key}=" "$f"; then
+    printf '%s=%s\n' "$key" "$val" >> "$f"; log "${key} generated"
+  elif grep -Eiq "^${key}=.*(change|your|example|placeholder|xxx)" "$f"; then
+    warn "${key} in .env looks like a placeholder — replace it: openssl rand -hex 32"
+  fi
+}
+fill_if_blank API_TOKEN "$(openssl rand -hex 32)"
+fill_if_blank SESSION_SECRET "$(openssl rand -hex 32)"
+chown ${APP_USER}:${APP_USER} "${APP_DIR}/.env"
+chmod 600 "${APP_DIR}/.env"
 
 # Add n8n env vars if --with-n8n
 if [ "$WITH_N8N" = true ]; then
@@ -733,6 +885,29 @@ CROSSREVIEW
 fi
 
 # ============================================================
+# Verify — report every check, never abort on one
+# ============================================================
+# `set -e` is switched off for this block on purpose: a failing check is the POINT here, and an
+# assignment like X=$(failing | pipeline) under set -e/pipefail ends the script silently — the
+# output just stops after the heading, which reads like a hang, not a failure.
+set +e
+step "Verification"
+VFAIL=0
+vcheck() { if eval "$2" >/dev/null 2>&1; then echo -e "  ${GREEN}ok${NC}    $1"; else echo -e "  ${RED}FAIL${NC}  $1"; VFAIL=1; fi; }
+vcheck "node satisfies engines (>= ${NODE_VERSION})" "[ \"\$(node -v | sed 's/^v//; s/\..*//')\" -ge ${NODE_VERSION} ]"
+vcheck "node_modules owned by ${APP_USER}, not root" "[ \"\$(stat -c %U ${APP_DIR}/node_modules)\" = ${APP_USER} ]"
+vcheck ".env is mode 600"                            "[ \"\$(stat -c %a ${APP_DIR}/.env)\" = 600 ]"
+vcheck "nginx config parses"                         "nginx -t"
+vcheck "app port 3000 not exposed to the internet"   "! ss -tln | grep -Eq '(0\.0\.0\.0|\[::\]|\*):3000 '"
+vcheck "fail2ban sshd jail running"                  "fail2ban-client status sshd"
+vcheck "health endpoint answers locally"             "[ \"\$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:3000/api/health)\" = 200 ]"
+if [ "$TLS_READY" = true ]; then
+  vcheck "HTTPS answers with a trusted certificate"  "curl -sS -o /dev/null --max-time 10 https://${DOMAIN}/api/health"
+fi
+[ "$VFAIL" -eq 0 ] || warn "Some checks failed — each line above names what to look at."
+set -e
+
+# ============================================================
 # Done!
 # ============================================================
 echo ""
@@ -763,22 +938,36 @@ fi
 echo ""
 echo -e "  ${CYAN}━━━ Next Steps ━━━${NC}"
 echo ""
-echo -e "  ${YELLOW}1. Edit your .env file with API keys:${NC}"
+echo -e "  ${YELLOW}1. Generate your admin password hash (typed hidden, never in shell history):${NC}"
+echo -e "     sudo bash ${APP_DIR}/deploy/make-admin-hash.sh"
+echo ""
+echo -e "  ${YELLOW}2. Edit .env — ADMIN_EMAIL, ADMIN_PASSWORD_HASH and your API keys:${NC}"
 echo -e "     sudo nano ${APP_DIR}/.env"
+echo -e "     ${BOLD}Get ADMIN_EMAIL right first time:${NC} the admin account is created ONCE, on the first"
+echo -e "     start where both values are set. Changing them in .env later does not change the account."
+echo -e "     (API_TOKEN and SESSION_SECRET were generated for you if they were blank.)"
 echo ""
-echo -e "  ${YELLOW}2. Generate your admin password hash:${NC}"
-echo -e "     node -e \"require('bcryptjs').hash('YOUR_PASSWORD',12).then(console.log)\""
-echo -e "     Then paste the hash into .env as ADMIN_PASSWORD_HASH"
+if [ "$TLS_READY" = true ]; then
+  echo -e "  ${YELLOW}3. TLS:${NC} done — certificate issued, HTTPS vhost live, renewal via the certbot timer."
+else
+  echo -e "  ${YELLOW}3. TLS — NOT done yet${NC} (DNS did not point here, or certbot failed). Once ${DOMAIN}"
+  echo -e "     resolves to this server (Cloudflare: 'DNS only' while issuing), run:"
+  echo -e "     sudo certbot certonly --webroot -w /var/www/aios-acme -d ${DOMAIN}"
+  # `| sudo tee`, not `sudo sed ... > file`: the redirect runs as the CALLER, so a non-root user
+  # gets "Permission denied" on /etc/nginx even though sed itself ran under sudo.
+  echo -e "     sudo sed 's/yourdomain\\\\.com/${DOMAIN}/g' ${APP_DIR}/deploy/nginx.conf | sudo tee /etc/nginx/sites-available/ai-os > /dev/null"
+  echo -e "     sudo nginx -t && sudo systemctl reload nginx"
+  echo -e "     Do NOT use 'certbot --nginx' here: it rewrites the vhost this script manages."
+fi
 echo ""
-echo -e "  ${YELLOW}3. Get TLS certificate:${NC}"
-echo -e "     sudo certbot --nginx -d ${DOMAIN}"
+echo -e "  ${YELLOW}4. Restart with new config${NC} (-iu, not -u: plain sudo -u reaches an EMPTY pm2 daemon):"
+echo -e "     sudo -iu ${APP_USER} pm2 restart ai-os --update-env"
 echo ""
-echo -e "  ${YELLOW}4. Restart with new config:${NC}"
-echo -e "     sudo -u ${APP_USER} pm2 restart ai-os --update-env"
-echo ""
-echo -e "  ${YELLOW}5. Verify health:${NC}"
+echo -e "  ${YELLOW}5. Verify the app picked it up:${NC}"
+echo -e "     sudo -iu ${APP_USER} pm2 logs ai-os --lines 80 --nostream | grep -E 'Auth:|admin|AUTH'"
+echo -e "     Expect 'Auth: enabled' and '[AUTH] Admin account seeded' — NOT 'No admin seeded'."
 echo -e "     curl -s https://${DOMAIN}/api/health | jq ."
-echo -e "     sudo -u ${APP_USER} bash ${APP_DIR}/deploy/healthcheck.sh"
+echo -e "     sudo -iu ${APP_USER} bash ${APP_DIR}/deploy/healthcheck.sh"
 echo ""
 if [ "$WITH_N8N" = true ]; then
   echo -e "  ${YELLOW}6. n8n Setup:${NC}"
@@ -810,6 +999,7 @@ echo -e "     tail -f ${APP_DIR}/logs/healthcheck.log  # Health log"
 echo ""
 echo -e "  ${CYAN}━━━ Update from GitHub ━━━${NC}"
 echo -e "     cd ${APP_DIR} && sudo -u ${APP_USER} git pull origin master"
-echo -e "     sudo -u ${APP_USER} npm ci --omit=dev"
-echo -e "     sudo -u ${APP_USER} pm2 restart ai-os --update-env"
+echo -e "     sudo -u ${APP_USER} npm ci --omit=dev      # as ${APP_USER}, NEVER root (root-owned node_modules break the next ci)"
+echo -e "     # confirm the install exited 0 BEFORE restarting — ci deletes node_modules first"
+echo -e "     sudo -iu ${APP_USER} pm2 restart ai-os --update-env"
 echo ""

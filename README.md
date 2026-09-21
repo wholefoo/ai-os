@@ -285,25 +285,36 @@ npm start              # http://localhost:3000
 
 ### Admin Login
 
-The admin account is seeded on first run from `.env`:
+The admin account is seeded from `.env` **once** — on the first start where both values are set. Changing them later does not change an account that already exists, so get the email right first time.
 
 ```env
 ADMIN_EMAIL=your@email.com
-ADMIN_PASSWORD_HASH=$2b$12$...   # Generate: node -e "require('bcryptjs').hash('password',12).then(console.log)"
+ADMIN_PASSWORD_HASH=$2b$12$...   # Generate with: bash deploy/make-admin-hash.sh  (hidden input)
 ```
+
+In production, login only works over **HTTPS**: the session cookie is `Secure`, and browsers drop it on plain HTTP.
 
 ### Production Deployment (PM2 + Nginx)
 
+**Before you start:** a KVM VPS running Ubuntu 22.04/24.04 or Debian 12/13, **4 GB RAM recommended** (2 GB minimum — `npm ci` peaks near 1 GB, a Web Studio site build wants 1–2 GB), and your domain's A record already pointing at it so the installer can get the certificate itself. Behind Cloudflare, set the record to **DNS only** (grey cloud) at least while the certificate is issued.
+
 ```bash
-# On your VPS (Ubuntu 22.04/24.04)
+# On your VPS
 sudo bash deploy/install-vps.sh yourdomain.com
 # Licensed deployments: mount the private commercial modules (needs a deploy key / token on the VPS)
 sudo -u aios git -C /opt/ai-os clone https://github.com/wholefoo/ai-os-commercial.git commercial
-sudo nano /opt/ai-os/.env          # Add API keys (+ AIOS_LICENSE_KEY / AIOS_SIGNING_SECRET)
-sudo certbot --nginx -d yourdomain.com
+sudo bash /opt/ai-os/deploy/make-admin-hash.sh   # prints ADMIN_PASSWORD_HASH=...
+sudo nano /opt/ai-os/.env          # ADMIN_EMAIL, the hash, API keys (+ AIOS_LICENSE_KEY / AIOS_SIGNING_SECRET)
 sudo -iu aios pm2 restart ai-os --update-env   # -iu, not -u — see "Push Updates" below
+sudo -iu aios pm2 logs ai-os --lines 80 --nostream | grep -E 'Auth:|AUTH'   # expect "Auth: enabled" + "Admin account seeded"
 curl -s https://yourdomain.com/api/health | jq .
 ```
+
+The installer obtains the Let's Encrypt certificate itself when the domain points at the server, and it generates `API_TOKEN` / `SESSION_SECRET` if they are blank. It ends with a verification report. If TLS was skipped, it prints the exact commands to finish it. **Don't use `certbot --nginx`**: it rewrites the vhost the installer manages. `--harden-ssh` refuses to run unless a non-root sudo user already has a working SSH key, so it can't lock you out.
+
+Copying a script from Windows rather than cloning? Strip carriage returns first (`sed -i 's/\r$//' script.sh`) or bash fails with `bad interpreter`. A git checkout is safe: `.gitattributes` pins scripts to LF. Symptoms and fixes for everything that has gone wrong on real installs are in the [deployment docs' troubleshooting table](https://aiosorchestrationlab.com/docs/deployment#troubleshooting).
+
+**Unattended coding instance.** To let an agent code overnight, run it on a **separate** box, never on the one hosting production. `deploy/coding-instance/` has a provisioner, a systemd unit, an HTTPS add-on and a verifier. Its README covers the GitHub branch protection that makes this safe.
 
 ### Push Updates
 

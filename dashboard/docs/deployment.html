@@ -19,7 +19,7 @@
 
   <script type="application/ld+json">{"@context":"https://schema.org","@type":"TechArticle","headline":"Production Deployment Guide — AI OS Docs","description":"Deploy AI OS to production with PM2 + Nginx or Docker. Includes VPS provisioning, TLS setup, environment configuration, and production hardening checklist.","url":"https://aiosorchestrationlab.com/docs/deployment","author":{"@type":"Organization","name":"AI OS Orchestration Lab"},"publisher":{"@type":"Organization","name":"AI OS Orchestration Lab","url":"https://aiosorchestrationlab.com","logo":{"@type":"ImageObject","url":"https://aiosorchestrationlab.com/assets/logo.png","width":512,"height":512}},"image":{"@type":"ImageObject","url":"https://aiosorchestrationlab.com/assets/og-share.png?v=3","width":1200,"height":630}}</script>
   <script type="application/ld+json">{"@context":"https://schema.org","@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Home","item":"https://aiosorchestrationlab.com/"},{"@type":"ListItem","position":2,"name":"Documentation","item":"https://aiosorchestrationlab.com/docs/"},{"@type":"ListItem","position":3,"name":"Deployment"}]}</script>
-  <script type="application/ld+json">{"@context":"https://schema.org","@type":"FAQPage","mainEntity":[{"@type":"Question","name":"What's the recommended way to deploy AI OS?","acceptedAnswer":{"@type":"Answer","text":"PM2 + Nginx. Run sudo bash deploy/install-vps.sh yourdomain.com on a fresh Ubuntu 22.04+ VPS, and it configures the UFW firewall, installs Node.js 20 LTS, installs PM2 with startup configuration, installs Nginx with the reverse proxy config, installs Certbot for Let's Encrypt TLS, and creates a dedicated aios system user."}},{"@type":"Question","name":"Can I deploy AI OS with Docker instead?","acceptedAnswer":{"@type":"Answer","text":"Yes, with docker compose up -d. The setup uses node:20-alpine with a non-root user, a health check endpoint, volume mounts for .magent/ and logs/ persistence, and port binding to 127.0.0.1:3000 so Nginx fronts external traffic. Docker is optional; the PM2 + Nginx path is simpler and recommended for most deployments."}},{"@type":"Question","name":"How is TLS handled?","acceptedAnswer":{"@type":"Answer","text":"Run sudo certbot --nginx -d yourdomain.com. Certbot auto-renews certificates, and Nginx is configured to redirect HTTP to HTTPS."}},{"@type":"Question","name":"What does the production hardening checklist cover?","acceptedAnswer":{"@type":"Answer","text":"Helmet CSP headers, CORS origin restriction, gzip response compression, morgan request logging, API rate limiting (120/min general, 10/min heavy), input validation on POST endpoints, Bearer token auth, HTTP-only session cookies with 30-day expiry, Stripe webhook signature verification, graceful shutdown, an uncaught exception handler, debounced state auto-save, a 30-second WebSocket heartbeat, a robots.txt blocking /api, /.magent, and /.claude, and HOST binding to 127.0.0.1 in production."}},{"@type":"Question","name":"What environment variables must be set in production?","acceptedAnswer":{"@type":"Answer","text":"All STRIPE_* variables must use live keys (prefix sk_live_), and NODE_ENV=production must be set."}}]}</script>
+  <script type="application/ld+json">{"@context":"https://schema.org","@type":"FAQPage","mainEntity":[{"@type":"Question","name":"What's the recommended way to deploy AI OS?","acceptedAnswer":{"@type":"Answer","text":"PM2 + Nginx. Point your domain at a fresh Ubuntu 22.04/24.04 or Debian 12/13 VPS (4 GB of RAM recommended) and run sudo bash deploy/install-vps.sh yourdomain.com. It configures the UFW firewall and fail2ban, installs Node.js 24 LTS, PM2 and Nginx, obtains a Let's Encrypt certificate, creates a dedicated aios system user, and ends with a verification report."}},{"@type":"Question","name":"Can I deploy AI OS with Docker instead?","acceptedAnswer":{"@type":"Answer","text":"Yes, with docker compose up -d. The setup uses node:24-alpine with a non-root user, a health check endpoint, volume mounts for .magent/ and logs/ persistence, and port binding to 127.0.0.1:3000 so Nginx fronts external traffic. Docker is optional; the PM2 + Nginx path is simpler and recommended for most deployments."}},{"@type":"Question","name":"How is TLS handled?","acceptedAnswer":{"@type":"Answer","text":"The installer obtains a Let's Encrypt certificate itself when your domain already points at the server, and renewal is automatic. If the domain was behind a CDN proxy during install, set the DNS record to DNS only, then run certbot certonly --webroot -w /var/www/aios-acme for your domain and reload Nginx. Avoid certbot --nginx, which rewrites the managed vhost."}},{"@type":"Question","name":"Why can't I log in right after installing?","acceptedAnswer":{"@type":"Answer","text":"Usually one of three things. You are on plain HTTP: the production session cookie is Secure, so browsers drop it until TLS is set up. ADMIN_EMAIL and ADMIN_PASSWORD_HASH are not set: the logs say \"No admin seeded\". Or the email was changed after the first start: the admin account is created only once."}},{"@type":"Question","name":"What does the production hardening checklist cover?","acceptedAnswer":{"@type":"Answer","text":"Helmet CSP headers, CORS origin restriction, gzip response compression, morgan request logging, API rate limiting (120/min general, 10/min heavy), input validation on POST endpoints, Bearer token auth, HTTP-only session cookies with 30-day expiry, Stripe webhook signature verification, graceful shutdown, an uncaught exception handler, debounced state auto-save, a 30-second WebSocket heartbeat, a robots.txt blocking /api, /.magent, and /.claude, and HOST binding to 127.0.0.1 in production."}},{"@type":"Question","name":"What environment variables must be set in production?","acceptedAnswer":{"@type":"Answer","text":"All STRIPE_* variables must use live keys (prefix sk_live_), and NODE_ENV=production must be set."}}]}</script>
 </head>
 <body>
   <nav class="landing-nav">
@@ -57,34 +57,49 @@
           <p>The recommended production deployment uses PM2 for process management and Nginx as a reverse proxy with TLS termination.</p>
 
           <h3>VPS Provisioning</h3>
-          <p>Run the automated install script on a fresh Ubuntu 22.04+ VPS:</p>
+          <p>Use a fresh KVM VPS running Ubuntu 22.04/24.04 or Debian 12/13, with at least 2&nbsp;GB of RAM (4&nbsp;GB recommended: <code>npm ci</code> peaks near 1&nbsp;GB and a Web Studio site build wants 1&ndash;2&nbsp;GB). Point your domain&rsquo;s A record at the server <em>before</em> you start, so the installer can obtain the certificate itself. Then run:</p>
           <pre><code>sudo bash deploy/install-vps.sh yourdomain.com</code></pre>
           <p>This script automatically:</p>
           <ul>
             <li>Configures UFW firewall (allows SSH, HTTP, HTTPS only)</li>
-            <li>Installs Node.js 20 LTS via NodeSource</li>
+            <li>Installs fail2ban with an SSH jail that reads the system journal (Debian 12+ has no <code>/var/log/auth.log</code>)</li>
+            <li>Installs Node.js 24 LTS from NodeSource&rsquo;s signed apt repository</li>
             <li>Installs PM2 globally with startup configuration</li>
             <li>Installs Nginx and deploys the reverse proxy config</li>
-            <li>Installs Certbot for Let's Encrypt TLS certificates</li>
-            <li>Creates a dedicated <code>aios</code> system user</li>
+            <li>Obtains a Let&rsquo;s Encrypt certificate when your domain already points at the server, then switches to the HTTPS config; renewal is automatic</li>
+            <li>Creates a dedicated <code>aios</code> system user and installs dependencies as that user, never as root</li>
+            <li>Generates <code>API_TOKEN</code> and <code>SESSION_SECRET</code> if they are blank, so authentication is on from the first start</li>
+            <li>Finishes with a verification report</li>
           </ul>
+          <p>The optional <code>--harden-ssh</code> flag disables root login and password authentication. It refuses to run unless a non-root user in the <code>sudo</code> group already has a working SSH key, because otherwise it would lock you out of the server.</p>
 
           <h3>Application Setup</h3>
-          <pre><code>cd /opt/ai-os
-npm install --production
-cp .env.example .env
-nano .env   # Configure all required variables
+          <p>The installer has already installed dependencies, created <code>.env</code> and started the app. To finish:</p>
+          <pre><code># 1. Make your admin password hash (typed hidden; never in shell history)
+sudo bash /opt/ai-os/deploy/make-admin-hash.sh
 
-pm2 start ecosystem.config.js --env production
-pm2 save</code></pre>
+# 2. Set ADMIN_EMAIL, ADMIN_PASSWORD_HASH and your API keys
+sudo nano /opt/ai-os/.env
+
+# 3. Restart. Use -iu, not -u: plain `sudo -u` reaches an empty PM2 daemon
+sudo -iu aios pm2 restart ai-os --update-env
+
+# 4. Confirm: expect "Auth: enabled" and "Admin account seeded"
+sudo -iu aios pm2 logs ai-os --lines 80 --nostream | grep -E 'Auth:|AUTH'</code></pre>
+          <div class="docs-callout info">
+            <strong>Get <code>ADMIN_EMAIL</code> right first time.</strong> The admin account is created once, on the first start where <code>ADMIN_EMAIL</code> and <code>ADMIN_PASSWORD_HASH</code> are both set. Changing them in <code>.env</code> afterwards does not change an account that already exists.
+          </div>
 
           <h3>TLS Certificate</h3>
-          <pre><code>sudo certbot --nginx -d yourdomain.com</code></pre>
-          <p>Certbot auto-renews certificates. Nginx is configured to redirect HTTP to HTTPS.</p>
+          <p>If your domain pointed at the server during install, TLS is already done. If it did not (for example, the DNS record was behind Cloudflare&rsquo;s proxy), set the record to <em>DNS only</em> while you issue the certificate, then run these, replacing <code>app.example.com</code> with your domain in both places:</p>
+          <pre><code>sudo certbot certonly --webroot -w /var/www/aios-acme -d app.example.com
+sudo sed 's/yourdomain\.com/app.example.com/g' /opt/ai-os/deploy/nginx.conf | sudo tee /etc/nginx/sites-available/ai-os &gt; /dev/null
+sudo nginx -t &amp;&amp; sudo systemctl reload nginx</code></pre>
+          <p>Avoid <code>certbot --nginx</code>: it rewrites the vhost the installer manages. Renewal uses the same webroot, and the HTTP server block keeps answering <code>/.well-known/acme-challenge/</code> instead of redirecting it, so certificates renew without intervention. Login only works over HTTPS: in production the session cookie is marked <code>Secure</code>, and browsers discard it on plain HTTP.</p>
 
           <h2 id="docker">Option 2 — Docker</h2>
           <pre><code>docker compose up -d</code></pre>
-          <p>The Docker setup uses <code>node:20-alpine</code> with:</p>
+          <p>The Docker setup uses <code>node:24-alpine</code> with:</p>
           <ul>
             <li>Non-root user for security</li>
             <li>Health check endpoint monitoring</li>
@@ -145,13 +160,33 @@ pm2 save</code></pre>
           <h2 id="environment-variables">Environment Variables</h2>
           <p>See the <a href="/docs/getting-started">Quick Start</a> guide for the full environment variable reference. In production, ensure all <code>STRIPE_*</code> variables use live keys (prefix <code>sk_live_</code>) and set <code>NODE_ENV=production</code>.</p>
 
+          <h2 id="troubleshooting">Troubleshooting</h2>
+          <table class="docs-table">
+            <thead>
+              <tr><th>Symptom</th><th>Cause and fix</th></tr>
+            </thead>
+            <tbody>
+              <tr><td><code>/usr/bin/env: 'bash\r': No such file or directory</code> or <code>bad interpreter</code></td><td>The script picked up Windows line endings on its way to the server (copied through an editor, the clipboard or FTP). Run <code>sed -i 's/\r$//' script.sh</code>. A normal <code>git clone</code> is unaffected; the repo pins shell scripts to LF.</td></tr>
+              <tr><td><code>Permission denied (publickey)</code> after enabling SSH hardening</td><td>Password login was switched off with no working key installed. Get in through your provider&rsquo;s web console and re-enable passwords in <code>/etc/ssh/sshd_config.d/</code>. A common trap is pasting the <em>fingerprint</em> (<code>256 SHA256:&hellip;</code>) instead of the key (<code>ssh-ed25519 AAAA&hellip;</code>). <code>ssh-keygen -l -f ~/.ssh/authorized_keys</code> must print a fingerprint, not an error.</td></tr>
+              <tr><td>Logs show <code>Auth: disabled</code> or <code>No admin seeded</code></td><td><code>API_TOKEN</code>, or <code>ADMIN_EMAIL</code>/<code>ADMIN_PASSWORD_HASH</code>, did not reach the running process. Check that <code>.env</code> has no second, empty copy of the key (the last one wins), then restart with <code>sudo -iu aios pm2 restart ai-os --update-env</code>.</td></tr>
+              <tr><td>The login page loads, but signing in does nothing</td><td>You are on plain HTTP. In production the session cookie is <code>Secure</code>, and browsers drop it on HTTP. Finish the TLS step above.</td></tr>
+              <tr><td><code>pm2 restart</code> says &ldquo;Process or Namespace not found&rdquo;</td><td>You used <code>sudo -u aios</code>, which leaves <code>HOME</code> as root&rsquo;s and reaches an empty PM2 daemon. Use <code>sudo -iu aios</code>.</td></tr>
+              <tr><td><code>npm ci</code> fails with <code>EACCES</code></td><td><code>npm</code> was run as root in the app directory at some point, leaving root-owned files. Run <code>chown -R aios:aios /opt/ai-os</code>, then run <code>npm ci</code> <em>as</em> <code>aios</code>. Confirm it exits 0 before restarting: <code>ci</code> deletes <code>node_modules</code> first.</td></tr>
+              <tr><td><code>npm warn EBADENGINE</code> on install</td><td>Node is older than 24. npm only warns, so the install succeeds and the app fails later. Install Node 24.</td></tr>
+              <tr><td><code>node: command not found</code> from cron, systemd or <code>bash -lc</code>, with Node installed via nvm</td><td>Debian&rsquo;s <code>~/.bashrc</code> returns early in non-interactive shells, and nvm loads after that point. Use the absolute path to the binary (<code>~/.nvm/versions/node/v24.*/bin/node</code>) instead of relying on the shell.</td></tr>
+              <tr><td>fail2ban&rsquo;s sshd jail will not start</td><td>The jail points at <code>/var/log/auth.log</code>, which Debian 12 and later do not create. Use <code>backend = systemd</code> (the installer does).</td></tr>
+            </tbody>
+          </table>
+
           <h2 id="faq">Frequently Asked Questions</h2>
           <h3>What&rsquo;s the recommended way to deploy AI OS?</h3>
-          <p>PM2 + Nginx. Run <code>sudo bash deploy/install-vps.sh yourdomain.com</code> on a fresh Ubuntu 22.04+ VPS, and it configures the UFW firewall, installs Node.js 20 LTS, installs PM2 with startup configuration, installs Nginx with the reverse proxy config, installs Certbot for Let&rsquo;s Encrypt TLS, and creates a dedicated <code>aios</code> system user.</p>
+          <p>PM2 + Nginx. Point your domain at a fresh Ubuntu 22.04/24.04 or Debian 12/13 VPS (4&nbsp;GB of RAM recommended) and run <code>sudo bash deploy/install-vps.sh yourdomain.com</code>. It configures the UFW firewall and fail2ban, installs Node.js 24 LTS, PM2 and Nginx, obtains a Let&rsquo;s Encrypt certificate, creates a dedicated <code>aios</code> system user, and ends with a verification report.</p>
           <h3>Can I deploy AI OS with Docker instead?</h3>
-          <p>Yes, with <code>docker compose up -d</code>. The setup uses <code>node:20-alpine</code> with a non-root user, a health check endpoint, volume mounts for <code>.magent/</code> and <code>logs/</code> persistence, and port binding to <code>127.0.0.1:3000</code> so Nginx fronts external traffic. Docker is optional; the PM2 + Nginx path is simpler and recommended for most deployments.</p>
+          <p>Yes, with <code>docker compose up -d</code>. The setup uses <code>node:24-alpine</code> with a non-root user, a health check endpoint, volume mounts for <code>.magent/</code> and <code>logs/</code> persistence, and port binding to <code>127.0.0.1:3000</code> so Nginx fronts external traffic. Docker is optional; the PM2 + Nginx path is simpler and recommended for most deployments.</p>
           <h3>How is TLS handled?</h3>
-          <p>Run <code>sudo certbot --nginx -d yourdomain.com</code>. Certbot auto-renews certificates, and Nginx is configured to redirect HTTP to HTTPS.</p>
+          <p>The installer obtains a Let&rsquo;s Encrypt certificate itself when your domain already points at the server, and renewal is automatic. If the domain was behind a CDN proxy during install, set the DNS record to DNS only, then run <code>certbot certonly --webroot -w /var/www/aios-acme</code> for your domain and reload Nginx. Avoid <code>certbot --nginx</code>, which rewrites the managed vhost.</p>
+          <h3>Why can&rsquo;t I log in right after installing?</h3>
+          <p>Usually one of three things. You are on plain HTTP: the production session cookie is Secure, so browsers drop it until TLS is set up. <code>ADMIN_EMAIL</code> and <code>ADMIN_PASSWORD_HASH</code> are not set: the logs say &ldquo;No admin seeded&rdquo;. Or the email was changed after the first start: the admin account is created only once.</p>
           <h3>What does the production hardening checklist cover?</h3>
           <p>Helmet CSP headers, CORS origin restriction, gzip response compression, morgan request logging, API rate limiting (120/min general, 10/min heavy), input validation on POST endpoints, Bearer token auth, HTTP-only session cookies with 30-day expiry, Stripe webhook signature verification, graceful shutdown, an uncaught exception handler, debounced state auto-save, a 30-second WebSocket heartbeat, a robots.txt blocking <code>/api</code>, <code>/.magent</code>, and <code>/.claude</code>, and HOST binding to 127.0.0.1 in production.</p>
           <h3>What environment variables must be set in production?</h3>
