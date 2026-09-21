@@ -120,6 +120,10 @@ const dep = readRepoFile('dashboard/docs/deployment.html');
 assert(!/Node\.js 20/.test(dep) && !/node:20-alpine/.test(dep),
   'deployment docs no longer say Node 20 (installer + Dockerfile use 24, and engines requires it)');
 assert(!/certbot --nginx -d/.test(dep), 'deployment docs no longer tell operators to run certbot --nginx');
+const hosting = readRepoFile('HOSTING.md');
+assert(!/Node\.js 20/.test(hosting) && /Node\.js 24/.test(hosting), 'HOSTING.md states Node 24, not 20');
+assert(!/`sudo certbot --nginx/.test(hosting), 'HOSTING.md checklist does not prescribe certbot --nginx');
+assert(/Debian 12 \/ 13/.test(hosting), 'HOSTING.md lists Debian 12/13 alongside Ubuntu');
 
 // ---------- 10. deploy/coding-instance ------------------------------------------------------------------------------
 const ci = (f) => readRepoFile('deploy/coding-instance/' + f);

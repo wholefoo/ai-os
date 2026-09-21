@@ -6,15 +6,19 @@
 - **CPU**: 1 vCPU
 - **RAM**: 2 GB (4 GB recommended)
 - **Storage**: 20 GB SSD
-- **OS**: Ubuntu 22.04 or 24.04 LTS
+- **OS**: Ubuntu 22.04 / 24.04 LTS or Debian 12 / 13, on **KVM** (not OpenVZ/LXC: Web Studio's bubblewrap build sandbox needs user namespaces)
 - **Network**: Public IPv4, ports 80/443/22
 - **Bandwidth**: 1 TB/month minimum
+
+RAM, not CPU, is the constraint that bites: `npm ci` peaks near 1 GB and a Web Studio site build
+wants 1–2 GB, so on 2 GB an overlap of the two can hit the OOM killer. The installer adds 2 GB of
+swap either way.
 
 ### Business / Enterprise Edition
 - **CPU**: 2+ vCPU (4 recommended for heavy media/knowledge-graph use)
 - **RAM**: 4 GB minimum (8 GB with n8n + media production)
 - **Storage**: 40-80 GB SSD (depends on knowledge graph + media production usage)
-- **OS**: Ubuntu 22.04 or 24.04 LTS
+- **OS**: Ubuntu 22.04 / 24.04 LTS or Debian 12 / 13, on KVM
 - **Network**: Public IPv4, ports 80/443/22
 - **Bandwidth**: 2+ TB/month
 
@@ -25,7 +29,7 @@ Add to the above:
 - **Port**: 5678 (internal, proxied through Nginx)
 
 ## Software Stack
-- Node.js 20 LTS
+- Node.js 24 LTS (`package.json` requires >= 24; npm only *warns* on an older Node, then the app fails at runtime)
 - PM2 process manager
 - Nginx reverse proxy
 - Let's Encrypt TLS (Certbot)
@@ -231,12 +235,22 @@ Before running the install script, point your domain to your VPS:
 4. Wait for DNS propagation (usually 5-30 minutes)
 5. Verify: `dig +short yourdomain.com` should return your VPS IP
 
+Do this **before** running the installer: it requests the Let's Encrypt certificate itself, and
+only when the name resolves to the server. **On Cloudflare**, set the record to **DNS only** (grey
+cloud) at least while the certificate is issued. Through the proxy (orange cloud) the name
+resolves to Cloudflare, and "Always Use HTTPS" redirects the challenge away. If you turn the proxy
+back on afterwards, use SSL mode **Full (strict)**: *Flexible* talks HTTP to an origin that
+redirects to HTTPS, and the result is a redirect loop.
+
 ## Post-Installation Checklist
 
-- [ ] `.env` file configured with all required API keys
-- [ ] Admin password hash generated and set
-- [ ] TLS certificate obtained (`sudo certbot --nginx -d yourdomain.com`)
-- [ ] PM2 restart with `--update-env` flag
+- [ ] Installer's verification report shows no FAIL lines
+- [ ] Admin password hash generated with `sudo bash /opt/ai-os/deploy/make-admin-hash.sh`
+- [ ] `.env` configured: `ADMIN_EMAIL` (right first time: the admin account is created once), the hash, and your API keys
+- [ ] PM2 restarted as the app user: `sudo -iu aios pm2 restart ai-os --update-env` (`-iu`, not `-u`)
+- [ ] Logs show `Auth: enabled` and `Admin account seeded`: `sudo -iu aios pm2 logs ai-os --lines 80 --nostream | grep -E 'Auth:|AUTH'`
+- [ ] TLS live. If the installer skipped it, run the commands it printed (`certbot certonly --webroot`), **not** `certbot --nginx`
+- [ ] Login works over **https://** (the session cookie is Secure; it is dropped on plain http)
 - [ ] Health check: `curl https://yourdomain.com/api/health`
 - [ ] Stripe webhook configured (if using paid tiers)
 - [ ] Backup strategy in place (provider snapshots or custom)
