@@ -161,7 +161,8 @@
     "tools/test-content-keys.js",
     "tools/test-hub-ingest.js",
     "tools/test-site-lock.js",
-    "tools/test-hub-newsletter.js"
+    "tools/test-hub-newsletter.js",
+    "tools/test-install-vps.js"
   ],
   "ignorePatterns": [
     "docs-export/**",

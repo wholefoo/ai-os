@@ -121,10 +121,14 @@
             </thead>
             <tbody>
               <tr><td><code>xai_api_key</code></td><td>Settings &rarr; AI Keys</td><td>xAI API key used to call <code>grok-build-0.1</code> (same key used for Grok live search)</td></tr>
-              <tr><td><code>self_improve.github_pat</code></td><td>Settings &rarr; Self-Improve</td><td>GitHub personal access token, repo scope — used only to open draft distribution PRs</td></tr>
+              <tr><td><code>self_improve.github_pat</code></td><td>Settings &rarr; Self-Improve</td><td>GitHub fine-grained personal access token, limited to the one distribution repository, with <em>Contents</em> and <em>Pull requests</em> read/write and nothing else (in particular, no <em>Workflows</em> or <em>Administration</em>). Used only to open draft distribution PRs.</td></tr>
               <tr><td><code>self_improve.distribution_repo</code></td><td>Settings &rarr; Self-Improve</td><td>Target <code>owner/repo</code> for distribution blueprints (defaults to <code>wholefoo/ai-os</code>)</td></tr>
             </tbody>
           </table>
+
+          <div class="docs-callout info">
+            <strong>A token carries the rights of the account that created it.</strong> Self-Improve&rsquo;s own code cannot update an existing branch, but the token itself is only as limited as its owner. A token minted by a repository <em>admin</em> bypasses branch protection when &ldquo;Do not allow bypassing&rdquo; (<code>enforce_admins</code>) is off, which is GitHub&rsquo;s default. If the token ever leaks, or if an agent with a shell on the same machine can read it, it can push straight to your default branch. For anything left running unattended, mint the token from a separate machine account added to the repository with <em>Write</em> (not <em>Admin</em>) access, and protect the default branch by requiring a pull request with at least one approval and dismissing stale approvals. Then test it: from that machine, <code>git push origin HEAD:main</code> must be rejected.
+          </div>
 
           <h2 id="api-endpoints">API Endpoints</h2>
 
