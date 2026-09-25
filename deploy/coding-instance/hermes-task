@@ -133,10 +133,15 @@ fi
 
 # ------------------------------------------------------------ the workspace ---
 slug=$(printf '%s' "${TASK:-probe}" | tr 'A-Z' 'a-z' | tr -cs 'a-z0-9' '-' | cut -c1-40 | sed 's/^-*//; s/-*$//')
-ID=$(date -u +%Y%m%d-%H%M%S)-${slug:-task}
-[ "$MODE" = probe ] && ID=probe-$(date -u +%Y%m%d-%H%M%S)
+# A random suffix, not just the timestamp: two runs of the same task inside one second (a quick
+# retry after a refused run) produced the same ID, and the second `git clone` hit the first one's
+# directory. Found on Linux CI, where runs are fast enough to collide; Windows was slow enough to hide it.
+rnd=$(od -An -N3 -tx1 /dev/urandom | tr -d ' \n')
+ID=$(date -u +%Y%m%d-%H%M%S)-$rnd-${slug:-task}
+[ "$MODE" = probe ] && ID=probe-$(date -u +%Y%m%d-%H%M%S)-$rnd
 DIR=$TASKS_DIR/$ID BRANCH=hermes/$ID
 mkdir -p "$TASKS_DIR"
+[ ! -e "$DIR" ] || fail "task directory $DIR already exists"
 say "task $ID"
 
 # A local clone, NOT a worktree: a worktree keeps its git data in the base repo, outside the

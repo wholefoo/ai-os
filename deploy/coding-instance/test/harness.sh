@@ -24,7 +24,8 @@ export HT_UPSTREAM_URL=$R/upstream.git HT_ORIGIN_URL=$R/origin.git
 
 pass=0; fail=0
 ok()  { pass=$((pass+1)); echo "  ok    $1"; }
-bad() { fail=$((fail+1)); echo "  FAIL  $1"; }
+# On failure, show the runner's own last lines: a bare "FAIL" hid a git error in CI.
+bad() { fail=$((fail+1)); echo "  FAIL  $1"; printf '%s\n' "${OUT:-}" | tail -3 | sed 's/^/          | /'; }
 run() { STUB_MODE=$1; shift; export STUB_MODE
         # Poison the environment: the runner must strip these before launching claude.
         OUT=$(ANTHROPIC_API_KEY="$AIOS_KEY" ANTHROPIC_AUTH_TOKEN=poison bash "$RUNNER" "$@" 2>&1); RC=$?; }
@@ -64,6 +65,10 @@ echo "tests red"
 run redtests "Break it"
 printf '%s' "$OUT" | grep -q 'RESULT: tests_failed' && ok "tests_failed" || bad "status: $(printf '%s' "$OUT" | grep RESULT)"
 [ "$(branches)" = 1 ] && ok "nothing pushed" || bad "pushed anyway"
+
+echo "same task twice in the same second (collided on Linux CI)"
+run nochange "Same text"; RC1=$RC; run nochange "Same text"
+[ "$RC1" = 2 ] && [ "$RC" = 2 ] && ok "both runs got their own workspace" || bad "second run collided: rc=$RC1/$RC"
 
 echo "no changes"
 run nochange "Do nothing"
