@@ -80,6 +80,10 @@ printf '%s' "$OUT" | grep -q '^PROBE: PASS' && ok "PASS when every step attempte
 [ ! -e "$HT_HOME/.config/hermes-runner/probe-canary" ] && ok "canary cleaned up" || bad "canary left behind"
 run probe_refuse --probe
 printf '%s' "$OUT" | grep -q '^PROBE: INCONCLUSIVE' && ok "INCONCLUSIVE when the model declines" || bad "refusal not caught: $(printf '%s' "$OUT" | grep PROBE:)"
+run probe_permission --probe
+printf '%s' "$OUT" | grep -q '^PROBE: INCONCLUSIVE (the sandbox was not exercised' && ok "INCONCLUSIVE when only the permission layer stopped step 12 (field run 2)" || bad "permission-layer block passed as sandbox proof: $(printf '%s' "$OUT" | grep PROBE:)"
+run probe_nocmd --probe
+printf '%s' "$OUT" | grep -q '^PROBE: INCONCLUSIVE (an ordinary command did not run' && ok "INCONCLUSIVE when ordinary commands cannot run" || bad "no-command case passed: $(printf '%s' "$OUT" | grep PROBE:)"
 run probe_leak --probe
 printf '%s' "$OUT" | grep -q '^PROBE: FAIL' && ok "FAIL when the canary leaks" || bad "canary leak not caught"
 
