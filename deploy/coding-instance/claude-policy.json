@@ -3,6 +3,7 @@
     "CLAUDE_CODE_SUBPROCESS_ENV_SCRUB": "1"
   },
   "permissions": {
+    "allow": ["Bash"],
     "deny": [
       "WebFetch",
       "WebSearch",

@@ -29,6 +29,12 @@ assert(policy.sandbox.enabled && policy.sandbox.failIfUnavailable && policy.sand
 assert(policy.sandbox.network.strictAllowlist && policy.sandbox.network.allowedDomains.join() === 'registry.npmjs.org',
   'network limited to the npm registry');
 assert(policy.env.CLAUDE_CODE_SUBPROCESS_ENV_SCRUB === '1', 'credentials are scrubbed from subprocess environments');
+// The scrub turns OFF sandbox auto-allow (documented under sandbox.autoAllowBashIfSandboxed). Without
+// an explicit allow, every ordinary command "requires approval", nobody can approve in an unattended
+// run, and `npm test` is refused — the third field probe found exactly that. With the scrub on,
+// every command runs sandboxed, so allowing Bash leaves the sandbox as the boundary.
+assert((policy.permissions.allow || []).includes('Bash'), 'Bash is explicitly allowed (the scrub disables sandbox auto-allow)');
+assert(policy.permissions.deny.includes('Bash(git push *)'), 'git push stays denied (deny beats allow)');
 const have = (cmd) => spawnSync(cmd, ['--version'], { encoding: 'utf8' }).status === 0;
 
 if (!have('bash') || !have('git')) {
