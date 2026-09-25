@@ -48,7 +48,7 @@ if (!have('bash') || !have('git')) {
   if (m) {
     for (const line of out.split('\n').filter((l) => /^\s+FAIL\s/.test(l))) console.error('  ' + line.trim());
     assert(+m[2] === 0, `every runner protection holds (${m[1]} passed, ${m[2]} failed)`);
-    assert(+m[1] >= 35, `the harness still exercises all ${m[1]} checks (expected at least 35)`);
+    assert(+m[1] >= 37, `the harness still exercises all ${m[1]} checks (expected at least 37)`);
   }
   done();
 }
