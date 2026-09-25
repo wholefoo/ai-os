@@ -31,6 +31,49 @@ systemctl enable --now ai-os-hermes
 DOMAIN=hermes.example.com bash add-https.sh   # optional; refuses while .env auth is blank
 ```
 
+## Phase 1: Claude Code as the coding engine
+
+| File | What it does |
+|---|---|
+| `install-claude-code.sh` | Root. Installs Claude Code **as `hermes`**, the sandbox policy and the runner, then verifies ownership. |
+| `claude-policy.json` | Installed root-owned as `/etc/claude-code/managed-settings.json` (highest precedence, not editable by the agent). Sandbox on with no unsandboxed fallback; home directory unreadable except `~/.nvm` and `~/tasks`; the token folder and `~/.ssh` denied; network limited to `registry.npmjs.org`; web tools off; `git push` denied. |
+| `hermes-task` | Installed root-owned at `/usr/local/bin`. Clones a fresh task workspace, runs Claude Code, **re-runs the tests itself**, commits, pushes a branch to the fork. |
+| `test/` | Fixture harness; `tools/test-hermes-task.js` runs it in `npm test`. |
+
+It runs on the operator's **Claude subscription**: `claude setup-token` on a desktop, then the token
+saved (hidden input) at `~hermes/.config/hermes-runner/claude-oauth-token`, mode 600. Order of work:
+
+```bash
+bash install-claude-code.sh                       # as root
+sudo -iu hermes hermes-task --auth-check          # which credential? must PASS
+sudo -iu hermes hermes-task --probe               # can the agent reach what it shouldn't? must PASS
+sudo -iu hermes hermes-task "A small, safe task"  # a real run -> RESULT: pushed
+```
+
+What every run proves rather than assumes:
+
+- **The subscription is what gets billed.** `ANTHROPIC_API_KEY` outranks the OAuth token and is used
+  without prompting in `-p` mode — and this box's AI OS `.env` has one. The runner unsets it, a
+  second guard inside the launch refuses if it is still present, and the init event's
+  `apiKeySource` must not be `ANTHROPIC_API_KEY`.
+- **The agent cannot see its credential.** `CLAUDE_CODE_SUBPROCESS_ENV_SCRUB=1` strips it from
+  every command the agent runs (and isolates their PID namespace from `/proc`); the token is passed
+  with `export`, never on a command line. The token and the AI OS key must appear **0** times in
+  the transcript, stderr, and changed files — only counts are printed, never values.
+- **The tests really pass.** The agent is told to run `npm test`; the runner runs it again itself,
+  outside the agent's control, and only that result decides whether anything is pushed.
+- **The repo's own `.claude/` hooks do not run.** They were written for a developer desktop;
+  `--setting-sources user` keeps them out of unattended runs.
+
+`--probe` is only a PASS if every step was demonstrably **attempted** and blocked, and a positive
+control was read back. A model that quietly declines a step produces INCONCLUSIVE, not PASS: a
+boundary nobody tried has not been proven.
+
+Limits per task: `--budget` (default $5, an estimate — on a subscription it bounds work, not a
+bill), `--turns` (80), `--timeout` (45m), `--model` (sonnet; pass `opus` for hard tasks). One task at
+a time. The usage-credit cap in claude.ai is **account-wide** — it bounds the operator's own overflow
+use too, and tasks share the plan's allowance, so prefer off-hours runs.
+
 ## Deliberate choices — don't "fix" them back
 
 - **`AIOS_HARD_BUDGET=true`** in the `.env` template. It is off by default in the app, which is

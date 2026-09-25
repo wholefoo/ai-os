@@ -1,0 +1,41 @@
+{
+  "env": {
+    "CLAUDE_CODE_SUBPROCESS_ENV_SCRUB": "1"
+  },
+  "permissions": {
+    "deny": [
+      "WebFetch",
+      "WebSearch",
+      "Bash(git push *)",
+      "Read(~/.config/hermes-runner/**)",
+      "Read(~/.ssh/**)",
+      "Read(~/work/**)",
+      "Read(**/.env)",
+      "Edit(~/.config/**)",
+      "Edit(~/.ssh/**)",
+      "Edit(~/work/**)",
+      "Edit(~/.bashrc)",
+      "Edit(~/.profile)",
+      "Edit(~/.claude/**)"
+    ]
+  },
+  "sandbox": {
+    "enabled": true,
+    "failIfUnavailable": true,
+    "allowUnsandboxedCommands": false,
+    "filesystem": {
+      "denyRead": ["~/"],
+      "allowRead": ["~/.nvm", "~/tasks"]
+    },
+    "credentials": {
+      "files": [
+        { "path": "~/.config/hermes-runner", "mode": "deny" },
+        { "path": "~/.ssh", "mode": "deny" }
+      ]
+    },
+    "network": {
+      "allowedDomains": ["registry.npmjs.org"],
+      "strictAllowlist": true
+    }
+  }
+}

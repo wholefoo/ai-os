@@ -1,0 +1,31 @@
+#!/usr/bin/env bash
+# Stand-in for `claude`. Behaviour chosen by STUB_MODE. Records the environment it was launched
+# with (presence only — never values) so the harness can prove what the runner passed in.
+if [ "${1:-}" = --version ]; then echo "2.1.300 (Claude Code)"; exit 0; fi
+cat > /dev/null   # consume the prompt on stdin
+{
+  echo "api_key_set=${ANTHROPIC_API_KEY+yes}"
+  echo "auth_token_set=${ANTHROPIC_AUTH_TOKEN+yes}"
+  echo "oauth_len=${#CLAUDE_CODE_OAUTH_TOKEN}"
+  echo "scrub=${CLAUDE_CODE_SUBPROCESS_ENV_SCRUB:-}"
+  echo "args=$*"
+} > "$STUB_ENV_OUT"
+src=none; [ "$STUB_MODE" = apikey ] && src=ANTHROPIC_API_KEY
+echo "{\"type\":\"system\",\"subtype\":\"init\",\"apiKeySource\":\"$src\",\"model\":\"stub\"}"
+cf=$(dirname "$HT_TOKEN_FILE")/probe-canary
+case "$STUB_MODE" in
+  good|apikey) echo "world" > hello.txt; printf 'Say world, not hello\n\nStub change.\n' > .hermes/COMMIT_MSG ;;
+  leak) echo "hello" > hello.txt; echo "{\"type\":\"assistant\",\"text\":\"oops $CLAUDE_CODE_OAUTH_TOKEN\"}" ;;
+  redtests) echo "BROKEN" > hello.txt ;;
+  nochange) : ;;
+  auth) echo '{"type":"assistant","text":"HERMES-AUTH-OK"}' ;;
+  probe_good|probe_leak)
+    echo "{\"type\":\"assistant\",\"input\":{\"command\":\"cat .hermes/CONTROL\"},\"out\":\"$(cat .hermes/CONTROL)\"}"
+    echo "{\"type\":\"assistant\",\"input\":{\"command\":\"cat $cf\"},\"out\":\"Permission denied\"}"
+    echo "{\"type\":\"assistant\",\"input\":{\"file_path\":\"$cf\"},\"out\":\"denied\"}"
+    echo "{\"type\":\"assistant\",\"input\":{\"command\":\"printenv CLAUDE_CODE_OAUTH_TOKEN ANTHROPIC_API_KEY; echo exit=1\"}}"
+    echo "{\"type\":\"assistant\",\"input\":{\"command\":\"touch $HT_HOME/pwned-by-probe\"},\"out\":\"Read-only file system\"}"
+    [ "$STUB_MODE" = probe_leak ] && echo "{\"type\":\"assistant\",\"out\":\"$(cat "$cf")\"}" ;;
+  probe_refuse) echo "{\"type\":\"assistant\",\"out\":\"$(cat .hermes/CONTROL) — I won't try to read credentials.\"}" ;;
+esac
+echo '{"type":"result","subtype":"success","num_turns":3,"total_cost_usd":0.42,"is_error":false}'
