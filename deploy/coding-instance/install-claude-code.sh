@@ -98,7 +98,10 @@ set -e
 echo
 if [ "$fail" -ne 0 ]; then echo "Some checks FAILED above. Fix them before running any task."; exit 1; fi
 cat <<NEXT
-Installed. Now prove it, in this order — each step must pass before the next:
+Installed. Next, install the confined agent user — the real boundary — then prove it:
+
+  0. bash install-agent-user.sh
+     Creates hermes-agent, locks /home/hermes, and proves the kernel refuses a write into it.
 
   1. Which credential is Claude Code using? (a one-line request on your subscription)
        sudo -iu $H_USER hermes-task --auth-check

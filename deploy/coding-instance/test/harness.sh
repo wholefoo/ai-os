@@ -8,7 +8,13 @@ TOKEN="sk-ant-oat01-FIXTURE$(od -An -N12 -tx1 /dev/urandom | tr -d ' \n')"
 export HT_TOKEN_FILE=$HT_HOME/.config/hermes-runner/claude-oauth-token
 printf '%s\n' "$TOKEN" > "$HT_TOKEN_FILE"; chmod 600 "$HT_TOKEN_FILE"
 export HT_SKIP_MODE_CHECK=1          # Windows filesystems don't report POSIX modes
-export HT_CLAUDE_BIN="$HERE/stub-claude" STUB_ENV_OUT=$R/stub-env HT_TEST_CMD="node test.js"
+# Copy the stub and shim into the space-free temp dir: the repo path contains spaces, and the
+# launcher path must word-split cleanly (it does on the box, where the path has no spaces).
+cp "$HERE/stub-claude" "$HERE/launch-shim" "$R/"; chmod +x "$R/stub-claude" "$R/launch-shim"
+export HT_CLAUDE_BIN="$R/stub-claude" STUB_ENV_OUT=$R/stub-env HT_TEST_CMD="node test.js"
+# Exercise the runner's real launch path through a shim that mimics hermes-agent-launch without root.
+export HT_LAUNCH="$R/launch-shim"
+export HT_WORK_GROUP=__no_such_group__   # skip the on-box chgrp step in fixtures
 
 # upstream (stands in for wholefoo/ai-os), origin (the fork), base (the box's clone)
 git init -q --bare -b master "$R/upstream.git"; git init -q --bare -b master "$R/origin.git"

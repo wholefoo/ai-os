@@ -36,6 +36,8 @@ DOMAIN=hermes.example.com bash add-https.sh   # optional; refuses while .env aut
 | File | What it does |
 |---|---|
 | `install-claude-code.sh` | Root. Installs Claude Code **as `hermes`**, the sandbox policy and the runner, then verifies ownership. |
+| `install-agent-user.sh` | Root. Creates the confined **`hermes-agent`** user, locks `/home/hermes` (0711 + 0700 secrets), shares the tasks tree by group, installs the root launcher and a scoped sudoers rule, and proves the kernel refuses a write into the home directory. |
+| `hermes-agent-launch` | Root-owned launcher. Reads the token, drops to `hermes-agent`, and starts Claude Code with a clean environment. |
 | `claude-policy.json` | Installed root-owned as `/etc/claude-code/managed-settings.json` (highest precedence, not editable by the agent). Sandbox on with no unsandboxed fallback; the token folder, `~/.ssh`, `~/work` (AI OS's `.env` and state) and shell history unreadable — denied by location, because hiding all of `~/` and re-opening the workspace read-only stopped the sandbox from starting at all; network limited to `registry.npmjs.org`; web tools off; `git push` denied. Bash is explicitly **allowed**: the credential scrub turns off the sandbox's own auto-approval, and without the rule every ordinary command — `npm test` included — is refused in an unattended run. The scrub also forces every command into the sandbox, so the sandbox stays the boundary. |
 | `hermes-task` | Installed root-owned at `/usr/local/bin`. Clones a fresh task workspace, runs Claude Code, **re-runs the tests itself**, commits, pushes a branch to the fork. |
 | `test/` | Fixture harness; `tools/test-hermes-task.js` runs it in `npm test`. |
@@ -52,11 +54,21 @@ sudo -iu hermes bash -c 'umask 077; read -rs -p "Paste token, then Enter: " T &&
 The runner and installer both refuse a token file containing whitespace. Order of work:
 
 ```bash
-bash install-claude-code.sh                       # as root
+bash install-claude-code.sh                       # as root: Claude Code + sandbox policy + runner
+bash install-agent-user.sh                        # as root: the confined hermes-agent user (the real boundary)
 sudo -iu hermes hermes-task --auth-check          # which credential? must PASS
 sudo -iu hermes hermes-task --probe               # can the agent reach what it shouldn't? must PASS
 sudo -iu hermes hermes-task "A small, safe task"  # a real run -> RESULT: pushed
 ```
+
+**Why a separate user, not just the sandbox.** On the box the Claude Code sandbox confined reads but
+**not writes**: a sandboxed command created a file in the home directory. Reads of secrets were
+blocked, but that was one layer doing half the job. `hermes-agent` runs Claude Code and the kernel,
+not the sandbox, decides what it can touch: `/home/hermes` is `0711` (traverse to the shared tasks
+tree and to node, nothing else) with its `.ssh`, `.config` and `work` at `0700`, so the agent cannot
+read the token or the deploy key and cannot create a file anywhere under `/home/hermes` except its
+own task workspace. The sandbox stays on as a second layer. The probe's home-directory writes must be
+refused by the kernel; a write to `/tmp` is reported but is not a breach.
 
 What every run proves rather than assumes:
 

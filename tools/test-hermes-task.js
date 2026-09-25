@@ -11,6 +11,32 @@ const { spawnSync } = require('child_process');
 const path = require('path');
 const { assert, done } = require('./test-util');
 
+const ci = (f) => require('fs').readFileSync(path.join(__dirname, '..', 'deploy', 'coding-instance', f), 'utf8');
+
+// ---------- the operating-system boundary --------------------------------------------------------
+// The Claude Code sandbox confined reads but not writes on the box: a sandboxed command wrote to the
+// home directory. So Claude Code runs as a separate confined user whose limits the kernel enforces.
+const launch = ci('hermes-agent-launch');
+assert(/setpriv --reuid .* --regid .* --clear-groups/.test(launch), 'the launcher drops to the agent uid/gid and clears supplementary groups');
+assert(/case "\$real\/" in "\$TASKS_ROOT"\/\*\)/.test(launch), 'the launcher refuses a workspace outside the tasks tree (no symlink escape)');
+assert(/tr -d '\\r\\n' < "\$TOKEN_FILE"/.test(launch), 'the launcher reads the token from the file, not from argv');
+// Only code lines: the header comment explains the API-key precedence, so scan for an actual
+// assignment/export rather than any mention.
+const launchCode = launch.split('\n').filter((l) => !/^\s*#/.test(l)).join('\n');
+assert(!/(export\s+|^\s*)ANTHROPIC_(API_KEY|AUTH_TOKEN)=/m.test(launchCode), 'the launcher never sets an API-key variable that would outrank the subscription token');
+assert(/export CLAUDE_CODE_OAUTH_TOKEN="\$TOKEN"/.test(launch), 'the token reaches Claude Code through the environment, not a command line');
+
+const inst = ci('install-agent-user.sh');
+assert(/useradd -m -g "?\$GROUP"? .* "?\$AGENT/.test(inst) && /passwd -l "?\$AGENT/.test(inst), 'the agent user is created with the work group and locked (no login)');
+assert(/chmod 711 "\$H_HOME"/.test(inst), 'the home directory is locked to 0711 (traverse, not read)');
+assert(/for d in \.ssh \.config work/.test(inst), 'the secret subdirectories are locked to 0700');
+assert(/NOPASSWD: \/usr\/local\/sbin\/hermes-agent-launch/.test(inst), 'hermes may run only the launcher via sudo');
+assert(/visudo -cf/.test(inst), 'the sudoers rule is validated before install');
+assert(/CANNOT create a file in ~hermes/.test(inst), 'the installer proves the kernel refuses a write into the home directory');
+
+const runner = ci('hermes-task');
+assert(/"\$\{LAUNCH\[@\]\}" "\$1" --/.test(runner), 'the runner launches Claude Code through the launcher array (handles `sudo -n <path>` and spaces)');
+
 const harness = path.join(__dirname, '..', 'deploy', 'coding-instance', 'test', 'harness.sh');
 
 // ---------- the sandbox policy -------------------------------------------------------------------

@@ -1,0 +1,19 @@
+#!/usr/bin/env bash
+# Fixture stand-in for hermes-agent-launch. Mimics what the real launcher guarantees, minus the
+# parts that need root and a second user (privilege drop): a clean environment with only the
+# allowlist, the token read from the file (never argv), no ANTHROPIC_API_KEY. Used only by the
+# harness so the runner's launch path is exercised off-box.
+set -euo pipefail
+WS=${1:?workspace}; shift
+[ "${1:-}" = "--" ] && shift
+TOKEN=$(tr -d '\r\n' < "$HT_TOKEN_FILE")
+cd "$WS"
+mkdir -p "$WS/.hermes/agent-home/claude-config"
+exec env -i \
+  PATH="$PATH" \
+  HOME="$WS/.hermes/agent-home" \
+  CLAUDE_CONFIG_DIR="$WS/.hermes/agent-home/claude-config" \
+  STUB_MODE="${STUB_MODE:-}" STUB_ENV_OUT="${STUB_ENV_OUT:-}" HT_HOME="${HT_HOME:-}" HT_TOKEN_FILE="${HT_TOKEN_FILE:-}" \
+  CLAUDE_CODE_OAUTH_TOKEN="$TOKEN" \
+  CLAUDE_CODE_SUBPROCESS_ENV_SCRUB=1 \
+  "$@"
