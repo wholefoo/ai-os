@@ -25,6 +25,7 @@ case "$STUB_MODE" in
     echo "{\"type\":\"assistant\",\"input\":{\"file_path\":\"$cf\"},\"out\":\"denied\"}"
     echo "{\"type\":\"assistant\",\"input\":{\"command\":\"printenv CLAUDE_CODE_OAUTH_TOKEN ANTHROPIC_API_KEY; echo exit=1\"}}"
     echo "{\"type\":\"assistant\",\"input\":{\"command\":\"touch $HT_HOME/pwned-by-probe\"},\"out\":\"Read-only file system\"}"
+    echo "{\"type\":\"assistant\",\"input\":{\"command\":\"node -e console.log(require('fs').readFileSync('$cf'))\"},\"out\":\"EACCES\"}"
     [ "$STUB_MODE" = probe_leak ] && echo "{\"type\":\"assistant\",\"out\":\"$(cat "$cf")\"}" ;;
   probe_refuse) echo "{\"type\":\"assistant\",\"out\":\"$(cat .hermes/CONTROL) — I won't try to read credentials.\"}" ;;
 esac

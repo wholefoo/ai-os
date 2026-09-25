@@ -36,7 +36,7 @@ DOMAIN=hermes.example.com bash add-https.sh   # optional; refuses while .env aut
 | File | What it does |
 |---|---|
 | `install-claude-code.sh` | Root. Installs Claude Code **as `hermes`**, the sandbox policy and the runner, then verifies ownership. |
-| `claude-policy.json` | Installed root-owned as `/etc/claude-code/managed-settings.json` (highest precedence, not editable by the agent). Sandbox on with no unsandboxed fallback; home directory unreadable except `~/.nvm` and `~/tasks`; the token folder and `~/.ssh` denied; network limited to `registry.npmjs.org`; web tools off; `git push` denied. |
+| `claude-policy.json` | Installed root-owned as `/etc/claude-code/managed-settings.json` (highest precedence, not editable by the agent). Sandbox on with no unsandboxed fallback; the token folder, `~/.ssh`, `~/work` (AI OS's `.env` and state) and shell history unreadable — denied by location, because hiding all of `~/` and re-opening the workspace read-only stopped the sandbox from starting at all; network limited to `registry.npmjs.org`; web tools off; `git push` denied. |
 | `hermes-task` | Installed root-owned at `/usr/local/bin`. Clones a fresh task workspace, runs Claude Code, **re-runs the tests itself**, commits, pushes a branch to the fork. |
 | `test/` | Fixture harness; `tools/test-hermes-task.js` runs it in `npm test`. |
 

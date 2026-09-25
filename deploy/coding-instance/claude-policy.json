@@ -24,8 +24,7 @@
     "failIfUnavailable": true,
     "allowUnsandboxedCommands": false,
     "filesystem": {
-      "denyRead": ["~/"],
-      "allowRead": ["~/.nvm", "~/tasks"]
+      "denyRead": ["~/.config/hermes-runner", "~/.ssh", "~/work", "~/.bash_history"]
     },
     "credentials": {
       "files": [
