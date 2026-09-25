@@ -37,6 +37,9 @@ NODE_BIN=$(cat "$H_HOME/.node-bin-path" 2>/dev/null || true)
 [ -s "$TOKEN_FILE" ] || die "no token at $TOKEN_FILE — save it first (see the coding-instance README)"
 [ "$(stat -c '%a %U' "$TOKEN_FILE")" = "600 $H_USER" ] || die "$TOKEN_FILE must be mode 600, owned by $H_USER"
 [ "$(wc -l < "$TOKEN_FILE")" -le 1 ] || die "$TOKEN_FILE has more than one line — re-save the token"
+# A wrapped terminal line put a space inside the first real token; the API then rejects it with a
+# bare 401. A token never contains whitespace, so catch it here with the actual reason.
+[ "$(head -n1 "$TOKEN_FILE" | tr -d '\r\n' | tr -cd '[:space:]' | wc -c)" = 0 ] || die "$TOKEN_FILE contains whitespace — a wrapped paste. Re-save it with whitespace stripped (README)"
 
 # Files copied from Windows carry CRLF; a CRLF shebang or JSON is broken on arrival.
 sed -i 's/\r$//' "$POLICY_SRC" "$RUNNER_SRC"

@@ -41,7 +41,15 @@ DOMAIN=hermes.example.com bash add-https.sh   # optional; refuses while .env aut
 | `test/` | Fixture harness; `tools/test-hermes-task.js` runs it in `npm test`. |
 
 It runs on the operator's **Claude subscription**: `claude setup-token` on a desktop, then the token
-saved (hidden input) at `~hermes/.config/hermes-runner/claude-oauth-token`, mode 600. Order of work:
+saved at `~hermes/.config/hermes-runner/claude-oauth-token`, mode 600. Save it with hidden input and
+**whitespace stripped** — `setup-token` prints one long line, the terminal wraps it, and a copy can
+keep the break as a space (the first real token arrived that way and failed with a bare 401):
+
+```bash
+sudo -iu hermes bash -c 'umask 077; read -rs -p "Paste token, then Enter: " T && printf "%s\n" "$T" | tr -d "[:space:]" > ~/.config/hermes-runner/claude-oauth-token && printf "\n" >> ~/.config/hermes-runner/claude-oauth-token && unset T && echo saved'
+```
+
+The runner and installer both refuse a token file containing whitespace. Order of work:
 
 ```bash
 bash install-claude-code.sh                       # as root

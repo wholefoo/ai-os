@@ -80,6 +80,10 @@ perm=$(stat -c %a "$TOKEN_FILE" 2>/dev/null || echo "")
 [ "$perm" = 600 ] || [ -n "${HT_SKIP_MODE_CHECK:-}" ] || fail "$TOKEN_FILE is mode $perm, must be 600"
 [ "$(wc -l < "$TOKEN_FILE")" -le 1 ] || fail "$TOKEN_FILE has more than one line — a bad paste"
 TOKEN=$(head -n1 "$TOKEN_FILE" | tr -d '\r\n')
+# A token never contains whitespace. The first real one on the box arrived with a space in it:
+# `claude setup-token` prints a long line, the terminal wrapped it, and the copy kept the break.
+# Refuse with the reason here rather than letting Anthropic reject it with an unhelpful 401.
+case "$TOKEN" in *[[:space:]]*) fail "$TOKEN_FILE contains whitespace — a wrapped/broken paste. Re-save it with whitespace stripped (see the coding-instance README)";; esac
 [ "${#TOKEN}" -ge 20 ] || fail "$TOKEN_FILE is too short to be a token"
 age_days=$(( ( $(date +%s) - $(stat -c %Y "$TOKEN_FILE") ) / 86400 ))
 [ "$age_days" -lt 330 ] || say "WARNING: the token is $age_days days old; setup-token tokens last one year. Renew soon."
