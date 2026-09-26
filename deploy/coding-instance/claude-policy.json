@@ -25,7 +25,8 @@
     "failIfUnavailable": true,
     "allowUnsandboxedCommands": false,
     "filesystem": {
-      "denyRead": ["~/.config/hermes-runner", "~/.ssh", "~/work", "~/.bash_history"]
+      "allowWrite": ["/home/hermes-agent"],
+      "denyRead": ["/home/hermes/.config", "/home/hermes/.ssh", "/home/hermes/work", "/home/hermes/.bash_history"]
     },
     "credentials": {
       "files": [

@@ -48,8 +48,12 @@ const policy = JSON.parse(require('fs').readFileSync(path.join(__dirname, '..', 
 const fsPol = policy.sandbox.filesystem || {};
 assert(!(fsPol.allowRead || []).length && !(fsPol.denyRead || []).includes('~/'),
   'the policy does not hide the home directory and re-open the workspace (that broke the sandbox)');
-for (const p of ['~/.config/hermes-runner', '~/.ssh', '~/work'])
+// Claude Code runs as hermes-agent, so ~ is /home/hermes-agent; the secret denies point at hermes's
+// real paths absolutely (defence in depth — the kernel already blocks them). The agent's own home is
+// writable so the sandbox can create ~/.npm etc. at startup (a HOME under the workspace could not).
+for (const p of ['/home/hermes/.config', '/home/hermes/.ssh', '/home/hermes/work'])
   assert((fsPol.denyRead || []).includes(p), `the sandbox denies reading ${p}`);
+assert((fsPol.allowWrite || []).includes('/home/hermes-agent'), 'the agent home is sandbox-writable (Claude Code sets up ~/.npm there at startup)');
 assert(policy.sandbox.enabled && policy.sandbox.failIfUnavailable && policy.sandbox.allowUnsandboxedCommands === false,
   'sandbox on, refuses to start without it, no unsandboxed fallback');
 assert(policy.sandbox.network.strictAllowlist && policy.sandbox.network.allowedDomains.join() === 'registry.npmjs.org',

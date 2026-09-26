@@ -45,12 +45,18 @@ case "$TOKEN" in *[[:space:]]*) die "token contains whitespace — re-save it (R
 NODE_BIN=$(cat "$NODE_BIN_FILE" 2>/dev/null || true)
 [ -x "$NODE_BIN/node" ] || die "node not found via $NODE_BIN_FILE"
 
-# A per-task home under the workspace, so every dotfile Claude Code writes (config, cache) lands in
-# the already-excluded .hermes/ tree and is group-writable by the agent.
-AGENT_HOME="$real/.hermes/agent-home"
-mkdir -p "$AGENT_HOME/claude-config"
-chown -R "$uid:$gid" "$AGENT_HOME"
-chmod -R 2770 "$AGENT_HOME"
+# HOME is the agent's OWN home, not a directory inside the workspace. Claude Code's sandbox sets up
+# ~/.npm and other dotdirs at startup; bubblewrap could not create those under the freshly
+# bind-mounted workspace ("Can't mkdir parents .../agent-home/.npm/_logs"). A normal home outside
+# the workspace behaves like any single-user Claude Code install. The sandbox is told to permit
+# writes there via sandbox.filesystem.allowWrite in the managed policy. CLAUDE_CONFIG_DIR stays
+# per-task under the workspace so no Claude Code state bleeds between tasks; --setting-sources user
+# reads $HOME/.claude (empty), never the repo's own .claude/ at the workspace root.
+AGENT_HOME=/home/hermes-agent
+[ -d "$AGENT_HOME" ] || die "no $AGENT_HOME — run install-agent-user.sh"
+CFG_DIR="$real/.hermes/claude-config"
+mkdir -p "$CFG_DIR"
+chown "$uid:$gid" "$CFG_DIR"   # the agent owns its per-task config dir; .hermes is already group-shared
 
 cd "$real"
 # sudo has already reset the environment (env_reset). We export ONLY the allowlist, so no
@@ -60,7 +66,7 @@ cd "$real"
 # supplementary group, and keeps no inheritable capabilities.
 export PATH="$NODE_BIN:/usr/bin:/bin"
 export HOME="$AGENT_HOME"
-export CLAUDE_CONFIG_DIR="$AGENT_HOME/claude-config"
+export CLAUDE_CONFIG_DIR="$CFG_DIR"
 export CLAUDE_CODE_OAUTH_TOKEN="$TOKEN"
 export CLAUDE_CODE_SUBPROCESS_ENV_SCRUB=1
 exec setpriv --reuid "$uid" --regid "$gid" --clear-groups --inh-caps=-all -- "$@"
