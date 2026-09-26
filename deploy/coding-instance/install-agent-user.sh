@@ -86,7 +86,10 @@ check "$AGENT CANNOT create a file in ~hermes" "! sudo -u $AGENT bash -c 'touch 
 check "$AGENT CAN run node"                  "sudo -u $AGENT $NODE_BIN/node -e 'process.exit(0)'"
 check "$AGENT CAN write the tasks tree"      "sudo -u $AGENT bash -c 'd=$TASKS/.probe-\$\$; mkdir \$d && rmdir \$d'"
 check "launcher is root:root 755"            "[ \"\$(stat -c '%U:%G %a' /usr/local/sbin/hermes-agent-launch)\" = 'root:root 755' ]"
-check "$AGENT has NO sudo"                   "! sudo -u $AGENT -n true 2>/dev/null"
+# Ask what hermes-agent itself is allowed, not whether root can act as it (root always can — the
+# old check tested root's power and always "failed"). `sudo -l -U` lists the user's own privileges.
+check "$AGENT cannot run the launcher"       "! sudo -l -U $AGENT 2>/dev/null | grep -q hermes-agent-launch"
+check "$AGENT is in no admin group"          "! id -nG $AGENT | grep -qwE 'sudo|wheel|admin'"
 check "$H_USER may run the launcher"         "sudo -l -U $H_USER 2>/dev/null | grep -q hermes-agent-launch"
 rm -f "$H_HOME/probe-should-fail"
 set -e
