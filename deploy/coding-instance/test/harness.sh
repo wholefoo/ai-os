@@ -23,7 +23,10 @@ git init -q --bare -b master "$R/upstream.git"; git init -q --bare -b master "$R
 git init -q -b master "$R/seed"; ( cd "$R/seed"
   git config user.email t@t; git config user.name t
   echo hello > hello.txt
-  echo 'const s=require("fs").readFileSync("hello.txt","utf8");if(/BROKEN/.test(s)){console.error("broken");process.exit(1)}console.log("ok")' > test.js
+  printf '.magent/\n.hermes/\n' > .gitignore
+  # Fails if run in the DIRTY workspace: the stub drops an untracked .magent/poison there, mimicking
+  # the agent-owned state that broke the in-place verify. A clean clone of the branch never has it.
+  echo 'const fs=require("fs");if(fs.existsSync(".magent/poison")){console.error("verified the dirty workspace, not a clean checkout");process.exit(1)}const s=fs.readFileSync("hello.txt","utf8");if(/BROKEN/.test(s)){console.error("broken");process.exit(1)}console.log("ok")' > test.js
   git add -A; git commit -qm seed; git push -q "$R/upstream.git" master; git push -q "$R/origin.git" master )
 git clone -q "$R/origin.git" "$R/home/work/ai-os"
 AIOS_KEY="sk-ant-api03-FIXTUREKEY$(od -An -N8 -tx1 /dev/urandom | tr -d ' \n')"
@@ -44,6 +47,7 @@ echo "happy path"
 run good "Make hello say world"
 [ $RC = 0 ] && ok "exit 0" || bad "exit $RC: $(printf '%s' "$OUT" | tail -3)"
 printf '%s' "$OUT" | grep -q 'RESULT: pushed' && ok "status pushed" || bad "status not pushed"
+printf '%s' "$OUT" | grep -q 'verifying a clean checkout' && ok "verify runs on a clean clone, not the dirty workspace" || bad "no clean-checkout verify (would hit agent-owned .magent as on the box)"
 [ "$(branches)" = 1 ] && ok "branch on the fork" || bad "branches on fork: $(branches)"
 b=$(git -C "$R/origin.git" for-each-ref --format='%(refname:short)' refs/heads/hermes/ | head -1)
 [ "$(git -C "$R/origin.git" show "$b:hello.txt")" = world ] && ok "commit carries the change" || bad "change missing"

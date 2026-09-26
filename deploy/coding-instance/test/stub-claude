@@ -14,7 +14,8 @@ src=none; [ "$STUB_MODE" = apikey ] && src=ANTHROPIC_API_KEY
 echo "{\"type\":\"system\",\"subtype\":\"init\",\"apiKeySource\":\"$src\",\"model\":\"stub\"}"
 cf=$(dirname "$HT_TOKEN_FILE")/probe-canary
 case "$STUB_MODE" in
-  good|apikey) echo "world" > hello.txt; printf 'Say world, not hello\n\nStub change.\n' > .hermes/COMMIT_MSG ;;
+  good|apikey) echo "world" > hello.txt; printf 'Say world, not hello\n\nStub change.\n' > .hermes/COMMIT_MSG
+    mkdir -p .magent; : > .magent/poison ;;   # untracked cruft; a clean-clone verify must not see it
   leak) echo "hello" > hello.txt; echo "{\"type\":\"assistant\",\"text\":\"oops $CLAUDE_CODE_OAUTH_TOKEN\"}" ;;
   redtests) echo "BROKEN" > hello.txt ;;
   nochange) : ;;

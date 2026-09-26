@@ -379,27 +379,46 @@ JS
 fi
 
 # ------------------------------------------------------------ verify + ship ---
-say "running '$TEST_CMD' independently"
-set +e; bash -c "$TEST_CMD" > .hermes/runner-tests.log 2>&1; TRC=$?; set -e
-TESTS=pass; [ "$TRC" = 0 ] || TESTS=fail
-
 CHANGED=$(git status --porcelain | wc -l | tr -d ' ')
-STATUS="" PUSHED=no
+STATUS="" PUSHED=no TESTS=n/a
 if [ "$SAFE" != yes ]; then STATUS=unsafe
 elif [ -f .hermes/BLOCKED.md ]; then STATUS=blocked
 elif [ "$CRC" != 0 ]; then STATUS=agent_error   # timeout, turn/budget limit, or a crash: work may be half-done
 elif [ "$CHANGED" = 0 ]; then STATUS=no_changes
-elif [ "$TESTS" != pass ]; then STATUS=tests_failed
 else
   git add -A
-  # Second secret scan, on exactly what would be committed.
+  # Secret scan on exactly what would be committed.
   DIFF_HITS=$(git diff --cached | grep -cE 'sk-ant-[A-Za-z0-9_-]{10}|ghp_[A-Za-z0-9]{20}|github_pat_[A-Za-z0-9_]{20}|PRIVATE KEY-----' || true)
   if [ "$DIFF_HITS" != 0 ]; then STATUS=unsafe; git reset -q; say "FAIL: $DIFF_HITS secret-shaped line(s) in the diff"
   else
     if [ -s .hermes/COMMIT_MSG ]; then cp .hermes/COMMIT_MSG .hermes/commit.txt; else printf 'hermes: %s\n' "$slug" > .hermes/commit.txt; fi
     printf '\nTask-Id: %s\nGenerated-By: hermes-dev (Claude Code %s, model %s)\n' "$ID" "$ver" "$MODEL" >> .hermes/commit.txt
     git commit -q -F .hermes/commit.txt
-    if git push -q -u origin "$BRANCH" 2> .hermes/push.log; then STATUS=pushed PUSHED=yes; else STATUS=push_failed; fi
+
+    # Verify a CLEAN checkout of exactly the committed branch, NOT this workspace. The agent ran its
+    # own tests as a different user (hermes-agent) and left agent-owned state here — the provenance
+    # private key (.magent/.../ed25519-priv.pem, mode 0600) and decisions.log — so re-running the
+    # verify in place as the runner user fails with EACCES on those files (three suites failed that
+    # way on the first real task; nothing to do with the change). A fresh --local clone of the branch
+    # carries no untracked/ignored artifacts, so npm test runs on the committed content, all
+    # hermes-owned, and gates the push on exactly what would be pushed.
+    VDIR="$DIR.verify"; rm -rf "$VDIR" 2>/dev/null || true
+    say "verifying a clean checkout with '$TEST_CMD'"
+    set +e
+    ( set -e
+      git clone -q --local --no-hardlinks -b "$BRANCH" "$DIR" "$VDIR"
+      cd "$VDIR"
+      if [ -f package-lock.json ]; then npm ci --no-audit --no-fund; fi
+      bash -c "$TEST_CMD"
+    ) > .hermes/runner-tests.log 2>&1
+    VRC=$?
+    set -e
+    rm -rf "$VDIR" 2>/dev/null || true
+    TESTS=pass; [ "$VRC" = 0 ] || TESTS=fail
+
+    if [ "$TESTS" != pass ]; then STATUS=tests_failed   # committed locally, not pushed
+    elif git push -q -u origin "$BRANCH" 2> .hermes/push.log; then STATUS=pushed PUSHED=yes
+    else STATUS=push_failed; fi
   fi
 fi
 
