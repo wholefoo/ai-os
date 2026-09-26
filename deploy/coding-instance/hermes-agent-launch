@@ -1,0 +1,77 @@
+#!/usr/bin/env bash
+# hermes-agent-launch — the ONE privileged step. Runs Claude Code as the confined `hermes-agent`
+# user with a clean environment and the subscription token, so the agent process itself is what
+# holds the credential while the operating system, not the sandbox alone, confines what it can
+# touch. Installed root-owned at /usr/local/sbin and run only by `hermes` through a scoped sudoers
+# rule (hermes-agent has no sudo, so the agent can never invoke this itself).
+#
+#   hermes-agent-launch <workspace> -- <command...>
+#
+# Why a separate user at all: on this box the Claude Code sandbox confined reads but NOT writes — a
+# sandboxed command wrote to the home directory. Unix permissions do not depend on the sandbox:
+# /home/hermes is 0711 (traverse only) and its secret subdirectories are 0700, so `hermes-agent`
+# cannot read the token, the deploy key, ~/work or ~/.nvm's contents, and cannot create a file
+# anywhere under /home/hermes except the group-shared tasks tree. The sandbox stays on as a second
+# layer (network limited to npm, reads of secret paths denied, credentials scrubbed).
+set -euo pipefail
+
+# The task tree and node live OUTSIDE /home/hermes. /home/hermes is 0711 and the agent is not its
+# owner, so bubblewrap (running as the agent) cannot create mount points anywhere under it — not for
+# the workspace, not for node. Everything the agent and the sandbox need is under /srv (world-
+# traversable) and /usr (system node, root-owned). /home/hermes holds only hermes's secrets, which
+# the agent never reaches; the launcher, as root, reads the token and hands it over.
+TASKS_ROOT=/srv/hermes-tasks
+AGENT_USER=hermes-agent
+WORK_GROUP=hermes-work
+TOKEN_FILE=/home/hermes/.config/hermes-runner/claude-oauth-token
+NODE_BIN_FILE=/etc/claude-code/agent-node-bin
+
+die() { echo "launch: $*" >&2; exit 3; }
+[ "$(id -u)" -eq 0 ] || die "must run as root (via sudo)"
+
+WS=${1:-}; [ -n "$WS" ] || die "no workspace given"; shift
+[ "${1:-}" = "--" ] && shift
+[ "$#" -ge 1 ] || die "no command given"
+
+# The workspace must resolve to a real directory strictly under the tasks tree — no symlink escape.
+real=$(readlink -f -- "$WS") || die "cannot resolve workspace"
+case "$real/" in "$TASKS_ROOT"/*) : ;; *) die "workspace $real is not under $TASKS_ROOT" ;; esac
+[ -d "$real" ] || die "workspace does not exist"
+
+uid=$(id -u "$AGENT_USER") || die "no $AGENT_USER user — run install-agent-user.sh"
+gid=$(getent group "$WORK_GROUP" | cut -d: -f3); [ -n "$gid" ] || die "no $WORK_GROUP group"
+command -v setpriv >/dev/null || die "setpriv not found (util-linux)"
+
+[ -s "$TOKEN_FILE" ] || die "no token at $TOKEN_FILE"
+TOKEN=$(tr -d '\r\n' < "$TOKEN_FILE")
+case "$TOKEN" in *[[:space:]]*) die "token contains whitespace — re-save it (README)" ;; esac
+[ "${#TOKEN}" -ge 20 ] || die "token too short"
+
+NODE_BIN=$(cat "$NODE_BIN_FILE" 2>/dev/null || true)
+[ -x "$NODE_BIN/node" ] || die "node not found via $NODE_BIN_FILE"
+
+# HOME is the agent's OWN home, not a directory inside the workspace. Claude Code's sandbox sets up
+# ~/.npm and other dotdirs at startup; bubblewrap could not create those under the freshly
+# bind-mounted workspace ("Can't mkdir parents .../agent-home/.npm/_logs"). A normal home outside
+# the workspace behaves like any single-user Claude Code install. The sandbox is told to permit
+# writes there via sandbox.filesystem.allowWrite in the managed policy. CLAUDE_CONFIG_DIR stays
+# per-task under the workspace so no Claude Code state bleeds between tasks; --setting-sources user
+# reads $HOME/.claude (empty), never the repo's own .claude/ at the workspace root.
+AGENT_HOME=/home/hermes-agent
+[ -d "$AGENT_HOME" ] || die "no $AGENT_HOME — run install-agent-user.sh"
+CFG_DIR="$real/.hermes/claude-config"
+mkdir -p "$CFG_DIR"
+chown "$uid:$gid" "$CFG_DIR"   # the agent owns its per-task config dir; .hermes is already group-shared
+
+cd "$real"
+# sudo has already reset the environment (env_reset). We export ONLY the allowlist, so no
+# ANTHROPIC_API_KEY can reach Claude Code from anywhere and outrank the subscription token. The
+# token is passed through the environment (an exported variable), never on a command line, so it
+# never appears in any process's argv. setpriv drops to the agent uid/gid, clears every
+# supplementary group, and keeps no inheritable capabilities.
+export PATH="$NODE_BIN:/usr/bin:/bin"
+export HOME="$AGENT_HOME"
+export CLAUDE_CONFIG_DIR="$CFG_DIR"
+export CLAUDE_CODE_OAUTH_TOKEN="$TOKEN"
+export CLAUDE_CODE_SUBPROCESS_ENV_SCRUB=1
+exec setpriv --reuid "$uid" --regid "$gid" --clear-groups --inh-caps=-all -- "$@"

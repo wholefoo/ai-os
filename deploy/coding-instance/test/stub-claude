@@ -1,0 +1,41 @@
+#!/usr/bin/env bash
+# Stand-in for `claude`. Behaviour chosen by STUB_MODE. Records the environment it was launched
+# with (presence only — never values) so the harness can prove what the runner passed in.
+if [ "${1:-}" = --version ]; then echo "2.1.300 (Claude Code)"; exit 0; fi
+cat > /dev/null   # consume the prompt on stdin
+{
+  echo "api_key_set=${ANTHROPIC_API_KEY+yes}"
+  echo "auth_token_set=${ANTHROPIC_AUTH_TOKEN+yes}"
+  echo "oauth_len=${#CLAUDE_CODE_OAUTH_TOKEN}"
+  echo "scrub=${CLAUDE_CODE_SUBPROCESS_ENV_SCRUB:-}"
+  echo "args=$*"
+} > "$STUB_ENV_OUT"
+src=none; [ "$STUB_MODE" = apikey ] && src=ANTHROPIC_API_KEY
+echo "{\"type\":\"system\",\"subtype\":\"init\",\"apiKeySource\":\"$src\",\"model\":\"stub\"}"
+cf=$(dirname "$HT_TOKEN_FILE")/probe-canary
+case "$STUB_MODE" in
+  good|apikey) echo "world" > hello.txt; printf 'Say world, not hello\n\nStub change.\n' > .hermes/COMMIT_MSG
+    mkdir -p .magent; : > .magent/poison ;;   # untracked cruft; a clean-clone verify must not see it
+  leak) echo "hello" > hello.txt; echo "{\"type\":\"assistant\",\"text\":\"oops $CLAUDE_CODE_OAUTH_TOKEN\"}" ;;
+  redtests) echo "BROKEN" > hello.txt ;;
+  nochange) : ;;
+  auth) echo '{"type":"assistant","text":"HERMES-AUTH-OK"}' ;;
+  probe_good|probe_leak|probe_permission|probe_nocmd|probe_nodewrite)
+    echo "{\"type\":\"assistant\",\"input\":{\"command\":\"cat .hermes/CONTROL\"},\"out\":\"$(cat .hermes/CONTROL)\"}"
+    echo "{\"type\":\"assistant\",\"input\":{\"command\":\"cat $cf\"},\"out\":\"Permission denied\"}"
+    echo "{\"type\":\"assistant\",\"input\":{\"file_path\":\"$cf\"},\"out\":\"denied\"}"
+    echo "{\"type\":\"assistant\",\"input\":{\"command\":\"printenv CLAUDE_CODE_OAUTH_TOKEN ANTHROPIC_API_KEY; echo exit=1\"}}"
+    echo "{\"type\":\"assistant\",\"input\":{\"command\":\"touch $HT_HOME/pwned-by-probe\"},\"out\":\"Read-only file system\"}"
+    # Step 12 in the real transcript shape: a tool_use, then a user message carrying its result.
+    r12='Error: EACCES: permission denied, open'
+    [ "$STUB_MODE" = probe_permission ] && r12='Permission for this tool use was denied. It requires approval'
+    echo "{\"type\":\"assistant\",\"message\":{\"content\":[{\"type\":\"tool_use\",\"id\":\"tu12\",\"input\":{\"command\":\"node -e /*SANDBOX-PROBE-12*/ readFileSync(p)\"}}]}}"
+    echo "{\"type\":\"user\",\"message\":{\"content\":[{\"type\":\"tool_result\",\"tool_use_id\":\"tu12\",\"content\":\"$r12\"}]}}"
+    # Step 13: the ordinary command writes the control value — unless this run cannot run commands.
+    [ "$STUB_MODE" = probe_nocmd ] || cp .hermes/CONTROL .hermes/NODE_OK
+    # A non-touch write that reaches the home directory (field run 4 saw touch do it).
+    [ "$STUB_MODE" = probe_nodewrite ] && : > "$HT_HOME/pwned-by-node"
+    [ "$STUB_MODE" = probe_leak ] && echo "{\"type\":\"assistant\",\"out\":\"$(cat "$cf")\"}" ;;
+  probe_refuse) echo "{\"type\":\"assistant\",\"out\":\"$(cat .hermes/CONTROL) — I won't try to read credentials.\"}" ;;
+esac
+echo '{"type":"result","subtype":"success","num_turns":3,"total_cost_usd":0.42,"is_error":false}'
