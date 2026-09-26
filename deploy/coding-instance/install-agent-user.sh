@@ -14,7 +14,9 @@ H_USER=hermes
 H_HOME=/home/$H_USER
 AGENT=hermes-agent
 GROUP=hermes-work
-TASKS=$H_HOME/tasks
+TASKS=/srv/hermes-tasks
+NODE_MAJOR=24
+AGENT_NODE_BIN_FILE=/etc/claude-code/agent-node-bin
 LAUNCH_SRC=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/hermes-agent-launch
 SUDOERS=/etc/sudoers.d/hermes-agent
 NODE_BIN=$(cat "$H_HOME/.node-bin-path" 2>/dev/null || true)
@@ -53,13 +55,40 @@ for d in .ssh .config work .nvm/.cache; do [ -e "$H_HOME/$d" ] && chmod 700 "$H_
 # and world-readable (they hold no secrets), only its cache is closed above.
 chmod 755 "$H_HOME/.nvm" 2>/dev/null || true
 
-# ---- shared tasks tree ---------------------------------------------------------------------------
+# ---- shared tasks tree (outside /home/hermes) ----------------------------------------------------
 # 2770 setgid, owned hermes:hermes-work: hermes creates each workspace, the agent (in the group)
-# reads and writes it, and new files inherit the group so hermes can commit them.
+# reads and writes it, and new files inherit the group so hermes can commit them. Under /srv, not
+# /home/hermes, because bubblewrap running as the agent cannot create mount points under the 0711 home.
 log "Preparing the shared tasks tree at $TASKS"
 mkdir -p "$TASKS"
 chown "$H_USER:$GROUP" "$TASKS"
 chmod 2770 "$TASKS"
+
+# ---- system Node + Claude Code (root-owned, outside /home) ----------------------------------------
+# The agent runs these under bubblewrap; they must live where the agent (not their owner) can reach
+# them without a 0711 ancestor, and root ownership means the agent cannot modify its own runtime.
+# NodeSource signed apt repo — the same approach as deploy/install-vps.sh (fetch the key as data,
+# verify packages against it; nothing downloaded is executed).
+if ! command -v node >/dev/null || [ "$(node -v 2>/dev/null | sed 's/^v//; s/\..*//')" -lt "$NODE_MAJOR" ]; then
+  log "Installing Node $NODE_MAJOR system-wide (NodeSource)"
+  export DEBIAN_FRONTEND=noninteractive
+  apt-get install -y -qq ca-certificates curl gnupg
+  install -d -m 0755 /etc/apt/keyrings
+  tmpkey=$(mktemp)
+  curl -fsSL https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key -o "$tmpkey" || die "could not fetch the NodeSource key"
+  gpg --dearmor --yes -o /etc/apt/keyrings/nodesource.gpg < "$tmpkey"; rm -f "$tmpkey"
+  chmod 0644 /etc/apt/keyrings/nodesource.gpg
+  echo "deb [signed-by=/etc/apt/keyrings/nodesource.gpg] https://deb.nodesource.com/node_${NODE_MAJOR}.x nodistro main" > /etc/apt/sources.list.d/nodesource.list
+  apt-get update -qq
+  apt-get install -y -qq nodejs
+fi
+SYS_NODE_BIN=$(dirname "$(command -v node)")
+log "Installing Claude Code system-wide (root-owned)"
+npm install -g @anthropic-ai/claude-code@latest --no-audit --no-fund --loglevel=error
+[ -x "$SYS_NODE_BIN/claude" ] || die "claude not found at $SYS_NODE_BIN after global install"
+install -d -m 755 /etc/claude-code
+printf '%s\n' "$SYS_NODE_BIN" > "$AGENT_NODE_BIN_FILE"
+chmod 644 "$AGENT_NODE_BIN_FILE"
 
 # ---- launcher + sudoers --------------------------------------------------------------------------
 log "Installing the launcher (root-owned) and the scoped sudoers rule"
@@ -83,8 +112,12 @@ check "$AGENT CANNOT read the token dir"     "! sudo -u $AGENT test -r $H_HOME/.
 check "$AGENT CANNOT read ~/.ssh"            "! sudo -u $AGENT test -r $H_HOME/.ssh"
 check "$AGENT CANNOT read ~/work"            "! sudo -u $AGENT test -r $H_HOME/work"
 check "$AGENT CANNOT create a file in ~hermes" "! sudo -u $AGENT bash -c 'touch $H_HOME/probe-should-fail 2>/dev/null'; ! test -e $H_HOME/probe-should-fail"
-check "$AGENT CAN run node"                  "sudo -u $AGENT $NODE_BIN/node -e 'process.exit(0)'"
+check "$AGENT CAN run system node + claude"  "sudo -u $AGENT $SYS_NODE_BIN/node -e 'process.exit(0)' && sudo -u $AGENT $SYS_NODE_BIN/claude --version"
+check "agent-node-bin recorded"              "[ \"\$(cat $AGENT_NODE_BIN_FILE)\" = $SYS_NODE_BIN ]"
 check "$AGENT CAN write the tasks tree"      "sudo -u $AGENT bash -c 'd=$TASKS/.probe-\$\$; mkdir \$d && rmdir \$d'"
+# The exact operation that failed under /home/hermes: bubblewrap, as the agent, binding a workspace
+# under the tasks tree. Proves the move to /srv actually fixed it, before a task ever runs.
+check "$AGENT bwrap CAN bind a task workspace" "d=$TASKS/.bwrap-probe-\$\$; mkdir -p \$d && chgrp $GROUP \$d && chmod 2770 \$d; sudo -u $AGENT bwrap --ro-bind / / --bind \$d \$d --unshare-user --dev /dev true; r=\$?; rmdir \$d; [ \$r = 0 ]"
 check "launcher is root:root 755"            "[ \"\$(stat -c '%U:%G %a' /usr/local/sbin/hermes-agent-launch)\" = 'root:root 755' ]"
 # Ask what hermes-agent itself is allowed, not whether root can act as it (root always can — the
 # old check tested root's power and always "failed"). `sudo -l -U` lists the user's own privileges.

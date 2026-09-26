@@ -15,11 +15,16 @@
 # layer (network limited to npm, reads of secret paths denied, credentials scrubbed).
 set -euo pipefail
 
-TASKS_ROOT=/home/hermes/tasks
+# The task tree and node live OUTSIDE /home/hermes. /home/hermes is 0711 and the agent is not its
+# owner, so bubblewrap (running as the agent) cannot create mount points anywhere under it — not for
+# the workspace, not for node. Everything the agent and the sandbox need is under /srv (world-
+# traversable) and /usr (system node, root-owned). /home/hermes holds only hermes's secrets, which
+# the agent never reaches; the launcher, as root, reads the token and hands it over.
+TASKS_ROOT=/srv/hermes-tasks
 AGENT_USER=hermes-agent
 WORK_GROUP=hermes-work
 TOKEN_FILE=/home/hermes/.config/hermes-runner/claude-oauth-token
-NODE_BIN_FILE=/home/hermes/.node-bin-path
+NODE_BIN_FILE=/etc/claude-code/agent-node-bin
 
 die() { echo "launch: $*" >&2; exit 3; }
 [ "$(id -u)" -eq 0 ] || die "must run as root (via sudo)"

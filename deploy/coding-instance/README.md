@@ -36,8 +36,14 @@ DOMAIN=hermes.example.com bash add-https.sh   # optional; refuses while .env aut
 | File | What it does |
 |---|---|
 | `install-claude-code.sh` | Root. Installs Claude Code **as `hermes`**, the sandbox policy and the runner, then verifies ownership. |
-| `install-agent-user.sh` | Root. Creates the confined **`hermes-agent`** user, locks `/home/hermes` (0711 + 0700 secrets), shares the tasks tree by group, installs the root launcher and a scoped sudoers rule, and proves the kernel refuses a write into the home directory. |
+| `install-agent-user.sh` | Root. Creates the confined **`hermes-agent`** user, locks `/home/hermes` (0711 + 0700 secrets), makes the task tree at `/srv/hermes-tasks`, installs **system Node + Claude Code** (root-owned, outside `/home`), installs the root launcher and a scoped sudoers rule, and proves both that the kernel refuses a write into `/home/hermes` and that bubblewrap (as the agent) can bind a workspace under `/srv`. |
 | `hermes-agent-launch` | Root-owned launcher. Reads the token, drops to `hermes-agent`, and starts Claude Code with a clean environment. |
+
+The agent touches nothing under `/home/hermes`: its task tree is `/srv/hermes-tasks`, its home is
+`/home/hermes-agent`, and it runs system node/Claude Code from `/usr`. `/home/hermes` is `0711` and
+holds only hermes's secrets, so bubblewrap (which runs as the agent and is not that directory's
+owner) never needs to create anything under it — the failure mode that a task tree or `HOME` under
+`/home/hermes` produced.
 | `claude-policy.json` | Installed root-owned as `/etc/claude-code/managed-settings.json` (highest precedence, not editable by the agent). Sandbox on with no unsandboxed fallback; the token folder, `~/.ssh`, `~/work` (AI OS's `.env` and state) and shell history unreadable — denied by location, because hiding all of `~/` and re-opening the workspace read-only stopped the sandbox from starting at all; network limited to `registry.npmjs.org`; web tools off; `git push` denied. Bash is explicitly **allowed**: the credential scrub turns off the sandbox's own auto-approval, and without the rule every ordinary command — `npm test` included — is refused in an unattended run. The scrub also forces every command into the sandbox, so the sandbox stays the boundary. |
 | `hermes-task` | Installed root-owned at `/usr/local/bin`. Clones a fresh task workspace, runs Claude Code, **re-runs the tests itself**, commits, pushes a branch to the fork. |
 | `test/` | Fixture harness; `tools/test-hermes-task.js` runs it in `npm test`. |

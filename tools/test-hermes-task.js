@@ -20,6 +20,8 @@ const launch = ci('hermes-agent-launch');
 assert(/setpriv --reuid .* --regid .* --clear-groups/.test(launch), 'the launcher drops to the agent uid/gid and clears supplementary groups');
 assert(/case "\$real\/" in "\$TASKS_ROOT"\/\*\)/.test(launch), 'the launcher refuses a workspace outside the tasks tree (no symlink escape)');
 assert(/tr -d '\\r\\n' < "\$TOKEN_FILE"/.test(launch), 'the launcher reads the token from the file, not from argv');
+assert(/TASKS_ROOT=\/srv\/hermes-tasks/.test(launch) && /NODE_BIN_FILE=\/etc\/claude-code\/agent-node-bin/.test(launch),
+  'the launcher runs from /srv (workspace) and system node — nothing under the 0711 /home/hermes');
 // Only code lines: the header comment explains the API-key precedence, so scan for an actual
 // assignment/export rather than any mention.
 const launchCode = launch.split('\n').filter((l) => !/^\s*#/.test(l)).join('\n');
@@ -33,6 +35,9 @@ assert(/for d in \.ssh \.config work/.test(inst), 'the secret subdirectories are
 assert(/NOPASSWD: \/usr\/local\/sbin\/hermes-agent-launch/.test(inst), 'hermes may run only the launcher via sudo');
 assert(/visudo -cf/.test(inst), 'the sudoers rule is validated before install');
 assert(/CANNOT create a file in ~hermes/.test(inst), 'the installer proves the kernel refuses a write into the home directory');
+assert(/TASKS=\/srv\/hermes-tasks/.test(inst), 'the tasks tree lives under /srv, not the 0711 home');
+assert(/npm install -g @anthropic-ai\/claude-code/.test(inst) && /nodesource/.test(inst), 'node + Claude Code are installed system-wide (root-owned, outside /home)');
+assert(/bwrap CAN bind a task workspace/.test(inst), 'the installer proves bubblewrap (as the agent) can bind a workspace under /srv — the operation that failed under /home');
 
 const runner = ci('hermes-task');
 assert(/"\$\{LAUNCH\[@\]\}" "\$1" --/.test(runner), 'the runner launches Claude Code through the launcher array (handles `sudo -n <path>` and spaces)');

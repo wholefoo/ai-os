@@ -16,6 +16,7 @@ export HT_CLAUDE_BIN="$R/stub-claude" STUB_ENV_OUT=$R/stub-env HT_TEST_CMD="node
 export HT_LAUNCH="$R/launch-shim"
 export HT_WORK_GROUP=__no_such_group__   # skip the on-box chgrp step in fixtures
 export HT_AGENT_USER=$(id -un)           # off-box the shim runs as the current user, not hermes-agent
+export HT_TASKS_DIR=$R/tasks             # the real default is /srv/hermes-tasks, absent off-box
 
 # upstream (stands in for wholefoo/ai-os), origin (the fork), base (the box's clone)
 git init -q --bare -b master "$R/upstream.git"; git init -q --bare -b master "$R/origin.git"

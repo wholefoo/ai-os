@@ -26,13 +26,16 @@ set -euo pipefail
 # Every path is overridable so the script can be exercised against fixtures off the box.
 HOME_DIR=${HT_HOME:-$HOME}
 BASE_REPO=${HT_BASE_REPO:-$HOME_DIR/work/ai-os}
-TASKS_DIR=${HT_TASKS_DIR:-$HOME_DIR/tasks}
+# Outside /home/hermes (0711): the confined agent must be able to work here, and bubblewrap running
+# as the agent cannot create mount points under the locked home.
+TASKS_DIR=${HT_TASKS_DIR:-/srv/hermes-tasks}
 TOKEN_FILE=${HT_TOKEN_FILE:-$HOME_DIR/.config/hermes-runner/claude-oauth-token}
 UPSTREAM_URL=${HT_UPSTREAM_URL:-https://github.com/wholefoo/ai-os.git}
 ORIGIN_URL=${HT_ORIGIN_URL:-git@github.com:wholefoo-lab/ai-os.git}
 UPSTREAM_BRANCH=${HT_UPSTREAM_BRANCH:-master}
 COMPARE_URL=${HT_COMPARE_URL:-https://github.com/wholefoo/ai-os/compare/master...wholefoo-lab:ai-os:}
-CLAUDE_BIN=${HT_CLAUDE_BIN:-claude}
+# The agent runs the system Claude Code (root-owned, outside /home) recorded by install-agent-user.sh.
+CLAUDE_BIN=${HT_CLAUDE_BIN:-$(cat /etc/claude-code/agent-node-bin 2>/dev/null)/claude}
 TEST_CMD=${HT_TEST_CMD:-npm test}
 LOCK_DIR=${HT_LOCK:-$HOME_DIR/.hermes-task.lock}
 MIN_CLAUDE=${HT_MIN_CLAUDE:-2.1.259}   # --permission-prompts needs it
