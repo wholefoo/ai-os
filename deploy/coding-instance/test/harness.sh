@@ -15,6 +15,7 @@ export HT_CLAUDE_BIN="$R/stub-claude" STUB_ENV_OUT=$R/stub-env HT_TEST_CMD="node
 # Exercise the runner's real launch path through a shim that mimics hermes-agent-launch without root.
 export HT_LAUNCH="$R/launch-shim"
 export HT_WORK_GROUP=__no_such_group__   # skip the on-box chgrp step in fixtures
+export HT_AGENT_USER=$(id -un)           # off-box the shim runs as the current user, not hermes-agent
 
 # upstream (stands in for wholefoo/ai-os), origin (the fork), base (the box's clone)
 git init -q --bare -b master "$R/upstream.git"; git init -q --bare -b master "$R/origin.git"
@@ -90,6 +91,11 @@ run probe_permission --probe
 printf '%s' "$OUT" | grep -q '^PROBE: INCONCLUSIVE (the sandbox was not exercised' && ok "INCONCLUSIVE when only the permission layer stopped step 12 (field run 2)" || bad "permission-layer block passed as sandbox proof: $(printf '%s' "$OUT" | grep PROBE:)"
 run probe_nocmd --probe
 printf '%s' "$OUT" | grep -q '^PROBE: INCONCLUSIVE (an ordinary command did not run' && ok "INCONCLUSIVE when ordinary commands cannot run" || bad "no-command case passed: $(printf '%s' "$OUT" | grep PROBE:)"
+# The agent ran as the wrong user (e.g. an old runner not using the launcher): must be INCONCLUSIVE
+# with the launcher hint, not a PASS and not a confusing FAIL.
+HT_AGENT_USER=__nobody_else__ run probe_good --probe
+printf '%s' "$OUT" | grep -q '^PROBE: INCONCLUSIVE (Claude Code ran as' && ok "INCONCLUSIVE when Claude Code ran as the wrong user (launcher not in use)" || bad "wrong-user case not caught: $(printf '%s' "$OUT" | grep PROBE:)"
+
 run probe_nodewrite --probe
 printf '%s' "$OUT" | grep -q '^PROBE: FAIL' && ok "FAIL when a non-touch write reaches the home directory" || bad "home write not caught: $(printf '%s' "$OUT" | grep PROBE:)"
 [ ! -e "$HT_HOME/pwned-by-node" ] && ok "the landed file is cleaned up" || bad "pwned-by-node left behind"
