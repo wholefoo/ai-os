@@ -53,11 +53,14 @@ const policy = JSON.parse(require('fs').readFileSync(path.join(__dirname, '..', 
 const fsPol = policy.sandbox.filesystem || {};
 assert(!(fsPol.allowRead || []).length && !(fsPol.denyRead || []).includes('~/'),
   'the policy does not hide the home directory and re-open the workspace (that broke the sandbox)');
-// Claude Code runs as hermes-agent, so ~ is /home/hermes-agent; the secret denies point at hermes's
-// real paths absolutely (defence in depth — the kernel already blocks them). The agent's own home is
-// writable so the sandbox can create ~/.npm etc. at startup (a HOME under the workspace could not).
-for (const p of ['/home/hermes/.config', '/home/hermes/.ssh', '/home/hermes/work'])
-  assert((fsPol.denyRead || []).includes(p), `the sandbox denies reading ${p}`);
+// The sandbox must NOT try to deny/mask any path under /home/hermes: enforcing a deny requires
+// bubblewrap to create a mount there, and it cannot (0711, the agent is not the owner) — that failed
+// on the box ("Can't mkdir parents for /home/hermes/.config"). The kernel already blocks the agent
+// from those paths (separate user, 0700 subdirs), so the sandbox rule is redundant as well as fatal.
+const underHermes = (arr) => (arr || []).some((p) => /(^|["'\s])(~\/|\/home\/hermes\/)/.test(p) && !p.includes('hermes-agent'));
+assert(!underHermes(fsPol.denyRead), 'no sandbox denyRead under /home/hermes (it would make bwrap fail to start; the kernel enforces it)');
+const credFiles = ((policy.sandbox.credentials || {}).files || []).map((f) => f.path);
+assert(!underHermes(credFiles), 'no sandbox credential-file mount under the locked home (same bwrap failure)');
 assert((fsPol.allowWrite || []).includes('/home/hermes-agent'), 'the agent home is sandbox-writable (Claude Code sets up ~/.npm there at startup)');
 assert(policy.sandbox.enabled && policy.sandbox.failIfUnavailable && policy.sandbox.allowUnsandboxedCommands === false,
   'sandbox on, refuses to start without it, no unsandboxed fallback');

@@ -25,14 +25,7 @@
     "failIfUnavailable": true,
     "allowUnsandboxedCommands": false,
     "filesystem": {
-      "allowWrite": ["/home/hermes-agent"],
-      "denyRead": ["/home/hermes/.config", "/home/hermes/.ssh", "/home/hermes/work", "/home/hermes/.bash_history"]
-    },
-    "credentials": {
-      "files": [
-        { "path": "~/.config/hermes-runner", "mode": "deny" },
-        { "path": "~/.ssh", "mode": "deny" }
-      ]
+      "allowWrite": ["/home/hermes-agent"]
     },
     "network": {
       "allowedDomains": ["registry.npmjs.org"],
