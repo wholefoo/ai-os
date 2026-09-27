@@ -16,6 +16,7 @@ cf=$(dirname "$HT_TOKEN_FILE")/probe-canary
 case "$STUB_MODE" in
   good|apikey) echo "world" > hello.txt; printf 'Say world, not hello\n\nStub change.\n' > .hermes/COMMIT_MSG
     mkdir -p .magent; : > .magent/poison   # untracked cruft; a clean-clone verify must not see it
+    mkdir -p .claude; echo journal > .claude/.cc-writes   # Claude Code's write journal: excluded from the mirror, never committed
     : > .npmrc ;;                           # empty untracked cruft; the runner must strip it, not commit it
   emptycruft) : > .npmrc; : > .env.test ;;  # ONLY empty cruft, no real change -> must be no_changes, not a junk push
   leak) echo "hello" > hello.txt; echo "{\"type\":\"assistant\",\"text\":\"oops $CLAUDE_CODE_OAUTH_TOKEN\"}" ;;

@@ -422,8 +422,14 @@ else
   # Otherwise a mirrored file lands with an mtime OLDER than the fresh checkout's index, git assumes
   # it is stat-clean, skips the content check and silently misses the change (`git status` empty →
   # a real edit shipped as "no_changes"). Same-second collisions hid it — it showed up as flakiness.
+  # .claude/.cc-* are Claude Code's own workspace runtime journals (.cc-writes seen on the box),
+  # created 0600 by the agent (hermes-agent). tar runs as the runner (hermes) and cannot read them,
+  # which aborted the whole mirror. They are runtime state, never a deliverable and not tracked;
+  # exclude the whole .cc-* family by its prefix (a category, not one filename) so a sibling journal
+  # does not break the mirror. Tracked repo files under .claude (agents, rules) do not match .cc-*.
   ( cd "$DIR" && tar --exclude='./.git' --exclude='./node_modules' --exclude='./.hermes' \
-      --exclude='./.npm-cache' --exclude='./.magent' -cf - . ) | ( cd "$CDIR" && tar -xmf - )
+      --exclude='./.npm-cache' --exclude='./.magent' --exclude='./.claude/.cc-*' \
+      -cf - . ) | ( cd "$CDIR" && tar -xmf - )
   git -C "$CDIR" ls-files -z | while IFS= read -r -d '' f; do [ -e "$DIR/$f" ] || rm -f "$CDIR/$f"; done
   cd "$CDIR"
   while IFS= read -r -d '' f; do [ -s "$f" ] || rm -f "$f"; done < <(git ls-files --others --exclude-standard -z)

@@ -55,6 +55,8 @@ const runnerCode = runner.split('\n').filter((l) => !/^\s*#/.test(l)).join('\n')
 assert(!/\brsync\b/.test(runnerCode), 'the mirror uses portable tar, not rsync (not guaranteed present)');
 assert(/cd "\$DIR" && tar\b/.test(runnerCode) && /-cf - \. \) \| \( cd "\$CDIR" && tar -xmf -/.test(runnerCode),
   'the agent working tree is copied into the clean checkout with tar -xm (--touch: current mtime, so git never mistakes a real edit for stat-clean and reports it as no_changes)');
+assert(/--exclude='\.\/\.claude\/\.cc-\*'/.test(runnerCode),
+  "Claude Code's workspace runtime journals (.claude/.cc-*, e.g. .cc-writes) are excluded as a family — they are 0600 hermes-agent, unreadable by the runner, and aborted the whole tar mirror on the box");
 assert(/git -C "\$CDIR" ls-files -z \| while .*\[ -e "\$DIR\/\$f" \] \|\| rm -f "\$CDIR\/\$f"/.test(runner),
   'a deletion pass removes base-tracked files the agent deleted, so CDIR matches the working tree');
 
@@ -109,7 +111,7 @@ if (!have('bash') || !have('git')) {
   if (m) {
     for (const line of out.split('\n').filter((l) => /^\s+FAIL\s/.test(l))) console.error('  ' + line.trim());
     assert(+m[2] === 0, `every runner protection holds (${m[1]} passed, ${m[2]} failed)`);
-    assert(+m[1] >= 42, `the harness still exercises all ${m[1]} checks (expected at least 42)`);
+    assert(+m[1] >= 43, `the harness still exercises all ${m[1]} checks (expected at least 43)`);
   }
   done();
 }
