@@ -41,6 +41,9 @@ assert(/bwrap CAN bind a task workspace/.test(inst), 'the installer proves bubbl
 
 const runner = ci('hermes-task');
 assert(/"\$\{LAUNCH\[@\]\}" "\$1" --/.test(runner), 'the runner launches Claude Code through the launcher array (handles `sudo -n <path>` and spaces)');
+assert(/chmod -R g-w "\$DIR\/\.git"/.test(runner), 'the workspace .git is kept writable by the runner only — a git write as the agent leaves objects the runner cannot add to');
+assert(/git clone -q --local --no-hardlinks -b "\$BRANCH" "\$DIR" "\$VDIR"/.test(runner) && /VDIR="\$DIR\.verify"/.test(runner),
+  'the verify runs on a clean clone of the committed branch, not the agent-polluted workspace');
 
 const harness = path.join(__dirname, '..', 'deploy', 'coding-instance', 'test', 'harness.sh');
 

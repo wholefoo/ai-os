@@ -183,6 +183,11 @@ if getent group "$WORK_GROUP" >/dev/null 2>&1; then
   chgrp -R "$WORK_GROUP" "$DIR"
   chmod -R g+rwX "$DIR"
   find "$DIR" -type d -exec chmod g+s {} + 2>/dev/null || true
+  # The agent edits the WORKING TREE but must never write .git. A git write as hermes-agent creates
+  # objects/dirs the runner (hermes) then cannot add to ("insufficient permission for adding an
+  # object to repository database"). Keep .git writable by its owner (hermes) only; the agent keeps
+  # group read+traverse, so read-only git (git status/diff, to review its own change) still works.
+  chmod -R g-w "$DIR/.git" 2>/dev/null || true
 fi
 
 # ------------------------------------------------------------------ prompts ---
@@ -238,8 +243,10 @@ $TASK
 RULES:
 - Work only inside this directory. Read the repository's CLAUDE.md and .claude/rules/ first and
   follow them.
-- Do NOT run git commit, git push, or change git configuration. The runner commits and pushes
-  after you finish, and only if the tests pass when it runs them itself.
+- Do NOT run any git command that WRITES (commit, push, add/stage, stash, config, gc). The runner
+  owns all git operations and commits/pushes after you finish, only if the tests pass when it runs
+  them on a clean checkout. You may use read-only git (git status, git diff) to review your change.
+  Writing .git is also blocked at the filesystem level, so a git write will simply fail.
 - Run the full test command, \`$TEST_CMD\`, and keep fixing until it passes. A partial test run
   does not count.
 - When finished, write .hermes/COMMIT_MSG: a summary line of 72 characters or fewer, a blank line,
