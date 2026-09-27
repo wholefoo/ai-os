@@ -183,12 +183,13 @@ if getent group "$WORK_GROUP" >/dev/null 2>&1; then
   chgrp -R "$WORK_GROUP" "$DIR"
   chmod -R g+rwX "$DIR"
   find "$DIR" -type d -exec chmod g+s {} + 2>/dev/null || true
-  # The agent edits the WORKING TREE but must never write .git. A git write as hermes-agent creates
-  # objects/dirs the runner (hermes) then cannot add to ("insufficient permission for adding an
-  # object to repository database"). Keep .git writable by its owner (hermes) only; the agent keeps
-  # group read+traverse, so read-only git (git status/diff, to review its own change) still works.
-  chmod -R g-w "$DIR/.git" 2>/dev/null || true
 fi
+# NOTE: .git in the agent's workspace is deliberately LEFT WRITABLE. An earlier version locked it
+# (chmod -R g-w .git) to stop the agent polluting .git/objects, but that also blocked Claude Code's
+# sandbox from creating its own per-Bash protection mount (bwrap: "Can't create .git/modules") —
+# which broke EVERY Bash command for the agent (Bug C). The commit no longer trusts the agent's
+# .git at all: the runner commits + verifies from a FRESH clone of base with the agent's working-tree
+# files copied in (see "verify + ship"), so whatever the agent does to $DIR/.git is irrelevant.
 
 # ------------------------------------------------------------------ prompts ---
 if [ "$MODE" = probe ]; then
@@ -243,10 +244,9 @@ $TASK
 RULES:
 - Work only inside this directory. Read the repository's CLAUDE.md and .claude/rules/ first and
   follow them.
-- Do NOT run any git command that WRITES (commit, push, add/stage, stash, config, gc). The runner
-  owns all git operations and commits/pushes after you finish, only if the tests pass when it runs
-  them on a clean checkout. You may use read-only git (git status, git diff) to review your change.
-  Writing .git is also blocked at the filesystem level, so a git write will simply fail.
+- Just edit files in this directory. Do NOT run git commit/push/add or change git config — the
+  runner takes your finished working tree, commits it on a clean checkout, runs the tests, and pushes
+  only if they pass. Anything you do to .git is ignored. You may use read-only git to review.
 - Run the full test command, \`$TEST_CMD\`, and keep fixing until it passes. A partial test run
   does not count.
 - When finished, write .hermes/COMMIT_MSG: a summary line of 72 characters or fewer, a blank line,
@@ -386,10 +386,8 @@ JS
 fi
 
 # ------------------------------------------------------------ verify + ship ---
-# Drop zero-byte UNTRACKED files before counting/staging. The agent's sandbox and tooling leave
-# empty placeholder dotfiles in the workspace (.env*, .npmrc, .yarnrc, lockfiles); they are not the
-# deliverable, and committing them pushed a junk commit of 12 empty files with no real change. This
-# removes only empty *untracked* files — tracked edits and non-empty new files are untouched.
+# Drop zero-byte UNTRACKED files (sandbox placeholder dotfiles: .env*, .npmrc, lockfiles) so they
+# are not treated as a change. Only empty *untracked* files — real edits are untouched.
 while IFS= read -r -d '' f; do [ -s "$f" ] || rm -f "$f"; done \
   < <(git ls-files --others --exclude-standard -z)
 
@@ -400,40 +398,61 @@ elif [ -f .hermes/BLOCKED.md ]; then STATUS=blocked
 elif [ "$CRC" != 0 ]; then STATUS=agent_error   # timeout, turn/budget limit, or a crash: work may be half-done
 elif [ "$CHANGED" = 0 ]; then STATUS=no_changes
 else
-  git add -A
-  # Secret scan on exactly what would be committed.
-  DIFF_HITS=$(git diff --cached | grep -cE 'sk-ant-[A-Za-z0-9_-]{10}|ghp_[A-Za-z0-9]{20}|github_pat_[A-Za-z0-9_]{20}|PRIVATE KEY-----' || true)
-  if [ "$DIFF_HITS" != 0 ]; then STATUS=unsafe; git reset -q; say "FAIL: $DIFF_HITS secret-shaped line(s) in the diff"
+  # Commit + verify from a FRESH clone of base, NEVER the agent's workspace .git. Claude Code's
+  # sandbox writes protection mounts into $DIR/.git (bwrap: .git/modules) and the agent may run git
+  # itself — both as hermes-agent — leaving .git objects/dirs the runner (hermes) cannot add to. So
+  # the runner mirrors only the agent's WORKING TREE into a clean, hermes-owned checkout of base and
+  # does all git + npm work there. This also gives the clean verify for free: no agent-owned .magent
+  # state (the provenance key is 0600 hermes-agent) to EACCES on. A tar copy plus a ls-files deletion
+  # pass reflects deletions; .git/node_modules/.hermes/.npm-cache/.magent are excluded (metadata,
+  # deps, scaffolding, state).
+  CDIR="$DIR.commit"; rm -rf "$CDIR" 2>/dev/null || true
+  say "committing + verifying from a clean checkout of base"
+  git clone -q --local --no-hardlinks "$BASE_REPO" "$CDIR"
+  ( cd "$CDIR"
+    git remote set-url origin "$ORIGIN_URL"
+    git remote add upstream "$UPSTREAM_URL" 2>/dev/null || true
+    git fetch -q upstream "$UPSTREAM_BRANCH"
+    git checkout -q -b "$BRANCH" FETCH_HEAD
+    git config user.name "Hermes Dev"; git config user.email "hermes@users.noreply.github.com" )
+  # Mirror the agent's WORKING TREE into the clean checkout with tar (portable; no rsync dependency),
+  # excluding git metadata, deps, scaffolding and state. tar only adds/overwrites, so a second pass
+  # removes any base-tracked file the agent deleted, making CDIR's tree match $DIR's exactly.
+  # -m (--touch) on extract: give copied files the CURRENT time, not the agent's earlier write time.
+  # Otherwise a mirrored file lands with an mtime OLDER than the fresh checkout's index, git assumes
+  # it is stat-clean, skips the content check and silently misses the change (`git status` empty →
+  # a real edit shipped as "no_changes"). Same-second collisions hid it — it showed up as flakiness.
+  ( cd "$DIR" && tar --exclude='./.git' --exclude='./node_modules' --exclude='./.hermes' \
+      --exclude='./.npm-cache' --exclude='./.magent' -cf - . ) | ( cd "$CDIR" && tar -xmf - )
+  git -C "$CDIR" ls-files -z | while IFS= read -r -d '' f; do [ -e "$DIR/$f" ] || rm -f "$CDIR/$f"; done
+  cd "$CDIR"
+  while IFS= read -r -d '' f; do [ -s "$f" ] || rm -f "$f"; done < <(git ls-files --others --exclude-standard -z)
+  CHANGED=$(git status --porcelain | wc -l | tr -d ' ')
+  if [ "$CHANGED" = 0 ]; then STATUS=no_changes
   else
-    if [ -s .hermes/COMMIT_MSG ]; then cp .hermes/COMMIT_MSG .hermes/commit.txt; else printf 'hermes: %s\n' "$slug" > .hermes/commit.txt; fi
-    printf '\nTask-Id: %s\nGenerated-By: hermes-dev (Claude Code %s, model %s)\n' "$ID" "$ver" "$MODEL" >> .hermes/commit.txt
-    git commit -q -F .hermes/commit.txt
-
-    # Verify a CLEAN checkout of exactly the committed branch, NOT this workspace. The agent ran its
-    # own tests as a different user (hermes-agent) and left agent-owned state here — the provenance
-    # private key (.magent/.../ed25519-priv.pem, mode 0600) and decisions.log — so re-running the
-    # verify in place as the runner user fails with EACCES on those files (three suites failed that
-    # way on the first real task; nothing to do with the change). A fresh --local clone of the branch
-    # carries no untracked/ignored artifacts, so npm test runs on the committed content, all
-    # hermes-owned, and gates the push on exactly what would be pushed.
-    VDIR="$DIR.verify"; rm -rf "$VDIR" 2>/dev/null || true
-    say "verifying a clean checkout with '$TEST_CMD'"
-    set +e
-    ( set -e
-      git clone -q --local --no-hardlinks -b "$BRANCH" "$DIR" "$VDIR"
-      cd "$VDIR"
-      if [ -f package-lock.json ]; then npm ci --no-audit --no-fund; fi
-      bash -c "$TEST_CMD"
-    ) > .hermes/runner-tests.log 2>&1
-    VRC=$?
-    set -e
-    rm -rf "$VDIR" 2>/dev/null || true
-    TESTS=pass; [ "$VRC" = 0 ] || TESTS=fail
-
-    if [ "$TESTS" != pass ]; then STATUS=tests_failed   # committed locally, not pushed
-    elif git push -q -u origin "$BRANCH" 2> .hermes/push.log; then STATUS=pushed PUSHED=yes
-    else STATUS=push_failed; fi
+    git add -A
+    DIFF_HITS=$(git diff --cached | grep -cE 'sk-ant-[A-Za-z0-9_-]{10}|ghp_[A-Za-z0-9]{20}|github_pat_[A-Za-z0-9_]{20}|PRIVATE KEY-----' || true)
+    if [ "$DIFF_HITS" != 0 ]; then STATUS=unsafe; say "FAIL: $DIFF_HITS secret-shaped line(s) in the diff"
+    else
+      if [ -s "$DIR/.hermes/COMMIT_MSG" ]; then cp "$DIR/.hermes/COMMIT_MSG" .commit.txt; else printf 'hermes: %s\n' "$slug" > .commit.txt; fi
+      printf '\nTask-Id: %s\nGenerated-By: hermes-dev (Claude Code %s, model %s)\n' "$ID" "$ver" "$MODEL" >> .commit.txt
+      git commit -q -F .commit.txt; rm -f .commit.txt
+      say "verifying with '$TEST_CMD'"
+      set +e
+      ( set -e
+        if [ -f package-lock.json ]; then npm ci --no-audit --no-fund; fi
+        bash -c "$TEST_CMD"
+      ) > "$DIR/.hermes/runner-tests.log" 2>&1
+      VRC=$?
+      set -e
+      TESTS=pass; [ "$VRC" = 0 ] || TESTS=fail
+      if [ "$TESTS" != pass ]; then STATUS=tests_failed        # committed in the clean clone, not pushed
+      elif git push -q -u origin "$BRANCH" 2> "$DIR/.hermes/push.log"; then STATUS=pushed PUSHED=yes
+      else STATUS=push_failed; fi
+    fi
   fi
+  cd "$DIR"
+  rm -rf "$CDIR" 2>/dev/null || true
 fi
 
 esc() { printf '%s' "$1" | sed 's/\\/\\\\/g; s/"/\\"/g'; }

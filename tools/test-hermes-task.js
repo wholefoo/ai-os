@@ -41,9 +41,22 @@ assert(/bwrap CAN bind a task workspace/.test(inst), 'the installer proves bubbl
 
 const runner = ci('hermes-task');
 assert(/"\$\{LAUNCH\[@\]\}" "\$1" --/.test(runner), 'the runner launches Claude Code through the launcher array (handles `sudo -n <path>` and spaces)');
-assert(/chmod -R g-w "\$DIR\/\.git"/.test(runner), 'the workspace .git is kept writable by the runner only — a git write as the agent leaves objects the runner cannot add to');
-assert(/git clone -q --local --no-hardlinks -b "\$BRANCH" "\$DIR" "\$VDIR"/.test(runner) && /VDIR="\$DIR\.verify"/.test(runner),
-  'the verify runs on a clean clone of the committed branch, not the agent-polluted workspace');
+// Bug C: locking the workspace .git (chmod -R g-w) blocked Claude Code's sandbox from creating its
+// own per-Bash .git protection mount, which broke EVERY Bash command for the agent. The .git must be
+// left writable; the commit no longer trusts it (see the clean-clone-of-base flow below).
+assert(!/chmod -R g-w "\$DIR\/\.git"/.test(runner), 'the workspace .git is NOT locked (locking it broke the sandbox per-Bash mount — Bug C)');
+assert(/CDIR="\$DIR\.commit"/.test(runner) && /git clone -q --local --no-hardlinks "\$BASE_REPO" "\$CDIR"/.test(runner),
+  'the commit + verify run from a FRESH clone of base, never the agent-polluted workspace .git');
+assert(/git fetch -q upstream "\$UPSTREAM_BRANCH"/.test(runner) && /git checkout -q -b "\$BRANCH" FETCH_HEAD/.test(runner),
+  'the clean checkout is branched from upstream HEAD so the diff is against real base');
+// The working tree is mirrored with portable tar (rsync is not guaranteed on the box or in the
+// harness), and a git ls-files pass removes any base-tracked file the agent deleted.
+const runnerCode = runner.split('\n').filter((l) => !/^\s*#/.test(l)).join('\n');
+assert(!/\brsync\b/.test(runnerCode), 'the mirror uses portable tar, not rsync (not guaranteed present)');
+assert(/cd "\$DIR" && tar\b/.test(runnerCode) && /-cf - \. \) \| \( cd "\$CDIR" && tar -xmf -/.test(runnerCode),
+  'the agent working tree is copied into the clean checkout with tar -xm (--touch: current mtime, so git never mistakes a real edit for stat-clean and reports it as no_changes)');
+assert(/git -C "\$CDIR" ls-files -z \| while .*\[ -e "\$DIR\/\$f" \] \|\| rm -f "\$CDIR\/\$f"/.test(runner),
+  'a deletion pass removes base-tracked files the agent deleted, so CDIR matches the working tree');
 
 const harness = path.join(__dirname, '..', 'deploy', 'coding-instance', 'test', 'harness.sh');
 

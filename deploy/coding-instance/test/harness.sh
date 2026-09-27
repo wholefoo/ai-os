@@ -47,7 +47,7 @@ echo "happy path"
 run good "Make hello say world"
 [ $RC = 0 ] && ok "exit 0" || bad "exit $RC: $(printf '%s' "$OUT" | tail -3)"
 printf '%s' "$OUT" | grep -q 'RESULT: pushed' && ok "status pushed" || bad "status not pushed"
-printf '%s' "$OUT" | grep -q 'verifying a clean checkout' && ok "verify runs on a clean clone, not the dirty workspace" || bad "no clean-checkout verify (would hit agent-owned .magent as on the box)"
+printf '%s' "$OUT" | grep -q 'verifying from a clean checkout' && ok "commit+verify runs from a clean clone of base, not the dirty workspace" || bad "no clean-checkout verify (would hit agent-owned .magent as on the box)"
 [ "$(branches)" = 1 ] && ok "branch on the fork" || bad "branches on fork: $(branches)"
 b=$(git -C "$R/origin.git" for-each-ref --format='%(refname:short)' refs/heads/hermes/ | head -1)
 [ "$(git -C "$R/origin.git" show "$b:hello.txt")" = world ] && ok "commit carries the change" || bad "change missing"
