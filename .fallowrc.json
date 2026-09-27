@@ -162,7 +162,8 @@
     "tools/test-hub-ingest.js",
     "tools/test-site-lock.js",
     "tools/test-hub-newsletter.js",
-    "tools/test-install-vps.js"
+    "tools/test-install-vps.js",
+    "tools/test-hermes-task.js"
   ],
   "ignorePatterns": [
     "docs-export/**",

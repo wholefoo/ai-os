@@ -31,6 +31,75 @@ systemctl enable --now ai-os-hermes
 DOMAIN=hermes.example.com bash add-https.sh   # optional; refuses while .env auth is blank
 ```
 
+## Phase 1: Claude Code as the coding engine
+
+| File | What it does |
+|---|---|
+| `install-claude-code.sh` | Root. Installs Claude Code **as `hermes`**, the sandbox policy and the runner, then verifies ownership. |
+| `install-agent-user.sh` | Root. Creates the confined **`hermes-agent`** user, locks `/home/hermes` (0711 + 0700 secrets), makes the task tree at `/srv/hermes-tasks`, installs **system Node + Claude Code** (root-owned, outside `/home`), installs the root launcher and a scoped sudoers rule, and proves both that the kernel refuses a write into `/home/hermes` and that bubblewrap (as the agent) can bind a workspace under `/srv`. |
+| `hermes-agent-launch` | Root-owned launcher. Reads the token, drops to `hermes-agent`, and starts Claude Code with a clean environment. |
+
+The agent touches nothing under `/home/hermes`: its task tree is `/srv/hermes-tasks`, its home is
+`/home/hermes-agent`, and it runs system node/Claude Code from `/usr`. `/home/hermes` is `0711` and
+holds only hermes's secrets, so bubblewrap (which runs as the agent and is not that directory's
+owner) never needs to create anything under it — the failure mode that a task tree or `HOME` under
+`/home/hermes` produced.
+| `claude-policy.json` | Installed root-owned as `/etc/claude-code/managed-settings.json` (highest precedence, not editable by the agent). Sandbox on with no unsandboxed fallback; the token folder, `~/.ssh`, `~/work` (AI OS's `.env` and state) and shell history unreadable — denied by location, because hiding all of `~/` and re-opening the workspace read-only stopped the sandbox from starting at all; network limited to `registry.npmjs.org`; web tools off; `git push` denied. Bash is explicitly **allowed**: the credential scrub turns off the sandbox's own auto-approval, and without the rule every ordinary command — `npm test` included — is refused in an unattended run. The scrub also forces every command into the sandbox, so the sandbox stays the boundary. |
+| `hermes-task` | Installed root-owned at `/usr/local/bin`. Clones a fresh task workspace, runs Claude Code, **re-runs the tests itself**, commits, pushes a branch to the fork. |
+| `test/` | Fixture harness; `tools/test-hermes-task.js` runs it in `npm test`. |
+
+It runs on the operator's **Claude subscription**: `claude setup-token` on a desktop, then the token
+saved at `~hermes/.config/hermes-runner/claude-oauth-token`, mode 600. Save it with hidden input and
+**whitespace stripped** — `setup-token` prints one long line, the terminal wraps it, and a copy can
+keep the break as a space (the first real token arrived that way and failed with a bare 401):
+
+```bash
+sudo -iu hermes bash -c 'umask 077; read -rs -p "Paste token, then Enter: " T && printf "%s\n" "$T" | tr -d "[:space:]" > ~/.config/hermes-runner/claude-oauth-token && printf "\n" >> ~/.config/hermes-runner/claude-oauth-token && unset T && echo saved'
+```
+
+The runner and installer both refuse a token file containing whitespace. Order of work:
+
+```bash
+bash install-claude-code.sh                       # as root: Claude Code + sandbox policy + runner
+bash install-agent-user.sh                        # as root: the confined hermes-agent user (the real boundary)
+sudo -iu hermes hermes-task --auth-check          # which credential? must PASS
+sudo -iu hermes hermes-task --probe               # can the agent reach what it shouldn't? must PASS
+sudo -iu hermes hermes-task "A small, safe task"  # a real run -> RESULT: pushed
+```
+
+**Why a separate user, not just the sandbox.** On the box the Claude Code sandbox confined reads but
+**not writes**: a sandboxed command created a file in the home directory. Reads of secrets were
+blocked, but that was one layer doing half the job. `hermes-agent` runs Claude Code and the kernel,
+not the sandbox, decides what it can touch: `/home/hermes` is `0711` (traverse to the shared tasks
+tree and to node, nothing else) with its `.ssh`, `.config` and `work` at `0700`, so the agent cannot
+read the token or the deploy key and cannot create a file anywhere under `/home/hermes` except its
+own task workspace. The sandbox stays on as a second layer. The probe's home-directory writes must be
+refused by the kernel; a write to `/tmp` is reported but is not a breach.
+
+What every run proves rather than assumes:
+
+- **The subscription is what gets billed.** `ANTHROPIC_API_KEY` outranks the OAuth token and is used
+  without prompting in `-p` mode — and this box's AI OS `.env` has one. The runner unsets it, a
+  second guard inside the launch refuses if it is still present, and the init event's
+  `apiKeySource` must not be `ANTHROPIC_API_KEY`.
+- **The agent cannot see its credential.** `CLAUDE_CODE_SUBPROCESS_ENV_SCRUB=1` strips it from
+  every command the agent runs (and isolates their PID namespace from `/proc`); the token is passed
+  with `export`, never on a command line. The token and the AI OS key must appear **0** times in
+  the transcript, stderr, and changed files — only counts are printed, never values.
+- **The tests really pass.** The agent is told to run `npm test`; the runner runs it again itself,
+  outside the agent's control, and only that result decides whether anything is pushed.
+- **The repo's own `.claude/` hooks do not run.** They were written for a developer desktop;
+  `--setting-sources user` keeps them out of unattended runs.
+
+`--probe` is only a PASS if every step was demonstrably **attempted** and blocked, and a positive
+control was read back. A model that quietly declines a step produces INCONCLUSIVE, not PASS: a
+boundary nobody tried has not been proven.
+
+Limits per task: `--budget` (default $5, an estimate — on a subscription it bounds work, not a
+bill), `--turns` (80), `--timeout` (45m), `--model` (sonnet; pass `opus` for hard tasks). One task at
+a time. The usage-credit cap in claude.ai is **account-wide** — it bounds the operator's own overflow
+use too, and tasks share the plan's allowance, so prefer off-hours runs.
+
 ## Deliberate choices — don't "fix" them back
 
 - **`AIOS_HARD_BUDGET=true`** in the `.env` template. It is off by default in the app, which is
