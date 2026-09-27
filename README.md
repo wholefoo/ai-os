@@ -52,7 +52,7 @@ AI OS presents its agent fleet as a virtual company with named employees, depart
 | **Knowledge & Records** | 4 | Chief Librarian (Athena), Archivist (Vellum), Knowledge Manager (Archive), Sync Steward (Tether) |
 | **Legal Department** | 4 | General Counsel (Justice), Compliance Officer (Shield), Commercial Licensing Specialist (Covenant), Contract Specialist (Clause) |
 
-Each virtual employee maps to an AI agent with a specific model tier, can receive dispatched tasks, and reports through a corporate hierarchy. The org chart above names the ~56 department-facing roles (including the seven LLM provider consultants and the Communications Director in Product & Marketing); the remaining ~11 are system and orchestration agents (e.g. orchestrator, safety, synthesis, factory, hosting-ops, web-studio-lead) plus the SEO Agency sub-agents and external-model worker agents (DeepSeek, Grok). The full fleet of 73 agents is broken down by model tier in **Agent Fleet** below.
+Each virtual employee maps to an AI agent with a specific model tier, can receive dispatched tasks, and reports through a corporate hierarchy. The org chart above names the ~56 department-facing roles (including the seven LLM provider consultants and the Communications Director in Marketing & Communications); the remaining ~11 are system and orchestration agents (e.g. orchestrator, safety, synthesis, factory, hosting-ops, web-studio-lead) plus the SEO Agency sub-agents and external-model worker agents (DeepSeek, Grok). The full fleet of 73 agents is broken down by model tier in **Agent Fleet** below.
 
 ## Features
 
