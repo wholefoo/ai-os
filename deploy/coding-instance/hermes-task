@@ -386,6 +386,13 @@ JS
 fi
 
 # ------------------------------------------------------------ verify + ship ---
+# Drop zero-byte UNTRACKED files before counting/staging. The agent's sandbox and tooling leave
+# empty placeholder dotfiles in the workspace (.env*, .npmrc, .yarnrc, lockfiles); they are not the
+# deliverable, and committing them pushed a junk commit of 12 empty files with no real change. This
+# removes only empty *untracked* files — tracked edits and non-empty new files are untouched.
+while IFS= read -r -d '' f; do [ -s "$f" ] || rm -f "$f"; done \
+  < <(git ls-files --others --exclude-standard -z)
+
 CHANGED=$(git status --porcelain | wc -l | tr -d ' ')
 STATUS="" PUSHED=no TESTS=n/a
 if [ "$SAFE" != yes ]; then STATUS=unsafe

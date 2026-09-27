@@ -51,6 +51,7 @@ printf '%s' "$OUT" | grep -q 'verifying a clean checkout' && ok "verify runs on 
 [ "$(branches)" = 1 ] && ok "branch on the fork" || bad "branches on fork: $(branches)"
 b=$(git -C "$R/origin.git" for-each-ref --format='%(refname:short)' refs/heads/hermes/ | head -1)
 [ "$(git -C "$R/origin.git" show "$b:hello.txt")" = world ] && ok "commit carries the change" || bad "change missing"
+git -C "$R/origin.git" ls-tree -r --name-only "$b" | grep -qx '.npmrc' && bad "empty cruft (.npmrc) was committed" || ok "empty untracked cruft stripped, not committed"
 git -C "$R/origin.git" log -1 --format=%s "$b" | grep -q 'Say world' && ok "agent's commit message used" || bad "commit message"
 [ "$(git -C "$R/upstream.git" for-each-ref refs/heads/ | wc -l | tr -d ' ')" = 1 ] && ok "upstream untouched" || bad "upstream changed"
 grep -qx 'api_key_set=' "$STUB_ENV_OUT" && ok "ANTHROPIC_API_KEY stripped before claude" || bad "API key REACHED claude"
@@ -85,6 +86,11 @@ run nochange "Same text"; RC1=$RC; run nochange "Same text"
 echo "no changes"
 run nochange "Do nothing"
 [ $RC = 2 ] && ok "exit 2" || bad "exit $RC"
+
+echo "only empty cruft, no real change"
+BEFORE=$(branches); run emptycruft "Leave only empty files"
+printf '%s' "$OUT" | grep -q 'RESULT: no_changes' && ok "empty-only run is no_changes, not a junk push" || bad "status: $(printf '%s' "$OUT" | grep RESULT)"
+[ "$(branches)" = "$BEFORE" ] && ok "nothing pushed for an empty-only run" || bad "pushed junk: $(branches) vs $BEFORE"
 
 echo "probe"
 run probe_good --probe
