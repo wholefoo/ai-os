@@ -75,7 +75,14 @@ assert(policy.env.CLAUDE_CODE_SUBPROCESS_ENV_SCRUB === '1', 'credentials are scr
 // run, and `npm test` is refused — the third field probe found exactly that. With the scrub on,
 // every command runs sandboxed, so allowing Bash leaves the sandbox as the boundary.
 assert((policy.permissions.allow || []).includes('Bash'), 'Bash is explicitly allowed (the scrub disables sandbox auto-allow)');
+// Bug B: the agent reported Edit/Write were "denied — no approval surface" under --permission-prompts
+// none, so it produced no edit. Edit/Write/MultiEdit must be explicitly allowed so they never need a
+// prompt; the deny rules below still protect the sensitive paths (deny beats allow).
+for (const t of ['Edit', 'Write', 'MultiEdit'])
+  assert((policy.permissions.allow || []).includes(t), `${t} is explicitly allowed so the agent can edit files unattended`);
 assert(policy.permissions.deny.includes('Bash(git push *)'), 'git push stays denied (deny beats allow)');
+for (const d of ['Edit(~/.ssh/**)', 'Edit(~/work/**)', 'Edit(~/.claude/**)'])
+  assert(policy.permissions.deny.includes(d), `sensitive path stays edit-denied despite the broad Edit allow: ${d}`);
 const have = (cmd) => spawnSync(cmd, ['--version'], { encoding: 'utf8' }).status === 0;
 
 if (!have('bash') || !have('git')) {
