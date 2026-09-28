@@ -159,6 +159,49 @@ const reset = () => rawDb().exec('DELETE FROM tasks;');
   assert(recovered >= 1 && repo.get(orphan.id).state === 'failed' && repo.get(orphan.id).result === 'interrupted',
     'recoverStale fails out an interrupted task so the board never wedges');
 
+  // ---------- routes (real handlers, fake app/req/res, same repo) --------------------------------
+  reset();
+  const { registerBoardRoutes } = require('../lib/board/routes');
+  const routes = {};
+  const fakeApp = { get: (p, _mw, h) => { routes[`GET ${p}`] = h; }, post: (p, _mw, h) => { routes[`POST ${p}`] = h; } };
+  registerBoardRoutes(fakeApp, { requireAdmin: (req, r, n) => n(), broadcast: () => {} });
+  const call = (key, { params = {}, body = {}, query = {} } = {}) => {
+    let code = 200, out = null;
+    const res = { status(c) { code = c; return this; }, json(o) { out = o; return this; } };
+    if (!routes[key]) throw new Error(`route not registered: ${key}`);
+    routes[key]({ params, body, query, session: { email: 'admin@x' } }, res);
+    return { code, out };
+  };
+
+  assert(routes['GET /api/board/board'] && routes['POST /api/board/tasks'] && routes['POST /api/board/tasks/:id/cancel'],
+    'routes: the board feed, create, and action endpoints are registered');
+
+  const created = call('POST /api/board/tasks', { body: { title: 'via route', body: 'do a thing', priority: 5 } });
+  assert(created.code === 200 && created.out.ok && created.out.task.state === 'ready', 'routes: POST create returns a ready task');
+  const tid = created.out.task.id;
+  assert(call('POST /api/board/tasks', { body: { title: '   ' } }).code === 400, 'routes: create without a title is a 400');
+
+  const feed = call('GET /api/board/board');
+  assert(feed.code === 200 && feed.out.states.includes('ready') && feed.out.columns.ready.some((t) => t.id === tid),
+    'routes: the board feed groups the new task under ready');
+  assert(typeof feed.out.counts === 'object' && typeof feed.out.running === 'number', 'routes: the feed carries counts + running');
+
+  const one = call('GET /api/board/tasks/:id', { params: { id: tid } });
+  assert(one.code === 200 && one.out.task.id === tid && Array.isArray(one.out.events) && Array.isArray(one.out.comments),
+    'routes: GET one task returns task + events + comments');
+  assert(call('GET /api/board/tasks/:id', { params: { id: 'nope' } }).code === 404, 'routes: unknown task id is a 404');
+
+  assert(call('POST /api/board/tasks/:id/comment', { params: { id: tid }, body: { body: 'a note' } }).code === 200, 'routes: comment posts');
+  assert(call('POST /api/board/tasks/:id/comment', { params: { id: tid }, body: { body: '' } }).code === 400, 'routes: empty comment is a 400');
+  assert(repo.comments(tid).some((c) => c.author === 'admin@x'), 'routes: the comment records the acting admin');
+
+  // block -> unblock round trip, then an illegal action returns 400 (repo guard shows through)
+  assert(call('POST /api/board/tasks/:id/block', { params: { id: tid }, body: { reason: 'need input' } }).out.task.state === 'blocked', 'routes: block works');
+  assert(call('POST /api/board/tasks/:id/unblock', { params: { id: tid } }).out.task.state === 'ready', 'routes: unblock returns to ready');
+  assert(call('POST /api/board/tasks/:id/cancel', { params: { id: tid } }).out.task.state === 'cancelled', 'routes: cancel works');
+  const badAction = call('POST /api/board/tasks/:id/requeue', { params: { id: tid } });
+  assert(badAction.code === 400 && /illegal transition/.test(badAction.out.error), 'routes: an illegal action (requeue a cancelled task) is a 400 with the repo reason');
+
   d.stop(); bad.stop();
   try { rawDb().close(); } catch {}      // release the sqlite handle so Windows can remove the dir
   cleanupAndFinish(dir);

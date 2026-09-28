@@ -12693,6 +12693,7 @@ let board = null;
 try {
   board = require('./lib/board');
   board.openDb(path.join(MAGENT_DIR, 'board.sqlite'));
+  board.registerBoardRoutes(app, { requireAdmin, broadcast });
   const disp = board.startDefaultDispatcher({ onLog: (taskId, chunk) => broadcast({ event: 'board_task_log', data: { taskId, chunk } }) });
   appendLog(`[board] opened${disp ? ` + dispatcher on (${disp.id})` : ' (dispatcher off — set HERMES_BOARD_DISPATCH=1 to enable)'}`);
 } catch (e) {

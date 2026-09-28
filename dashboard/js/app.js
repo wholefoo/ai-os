@@ -125,6 +125,7 @@ function switchView(view) {
     predictions: loadPredictions,
     batch: loadBatch,
     hermes: loadHermes,
+    board: loadBoard,
     'self-improve': loadDevPlans,
     youtube: loadYouTube,
     hq: loadHQ,
@@ -211,6 +212,10 @@ function handleWsMessage(msg) {
       break;
     case 'crm_update':
       if (typeof onCrmEvent === 'function') onCrmEvent(msg);
+      break;
+    case 'board_update':
+    case 'board_task_log':
+      if (typeof onBoardEvent === 'function') onBoardEvent(msg);
       break;
     case 'web_analytics_bot':
       if (typeof onAnalyticsEvent === 'function') onAnalyticsEvent(msg);
@@ -5883,6 +5888,167 @@ function formatTokenCount(tokens) {
 }
 
 // --- Hermes Agent ---
+
+// ===================== Coding Board (phase 2) =====================
+const BOARD_STATE_META = {
+  queued:    { label: 'Queued',    cls: 'queued' },
+  ready:     { label: 'Ready',     cls: 'ready' },
+  running:   { label: 'Running',   cls: 'running' },
+  blocked:   { label: 'Blocked',   cls: 'blocked' },
+  done:      { label: 'Done',      cls: 'done' },
+  failed:    { label: 'Failed',    cls: 'failed' },
+  cancelled: { label: 'Cancelled', cls: 'cancelled' },
+};
+// Which actions a card offers, by state. running is dispatcher-owned (no manual button).
+const BOARD_ACTIONS = {
+  queued:    [['cancel', 'Cancel', 'btn-secondary']],
+  ready:     [['block', 'Block', 'btn-secondary'], ['cancel', 'Cancel', 'btn-secondary']],
+  running:   [],
+  blocked:   [['unblock', 'Unblock', 'btn-success'], ['cancel', 'Cancel', 'btn-secondary']],
+  failed:    [['requeue', 'Requeue', 'btn-success'], ['cancel', 'Cancel', 'btn-secondary']],
+  done:      [],
+  cancelled: [],
+};
+
+async function loadBoard() {
+  const feed = await fetchJSON('/api/board/board');
+  renderBoard(feed);
+}
+
+function onBoardEvent() {
+  // Refresh only when the board is the active view; if a task modal is open, refresh it too.
+  const view = document.getElementById('view-board');
+  if (view && view.classList.contains('active')) loadBoard();
+  const modal = document.getElementById('boardTaskModal');
+  if (modal && modal.style.display !== 'none' && modal.dataset.taskId) openBoardTask(modal.dataset.taskId, true);
+}
+
+function renderBoard(feed) {
+  const badge = document.getElementById('boardDispatchBadge');
+  if (badge) {
+    const running = Number(feed.running || 0);
+    badge.textContent = running ? `${running} running` : 'idle';
+    badge.className = 'hermes-status-badge ' + (running ? 'online' : 'offline');
+  }
+  const wrap = document.getElementById('boardColumns');
+  if (!wrap) return;
+  const states = feed.states || Object.keys(BOARD_STATE_META);
+  wrap.innerHTML = states.map((s) => {
+    const meta = BOARD_STATE_META[s] || { label: s, cls: s };
+    const cards = (feed.columns && feed.columns[s]) || [];
+    const total = (feed.counts && feed.counts[s]) || cards.length;
+    return `
+      <div class="board-col board-col-${meta.cls}">
+        <div class="board-col-head"><span>${escapeHtml(meta.label)}</span><span class="board-col-count">${total}</span></div>
+        <div class="board-col-body">
+          ${cards.length ? cards.map(boardCard).join('') : '<div class="board-col-empty">—</div>'}
+        </div>
+      </div>`;
+  }).join('');
+}
+
+function boardCard(t) {
+  const meta = BOARD_STATE_META[t.state] || { cls: t.state };
+  const pr = t.pr_url ? `<a class="board-card-pr" href="${escapeHtml(t.pr_url)}" target="_blank" rel="noopener" onclick="event.stopPropagation()">branch ↗</a>` : '';
+  const cost = t.cost_usd ? `<span class="board-card-cost">$${escapeHtml(t.cost_usd)}</span>` : '';
+  const res = t.result ? `<span class="board-card-result">${escapeHtml(t.result)}</span>` : '';
+  return `
+    <div class="board-card board-card-${meta.cls}" onclick="openBoardTask('${t.id}')">
+      <div class="board-card-title">${escapeHtml(t.title)}</div>
+      <div class="board-card-meta">
+        <span class="board-card-pri" title="priority">P${Number(t.priority)}</span>
+        ${t.assignee ? `<span class="board-card-assignee">${escapeHtml(t.assignee)}</span>` : ''}
+        ${res}${cost}${pr}
+        <span class="board-card-time">${timeAgo(t.updated_at)}</span>
+      </div>
+    </div>`;
+}
+
+function showBoardNewTask() {
+  const p = document.getElementById('boardNewTaskPanel');
+  if (p) { p.style.display = ''; const t = document.getElementById('boardTaskTitle'); if (t) t.focus(); }
+}
+function hideBoardNewTask() {
+  const p = document.getElementById('boardNewTaskPanel');
+  if (p) p.style.display = 'none';
+  const err = document.getElementById('boardFormError'); if (err) err.textContent = '';
+}
+async function createBoardTask() {
+  const title = (document.getElementById('boardTaskTitle') || {}).value || '';
+  const body = (document.getElementById('boardTaskBody') || {}).value || '';
+  const priority = Number((document.getElementById('boardTaskPriority') || {}).value) || 100;
+  const assignee = (document.getElementById('boardTaskAssignee') || {}).value || '';
+  const err = document.getElementById('boardFormError');
+  if (!title.trim()) { if (err) err.textContent = 'A title is required.'; return; }
+  const r = await fetchJSON('/api/board/tasks', { method: 'POST', body: { title, body, priority, assignee } });
+  if (r && r.error) { if (err) err.textContent = r.error; return; }
+  ['boardTaskTitle', 'boardTaskBody', 'boardTaskAssignee'].forEach((id) => { const e = document.getElementById(id); if (e) e.value = ''; });
+  hideBoardNewTask();
+  loadBoard();
+}
+
+async function openBoardTask(id, silent) {
+  const modal = document.getElementById('boardTaskModal');
+  const inner = document.getElementById('boardTaskModalInner');
+  if (!modal || !inner) return;
+  const data = await fetchJSON(`/api/board/tasks/${id}`);
+  if (!data || data.error) { if (!silent) alert(data && data.error || 'Task not found'); return; }
+  const t = data.task;
+  const meta = BOARD_STATE_META[t.state] || { label: t.state, cls: t.state };
+  const actions = (BOARD_ACTIONS[t.state] || []).map(([name, label, cls]) =>
+    `<button class="btn btn-sm ${escapeHtml(cls)}" onclick="boardAction('${escapeHtml(t.id)}','${escapeHtml(name)}')">${escapeHtml(label)}</button>`).join('');
+  const events = (data.events || []).map((e) =>
+    `<div class="board-ev"><span class="board-ev-type">${escapeHtml(e.type)}</span><span class="board-ev-time">${timeAgo(e.created_at)}</span></div>`).join('');
+  const comments = (data.comments || []).map((c) =>
+    `<div class="board-cmt"><span class="board-cmt-author">${escapeHtml(c.author || 'admin')}</span> ${escapeHtml(c.body)} <span class="board-ev-time">${timeAgo(c.created_at)}</span></div>`).join('') || '<div class="board-col-empty">No comments</div>';
+  inner.innerHTML = `
+    <div class="board-modal-head">
+      <span class="board-badge board-badge-${escapeHtml(meta.cls)}">${escapeHtml(meta.label)}</span>
+      <h3>${escapeHtml(t.title)}</h3>
+      <button class="board-modal-close" onclick="closeBoardTask()">×</button>
+    </div>
+    <div class="board-modal-body">
+      <p class="board-modal-instruction">${escapeHtml(t.body || '(no instruction)')}</p>
+      <div class="board-modal-facts">
+        <span>Priority P${Number(t.priority)}</span>
+        ${t.assignee ? `<span>${escapeHtml(t.assignee)}</span>` : ''}
+        ${t.result ? `<span>result: ${escapeHtml(t.result)}</span>` : ''}
+        ${t.cost_usd ? `<span>$${escapeHtml(t.cost_usd)}</span>` : ''}
+        ${t.branch ? `<span>branch: ${escapeHtml(t.branch)}</span>` : ''}
+        ${t.pr_url ? `<a href="${escapeHtml(t.pr_url)}" target="_blank" rel="noopener">open PR ↗</a>` : ''}
+      </div>
+      ${t.blocked_reason ? `<div class="board-modal-blocked">Blocked: ${escapeHtml(t.blocked_reason)}</div>` : ''}
+      <div class="board-modal-actions">${actions ? actions : '<span class="board-col-empty">No actions in this state</span>'}</div>
+      <h4>Comments</h4>
+      <div class="board-cmts">${comments}</div>
+      <div class="board-cmt-form">
+        <input id="boardCmtInput" class="input" placeholder="Add a comment / answer a block…" />
+        <button class="btn btn-sm btn-primary" onclick="addBoardComment('${escapeHtml(t.id)}')">Post</button>
+      </div>
+      <h4>Activity</h4>
+      <div class="board-evs">${events ? events : '<div class="board-col-empty">—</div>'}</div>
+    </div>`;
+  modal.dataset.taskId = id;
+  modal.style.display = '';
+}
+function closeBoardTask() {
+  const modal = document.getElementById('boardTaskModal');
+  if (modal) { modal.style.display = 'none'; delete modal.dataset.taskId; }
+}
+async function boardAction(id, name) {
+  const r = await fetchJSON(`/api/board/tasks/${id}/${name}`, { method: 'POST', body: {} });
+  if (r && r.error) { alert(r.error); return; }
+  openBoardTask(id, true);
+  loadBoard();
+}
+async function addBoardComment(id) {
+  const el = document.getElementById('boardCmtInput');
+  const body = el ? el.value : '';
+  if (!body.trim()) return;
+  const r = await fetchJSON(`/api/board/tasks/${id}/comment`, { method: 'POST', body: { body } });
+  if (r && r.error) { alert(r.error); return; }
+  openBoardTask(id, true);
+}
 
 async function loadHermes() {
   const [status, tasks, approvals, cron] = await Promise.all([

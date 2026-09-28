@@ -8,7 +8,7 @@
   <link rel="icon" type="image/png" sizes="16x16" href="/assets/favicon-16.png">
   <link rel="apple-touch-icon" sizes="180x180" href="/assets/apple-touch-icon.png">
   <title>AI OS — Orchestration Lab</title>
-  <link rel="stylesheet" href="css/styles.css?v=34">
+  <link rel="stylesheet" href="css/styles.css?v=35">
   <link rel="stylesheet" href="css/avatars.css">
   <style>
     /* Phase 2b: hide operator-only controls from a managed-client (role:'client') session. These
@@ -179,6 +179,9 @@
         </a>
         <a href="#" class="nav-item" data-view="hermes">
           <span class="nav-icon">&#9889;</span> Hermes
+        </a>
+        <a href="#" class="nav-item" data-view="board">
+          <span class="nav-icon">&#128203;</span> Coding Board
         </a>
         <a href="#" class="nav-item" data-view="self-improve">
           <span class="nav-icon">&#9881;</span> Self-Improve
@@ -2051,6 +2054,40 @@
         </div>
 
         <!-- Hermes Agent View -->
+        <div class="view" id="view-board">
+          <div class="radar-header">
+            <div class="radar-header-left">
+              <h2 class="radar-title">Coding Board</h2>
+              <span class="radar-subtitle">Durable queue for the coding agent — each card runs the hermes-task runner and opens a branch</span>
+            </div>
+            <div class="radar-actions">
+              <span class="hermes-status-badge" id="boardDispatchBadge">&mdash;</span>
+              <button class="btn btn-primary" id="boardNewTaskBtn" onclick="showBoardNewTask()">+ New Task</button>
+            </div>
+          </div>
+
+          <section class="panel" id="boardNewTaskPanel" style="display:none;">
+            <h3 class="panel-title">New coding task</h3>
+            <div class="board-form">
+              <input id="boardTaskTitle" class="input" placeholder="Title — a short summary of the change" />
+              <textarea id="boardTaskBody" class="input" rows="4" placeholder="Instruction for the agent: what to change, and how to verify it (the runner re-runs the tests before it pushes)."></textarea>
+              <div class="board-form-row">
+                <label class="board-form-label">Priority <input id="boardTaskPriority" class="input" type="number" value="100" title="Lower runs first" /></label>
+                <input id="boardTaskAssignee" class="input" placeholder="@assignee (optional)" />
+                <button class="btn btn-success" onclick="createBoardTask()">Create task</button>
+                <button class="btn btn-secondary" onclick="hideBoardNewTask()">Cancel</button>
+              </div>
+              <div id="boardFormError" class="board-form-error"></div>
+            </div>
+          </section>
+
+          <div class="board-columns" id="boardColumns"><div class="empty-state">Loading…</div></div>
+
+          <div class="board-modal" id="boardTaskModal" style="display:none;" onclick="if(event.target===this)closeBoardTask()">
+            <div class="board-modal-inner" id="boardTaskModalInner"></div>
+          </div>
+        </div>
+
         <div class="view" id="view-hermes">
           <div class="radar-header">
             <div class="radar-header-left">
