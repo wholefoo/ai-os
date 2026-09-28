@@ -38,7 +38,8 @@ for (const scope of ['read', 'agent', 'admin']) {
   assert(d(scope, 'GET', '/api/settings') && d(scope, 'HEAD', '/api/health'), `${scope}: GET/HEAD allowed`);
 }
 assert(!d('read', 'POST', '/api/agent/execute') && !d('read', 'PUT', '/api/settings/ai') && !d('read', 'DELETE', '/api/org/members/x'), 'read: every mutation refused');
-assert(d('agent', 'POST', '/api/agent/execute') && d('agent', 'POST', '/api/skills/seo-audit/execute') && d('agent', 'POST', '/api/pipelines/daily-brief/execute') && d('agent', 'POST', '/api/pipelines/runs/abc/resume') && d('agent', 'POST', '/api/pipelines/runs/abc/export') && d('agent', 'POST', '/api/hermes/delegate') && d('agent', 'POST', '/api/a2a'), 'agent: the work routes are allowed');
+assert(d('agent', 'POST', '/api/agent/execute') && d('agent', 'POST', '/api/skills/seo-audit/execute') && d('agent', 'POST', '/api/pipelines/daily-brief/execute') && d('agent', 'POST', '/api/pipelines/runs/abc/resume') && d('agent', 'POST', '/api/pipelines/runs/abc/export') && d('agent', 'POST', '/api/hermes/delegate') && d('agent', 'POST', '/api/a2a') && d('agent', 'POST', '/api/board/intake'), 'agent: the work routes are allowed');
+assert(!d('read', 'POST', '/api/board/intake') && !d('content', 'POST', '/api/board/intake'), 'board intake is closed to read/content keys (least privilege)');
 assert(!d('agent', 'POST', '/api/pipelines/runs/abc/approve') && !d('agent', 'PUT', '/api/settings/automation') && !d('agent', 'POST', '/api/admin/service-keys') && !d('agent', 'POST', '/api/org/members') && !d('agent', 'DELETE', '/api/a2a/keys/x'), 'agent: approvals, settings, keys, users refused');
 assert(!d('agent', 'POST', '/api/agent/execute/extra') && !d('agent', 'POST', '/api/agent/executeX'), 'agent allowlist is exact paths, not prefixes');
 assert(d('agent', 'POST', '/api/agent/execute?dry=1'), 'a query string does not defeat the match');

@@ -202,6 +202,19 @@ const reset = () => rawDb().exec('DELETE FROM tasks;');
   const badAction = call('POST /api/board/tasks/:id/requeue', { params: { id: tid } });
   assert(badAction.code === 400 && /illegal transition/.test(badAction.out.error), 'routes: an illegal action (requeue a cancelled task) is a 400 with the repo reason');
 
+  // ---------- gateway intake (scoped-key create + dedupe) ---------------------------------------
+  reset();
+  assert(routes['POST /api/board/intake'], 'routes: the intake endpoint is registered');
+  const intake1 = call('POST /api/board/intake', { body: { title: 'From Telegram', body: 'fix the footer link', source: 'telegram', dedupeKey: 'tg-42' } });
+  assert(intake1.code === 200 && intake1.out.deduped === false && intake1.out.task.state === 'ready', 'intake: a new task is created ready');
+  assert(intake1.out.task.created_by === 'intake:telegram', 'intake: the source is recorded as the author');
+  const intake2 = call('POST /api/board/intake', { body: { title: 'From Telegram (retry)', source: 'telegram', dedupeKey: 'tg-42' } });
+  assert(intake2.code === 200 && intake2.out.deduped === true && intake2.out.task.id === intake1.out.task.id,
+    'intake: a repeat with the same dedupeKey returns the first task, never a duplicate');
+  assert(repo.list({ state: 'ready' }).filter((t) => t.dedupe_key === 'tg-42').length === 1, 'intake: exactly one task exists for the dedupe key');
+  assert(repo.findByDedupe('tg-42') && !repo.findByDedupe('nope'), 'repo.findByDedupe resolves a known key and returns null otherwise');
+  assert(call('POST /api/board/intake', { body: { title: '' } }).code === 400, 'intake: a title is still required');
+
   d.stop(); bad.stop();
   try { rawDb().close(); } catch {}      // release the sqlite handle so Windows can remove the dir
   cleanupAndFinish(dir);
