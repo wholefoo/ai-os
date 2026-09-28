@@ -100,6 +100,33 @@ bill), `--turns` (80), `--timeout` (45m), `--model` (sonnet; pass `opus` for har
 a time. The usage-credit cap in claude.ai is **account-wide** — it bounds the operator's own overflow
 use too, and tasks share the plan's allowance, so prefer off-hours runs.
 
+## Phase 2: the Coding Board (a durable queue in the dashboard)
+
+The board (dashboard → **Coding Board**) is a durable SQLite queue in front of the same runner. You
+file tasks (in the UI, or from outside via `POST /api/board/intake`); a dumb in-process **dispatcher**
+claims the top-priority `ready` task, runs it through `hermes-task`, and moves the card to
+done/failed/blocked with the branch and result. The board always records and serves; the dispatcher is
+**off until you switch it on**, so it never runs a real job by accident.
+
+```bash
+sudo bash enable-board-dispatcher.sh          # turn the dispatcher on, restart, verify
+sudo bash enable-board-dispatcher.sh --off     # turn it off again
+```
+
+No new privilege is granted. On this box the AI OS app **runs as `hermes`** — the runner user — so the
+dispatcher runs `hermes-task` **as itself**, reusing the one sudoers rule `hermes` already has
+(`hermes → hermes-agent-launch`). The script **refuses** to run anywhere the app user is not `hermes`
+(e.g. a production box where it is `aios`), because wiring it there would mean granting the web app the
+right to run code as another user — a wider privilege than the design calls for. It edits only four
+`HERMES_BOARD_*` lines in `.env` (backed up first, no duplicate keys) and restarts — no install runs
+before the restart.
+
+External intake for a gateway (a chat bot, an n8n flow, a GitHub webhook) uses a service key scoped
+`agent` (`POST /api/admin/service-keys`), **not** the master `API_TOKEN`; that scope may reach
+`/api/board/intake` and the agent/skill/pipeline routes and nothing else. A ready-made
+"GitHub issue → Coding Board" n8n template ships in the Integrations panel. Pass a stable `dedupeKey`
+so a redelivered webhook returns the first task instead of creating a duplicate run.
+
 ## Deliberate choices — don't "fix" them back
 
 - **`AIOS_HARD_BUDGET=true`** in the `.env` template. It is off by default in the app, which is
