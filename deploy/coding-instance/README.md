@@ -127,6 +127,23 @@ External intake for a gateway (a chat bot, an n8n flow, a GitHub webhook) uses a
 "GitHub issue → Coding Board" n8n template ships in the Integrations panel. Pass a stable `dedupeKey`
 so a redelivered webhook returns the first task instead of creating a duplicate run.
 
+### Updating the code on this box — pull from `upstream`, not `origin`
+
+`origin` here is the **fork** the runner *pushes task branches to* (`wholefoo-lab`); it does **not**
+track the mainline, so `git pull origin master` reports "already up to date" while the box stays stale.
+The mainline is `upstream` (`wholefoo/ai-os`). Run git **as `hermes`** (the repo and service belong to
+`hermes`; git as root trips "dubious ownership" and can leave root-owned files):
+
+```bash
+sudo -iu hermes git -C /home/hermes/work/ai-os fetch upstream master
+sudo -iu hermes git -C /home/hermes/work/ai-os merge --ff-only upstream/master
+sudo systemctl restart ai-os-hermes
+journalctl -u ai-os-hermes --no-pager | grep -i '\[board\]' | tail   # expect: [board] opened … dispatcher on
+```
+
+Only run `npm ci` (as `hermes`, exit 0 **before** the restart) if that merge changed
+`package-lock.json` — chaining `npm ci` with a restart has taken a box down before.
+
 ## Deliberate choices — don't "fix" them back
 
 - **`AIOS_HARD_BUDGET=true`** in the `.env` template. It is off by default in the app, which is
