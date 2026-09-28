@@ -52,6 +52,9 @@ assert(/RUNNER=\$\{RUNNER:-\/usr\/local\/bin\/hermes-task\}/.test(code), 'the ru
 assert(/systemctl restart "\$SERVICE"/.test(code), 'restarts the service');
 assert(/systemctl is-active --quiet "\$SERVICE" \|\|/.test(code), 'fails loudly (and points at the backup) if the service does not come back');
 assert(/\[board\] dispatcher started/.test(code), 'verifies the dispatcher logged that it started');
+assert(/START=\$\(date /.test(code) && /--since "\$START"/.test(code), 'verify scans from the restart moment, not a fixed short window (this app boots slowly)');
+assert(/for _ in \$\(seq 1 30\)/.test(code) && /seen=failed/.test(code) && /board failed to initialise/.test(code),
+  'verify polls up to ~90s and fails loudly if the board init errored');
 
 // the switch is actually wired to the app: the facade reads exactly these env vars
 const facade = readRepoFile('lib/board/index.js');

@@ -88,6 +88,10 @@ log ".env updated (dispatcher $MODE)"
 
 # ------------------------------------------------------------------- restart ---
 log "restarting $SERVICE"
+# Capture the restart moment so verify can scan from here — this app's boot (state loads, CRM
+# backfill, analytics) runs well past 30s before the board initializes, so a fixed short window
+# missed the "started" line on a real box even though the dispatcher was up.
+START=$(date '+%Y-%m-%d %H:%M:%S')
 systemctl restart "$SERVICE"
 sleep 2
 systemctl is-active --quiet "$SERVICE" || { journalctl -u "$SERVICE" -n 30 --no-pager; die "$SERVICE did not come back up — restored config is in $BACKUP"; }
@@ -95,11 +99,22 @@ systemctl is-active --quiet "$SERVICE" || { journalctl -u "$SERVICE" -n 30 --no-
 # ------------------------------------------------------------------- verify ----
 log "verifying"
 if [ "$MODE" = on ]; then
-  if journalctl -u "$SERVICE" --since '30 seconds ago' --no-pager 2>/dev/null | grep -q '\[board\] dispatcher started'; then
-    echo "  ok   the dispatcher logged that it started"
-  else
-    echo "  WARN could not see '[board] dispatcher started' in the last 30s of logs — check: journalctl -u $SERVICE | grep board"
-  fi
+  # Poll (not a single snapshot): wait up to ~90s for the dispatcher to log that it started, and bail
+  # early with the reason if the board init failed instead. Scans from the restart moment ($START).
+  seen=""
+  for _ in $(seq 1 30); do
+    lines=$(journalctl -u "$SERVICE" --since "$START" --no-pager 2>/dev/null | grep -i '\[board\]')
+    if printf '%s' "$lines" | grep -q '\[board\] dispatcher started'; then seen=started; break; fi
+    if printf '%s' "$lines" | grep -q '\[board\] init failed'; then seen=failed; break; fi
+    if printf '%s' "$lines" | grep -q 'HERMES_RUNNER_CMD is empty'; then seen=norunner; break; fi
+    sleep 3
+  done
+  case "$seen" in
+    started)  echo "  ok   the dispatcher logged that it started" ;;
+    failed)   journalctl -u "$SERVICE" --since "$START" --no-pager | grep -i '\[board\]' | tail -5; die "the board failed to initialise — see the lines above (config restored is in $BACKUP)" ;;
+    norunner) die "HERMES_BOARD_DISPATCH is on but the app read an empty HERMES_RUNNER_CMD — check $ENV_FILE" ;;
+    *)        echo "  WARN did not see '[board] dispatcher started' within ~90s. Check: journalctl -u $SERVICE | grep -i board  (and that this app has the board code: grep -c startDefaultDispatcher $APP_DIR/server.js)" ;;
+  esac
   cat <<NEXT
 
 Enabled. The board now claims ready tasks and runs them through $RUNNER (concurrency $CONCURRENCY).
