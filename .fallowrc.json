@@ -164,7 +164,8 @@
     "tools/test-hub-newsletter.js",
     "tools/test-install-vps.js",
     "tools/test-hermes-task.js",
-    "tools/test-board.js"
+    "tools/test-board.js",
+    "tools/test-enable-board-dispatcher.js"
   ],
   "ignorePatterns": [
     "docs-export/**",

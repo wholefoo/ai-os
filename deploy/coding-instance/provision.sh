@@ -238,6 +238,16 @@ AGENT_MAX_CONCURRENCY=3
 # Per-call wall clock (default 900000 = 15 min). This is the real per-task
 # timeout; the systemd unit deliberately does not restart the server on a timer.
 AGENT_CALL_MAX_TOTAL_MS=900000
+
+# ---- Coding Board dispatcher (OFF by default) ----------------------------
+# The board always records and serves; this switch is what makes it RUN tasks
+# through the hermes-task runner. Leave 0 until the runner is installed and
+# proven (install-claude-code.sh + install-agent-user.sh + a --probe pass),
+# then enable with: sudo bash enable-board-dispatcher.sh
+HERMES_BOARD_DISPATCH=0
+HERMES_RUNNER_CMD=/usr/local/bin/hermes-task
+HERMES_BOARD_CONCURRENCY=1
+HERMES_BOARD_POLL_MS=5000
 ENVTEMPLATE
   chown "$HERMES_USER:$HERMES_USER" "$APP_DIR/.env"
   chmod 600 "$APP_DIR/.env"
