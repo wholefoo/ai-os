@@ -12685,6 +12685,22 @@ try {
   console.error('[analytics] init failed:', e.message);
 }
 
+// --- Coding board: the durable Kanban queue behind the Hermes-Dev coding platform (phase 2). The
+// board always records/serves; the DISPATCHER (which runs real coding jobs via the hermes-task
+// runner) is opt-in via HERMES_BOARD_DISPATCH=1 + HERMES_RUNNER_CMD, so it only ever runs where the
+// operator has wired the runner (the Hermes-Dev box) — never on the production instance by accident.
+let board = null;
+try {
+  board = require('./lib/board');
+  board.openDb(path.join(MAGENT_DIR, 'board.sqlite'));
+  board.registerBoardRoutes(app, { requireAdmin, broadcast });
+  const disp = board.startDefaultDispatcher({ onLog: (taskId, chunk) => broadcast({ event: 'board_task_log', data: { taskId, chunk } }) });
+  appendLog(`[board] opened${disp ? ` + dispatcher on (${disp.id})` : ' (dispatcher off — set HERMES_BOARD_DISPATCH=1 to enable)'}`);
+} catch (e) {
+  board = null;
+  console.error('[board] init failed:', e.message);
+}
+
 // Admin analytics: ?site=<webStudioSiteId> scopes to one hosted site, default = the platform
 // itself. The site id is validated against the live site list (arbitrary bucket names would let
 // a typo silently read an empty bucket and look like "no traffic").
