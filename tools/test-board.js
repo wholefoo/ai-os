@@ -130,6 +130,19 @@ const reset = () => rawDb().exec('DELETE FROM tasks;');
   assert(finishedOk.branch === 'hermes/abc123' && /expand=1/.test(finishedOk.pr_url), 'dispatcher: branch + PR parsed from the run');
   assert(finishedOk.exit_code === 0 && finishedOk.cost_usd === '0.4200', 'dispatcher: exit code and cost recorded');
 
+  // observability: a dispatcher with logDir persists the runner's combined output to <logDir>/<id>.log
+  reset();
+  const logDir = path.join(dir, 'board-logs');
+  const dl = createDispatcher({ runnerCmd, maxConcurrency: 1, logDir });
+  const logTask = repo.create({ title: 'logged run', body: 'pushed' });
+  await dl.tickOnce();
+  const logFile = path.join(logDir, `${logTask.id}.log`);
+  assert(fs.existsSync(logFile), 'dispatcher: the run log file is written under logDir');
+  const logged = fs.readFileSync(logFile, 'utf8');
+  assert(/RESULT: pushed/.test(logged) && /est_cost=/.test(logged), 'dispatcher: the run log captures the runner stdout (RESULT + cost lines)');
+  assert(/# board task/.test(logged) && /status=pushed/.test(logged), 'dispatcher: the run log has a header with the task id and runner status');
+  dl.stop();
+
   // tests_failed path
   reset();
   repo.create({ title: 'dispatch red', body: 'tests_failed' });

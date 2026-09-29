@@ -28,6 +28,7 @@ node_modules/
 .magent/account-invites.sqlite*
 .magent/billing-history.sqlite*
 .magent/board.sqlite*
+.magent/board-logs/
 
 # Content-provenance Ed25519 signing key — a leak forges every provenance record; never commit
 .magent/provenance/
