@@ -113,6 +113,11 @@ sudo bash enable-board-dispatcher.sh          # turn the dispatcher on, restart,
 sudo bash enable-board-dispatcher.sh --off     # turn it off again
 ```
 
+Every dispatched run's combined stdout+stderr is saved to `.magent/board-logs/<taskId>.log` (the task
+id, not the workspace name), so a failed run is diagnosable even when the runner died before writing its
+own `.hermes/result.json`. The log header records the status, exit code, and the `/srv/hermes-tasks/`
+workspace it used.
+
 No new privilege is granted. On this box the AI OS app **runs as `hermes`** — the runner user — so the
 dispatcher runs `hermes-task` **as itself**, reusing the one sudoers rule `hermes` already has
 (`hermes → hermes-agent-launch`). The script **refuses** to run anywhere the app user is not `hermes`
