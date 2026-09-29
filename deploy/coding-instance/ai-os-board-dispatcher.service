@@ -1,0 +1,49 @@
+[Unit]
+Description=AI OS Coding Board dispatcher (runs coding jobs via hermes-task)
+Documentation=https://github.com/wholefoo/ai-os
+# Start after the app so board.sqlite exists and its schema/migrations are applied.
+After=network-online.target ai-os-hermes.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=@HERMES_USER@
+Group=@HERMES_USER@
+# The pump prepares the shared task tree (group hermes-work, setgid) and must be in that group.
+SupplementaryGroups=hermes-work
+WorkingDirectory=@APP_DIR@
+Environment=PATH=@NODE_BIN@:/usr/local/bin:/usr/bin:/bin
+Environment=NODE_ENV=production
+EnvironmentFile=@APP_DIR@/.env
+ExecStart=@NODE_BIN@/node lib/board/run-dispatcher.js
+
+Restart=on-failure
+RestartSec=10s
+StartLimitIntervalSec=300
+StartLimitBurst=5
+
+# ---- Deliberately NOT hardened -------------------------------------------
+# Unlike ai-os-hermes.service, this unit sets NO seccomp directives (NoNewPrivileges / RestrictSUIDSGID
+# / ProtectClock / …). It MUST be able to `sudo -n hermes-agent-launch` (drop to the confined agent)
+# and `chmod` setgid task directories — both of which those directives block, and both of which cannot
+# be re-enabled per-child once the unit sets them. The isolation that matters here is the same as for
+# the runner: the confined `hermes-agent` OS user and the agent's own bubblewrap sandbox, not systemd
+# confinement of this small pump. Keeping this separate from the PUBLIC web app is the whole point —
+# the web app stays hardened; this worker gets only the privileges the coding work needs.
+
+# ---- Resource limits -----------------------------------------------------
+# Its own cgroup, separate from the app's 3G. On a 4 GB box the app is light at idle and this runs one
+# job at a time; cap it so a runaway build cannot take the whole box down alongside the app.
+MemoryHigh=2200M
+MemoryMax=2600M
+CPUQuota=150%
+TasksMax=512
+OOMScoreAdjust=400
+
+# ---- Logging -------------------------------------------------------------
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=ai-os-board-dispatcher
+
+[Install]
+WantedBy=multi-user.target

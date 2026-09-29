@@ -1,127 +1,128 @@
 #!/usr/bin/env bash
-# Turn the Coding Board dispatcher ON for this Hermes-Dev instance.
+# Enable/disable the Coding Board dispatcher as its OWN systemd service, separate from the web app.
 #
-#   sudo bash enable-board-dispatcher.sh          # enable, restart, verify
-#   sudo bash enable-board-dispatcher.sh --off     # disable again (restart, verify)
+#   sudo bash enable-board-dispatcher.sh          # install + enable + start ai-os-board-dispatcher
+#   sudo bash enable-board-dispatcher.sh --off     # stop + disable it
 #
-# What this does — and, deliberately, does NOT do:
-#   * It only writes four HERMES_BOARD_* lines into the app's .env and restarts the service. The
-#     board code is already on master; this is the switch, not an install.
-#   * It adds NO sudoers rule. On this box the AI OS app RUNS AS `hermes` (provision.sh: HERMES_USER,
-#     the systemd unit's User=), and `hermes` already owns the runner and holds the one scoped sudoers
-#     rule it needs (hermes -> hermes-agent-launch, from install-agent-user.sh). So the in-process
-#     dispatcher runs `hermes-task` DIRECTLY, as itself. Granting the web app the right to run code as
-#     another user would be a strictly wider privilege than the design calls for — so this refuses to
-#     run anywhere the app user is not `hermes` (e.g. a production box where it is `aios`) rather than
-#     silently minting that grant.
-#   * It does NOT run any install/build before the restart (npm ci and a restart chained together took
-#     a live box down for 40 minutes once — an env edit is not that, and this keeps it that way).
+# WHY a separate service (not the in-app pump): the web app unit (ai-os-hermes) is hardened with
+# NoNewPrivileges=yes and RestrictSUIDSGID=yes. Those block exactly the two things the runner must do —
+# `sudo -n hermes-agent-launch` (drop to the confined agent) and `chmod` the setgid task directories —
+# and they cannot be dropped for a single child process. Rather than weaken the PUBLIC web app, the
+# pump runs as its own unhardened `hermes` service (ai-os-board-dispatcher.service) sharing board.sqlite
+# over WAL. The app keeps its hardening, keeps serving the board API, and HERMES_BOARD_DISPATCH is
+# forced 0 in the app .env so it never also runs the in-process pump (that would double-claim tasks).
 #
-# Idempotent: re-run it to change concurrency/poll, or with --off to disable. Every write to .env is
-# preceded by a timestamped backup.
+# Isolation is unchanged: the pump still runs as `hermes`, still reaches root only through the one
+# scoped sudoers rule (hermes -> hermes-agent-launch), and the agent is still the confined hermes-agent
+# in bubblewrap. This script refuses to run where the app user is not `hermes`.
 set -euo pipefail
 
-SERVICE=${SERVICE:-ai-os-hermes}
+APP_SERVICE=${APP_SERVICE:-ai-os-hermes}
+DISP_SERVICE=${DISP_SERVICE:-ai-os-board-dispatcher}
 EXPECT_USER=${EXPECT_USER:-hermes}
 RUNNER=${RUNNER:-/usr/local/bin/hermes-task}
 LAUNCHER_SUDOERS=${LAUNCHER_SUDOERS:-/etc/sudoers.d/hermes-agent}
 CONCURRENCY=${HERMES_BOARD_CONCURRENCY:-1}
 POLL_MS=${HERMES_BOARD_POLL_MS:-5000}
+SCRIPT_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
+UNIT_SRC=$SCRIPT_DIR/ai-os-board-dispatcher.service
+UNIT_DST=/etc/systemd/system/$DISP_SERVICE.service
 MODE=on
 [ "${1:-}" = "--off" ] && MODE=off
 
 log() { printf '\n\033[1;32m==>\033[0m %s\n' "$*"; }
 die() { printf '\nREFUSING: %s\n' "$*" >&2; exit 1; }
 
+# Rewrite the HERMES_BOARD_* / HERMES_RUNNER_CMD block in the app .env. Backup first; drop the old keys
+# (grep -v, never sed -i, so a regex-special value can't corrupt a neighbour and re-runs don't leave
+# duplicate keys — dotenv takes the LAST, a silent trap); force DISPATCH=0 so the APP never runs the
+# in-process pump. $1 = "config" (write runner settings too) or "off" (just DISPATCH=0).
+write_env() {
+  local backup tmp
+  backup="$ENV_FILE.bak.$(date +%Y%m%d-%H%M%S)"
+  cp -p "$ENV_FILE" "$backup"
+  log "backed up $ENV_FILE -> $backup"
+  tmp="$ENV_FILE.tmp.$$"
+  grep -vE '^(HERMES_BOARD_DISPATCH|HERMES_RUNNER_CMD|HERMES_BOARD_CONCURRENCY|HERMES_BOARD_POLL_MS)=' "$ENV_FILE" > "$tmp" || true
+  {
+    echo "# Coding Board dispatcher (enable-board-dispatcher.sh) — pump runs as $DISP_SERVICE, NOT in-app"
+    echo "HERMES_BOARD_DISPATCH=0"
+    if [ "$1" = config ]; then
+      echo "HERMES_RUNNER_CMD=$RUNNER"
+      echo "HERMES_BOARD_CONCURRENCY=$CONCURRENCY"
+      echo "HERMES_BOARD_POLL_MS=$POLL_MS"
+    fi
+  } >> "$tmp"
+  chown --reference="$ENV_FILE" "$tmp" 2>/dev/null || true
+  chmod --reference="$ENV_FILE" "$tmp" 2>/dev/null || true
+  mv -f "$tmp" "$ENV_FILE"
+}
+
 # ------------------------------------------------------------------ preflight ---
 [ "$(id -u)" -eq 0 ] || die "run as root"
-systemctl cat "$SERVICE" >/dev/null 2>&1 || die "no systemd unit '$SERVICE' — run provision.sh first"
-
-APP_USER=$(systemctl show -p User --value "$SERVICE" 2>/dev/null)
-APP_DIR=$(systemctl show -p WorkingDirectory --value "$SERVICE" 2>/dev/null)
-[ -n "$APP_DIR" ] || die "could not read WorkingDirectory from $SERVICE"
+systemctl cat "$APP_SERVICE" >/dev/null 2>&1 || die "no systemd unit '$APP_SERVICE' — run provision.sh first"
+APP_USER=$(systemctl show -p User --value "$APP_SERVICE")
+APP_DIR=$(systemctl show -p WorkingDirectory --value "$APP_SERVICE")
+[ -n "$APP_DIR" ] || die "could not read WorkingDirectory from $APP_SERVICE"
 ENV_FILE="$APP_DIR/.env"
 [ -f "$ENV_FILE" ] || die "$ENV_FILE not found — fill in the app .env first"
+[ "$APP_USER" = "$EXPECT_USER" ] || die "the app runs as '$APP_USER', not '$EXPECT_USER' — this box is not wired for the coding runner; not enabling."
 
-# The core safety check: the dispatcher runs the runner AS the app user, so the app user MUST be the
-# runner user. If it is anything else, wiring this here would need a privilege grant this script
-# refuses to make — stop and say so.
-[ "$APP_USER" = "$EXPECT_USER" ] || die "the app runs as '$APP_USER', not '$EXPECT_USER'. The board dispatcher runs $RUNNER as the app user, which only works when the app user IS the runner user. This box is not wired that way; not enabling."
-
-if [ "$MODE" = on ]; then
-  [ -x "$RUNNER" ] || die "$RUNNER not found or not executable — run install-claude-code.sh first"
-  # hermes reaches the confined agent only through the launcher sudoers rule; without it the runner
-  # can start but every task fails at bubblewrap. Fail loudly now, not per-task later.
-  [ -f "$LAUNCHER_SUDOERS" ] || die "$LAUNCHER_SUDOERS missing — run install-agent-user.sh (the hermes -> hermes-agent-launch rule the runner needs)"
-  sudo -n -l -U "$APP_USER" 2>/dev/null | grep -q 'hermes-agent-launch' \
-    || die "$APP_USER has no NOPASSWD rule for hermes-agent-launch — run install-agent-user.sh"
+# ------------------------------------------------------------------ --off -------
+if [ "$MODE" = off ]; then
+  systemctl disable --now "$DISP_SERVICE" 2>/dev/null || true
+  write_env off
+  log "restarting $APP_SERVICE (in-process pump stays off)"
+  systemctl restart "$APP_SERVICE"
+  echo "  ok   $DISP_SERVICE stopped + disabled; the board still records and serves."
+  exit 0
 fi
 
-# ------------------------------------------------------------------ edit .env ---
-BACKUP="$ENV_FILE.bak.$(date +%Y%m%d-%H%M%S)"
-cp -p "$ENV_FILE" "$BACKUP"
-log "backed up $ENV_FILE -> $BACKUP"
+# ------------------------------------------------------------------ on: checks --
+[ -x "$RUNNER" ] || die "$RUNNER not found or not executable — run install-claude-code.sh first"
+[ -f "$LAUNCHER_SUDOERS" ] || die "$LAUNCHER_SUDOERS missing — run install-agent-user.sh (the hermes -> hermes-agent-launch rule the runner needs)"
+sudo -n -l -U "$APP_USER" 2>/dev/null | grep -q 'hermes-agent-launch' \
+  || die "$APP_USER has no NOPASSWD rule for hermes-agent-launch — run install-agent-user.sh"
+[ -f "$UNIT_SRC" ] || die "$UNIT_SRC not found next to this script"
 
-# Drop any existing HERMES_BOARD_* / HERMES_RUNNER_CMD lines, then append the desired set. grep -v
-# (not sed -i in place) so a value containing regex-special characters can never corrupt a neighbour,
-# and so re-running never leaves duplicate keys (dotenv takes the LAST — duplicates are a silent trap).
-TMP="$ENV_FILE.tmp.$$"
-grep -vE '^(HERMES_BOARD_DISPATCH|HERMES_RUNNER_CMD|HERMES_BOARD_CONCURRENCY|HERMES_BOARD_POLL_MS)=' "$ENV_FILE" > "$TMP" || true
+# The node the app runs (first entry of its unit PATH), so the dispatcher uses the same one.
+NODE_BIN=$(systemctl show "$APP_SERVICE" -p Environment --value | tr ' ' '\n' | sed -n 's/^PATH=//p' | cut -d: -f1)
+if [ -z "$NODE_BIN" ] || [ ! -x "$NODE_BIN/node" ]; then NODE_BIN=$(dirname "$(command -v node 2>/dev/null || echo /usr/bin/node)"); fi
+[ -x "$NODE_BIN/node" ] || die "could not find node (checked $APP_SERVICE PATH and \$PATH)"
 
-if [ "$MODE" = on ]; then
-  {
-    echo "# Coding Board dispatcher (enable-board-dispatcher.sh)"
-    echo "HERMES_BOARD_DISPATCH=1"
-    echo "HERMES_RUNNER_CMD=$RUNNER"
-    echo "HERMES_BOARD_CONCURRENCY=$CONCURRENCY"
-    echo "HERMES_BOARD_POLL_MS=$POLL_MS"
-  } >> "$TMP"
-else
-  echo "HERMES_BOARD_DISPATCH=0" >> "$TMP"
-fi
+# ------------------------------------------------------------------ app .env ----
+# Runner config for the dispatcher service (it reads the same .env), and the in-process pump forced off.
+write_env config
+log "restarting $APP_SERVICE so its in-process pump is off (the separate service is the only pump)"
+systemctl restart "$APP_SERVICE"
 
-# Preserve ownership/mode, then move into place.
-chown --reference="$ENV_FILE" "$TMP" 2>/dev/null || true
-chmod --reference="$ENV_FILE" "$TMP" 2>/dev/null || true
-mv -f "$TMP" "$ENV_FILE"
-log ".env updated (dispatcher $MODE)"
-
-# ------------------------------------------------------------------- restart ---
-log "restarting $SERVICE"
-# Capture the restart moment so verify can scan from here — this app's boot (state loads, CRM
-# backfill, analytics) runs well past 30s before the board initializes, so a fixed short window
-# missed the "started" line on a real box even though the dispatcher was up.
+# ------------------------------------------------------ install dispatcher unit -
+log "installing $DISP_SERVICE (User=$APP_USER, node=$NODE_BIN, app=$APP_DIR)"
+sed -e "s|@HERMES_USER@|$APP_USER|g" -e "s|@APP_DIR@|$APP_DIR|g" -e "s|@NODE_BIN@|$NODE_BIN|g" "$UNIT_SRC" > "$UNIT_DST"
+chmod 644 "$UNIT_DST"
+systemctl daemon-reload
 START=$(date '+%Y-%m-%d %H:%M:%S')
-systemctl restart "$SERVICE"
+systemctl enable --now "$DISP_SERVICE"
 sleep 2
-systemctl is-active --quiet "$SERVICE" || { journalctl -u "$SERVICE" -n 30 --no-pager; die "$SERVICE did not come back up — restored config is in $BACKUP"; }
+systemctl is-active --quiet "$DISP_SERVICE" || { journalctl -u "$DISP_SERVICE" -n 30 --no-pager; die "$DISP_SERVICE did not start — see the log above"; }
 
-# ------------------------------------------------------------------- verify ----
+# ------------------------------------------------------------------- verify -----
 log "verifying"
-if [ "$MODE" = on ]; then
-  # Poll (not a single snapshot): wait up to ~90s for the dispatcher to log that it started, and bail
-  # early with the reason if the board init failed instead. Scans from the restart moment ($START).
-  seen=""
-  for _ in $(seq 1 30); do
-    lines=$(journalctl -u "$SERVICE" --since "$START" --no-pager 2>/dev/null | grep -i '\[board\]')
-    if printf '%s' "$lines" | grep -q '\[board\] dispatcher started'; then seen=started; break; fi
-    if printf '%s' "$lines" | grep -q '\[board\] init failed'; then seen=failed; break; fi
-    if printf '%s' "$lines" | grep -q 'HERMES_RUNNER_CMD is empty'; then seen=norunner; break; fi
-    sleep 3
-  done
-  case "$seen" in
-    started)  echo "  ok   the dispatcher logged that it started" ;;
-    failed)   journalctl -u "$SERVICE" --since "$START" --no-pager | grep -i '\[board\]' | tail -5; die "the board failed to initialise — see the lines above (config restored is in $BACKUP)" ;;
-    norunner) die "HERMES_BOARD_DISPATCH is on but the app read an empty HERMES_RUNNER_CMD — check $ENV_FILE" ;;
-    *)        echo "  WARN did not see '[board] dispatcher started' within ~90s. Check: journalctl -u $SERVICE | grep -i board  (and that this app has the board code: grep -c startDefaultDispatcher $APP_DIR/server.js)" ;;
-  esac
-  cat <<NEXT
-
-Enabled. The board now claims ready tasks and runs them through $RUNNER (concurrency $CONCURRENCY).
-  * File a task from the dashboard (Coding Board -> + New Task) or via POST /api/board/intake.
-  * Watch it: journalctl -u $SERVICE -f | grep -i board
-  * Turn it off again:  sudo bash enable-board-dispatcher.sh --off
-NEXT
-else
-  echo "  ok   dispatcher disabled; the board still records and serves, it just does not run tasks."
+seen=""
+for _ in $(seq 1 20); do
+  if journalctl -u "$DISP_SERVICE" --since "$START" --no-pager 2>/dev/null | grep -q '\[board-dispatcher\] started'; then seen=started; break; fi
+  sleep 2
+done
+if [ "$seen" = started ]; then echo "  ok   $DISP_SERVICE logged that it started"; else
+  echo "  WARN did not see '[board-dispatcher] started' within ~40s. Check: journalctl -u $DISP_SERVICE -n 40"
 fi
+
+cat <<NEXT
+
+Enabled. The dispatcher runs as its own service ($DISP_SERVICE) and claims ready tasks, running each
+through $RUNNER (concurrency $CONCURRENCY). The web app keeps its hardening and just serves the board.
+  * File a task from the dashboard (Coding Board -> + New Task) or via POST /api/board/intake.
+  * Watch it:            journalctl -u $DISP_SERVICE -f
+  * A run's full output: $APP_DIR/.magent/board-logs/<taskId>.log
+  * Turn it off again:   sudo bash enable-board-dispatcher.sh --off
+NEXT

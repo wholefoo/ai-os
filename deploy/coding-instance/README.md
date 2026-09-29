@@ -103,28 +103,36 @@ use too, and tasks share the plan's allowance, so prefer off-hours runs.
 ## Phase 2: the Coding Board (a durable queue in the dashboard)
 
 The board (dashboard → **Coding Board**) is a durable SQLite queue in front of the same runner. You
-file tasks (in the UI, or from outside via `POST /api/board/intake`); a dumb in-process **dispatcher**
-claims the top-priority `ready` task, runs it through `hermes-task`, and moves the card to
-done/failed/blocked with the branch and result. The board always records and serves; the dispatcher is
-**off until you switch it on**, so it never runs a real job by accident.
+file tasks (in the UI, or from outside via `POST /api/board/intake`); a dumb **dispatcher** claims the
+top-priority `ready` task, runs it through `hermes-task`, and moves the card to done/failed/blocked with
+the branch and result. The board always records and serves; the dispatcher is **off until you switch it
+on**, so it never runs a real job by accident.
 
 ```bash
-sudo bash enable-board-dispatcher.sh          # turn the dispatcher on, restart, verify
-sudo bash enable-board-dispatcher.sh --off     # turn it off again
+sudo bash enable-board-dispatcher.sh          # install + enable + start the dispatcher service
+sudo bash enable-board-dispatcher.sh --off     # stop + disable it
 ```
 
-Every dispatched run's combined stdout+stderr is saved to `.magent/board-logs/<taskId>.log` (the task
-id, not the workspace name), so a failed run is diagnosable even when the runner died before writing its
-own `.hermes/result.json`. The log header records the status, exit code, and the `/srv/hermes-tasks/`
-workspace it used.
+**The dispatcher runs as its own systemd service (`ai-os-board-dispatcher`), separate from the web
+app** — and this separation is deliberate. The runner must `sudo -n hermes-agent-launch` (to drop to
+the confined agent) and `chmod` the setgid task directories; the web app's unit is hardened with
+`NoNewPrivileges=yes` + `RestrictSUIDSGID=yes`, which **block both** of those and cannot be relaxed for
+a single child process. So the pump runs as its own **unhardened `hermes`** service that shares
+`board.sqlite` with the app over WAL, while the public web app keeps its full hardening and just serves
+the board API. `enable-board-dispatcher.sh` installs that unit (substituting the node/app paths), forces
+`HERMES_BOARD_DISPATCH=0` in the app `.env` so the app never *also* runs the pump (double-dispatch), and
+starts the service. Isolation is unchanged: the pump is still `hermes`, still reaches root only through
+the one scoped sudoers rule (`hermes → hermes-agent-launch`), and the agent is still the confined
+`hermes-agent` in bubblewrap. The script **refuses** to run where the app user is not `hermes`.
 
-No new privilege is granted. On this box the AI OS app **runs as `hermes`** — the runner user — so the
-dispatcher runs `hermes-task` **as itself**, reusing the one sudoers rule `hermes` already has
-(`hermes → hermes-agent-launch`). The script **refuses** to run anywhere the app user is not `hermes`
-(e.g. a production box where it is `aios`), because wiring it there would mean granting the web app the
-right to run code as another user — a wider privilege than the design calls for. It edits only four
-`HERMES_BOARD_*` lines in `.env` (backed up first, no duplicate keys) and restarts — no install runs
-before the restart.
+Every dispatched run's combined stdout+stderr is saved to `.magent/board-logs/<taskId>.log` (keyed by
+task id, not workspace name), so a failed run is diagnosable even when the runner died before writing
+its own `.hermes/result.json`. The header records the status, exit code, and the `/srv/hermes-tasks/`
+workspace. Watch a live run with `journalctl -u ai-os-board-dispatcher -f`.
+
+Trade-off to know: because the dispatcher is a separate process it can't push the app's WebSocket
+updates, so the dashboard reflects dispatcher-driven state changes (claimed → running → done) on
+**refresh** rather than live. App-side writes (create / comment / actions) still update live.
 
 External intake for a gateway (a chat bot, an n8n flow, a GitHub webhook) uses a service key scoped
 `agent` (`POST /api/admin/service-keys`), **not** the master `API_TOKEN`; that scope may reach
