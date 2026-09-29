@@ -16,6 +16,11 @@ const { createDispatcher, parseRunnerOutput } = require('../lib/board/dispatcher
 const rawDb = () => require('../lib/board/db').getDb();
 
 const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'board-'));
+// Self-contained fixture: a package.json here means node running the stub (dir/stub-runner.js) resolves
+// its module type in this dir and never climbs to a stray /tmp/package.json. An empty (invalid)
+// /tmp/package.json on a box made node exit ERR_INVALID_PACKAGE_CONFIG for every /tmp script, breaking
+// the dispatcher tests — this closes that footgun.
+fs.writeFileSync(path.join(dir, 'package.json'), '{"private":true}\n');
 
 // A stand-in for `hermes-task`: argv[2] is the task body, which we use as the MODE so one stub covers
 // every case. It prints exactly what the real runner prints on stdout.

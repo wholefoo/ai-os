@@ -24,6 +24,11 @@ git init -q -b master "$R/seed"; ( cd "$R/seed"
   git config user.email t@t; git config user.name t
   echo hello > hello.txt
   printf '.magent/\n.hermes/\n' > .gitignore
+  # A package.json (no lockfile, so the runner still skips npm ci) makes the fixture self-contained:
+  # `node test.js` resolves its module type HERE and never climbs to a stray /tmp/package.json. A real
+  # empty /tmp/package.json on the box (0 bytes = invalid JSON) made node exit ERR_INVALID_PACKAGE_
+  # CONFIG for every fixture under /tmp, failing the whole suite — this closes that footgun.
+  printf '{"private":true}\n' > package.json
   # Fails if run in the DIRTY workspace: the stub drops an untracked .magent/poison there, mimicking
   # the agent-owned state that broke the in-place verify. A clean clone of the branch never has it.
   echo 'const fs=require("fs");if(fs.existsSync(".magent/poison")){console.error("verified the dirty workspace, not a clean checkout");process.exit(1)}const s=fs.readFileSync("hello.txt","utf8");if(/BROKEN/.test(s)){console.error("broken");process.exit(1)}console.log("ok")' > test.js
