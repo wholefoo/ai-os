@@ -35,9 +35,18 @@ async function check(label, fn) { if (/^A(13|15|17) /.test(label) && !fs.existsS
     assert(c.wsResolveFile('test','src/pages/index.astro'));
   });
   await check('A01 builds fail closed without an isolated worker; artifacts reject links', async () => {
-    const old=process.env.AIOS_BUILD_IMAGE; delete process.env.AIOS_BUILD_IMAGE;
+    // "not configured" means BOTH worker knobs are unset: the Docker image (AIOS_BUILD_IMAGE)
+    // AND the native bubblewrap backend (AIOS_BUILD_BACKEND). Clearing only the image left the
+    // native path live wherever the ambient env set AIOS_BUILD_BACKEND=bubblewrap (the coding
+    // box's .env, inherited by the dispatcher service), so the call ran a real systemd-run build
+    // and this assertion failed with "requires Linux" / a user-bus error instead of "not configured".
+    const old=process.env.AIOS_BUILD_IMAGE, oldBackend=process.env.AIOS_BUILD_BACKEND;
+    delete process.env.AIOS_BUILD_IMAGE; delete process.env.AIOS_BUILD_BACKEND;
     try { await assert.rejects(require('../lib/web-studio/isolated-build').isolatedBuild(root,100),/not configured/); }
-    finally { if(old !== undefined) process.env.AIOS_BUILD_IMAGE=old; }
+    finally {
+      if(old !== undefined) process.env.AIOS_BUILD_IMAGE=old;
+      if(oldBackend !== undefined) process.env.AIOS_BUILD_BACKEND=oldBackend;
+    }
     const dir=fs.mkdtempSync(path.join(os.tmpdir(),'aios-artifact-test-'));
     try {
       const header=Buffer.alloc(1024); header.write('../escape'); header.write('00000000000',124); header.write('0',156);
