@@ -59,6 +59,15 @@ assert(/--exclude='\.\/\.claude\/\.cc-\*'/.test(runnerCode),
   "Claude Code's workspace runtime journals (.claude/.cc-*, e.g. .cc-writes) are excluded as a family — they are 0600 hermes-agent, unreadable by the runner, and aborted the whole tar mirror on the box");
 assert(/git -C "\$CDIR" ls-files -z \| while .*\[ -e "\$DIR\/\$f" \] \|\| rm -f "\$CDIR\/\$f"/.test(runner),
   'a deletion pass removes base-tracked files the agent deleted, so CDIR matches the working tree');
+// NODE_ENV=production (the dispatcher service sets it, and the runner inherits it) makes `npm ci` OMIT
+// devDependencies — but the whole test toolchain lives there: `fallow` and the suite runner's deps. A
+// verify step without them dies `fallow: not found`, so every task lands tests_failed even when the
+// change is perfect. This cost a full smoke run to find. Pin --include=dev on EVERY npm ci so the
+// production env can never again strip the toolchain the verify gate depends on.
+const npmCiLines = runnerCode.split('\n').filter((l) => /npm ci\b/.test(l));
+assert(npmCiLines.length >= 2, 'the runner installs deps for both the agent workspace and the clean verify checkout');
+assert(npmCiLines.every((l) => /--include=dev/.test(l)),
+  'every runner `npm ci` forces --include=dev (NODE_ENV=production would otherwise drop devDependencies — fallow, the test runner — and the verify gate fails `fallow: not found`)');
 
 const harness = path.join(__dirname, '..', 'deploy', 'coding-instance', 'test', 'harness.sh');
 

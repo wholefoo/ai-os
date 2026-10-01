@@ -173,7 +173,11 @@ base_sha=$(git rev-parse --short HEAD)
 
 if [ -f package-lock.json ] && [ "$MODE" != probe ]; then
   say "installing dependencies"
-  npm ci --no-audit --no-fund > .hermes/npm-ci.log 2>&1 || fail "npm ci failed — see $DIR/.hermes/npm-ci.log"
+  # --include=dev: this box runs under NODE_ENV=production (the dispatcher service sets it), which would
+  # otherwise make npm ci OMIT devDependencies. The test toolchain (fallow, the test runner deps) lives
+  # in devDependencies, so without this the agent cannot run `npm test` and the verify step below fails
+  # with `fallow: not found`. Running the suite IS this box's job, so dev deps are always required here.
+  npm ci --no-audit --no-fund --include=dev > .hermes/npm-ci.log 2>&1 || fail "npm ci failed — see $DIR/.hermes/npm-ci.log"
 fi
 
 # Hand the prepared workspace to the confined agent: group it to hermes-work, make it group-writable,
@@ -446,7 +450,7 @@ else
       say "verifying with '$TEST_CMD'"
       set +e
       ( set -e
-        if [ -f package-lock.json ]; then npm ci --no-audit --no-fund; fi
+        if [ -f package-lock.json ]; then npm ci --no-audit --no-fund --include=dev; fi   # --include=dev: NODE_ENV=production would otherwise drop the test toolchain (fallow) — see the install step above
         bash -c "$TEST_CMD"
       ) > "$DIR/.hermes/runner-tests.log" 2>&1
       VRC=$?
