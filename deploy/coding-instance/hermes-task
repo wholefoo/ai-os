@@ -48,7 +48,7 @@ WORK_GROUP=${HT_WORK_GROUP:-hermes-work}
 if [ -z "${HT_NODE_BIN:-}" ] && [ -s "$HOME_DIR/.node-bin-path" ]; then HT_NODE_BIN=$(cat "$HOME_DIR/.node-bin-path"); fi
 [ -n "${HT_NODE_BIN:-}" ] && PATH="$HT_NODE_BIN:$PATH"
 
-MODEL=sonnet BUDGET=5 TURNS=80 TIMEOUT=45m MODE=task TASK="" TASK_FILE=""
+MODEL=sonnet BUDGET=5 TURNS=80 TIMEOUT=45m MODE=task TASK="" TASK_FILE="" TITLE=""
 usage() { sed -n '2,11p' "$0" | sed 's/^# \{0,1\}//'; exit "${1:-0}"; }
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -57,6 +57,7 @@ while [ $# -gt 0 ]; do
     --turns) TURNS=$2; shift 2 ;;
     --timeout) TIMEOUT=$2; shift 2 ;;
     --task-file) TASK_FILE=$2; shift 2 ;;
+    --title) TITLE=$2; shift 2 ;;         # names the workspace/branch (default: the task's first words)
     --plan) MODE=plan; shift ;;
     --probe) MODE=probe; shift ;;
     --auth-check) MODE=auth; shift ;;
@@ -156,7 +157,9 @@ if [ "$MODE" = auth ]; then
 fi
 
 # ------------------------------------------------------------ the workspace ---
-slug=$(printf '%s' "${TASK:-probe}" | tr 'A-Z' 'a-z' | tr -cs 'a-z0-9' '-' | cut -c1-40 | sed 's/^-*//; s/-*$//')
+# Named from --title when given: a mission's build task text starts "Implement the plan below…", so
+# naming from the text gave every mission branch the same meaningless prefix.
+slug=$(printf '%s' "${TITLE:-${TASK:-probe}}" | tr 'A-Z' 'a-z' | tr -cs 'a-z0-9' '-' | cut -c1-40 | sed 's/^-*//; s/-*$//')
 # A random suffix, not just the timestamp: two runs of the same task inside one second (a quick
 # retry after a refused run) produced the same ID, and the second `git clone` hit the first one's
 # directory. Found on Linux CI, where runs are fast enough to collide; Windows was slow enough to hide it.

@@ -97,12 +97,24 @@ const hook = (filePath) => {
 };
 const realAgents = path.join(repoRoot, '.claude', 'agents');
 const fixture = path.join(realAgents, 'zz-seclint-fixture-delete-me.md');
-try {
-  fs.writeFileSync(fixture, HB('tools: [Read, Write, Bash]\ngates: []'));
-  const r = hook(fixture);
-  assert(r.code === 2 && /handbook-privilege/.test(r.err), 'the PostToolUse hook scans a handbook (.md) and surfaces the finding with exit 2');
-} finally {
-  fs.rmSync(fixture, { force: true });
+// This check MUST write inside this repo: the hook deliberately scans only ROOT-contained files, so a
+// temp-dir fixture would be ignored. Inside a Claude Code agent sandbox `.claude/` is mounted
+// read-only, so the write fails with EROFS — and the Hermes-Dev builder, told to keep fixing until the
+// full suite passes, could never see this suite green (found on the first real mission, 2026-10-10).
+// So skip ONLY on EROFS, loudly. The check still runs in full in CI and in the coding runner's
+// out-of-sandbox clean-checkout verify — the two places that gate a merge. Any other write error fails.
+let fixtureWritable = true;
+try { fs.writeFileSync(fixture, HB('tools: [Read, Write, Bash]\ngates: []')); }
+catch (e) { if (e && e.code === 'EROFS') fixtureWritable = false; else throw e; }
+if (fixtureWritable) {
+  try {
+    const r = hook(fixture);
+    assert(r.code === 2 && /handbook-privilege/.test(r.err), 'the PostToolUse hook scans a handbook (.md) and surfaces the finding with exit 2');
+  } finally {
+    fs.rmSync(fixture, { force: true });
+  }
+} else {
+  console.log('skip: .claude/agents is read-only here (an agent sandbox) — the hook-over-a-handbook check runs in CI and in the runner\'s clean-checkout verify');
 }
 const anyReal = fs.readdirSync(realAgents).filter((f) => f.endsWith('.md') && !f.startsWith('zz-')).map((f) => path.join(realAgents, f))[0];
 assert(anyReal && hook(anyReal).code === 0, 'the hook over an unchanged committed handbook exits 0');

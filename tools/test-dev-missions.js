@@ -369,7 +369,14 @@ const flush = () => new Promise((r) => setImmediate(r));
   assert(dc(['deploy/coding-instance/hermes-task']).rules.includes('runner'), 'checklist: a runner change -> reinstall the runner');
   assert(!dc(['deploy/coding-instance/test/harness.sh']).rules.includes('runner'), 'checklist: a runner TEST change does not ask for a runner reinstall');
   assert(dc(['deploy/coding-instance/hermes-agent-launch']).rules.includes('launcher') && /PROBE: PASS/.test(dc(['deploy/coding-instance/hermes-agent-launch']).lines.join(' ')), 'checklist: a launcher change -> reinstall + require a passing probe');
-  assert(dc(['deploy/coding-instance/ai-os-hermes.service']).rules.includes('units'), 'checklist: a unit change -> daemon-reload');
+  assert(dc(['deploy/coding-instance/ai-os-hermes.service']).rules.includes('units'), 'checklist: a unit change -> the units rule');
+  const unitLines = dc(['deploy/coding-instance/ai-os-board-dispatcher.service']).lines.join(' ');
+  assert(/TEMPLATES/.test(unitLines) && /do NOT copy/.test(unitLines) && /enable-board-dispatcher\.sh/.test(unitLines) && /provision\.sh/.test(unitLines) && /systemd-analyze verify/.test(unitLines),
+    'checklist: unit files are templates — re-render with the owning script (never copy), then verify (first real mission, 2026-10-10)');
+  assert(!/through the CDN/.test(unitLines), 'checklist: a unit-only change gets no CDN line (nothing user-facing changed)');
+  assert(/through the CDN/.test(dc(['server.js']).lines.join(' ')) && /through the CDN/.test(dc(['dashboard/js/app.js']).lines.join(' ')),
+    'checklist: server and static changes still end with the verify-through-the-CDN step');
+  assert(!/through the CDN/.test(dc(['deploy/coding-instance/hermes-task']).lines.join(' ')), 'checklist: a runner-only change gets no CDN line');
   const boardRules = dc(['lib/board/repo.js']).rules;
   assert(boardRules.includes('board') && boardRules.includes('server'), 'checklist: board code -> restart both services, and the app');
   assert(dc(['lib/board/db.js']).rules.includes('migration'), 'checklist: a db.js change -> back up before the migration');

@@ -149,6 +149,10 @@ printf '%s' "$OUT" | grep -q 'RESULT: pushed' && ok "a task that starts with '-'
 run nochange "-x"
 printf '%s' "$OUT" | grep -q 'unknown option' && ok "without --, a dash word is still an option (refused)" || bad "dash word silently taken as task"
 
+echo "naming"
+run nochange --title "Mission: Say World!" -- "Implement the plan below, which a human approved"
+printf '%s\n' "$OUT" | grep -qE '^==> task [0-9]{8}-[0-9]{6}-[0-9a-f]+-mission-say-world$' && ok "--title names the workspace/branch (not the task text's first words)" || bad "workspace name: $(printf '%s\n' "$OUT" | grep '^==> task')"
+
 echo "auth check"
 run auth --auth-check
 printf '%s' "$OUT" | grep -q 'AUTH CHECK: PASS' && ok "PASS" || bad "$OUT"

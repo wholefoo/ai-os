@@ -184,10 +184,10 @@ const reset = () => rawDb().exec('DELETE FROM tasks;');
   // ---------- runnerArgs: the argv each task produces ----------------------------------------------
   const { runnerArgs } = require('../lib/board/dispatcher');
   const ra = runnerArgs({ mode: 'plan', model: 'haiku', budget_usd: 2, max_turns: 30, body: '- bullet task', title: 't' });
-  assert(JSON.stringify(ra) === JSON.stringify(['--plan', '--model', 'haiku', '--budget', '2', '--turns', '30', '--', '- bullet task']),
-    'runnerArgs: mode + params as options, then `--`, then the task text (even one starting with "-")');
-  assert(JSON.stringify(runnerArgs({ mode: 'task', model: '', budget_usd: null, max_turns: null, body: '', title: 'Title only' })) === JSON.stringify(['--', 'Title only']),
-    'runnerArgs: a plain task passes only `--` and the text (falls back to the title)');
+  assert(JSON.stringify(ra) === JSON.stringify(['--plan', '--model', 'haiku', '--budget', '2', '--turns', '30', '--title', 't', '--', '- bullet task']),
+    'runnerArgs: mode + params + the card title as options, then `--`, then the task text (even one starting with "-")');
+  assert(JSON.stringify(runnerArgs({ mode: 'task', model: '', budget_usd: null, max_turns: null, body: '', title: 'Title only' })) === JSON.stringify(['--title', 'Title only', '--', 'Title only']),
+    'runnerArgs: a plain task passes its title (for the branch name), `--` and the text (falls back to the title)');
 
   // ---------- spend + the budget gate ----------------------------------------------------------------
   reset();
@@ -232,7 +232,7 @@ const reset = () => rawDb().exec('DELETE FROM tasks;');
   const pd = createDispatcher({ runnerCmd, maxConcurrency: 1 });
   const planTask = repo.create({ title: 'plan run', body: 'planned', mode: 'plan', model: 'haiku', budgetUsd: 2, maxTurns: 30 });
   const planned = await pd.tickOnce();
-  assert(JSON.stringify(lastArgs()) === JSON.stringify(['--plan', '--model', 'haiku', '--budget', '2', '--turns', '30', '--', 'planned']),
+  assert(JSON.stringify(lastArgs()) === JSON.stringify(['--plan', '--model', 'haiku', '--budget', '2', '--turns', '30', '--title', 'plan run', '--', 'planned']),
     `dispatcher: a plan task reaches the runner as --plan + its params + -- + text (got ${JSON.stringify(lastArgs())})`);
   assert(planned && planned.id === planTask.id && planned.state === 'done' && planned.result === 'planned', 'dispatcher: a planned run ends done');
   assert(/^## Goal/.test(planned.plan_md), 'dispatcher: the plan is stored on the task');
