@@ -12786,20 +12786,13 @@ if (board) {
     const { registerDevRoutes } = require('./lib/dev/routes');
     const { createResearcher } = require('./lib/dev/research');
     const TASKS_DIR = process.env.HERMES_TASKS_DIR || '/srv/hermes-tasks';
-    // Only these runner outputs, only from a well-formed workspace name, only the tail of large logs.
-    const TASK_FILES = new Set(['SUMMARY.md', 'BLOCKED.md', 'runner-tests.log', 'changed-files.txt']);
-    const readTaskFile = (task, name) => {
-      if (!task || !/^[\w.-]+$/.test(String(task.workspace || '')) || !TASK_FILES.has(name)) return '';
-      const p = path.join(TASKS_DIR, task.workspace, '.hermes', name);
-      try {
-        const st = fs.statSync(p);
-        const max = 256 * 1024;
-        if (st.size <= max) return fs.readFileSync(p, 'utf8');
-        const fd = fs.openSync(p, 'r');
-        try { const buf = Buffer.alloc(max); fs.readSync(fd, buf, 0, max, st.size - max); return buf.toString('utf8'); }
-        finally { fs.closeSync(fd); }
-      } catch { return ''; }
-    };
+    // Only these runner outputs, only from a well-formed workspace name, only the tail of large logs,
+    // and never through a link: the agent can write the tasks tree (lib/dev/task-files.js).
+    const { createTaskFileReader } = require('./lib/dev/task-files');
+    const readTaskFile = createTaskFileReader({
+      tasksDir: TASKS_DIR,
+      names: ['SUMMARY.md', 'BLOCKED.md', 'runner-tests.log', 'changed-files.txt'],
+    });
     if (String(process.env.HERMES_DEV_MISSIONS || '') === '1') {
       devEngine = createMissionEngine({
         research: createResearcher({ executeAgent, safeFetch }),

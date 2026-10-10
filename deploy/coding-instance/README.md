@@ -86,8 +86,33 @@ What every run proves rather than assumes:
   every command the agent runs (and isolates their PID namespace from `/proc`); the token is passed
   with `export`, never on a command line. The token and the AI OS key must appear **0** times in
   the transcript, stderr, and changed files — only counts are printed, never values.
-- **The tests really pass.** The agent is told to run `npm test`; the runner runs it again itself,
-  outside the agent's control, and only that result decides whether anything is pushed.
+- **The tests really pass.** The agent is told to run `npm test`; the runner runs it again on a
+  clean copy of the commit, and only that result decides whether anything is pushed.
+
+**Everything the agent leaves behind is hostile input.** Until 2026-10-10 the runner trusted the
+agent's workspace after the run, and three ways across the boundary followed from that (each is now a
+harness case, each proven to fail against the old runner):
+
+- **The tests are agent code.** They (and `package.json` install scripts) used to run as `hermes`,
+  which can read the token, the deploy key and `~/work`. They now run through
+  `hermes-agent-launch --no-token` as `hermes-agent`, without the token, in a copy with no `.git`.
+- **The agent can rewrite its `.git`.** A `core.fsmonitor` in `.git/config` runs a command on a
+  plain `git status`, and that ran as `hermes`. The runner no longer runs git in the workspace after
+  the agent: every check and the commit happen in a checkout under `~/.hermes-runner` (0700), built
+  on the exact base commit, with the agent's working tree copied in and `.git` excluded at any depth.
+- **The agent can plant symlinks.** `.hermes/COMMIT_MSG` linked to the token put the token in a
+  **pushed commit message**; a linked `PLAN.md` printed a secret into the board. After every run the
+  runner reaps all `hermes-agent` processes (`--reap`), checks the workspace was not swapped, deletes
+  anything in `.hermes` that is not a regular file, recreates every file it writes, scans the commit
+  message like the diff, and counts every secret in the app's `.env`, not only the API key. When
+  the run ends it removes group write from the workspace and its `.hermes`.
+
+**Still open:** the confined test step has network access (`npm ci` needs it), so agent-written test
+code could send out the repository it is testing. Harmless for a public repository; for a private
+one, the source can leave. And the tasks tree is group-writable, so a later task's agent can rename
+an earlier workspace: the app reads a finished workspace's `.hermes` only through
+`lib/dev/task-files.js`, which refuses any path that does not resolve exactly to
+`<tasks>/<workspace>/.hermes/<name>` and never follows a final link.
 - **The repo's own `.claude/` hooks do not run.** They were written for a developer desktop;
   `--setting-sources user` keeps them out of unattended runs.
 

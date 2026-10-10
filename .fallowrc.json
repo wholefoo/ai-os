@@ -168,6 +168,7 @@
     "tools/test-board.js",
     "tools/test-dev-missions.js",
     "tools/test-dev-telegram.js",
+    "tools/test-task-files.js",
     "tools/test-enable-board-dispatcher.js",
     "lib/board/run-dispatcher.js"
   ],

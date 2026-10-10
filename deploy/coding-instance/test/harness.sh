@@ -35,7 +35,8 @@ git init -q -b master "$R/seed"; ( cd "$R/seed"
   git add -A; git commit -qm seed; git push -q "$R/upstream.git" master; git push -q "$R/origin.git" master )
 git clone -q "$R/origin.git" "$R/home/work/ai-os"
 AIOS_KEY="sk-ant-api03-FIXTUREKEY$(od -An -N8 -tx1 /dev/urandom | tr -d ' \n')"
-printf 'ANTHROPIC_API_KEY=%s\n' "$AIOS_KEY" > "$R/home/work/ai-os/.env"
+TG_TOKEN="123456789:FIXTURE$(od -An -N12 -tx1 /dev/urandom | tr -d ' \n')"
+printf 'ANTHROPIC_API_KEY=%s\nTELEGRAM_BOT_TOKEN=%s\nHERMES_DEV_MISSIONS=1\n' "$AIOS_KEY" "$TG_TOKEN" > "$R/home/work/ai-os/.env"
 export HT_UPSTREAM_URL=$R/upstream.git HT_ORIGIN_URL=$R/origin.git
 
 pass=0; fail=0
@@ -46,6 +47,10 @@ run() { STUB_MODE=$1; shift; export STUB_MODE
         # Poison the environment: the runner must strip these before launching claude.
         OUT=$(ANTHROPIC_API_KEY="$AIOS_KEY" ANTHROPIC_AUTH_TOKEN=poison bash "$RUNNER" "$@" 2>&1); RC=$?; }
 branches() { git -C "$R/origin.git" for-each-ref --format='%(refname:short)' refs/heads/ | grep -c '^hermes/' || true; }
+# The last run's workspace and pushed branch, from its own output (not by mtime: same-second runs).
+workspace() { printf '%s\n' "$OUT" | sed -n 's/^Workspace kept at //p' | tail -1; }
+pushed_branch() { printf '%s\n' "$OUT" | sed -n 's/^Open a draft PR: .*:\(hermes\/[^?]*\)?expand=1$/\1/p' | tail -1; }
+LAUNCH_LOG=$STUB_ENV_OUT.launch
 no_secret_in_output() { if printf '%s' "$OUT" | grep -qF -- "$TOKEN" || printf '%s' "$OUT" | grep -qF -- "$AIOS_KEY"; then bad "$1: a secret value was PRINTED"; else ok "$1: no secret value printed"; fi; }
 
 echo "happy path"
@@ -59,8 +64,8 @@ b=$(git -C "$R/origin.git" for-each-ref --format='%(refname:short)' refs/heads/h
 git -C "$R/origin.git" ls-tree -r --name-only "$b" | grep -qx '.npmrc' && bad "empty cruft (.npmrc) was committed" || ok "empty untracked cruft stripped, not committed"
 git -C "$R/origin.git" ls-tree -r --name-only "$b" | grep -q '.claude/.cc-writes' && bad "Claude Code's .cc-writes journal was committed" || ok "Claude Code workspace write-journal (.claude/.cc-writes) excluded from the mirror"
 git -C "$R/origin.git" log -1 --format=%s "$b" | grep -q 'Say world' && ok "agent's commit message used" || bad "commit message"
-ws=$(ls -1t "$HT_TASKS_DIR" | grep -v '\.commit$' | head -1)
-[ "$(cat "$HT_TASKS_DIR/$ws/.hermes/changed-files.txt" 2>/dev/null)" = hello.txt ] && ok "changed-files.txt lists exactly the committed paths (for the ship checklist)" || bad "changed-files.txt: $(cat "$HT_TASKS_DIR/$ws/.hermes/changed-files.txt" 2>/dev/null | tr '\n' ' ')"
+ws=$(workspace)
+[ "$(cat "$ws/.hermes/changed-files.txt" 2>/dev/null)" = hello.txt ] && ok "changed-files.txt lists exactly the committed paths (for the ship checklist)" || bad "changed-files.txt: $(cat "$ws/.hermes/changed-files.txt" 2>/dev/null | tr '\n' ' ')"
 [ "$(git -C "$R/upstream.git" for-each-ref refs/heads/ | wc -l | tr -d ' ')" = 1 ] && ok "upstream untouched" || bad "upstream changed"
 grep -qx 'api_key_set=' "$STUB_ENV_OUT" && ok "ANTHROPIC_API_KEY stripped before claude" || bad "API key REACHED claude"
 grep -qx 'auth_token_set=' "$STUB_ENV_OUT" && ok "ANTHROPIC_AUTH_TOKEN stripped" || bad "auth token reached claude"
@@ -69,6 +74,11 @@ grep -qx 'scrub=1' "$STUB_ENV_OUT" && ok "subprocess env scrub on" || bad "scrub
 grep -q -- '--setting-sources user' "$STUB_ENV_OUT" && ok "repo hooks not loaded (--setting-sources user)" || bad "setting sources"
 grep -q -- '--permission-prompts none' "$STUB_ENV_OUT" && ok "unattended: prompts denied" || bad "permission prompts"
 no_secret_in_output happy
+# The tests are agent-written code: they must run through the launcher, confined and token-less, in
+# a copy with no .git — and every agent run must be followed by a reap.
+grep -q "^no-token .*\.verify\..* git=present$" "$LAUNCH_LOG" && ok "the verify step runs through the launcher with --no-token, in a COPY of the commit checkout" || bad "verify not confined: $(tail -3 "$LAUNCH_LOG" 2>/dev/null | tr '\n' '|')"
+[ "$(ls -1 "$HT_TASKS_DIR" | grep -c '\.verify\.')" = 0 ] && ok "the test copy (with its node_modules) is removed after the run" || bad "test copies left behind: $(ls -1 "$HT_TASKS_DIR" | grep '\.verify\.' | tr '\n' ' ')"
+[ "$(grep -c '^reap$' "$LAUNCH_LOG")" -ge 2 ] && ok "the agent's processes are reaped after the agent run AND after the tests" || bad "reaps: $(grep -c '^reap$' "$LAUNCH_LOG")"
 
 echo "billed to the API key"
 run apikey "Make hello say world"
@@ -170,6 +180,47 @@ mv "$HT_TOKEN_FILE.bak" "$HT_TOKEN_FILE"
 mv "$HT_TOKEN_FILE" "$HT_TOKEN_FILE.x"; run good "x"
 printf '%s' "$OUT" | grep -q 'no token' && ok "refuses without a token" || bad "ran without token"
 mv "$HT_TOKEN_FILE.x" "$HT_TOKEN_FILE"
+
+echo "hostile agent"
+run evil_git "Make hello say world"
+[ ! -e "$HT_HOME/pwned-by-git" ] && ok "an agent-written .git/config (core.fsmonitor) never runs as the runner" || bad "the agent's git config RAN as the runner"
+printf '%s' "$OUT" | grep -q 'RESULT: pushed' && ok "...and the agent's real change still ships" || bad "status: $(printf '%s' "$OUT" | grep RESULT)"
+rm -f "$HT_HOME/pwned-by-git"
+run evil_plan_git --plan -- "Plan something"
+[ ! -e "$HT_HOME/pwned-by-git" ] && ok "same in plan mode (the read-only check never runs git in the agent's repo)" || bad "the agent's git config RAN as the runner in plan mode"
+printf '%s' "$OUT" | grep -q '^RESULT: planned' && ok "...and the plan is still accepted" || bad "status: $(printf '%s' "$OUT" | grep RESULT)"
+rm -f "$HT_HOME/pwned-by-git"
+run evil_nested_git "Make hello say world"
+[ ! -e "$HT_HOME/pwned-by-nested" ] && ok "a nested repository's config never runs as the runner" || bad "nested repo config RAN"
+b=$(pushed_branch)
+[ -n "$b" ] && ! git -C "$R/origin.git" ls-tree -r --name-only "$b" | grep -q '^sub/\.git' && ok "a nested .git is never mirrored or committed" || bad "nested .git committed (branch: $b)"
+run evil_msg_link "Make hello say world"
+b=$(pushed_branch)
+if [ -n "$b" ] && git -C "$R/origin.git" log -1 --format=%B "$b" | grep -qF "$TOKEN"; then bad "the TOKEN was pushed in a commit message"; else ok "a COMMIT_MSG linked to the token is never read into the commit"; fi
+no_secret_in_output msg_link
+run evil_plan_link --plan -- "Plan something"
+no_secret_in_output plan_link
+# no_plan where ln -s makes a real link (Linux: removed by settle); unsafe where it copies the file
+# (Git Bash on Windows: the copy holds the token). Either way the plan is refused and never printed.
+printf '%s' "$OUT" | grep -qE '^RESULT: (no_plan|unsafe)' && ! printf '%s' "$OUT" | grep -q 'BEGIN PLAN' && ok "a PLAN.md linked to the token is refused, never printed" || bad "status: $(printf '%s' "$OUT" | grep RESULT)"
+echo intact > "$HT_HOME/victim"
+run evil_out_links "Make hello say world"
+[ "$(cat "$HT_HOME/victim")" = intact ] && ok "links planted at the runner's output paths are never written through" || bad "the runner wrote THROUGH a planted link: $(head -c 80 "$HT_HOME/victim")"
+printf '%s' "$OUT" | grep -q 'RESULT: pushed' && ok "...and the run still completes" || bad "status: $(printf '%s' "$OUT" | grep RESULT)"
+run evil_test "Make hello say world"
+ws=$(workspace)
+grep -qx 'VERIFY_ENV=' "$ws/.hermes/runner-tests.log" && ok "agent-written tests see no token, key or runner variable" || bad "the tests saw: $(grep VERIFY_ENV "$ws/.hermes/runner-tests.log")"
+grep -qx 'VERIFY_LSFILES=true' "$ws/.hermes/runner-tests.log" && ok "the tests can still use git (git ls-files works in the copy)" || bad "git unusable in the test copy: $(grep -iE 'VERIFY|fatal' "$ws/.hermes/runner-tests.log" | head -3 | tr '\n' '|')"
+printf '%s' "$OUT" | grep -q 'RESULT: pushed' && [ ! -e "$HT_HOME/pwned-by-hook" ] && [ ! -e "$HT_HOME/pwned-by-verify-git" ] && ok "a hook or git config the tests plant in their copy never runs on the push" || bad "planted hook/config ran, or not pushed: $(printf '%s' "$OUT" | grep RESULT) $(ls "$HT_HOME" | grep pwned)"
+run leak_env "x"
+printf '%s' "$OUT" | grep -q 'app_secrets_in_logs=1' && printf '%s' "$OUT" | grep -q 'RESULT: unsafe' && ok "any .env secret (here the bot token) in the output is caught, not only the API key" || bad "bot token leak missed: $(printf '%s' "$OUT" | grep -E 'leak scan|RESULT')"
+if printf '%s' "$OUT" | grep -qF -- "$TG_TOKEN"; then bad "the bot token was PRINTED"; else ok "...and its value is not printed"; fi
+
+# Last: this moves upstream for good.
+echo "upstream moves during the run"
+run upstream_moves "Make hello say world"
+ws=$(workspace)
+[ "$(cat "$ws/.hermes/changed-files.txt" 2>/dev/null)" = hello.txt ] && ok "the commit is built on the base the agent started from (upstream's new commit is not reverted)" || bad "changed-files: $(cat "$ws/.hermes/changed-files.txt" 2>/dev/null | tr '\n' ' ')"
 
 echo; echo "passed=$pass failed=$fail"
 rm -rf "$R"

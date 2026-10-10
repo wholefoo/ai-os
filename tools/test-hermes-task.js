@@ -46,20 +46,40 @@ assert(/"\$\{LAUNCH\[@\]\}" "\$1" --/.test(runner), 'the runner launches Claude 
 // own per-Bash .git protection mount, which broke EVERY Bash command for the agent. The .git must be
 // left writable; the commit no longer trusts it (see the clean-clone-of-base flow below).
 assert(!/chmod -R g-w "\$DIR\/\.git"/.test(runner), 'the workspace .git is NOT locked (locking it broke the sandbox per-Bash mount — Bug C)');
-assert(/CDIR="\$DIR\.commit"/.test(runner) && /git clone -q --local --no-hardlinks "\$BASE_REPO" "\$CDIR"/.test(runner),
-  'the commit + verify run from a FRESH clone of base, never the agent-polluted workspace .git');
+assert(/CDIR="\$RUNNER_WORK\/\$ID\.commit"/.test(runner) && /mirror_clean "\$CDIR"/.test(runner) && /git clone -q --local --no-hardlinks "\$BASE_REPO" "\$dest"/.test(runner),
+  'the commit runs from a FRESH clone of base in the runner\'s private scratch space, never the agent-polluted workspace .git');
+assert(/RUNNER_WORK=\$\{HT_RUNNER_WORK:-\$HOME_DIR\/\.hermes-runner\}/.test(runner) && /chmod 700 "\$RUNNER_WORK"/.test(runner),
+  'the runner\'s scratch space is under its own home (0700), not the agent-writable tasks tree');
+assert(/git checkout -q -b "\$BRANCH" "\$base_full"/.test(runner), 'the commit checkout is built on the exact base the agent started from');
 assert(/git fetch -q upstream "\$UPSTREAM_BRANCH"/.test(runner) && /git checkout -q -b "\$BRANCH" FETCH_HEAD/.test(runner),
   'the clean checkout is branched from upstream HEAD so the diff is against real base');
 // The working tree is mirrored with portable tar (rsync is not guaranteed on the box or in the
 // harness), and a git ls-files pass removes any base-tracked file the agent deleted.
 const runnerCode = runner.split('\n').filter((l) => !/^\s*#/.test(l)).join('\n');
 assert(!/\brsync\b/.test(runnerCode), 'the mirror uses portable tar, not rsync (not guaranteed present)');
-assert(/cd "\$DIR" && tar\b/.test(runnerCode) && /-cf - \. \) \| \( cd "\$CDIR" && tar -xmf -/.test(runnerCode),
+assert(/cd "\$DIR_REAL" && tar --exclude=\.git /.test(runnerCode) && /-cf - \. \) \| \( cd "\$dest" && tar -xmf -/.test(runnerCode),
   'the agent working tree is copied into the clean checkout with tar -xm (--touch: current mtime, so git never mistakes a real edit for stat-clean and reports it as no_changes)');
 assert(/--exclude='\.\/\.claude\/\.cc-\*'/.test(runnerCode),
   "Claude Code's workspace runtime journals (.claude/.cc-*, e.g. .cc-writes) are excluded as a family — they are 0600 hermes-agent, unreadable by the runner, and aborted the whole tar mirror on the box");
-assert(/git -C "\$CDIR" ls-files -z \| while .*\[ -e "\$DIR\/\$f" \] \|\| rm -f "\$CDIR\/\$f"/.test(runner),
-  'a deletion pass removes base-tracked files the agent deleted, so CDIR matches the working tree');
+assert(/git -C "\$dest" ls-files -z \| while .*\[ -e "\$DIR_REAL\/\$f" \] \|\| \[ -L "\$DIR_REAL\/\$f" \] \|\| rm -f "\$dest\/\$f"/.test(runner),
+  'a deletion pass removes base-tracked files the agent deleted, so the checkout matches the working tree');
+// After the agent runs, git must never run in its repository: it can rewrite .git (core.fsmonitor
+// runs a command on `git status`; a .git FILE can point anywhere). Every git command between the
+// agent run and the end of the script names the runner's own checkout (-C "$dest"/"$PDIR", or runs
+// after `cd "$CDIR"`). Pinned by the harness's hostile-agent cases; this catches a new bare call.
+const afterAgent = runnerCode.slice(runnerCode.indexOf('settle\nT=.hermes/transcript.jsonl'));
+assert(afterAgent.length > 1000, 'found the post-agent part of the runner');
+assert(!/^\s*(CHANGED=\$\()?git (status|ls-files|diff|add)\b/m.test(afterAgent.split('cd "$CDIR"')[0]),
+  'no bare git status/ls-files/diff/add runs in the agent workspace after the agent (only in runner-owned checkouts)');
+
+// The launcher: the tests (agent-written code) run confined and token-less; agent processes are reaped.
+assert(/\[ "\$\{1:-\}" = --no-token \] && \{ NO_TOKEN=1; shift; \}/.test(launch) && /if \[ "\$NO_TOKEN" = 1 \]; then[\s\S]{0,200}exec setpriv --reuid "\$uid"/.test(launch),
+  'the launcher has a --no-token mode that still drops to the agent user');
+assert(launch.indexOf('if [ "$NO_TOKEN" = 1 ]') < launch.indexOf('TOKEN=$(tr -d'), 'in --no-token mode the token file is never read');
+assert(/pkill -KILL -u "\$AGENT_USER"/.test(launch) && /survived a kill/.test(launch), 'the launcher can reap every agent process, and fails if one survives');
+assert(/chown -h "\$uid:\$gid" "\$CFG_DIR"/.test(launch) && /\[ ! -L "\$CFG_DIR" \]/.test(launch),
+  'the root launcher refuses a symlinked config dir and never chowns through a link');
+assert(/"\$\{LAUNCH\[@\]\}" --no-token "\$VDIR"/.test(runner), 'the runner\'s test step goes through the launcher with --no-token');
 // NODE_ENV=production (the dispatcher service sets it, and the runner inherits it) makes `npm ci` OMIT
 // devDependencies — but the whole test toolchain lives there: `fallow` and the suite runner's deps. A
 // verify step without them dies `fallow: not found`, so every task lands tests_failed even when the
@@ -121,9 +141,10 @@ if (!have('bash') || !have('git')) {
   if (m) {
     for (const line of out.split('\n').filter((l) => /^\s+FAIL\s/.test(l))) console.error('  ' + line.trim());
     assert(+m[2] === 0, `every runner protection holds (${m[1]} passed, ${m[2]} failed)`);
-    // 60 = 43 original + 13 plan-mode + 2 end-of-options (P0) + 1 changed-files (P1) + 1 naming. A
-    // lower count means a section stopped running, which would otherwise pass silently.
-    assert(+m[1] >= 60, `the harness still exercises all ${m[1]} checks (expected at least 60)`);
+    // 81 = 43 original + 13 plan-mode + 2 end-of-options (P0) + 1 changed-files (P1) + 1 naming
+    // + 3 confined-verify/reap/cleanup + 18 hostile-agent/upstream-moves. A lower count means a section
+    // stopped running, which would otherwise pass silently.
+    assert(+m[1] >= 81, `the harness still exercises all ${m[1]} checks (expected at least 81)`);
   }
   done();
 }

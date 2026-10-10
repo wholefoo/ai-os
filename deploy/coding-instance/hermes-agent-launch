@@ -5,7 +5,19 @@
 # touch. Installed root-owned at /usr/local/sbin and run only by `hermes` through a scoped sudoers
 # rule (hermes-agent has no sudo, so the agent can never invoke this itself).
 #
-#   hermes-agent-launch <workspace> -- <command...>
+#   hermes-agent-launch <workspace> -- <command...>              # Claude Code, with the token
+#   hermes-agent-launch --no-token <workspace> -- <command...>   # agent-written code (the runner's
+#                                                                #   test step): confined, NO token
+#   hermes-agent-launch --reap                                   # kill every hermes-agent process
+#
+# --no-token exists because the runner's verify step runs code the AGENT wrote (package.json install
+# scripts, the tests). Run as the runner (`hermes`), that code could read everything the separate
+# user exists to protect: the token, the deploy key, ~/work. It runs here instead, as hermes-agent,
+# and without the token, which only Claude Code needs.
+#
+# --reap exists because an agent can leave a process running after Claude Code exits (a background
+# job, `setsid`). The runner calls it after every agent run so nothing the agent started can race
+# the runner's checks on the workspace afterwards.
 #
 # Why a separate user at all: on this box the Claude Code sandbox confined reads but NOT writes — a
 # sandboxed command wrote to the home directory. Unix permissions do not depend on the sandbox:
@@ -29,6 +41,19 @@ NODE_BIN_FILE=/etc/claude-code/agent-node-bin
 die() { echo "launch: $*" >&2; exit 3; }
 [ "$(id -u)" -eq 0 ] || die "must run as root (via sudo)"
 
+if [ "${1:-}" = --reap ]; then
+  id -u "$AGENT_USER" >/dev/null 2>&1 || die "no $AGENT_USER user"
+  pkill -KILL -u "$AGENT_USER" 2>/dev/null || true
+  for _ in 1 2 3 4 5 6 7 8 9 10; do
+    pgrep -u "$AGENT_USER" >/dev/null 2>&1 || exit 0
+    sleep 0.5
+  done
+  die "$AGENT_USER processes survived a kill"
+fi
+
+NO_TOKEN=0
+[ "${1:-}" = --no-token ] && { NO_TOKEN=1; shift; }
+
 WS=${1:-}; [ -n "$WS" ] || die "no workspace given"; shift
 [ "${1:-}" = "--" ] && shift
 [ "$#" -ge 1 ] || die "no command given"
@@ -42,13 +67,22 @@ uid=$(id -u "$AGENT_USER") || die "no $AGENT_USER user — run install-agent-use
 gid=$(getent group "$WORK_GROUP" | cut -d: -f3); [ -n "$gid" ] || die "no $WORK_GROUP group"
 command -v setpriv >/dev/null || die "setpriv not found (util-linux)"
 
+NODE_BIN=$(cat "$NODE_BIN_FILE" 2>/dev/null || true)
+[ -x "$NODE_BIN/node" ] || die "node not found via $NODE_BIN_FILE"
+AGENT_HOME=/home/hermes-agent
+[ -d "$AGENT_HOME" ] || die "no $AGENT_HOME — run install-agent-user.sh"
+
+if [ "$NO_TOKEN" = 1 ]; then
+  cd "$real"
+  export PATH="$NODE_BIN:/usr/bin:/bin"
+  export HOME="$AGENT_HOME"
+  exec setpriv --reuid "$uid" --regid "$gid" --clear-groups --inh-caps=-all -- "$@"
+fi
+
 [ -s "$TOKEN_FILE" ] || die "no token at $TOKEN_FILE"
 TOKEN=$(tr -d '\r\n' < "$TOKEN_FILE")
 case "$TOKEN" in *[[:space:]]*) die "token contains whitespace — re-save it (README)" ;; esac
 [ "${#TOKEN}" -ge 20 ] || die "token too short"
-
-NODE_BIN=$(cat "$NODE_BIN_FILE" 2>/dev/null || true)
-[ -x "$NODE_BIN/node" ] || die "node not found via $NODE_BIN_FILE"
 
 # HOME is the agent's OWN home, not a directory inside the workspace. Claude Code's sandbox sets up
 # ~/.npm and other dotdirs at startup; bubblewrap could not create those under the freshly
@@ -57,11 +91,14 @@ NODE_BIN=$(cat "$NODE_BIN_FILE" 2>/dev/null || true)
 # writes there via sandbox.filesystem.allowWrite in the managed policy. CLAUDE_CONFIG_DIR stays
 # per-task under the workspace so no Claude Code state bleeds between tasks; --setting-sources user
 # reads $HOME/.claude (empty), never the repo's own .claude/ at the workspace root.
-AGENT_HOME=/home/hermes-agent
-[ -d "$AGENT_HOME" ] || die "no $AGENT_HOME — run install-agent-user.sh"
+# This runs as ROOT inside a directory the agent can write. A symlink planted at either path would
+# make mkdir/chown act on its target (chown of a system file to the agent), so refuse any symlink
+# and never follow one (chown -h).
+[ ! -L "$real/.hermes" ] || die "workspace .hermes is a symlink"
 CFG_DIR="$real/.hermes/claude-config"
+[ ! -L "$CFG_DIR" ] || die "workspace claude-config is a symlink"
 mkdir -p "$CFG_DIR"
-chown "$uid:$gid" "$CFG_DIR"   # the agent owns its per-task config dir; .hermes is already group-shared
+chown -h "$uid:$gid" "$CFG_DIR"   # the agent owns its per-task config dir; .hermes is already group-shared
 
 cd "$real"
 # sudo has already reset the environment (env_reset). We export ONLY the allowlist, so no
