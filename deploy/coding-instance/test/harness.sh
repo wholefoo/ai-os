@@ -59,6 +59,8 @@ b=$(git -C "$R/origin.git" for-each-ref --format='%(refname:short)' refs/heads/h
 git -C "$R/origin.git" ls-tree -r --name-only "$b" | grep -qx '.npmrc' && bad "empty cruft (.npmrc) was committed" || ok "empty untracked cruft stripped, not committed"
 git -C "$R/origin.git" ls-tree -r --name-only "$b" | grep -q '.claude/.cc-writes' && bad "Claude Code's .cc-writes journal was committed" || ok "Claude Code workspace write-journal (.claude/.cc-writes) excluded from the mirror"
 git -C "$R/origin.git" log -1 --format=%s "$b" | grep -q 'Say world' && ok "agent's commit message used" || bad "commit message"
+ws=$(ls -1t "$HT_TASKS_DIR" | grep -v '\.commit$' | head -1)
+[ "$(cat "$HT_TASKS_DIR/$ws/.hermes/changed-files.txt" 2>/dev/null)" = hello.txt ] && ok "changed-files.txt lists exactly the committed paths (for the ship checklist)" || bad "changed-files.txt: $(cat "$HT_TASKS_DIR/$ws/.hermes/changed-files.txt" 2>/dev/null | tr '\n' ' ')"
 [ "$(git -C "$R/upstream.git" for-each-ref refs/heads/ | wc -l | tr -d ' ')" = 1 ] && ok "upstream untouched" || bad "upstream changed"
 grep -qx 'api_key_set=' "$STUB_ENV_OUT" && ok "ANTHROPIC_API_KEY stripped before claude" || bad "API key REACHED claude"
 grep -qx 'auth_token_set=' "$STUB_ENV_OUT" && ok "ANTHROPIC_AUTH_TOKEN stripped" || bad "auth token reached claude"

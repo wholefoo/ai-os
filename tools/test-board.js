@@ -8,7 +8,8 @@
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
-const { assert, cleanupAndFinish } = require('./test-util');
+const { assert, cleanupAndFinish, requireFinish } = require('./test-util');
+requireFinish();   // a dispatcher test that hangs on a never-settling promise must FAIL, not exit 0 mid-suite
 
 const board = require('../lib/board');
 const repo = board.repo;
