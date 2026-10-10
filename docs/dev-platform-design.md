@@ -140,6 +140,41 @@ budget.
 Exit: a mission submitted by API on the box moves through research, plan, approval in the existing
 queue, build and test, and ends with a PR link. Every step's cost appears in the ledger.
 
+*As built (2026-10-10), with the deviations stated:*
+- **Storage.** Missions live in `board.sqlite` (migration v4: `missions`, `mission_events`), not in
+  a separate store. A mission and the tasks it creates then share one WAL and one backup unit.
+- **Engine.** `lib/dev/engine.js` is a reconciler that runs in the app every 10s. It runs only
+  where `HERMES_DEV_MISSIONS=1`, and the routes return 503 everywhere else. Every step is
+  idempotent, so restarts and deploys need no recovery code. One mission failing never stops the
+  others. Two concurrency rules come from bugs found during the build:
+  - Research runs in the background and is never awaited inside a tick. A slow provider call would
+    otherwise freeze every mission.
+  - An overlapping `tick()` returns the running tick's promise.
+- **Research.** `lib/dev/research.js` goes through `executeAgent('consultant-perplexity', …,
+  {systemOverride})`, which already enforces the hard cap, records the cost and fences untrusted
+  text. Operator URLs are fetched with `safeFetch` (at most 3, size- and time-capped) and passed as
+  untrusted data. A tripped cap holds the mission in `researching`, recorded once. Any other
+  research failure plans without the research.
+- **Approval.** The action is `dev.mission-plan`, classed `high`. It is also in `ALWAYS_GATE`,
+  because in `auto` mode the policy alone would let a `high` action through. Rejection has no hook
+  in the approvals API, so the reconciler watches the approval's status. Cancelling withdraws the
+  pending approval.
+- **Build.** *Revised:* each attempt is **one** build task that carries the full approved plan, not
+  several tasks linked by `dependsOn`. Splitting a plan into tasks is left for a later phase, and
+  one run per attempt keeps the runner's whole-suite check meaningful.
+- **Debug.** One automatic retry, given the last 6 KB of the failing test output, for
+  `tests_failed`, `agent_error`, `timeout` and `interrupted` only. `unsafe`, `push_failed`,
+  `dispatch_error` and `no_changes` go straight to a human. An operator retry rebuilds against the
+  approved plan without a new approval. A retry before approval re-plans and asks again.
+- **Budget.** Each mission has a budget (default `HERMES_MISSION_BUDGET_USD`=10). Each task gets
+  `min(per-kind cap, what is left)`: plan $2 / 40 turns, build $5 / 80 turns. When the budget is
+  spent, no further task is filed and the reason is stated.
+- **Ship.** `lib/dev/ship.js` builds the package deterministically: the builder's summary, a PR
+  link prefilled with a title and description, and a deploy checklist derived from
+  `changed-files.txt`. The runner now writes that file from the commit. The checklist encodes this
+  repo's own deploy rules (`npm ci` as the app user and never chained to the restart, reinstall the
+  runner, `daemon-reload`, pull from upstream).
+
 ### P2 — Dev Platform UI (new frontend, own design)
 
 - A separate SPA (`devstudio/`) served at its own path or subdomain (e.g. `dev.` on the box's

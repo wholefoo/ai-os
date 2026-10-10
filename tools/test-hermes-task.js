@@ -121,9 +121,9 @@ if (!have('bash') || !have('git')) {
   if (m) {
     for (const line of out.split('\n').filter((l) => /^\s+FAIL\s/.test(l))) console.error('  ' + line.trim());
     assert(+m[2] === 0, `every runner protection holds (${m[1]} passed, ${m[2]} failed)`);
-    // 58 = 43 original + 13 plan-mode + 2 end-of-options checks (dev-platform P0). A lower count means
-    // a section stopped running, which would otherwise pass silently.
-    assert(+m[1] >= 58, `the harness still exercises all ${m[1]} checks (expected at least 58)`);
+    // 59 = 43 original + 13 plan-mode + 2 end-of-options (P0) + 1 changed-files (P1). A lower count
+    // means a section stopped running, which would otherwise pass silently.
+    assert(+m[1] >= 59, `the harness still exercises all ${m[1]} checks (expected at least 59)`);
   }
   done();
 }

@@ -524,6 +524,8 @@ else
   if [ "$CHANGED" = 0 ]; then STATUS=no_changes
   else
     git add -A
+    # The exact paths this commit changes, for the mission ship step's deploy checklist (lib/dev/ship.js).
+    git diff --cached --name-only > "$DIR/.hermes/changed-files.txt" 2>/dev/null || true
     DIFF_HITS=$(git diff --cached | grep -cE 'sk-ant-[A-Za-z0-9_-]{10}|ghp_[A-Za-z0-9]{20}|github_pat_[A-Za-z0-9_]{20}|PRIVATE KEY-----' || true)
     if [ "$DIFF_HITS" != 0 ]; then STATUS=unsafe; say "FAIL: $DIFF_HITS secret-shaped line(s) in the diff"
     else

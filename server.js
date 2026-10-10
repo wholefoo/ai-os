@@ -3084,6 +3084,15 @@ const ACTION_EXECUTORS = {
     if (!proposal || typeof proposal !== 'object') throw new Error('payload.proposal required');
     return applyProposal(proposal);
   },
+  // A human approved a dev-platform mission plan (lib/dev). Moves the mission to `building`; the
+  // engine then files the build task. Throws (so the approval shows FAILED, not silently approved)
+  // when the engine is not running here or the mission is no longer waiting on this plan.
+  // `devEngine` is assigned at boot further down; this only runs at approve time, long after.
+  'dev.mission-plan': async ({ missionId }) => {
+    if (!missionId) throw new Error('payload.missionId required');
+    if (!devEngine) throw new Error('the mission engine is not running on this instance (HERMES_DEV_MISSIONS=1)');
+    return devEngine.approvePlan(missionId);
+  },
   // An EVENT starting a whole pipeline. Registered here rather than dispatching directly from the
   // event hook, because `test-infra-gate.js` enforces that every id in ACTION_RISK has an executor
   // — and that invariant is right: an action classified but unexecutable through the gate is one
@@ -3340,13 +3349,19 @@ const ACTION_EXECUTORS = {
 // patching are not survivable as an 'auto'-mode surprise. Design doc §9 item 10. Its executor refuses
 // outright today — see ACTION_EXECUTORS — so this is the band and the mode-independence being fixed
 // in place BEFORE any capability lands, not a live action being restrained.
-const ALWAYS_GATE = new Set(['self-improve.apply-plan', 'self-improve.distribution-pr', 'infra.destructive-op']);
+// 'dev.mission-plan' (dev-platform P1): approving a mission plan is the operator's ONE gate before
+// Hermes-Dev writes code and pushes unattended, so it must hold in 'auto' mode too.
+const ALWAYS_GATE = new Set(['self-improve.apply-plan', 'self-improve.distribution-pr', 'infra.destructive-op', 'dev.mission-plan']);
+const ALWAYS_GATE_REASON = {
+  'infra.destructive-op': 'destructive infrastructure operation',
+  'dev.mission-plan': 'a coding mission plan — the one human gate before unattended build',
+};
 
 async function gateAction({ type, summary, target = null, params = {}, secrets = [], req }) {
   const mode = (settings.automation && settings.automation.mode) || 'supervised';
   const alwaysGated = ALWAYS_GATE.has(type);
   const d = alwaysGated
-    ? { allow: false, risk: approvalPolicy.ACTION_RISK[type] || 'critical', mode, reason: `always requires human approval (${type === 'infra.destructive-op' ? 'destructive infrastructure operation' : 'self-modifying-code action'})` }
+    ? { allow: false, risk: approvalPolicy.ACTION_RISK[type] || 'critical', mode, reason: `always requires human approval (${ALWAYS_GATE_REASON[type] || 'self-modifying-code action'})` }
     : approvalPolicy.decide(type, mode);
   const actor = (req && req.session && (req.session.email || req.session.name)) || 'operator';
 
@@ -12739,6 +12754,75 @@ if (board) {
   publishBudgetGate();
   const gateTimer = setInterval(publishBudgetGate, 30 * 1000);
   if (gateTimer.unref) gateTimer.unref();
+}
+
+// --- Dev-platform MISSIONS (P1, docs/dev-platform-design.md): research -> plan -> human approval ->
+// build -> ship, on top of the board. The routes are always mounted (reads work anywhere); the
+// ENGINE only runs where HERMES_DEV_MISSIONS=1, because missions create board tasks that only the
+// coding box's dispatcher + runner can execute. Every side effect the engine has outside
+// board.sqlite is wired here, through the platform's existing gates:
+//   research  -> executeAgent (hard budget cap + cost ledger + untrusted fencing)
+//   approval  -> gateAction('dev.mission-plan'), which ALWAYS_GATE holds for a human in every mode
+let devEngine = null;
+if (board) {
+  try {
+    const { createMissionEngine } = require('./lib/dev/engine');
+    const { registerDevRoutes } = require('./lib/dev/routes');
+    const { createResearcher } = require('./lib/dev/research');
+    const TASKS_DIR = process.env.HERMES_TASKS_DIR || '/srv/hermes-tasks';
+    // Only these runner outputs, only from a well-formed workspace name, only the tail of large logs.
+    const TASK_FILES = new Set(['SUMMARY.md', 'BLOCKED.md', 'runner-tests.log', 'changed-files.txt']);
+    const readTaskFile = (task, name) => {
+      if (!task || !/^[\w.-]+$/.test(String(task.workspace || '')) || !TASK_FILES.has(name)) return '';
+      const p = path.join(TASKS_DIR, task.workspace, '.hermes', name);
+      try {
+        const st = fs.statSync(p);
+        const max = 256 * 1024;
+        if (st.size <= max) return fs.readFileSync(p, 'utf8');
+        const fd = fs.openSync(p, 'r');
+        try { const buf = Buffer.alloc(max); fs.readSync(fd, buf, 0, max, st.size - max); return buf.toString('utf8'); }
+        finally { fs.closeSync(fd); }
+      } catch { return ''; }
+    };
+    if (String(process.env.HERMES_DEV_MISSIONS || '') === '1') {
+      devEngine = createMissionEngine({
+        research: createResearcher({ executeAgent, safeFetch }),
+        requestApproval: async (m) => {
+          const gate = await gateAction({
+            type: 'dev.mission-plan',
+            summary: `Approve coding plan — ${m.title}`,
+            target: m.id,
+            params: { missionId: m.id, planPreview: String(m.plan_md || '').slice(0, 1500) },
+            req: { session: { name: 'dev-missions' } },
+          });
+          // ALWAYS_GATE makes this impossible; refuse loudly if it ever is not, rather than build unapproved.
+          if (!gate.pending) throw new Error('dev.mission-plan was not held for approval — refusing to build without one');
+          return gate.approval.id;
+        },
+        approvalStatus: (id) => (pendingApprovals.find((a) => a.id === id) || {}).status,
+        withdrawApproval: (id, reason) => {
+          const a = pendingApprovals.find((x) => x.id === id);
+          if (!a || a.status !== 'pending') return;
+          a.status = 'rejected'; a.rejectedBy = 'system'; a.rejectedAt = new Date().toISOString(); a.rejectReason = reason || 'withdrawn';
+          saveState('pending_approvals', pendingApprovals);
+          broadcast({ event: 'approval_update', data: a });
+        },
+        readTaskFile,
+        onUpdate: (m) => broadcast({ event: 'dev_update', data: { id: m.id, state: m.state, title: m.title } }),
+        log: (msg) => appendLog(msg),
+      });
+      devEngine.start(10000);
+      appendLog('[dev] mission engine started');
+    }
+    registerDevRoutes(app, {
+      requireAdmin, requireHuman, broadcast,
+      getEngine: () => devEngine,
+      defaultBudgetUsd: Number(process.env.HERMES_MISSION_BUDGET_USD) || 10,
+    });
+  } catch (e) {
+    devEngine = null;
+    console.error('[dev] missions init failed:', e.message);
+  }
 }
 
 // Admin analytics: ?site=<webStudioSiteId> scopes to one hosted site, default = the platform

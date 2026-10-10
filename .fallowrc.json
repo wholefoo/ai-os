@@ -165,6 +165,7 @@
     "tools/test-install-vps.js",
     "tools/test-hermes-task.js",
     "tools/test-board.js",
+    "tools/test-dev-missions.js",
     "tools/test-enable-board-dispatcher.js",
     "lib/board/run-dispatcher.js"
   ],
