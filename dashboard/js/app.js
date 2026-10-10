@@ -5891,6 +5891,7 @@ function formatTokenCount(tokens) {
 
 // ===================== Coding Board (phase 2) =====================
 const BOARD_STATE_META = {
+  awaiting_approval: { label: 'Awaiting approval', cls: 'blocked' },
   queued:    { label: 'Queued',    cls: 'queued' },
   ready:     { label: 'Ready',     cls: 'ready' },
   running:   { label: 'Running',   cls: 'running' },
@@ -5901,6 +5902,7 @@ const BOARD_STATE_META = {
 };
 // Which actions a card offers, by state. running is dispatcher-owned (no manual button).
 const BOARD_ACTIONS = {
+  awaiting_approval: [['approve', 'Approve', 'btn-success'], ['cancel', 'Cancel', 'btn-secondary']],
   queued:    [['cancel', 'Cancel', 'btn-secondary']],
   ready:     [['block', 'Block', 'btn-secondary'], ['cancel', 'Cancel', 'btn-secondary']],
   running:   [],
@@ -5927,7 +5929,9 @@ function renderBoard(feed) {
   const badge = document.getElementById('boardDispatchBadge');
   if (badge) {
     const running = Number(feed.running || 0);
-    badge.textContent = running ? `${running} running` : 'idle';
+    const paused = feed.budget && feed.budget.allow === false;
+    badge.textContent = (running ? `${running} running` : 'idle') + (paused ? ' · paused (budget)' : '');
+    badge.title = paused ? String(feed.budget.reason || '') : '';
     badge.className = 'hermes-status-badge ' + (running ? 'online' : 'offline');
   }
   const wrap = document.getElementById('boardColumns');

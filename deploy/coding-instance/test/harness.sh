@@ -119,6 +119,34 @@ printf '%s' "$OUT" | grep -q '^PROBE: FAIL' && ok "FAIL when a non-touch write r
 run probe_leak --probe
 printf '%s' "$OUT" | grep -q '^PROBE: FAIL' && ok "FAIL when the canary leaks" || bad "canary leak not caught"
 
+echo "plan mode (read-only)"
+BEFORE=$(branches)
+run plan_good --plan -- "Plan: make hello say world"
+[ $RC = 0 ] && ok "plan run exits 0" || bad "plan exit $RC"
+printf '%s' "$OUT" | grep -q '^RESULT: planned' && ok "status planned" || bad "status: $(printf '%s' "$OUT" | grep RESULT)"
+[ "$(branches)" = "$BEFORE" ] && ok "a plan run pushes nothing" || bad "plan run pushed a branch"
+printf '%s' "$OUT" | grep -qx -- '----- BEGIN PLAN -----' && printf '%s' "$OUT" | grep -q '^## Goal' && ok "plan printed between markers" || bad "plan not printed"
+[ "$(printf '%s\n' "$OUT" | grep -cx -- '----- END PLAN -----')" = 1 ] && ok "a marker line inside the plan is neutralised (exactly one real END)" || bad "plan could end its own block early"
+grep -q -- '--disallowedTools WebFetch,WebSearch,Edit,MultiEdit,NotebookEdit' "$STUB_ENV_OUT" && ok "edit tools removed in plan mode" || bad "plan mode args: $(grep args= "$STUB_ENV_OUT")"
+printf '%s' "$OUT" | grep -q 'installing dependencies' && bad "plan run installed dependencies" || ok "plan run skips npm ci"
+run plan_edit --plan -- "Plan something"
+printf '%s' "$OUT" | grep -q '^RESULT: plan_violation' && ok "a plan run that edits the repo is a plan_violation" || bad "repo edit in plan mode not caught: $(printf '%s' "$OUT" | grep RESULT)"
+[ $RC != 0 ] && ok "plan_violation exits non-zero" || bad "plan_violation exited 0"
+printf '%s' "$OUT" | grep -q 'BEGIN PLAN' && bad "a violating plan was still printed" || ok "a violating plan is not printed"
+run plan_none --plan -- "Plan nothing"
+printf '%s' "$OUT" | grep -q '^RESULT: no_plan' && ok "no PLAN.md -> no_plan" || bad "status: $(printf '%s' "$OUT" | grep RESULT)"
+run plan_blocked --plan -- "Plan the impossible"
+printf '%s' "$OUT" | grep -q '^RESULT: blocked' && ok "BLOCKED.md in plan mode -> blocked" || bad "status: $(printf '%s' "$OUT" | grep RESULT)"
+run nochange "x"
+grep -q -- '--disallowedTools WebFetch,WebSearch --output-format' "$STUB_ENV_OUT" && ok "task mode keeps the edit tools" || bad "task mode args: $(grep args= "$STUB_ENV_OUT")"
+
+echo "end of options"
+BEFORE=$(branches)
+run good -- "- Make hello say world (a markdown bullet)"
+printf '%s' "$OUT" | grep -q 'RESULT: pushed' && ok "a task that starts with '-' runs after --" || bad "dash task refused: $(printf '%s' "$OUT" | tail -2)"
+run nochange "-x"
+printf '%s' "$OUT" | grep -q 'unknown option' && ok "without --, a dash word is still an option (refused)" || bad "dash word silently taken as task"
+
 echo "auth check"
 run auth --auth-check
 printf '%s' "$OUT" | grep -q 'AUTH CHECK: PASS' && ok "PASS" || bad "$OUT"

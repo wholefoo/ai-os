@@ -3,8 +3,10 @@
 #
 #   hermes-task "Fix the typo in README.md"            # a task
 #   hermes-task --task-file task.md --model opus        # a longer task, a stronger model
+#   hermes-task --plan -- "Add rate limiting to intake" # READ-ONLY: write .hermes/PLAN.md, no commit/push
 #   hermes-task --auth-check                            # which credential is Claude Code using?
 #   hermes-task --probe                                 # can the agent reach anything it shouldn't?
+#   (everything after `--` is the task text, even if it starts with "-")
 #
 # Run as the `hermes` user (sudo -iu hermes hermes-task ...). Installed ROOT-OWNED at
 # /usr/local/bin so the agent it launches cannot rewrite it.
@@ -47,7 +49,7 @@ if [ -z "${HT_NODE_BIN:-}" ] && [ -s "$HOME_DIR/.node-bin-path" ]; then HT_NODE_
 [ -n "${HT_NODE_BIN:-}" ] && PATH="$HT_NODE_BIN:$PATH"
 
 MODEL=sonnet BUDGET=5 TURNS=80 TIMEOUT=45m MODE=task TASK="" TASK_FILE=""
-usage() { sed -n '2,9p' "$0" | sed 's/^# \{0,1\}//'; exit "${1:-0}"; }
+usage() { sed -n '2,11p' "$0" | sed 's/^# \{0,1\}//'; exit "${1:-0}"; }
 while [ $# -gt 0 ]; do
   case "$1" in
     --model) MODEL=$2; shift 2 ;;
@@ -55,15 +57,19 @@ while [ $# -gt 0 ]; do
     --turns) TURNS=$2; shift 2 ;;
     --timeout) TIMEOUT=$2; shift 2 ;;
     --task-file) TASK_FILE=$2; shift 2 ;;
+    --plan) MODE=plan; shift ;;
     --probe) MODE=probe; shift ;;
     --auth-check) MODE=auth; shift ;;
     -h|--help) usage 0 ;;
+    # End of options. The board dispatcher always sends it: a task body that begins with "-" (a
+    # markdown bullet from a mission plan) would otherwise be refused below as an unknown option.
+    --) shift; while [ $# -gt 0 ]; do TASK=${TASK:+$TASK }$1; shift; done ;;
     -*) echo "unknown option: $1" >&2; usage 1 ;;
     *) TASK=${TASK:+$TASK }$1; shift ;;
   esac
 done
 [ -n "$TASK_FILE" ] && TASK=$(cat -- "$TASK_FILE")
-[ "$MODE" != task ] || [ -n "$TASK" ] || { echo "no task given" >&2; usage 1; }
+case "$MODE" in task|plan) [ -n "$TASK" ] || { echo "no task given" >&2; usage 1; } ;; esac
 
 say()  { printf '==> %s\n' "$*"; }
 fail() { printf 'REFUSING: %s\n' "$*" >&2; exit 1; }
@@ -115,13 +121,19 @@ count_in() { local needle=$1; shift; [ -n "$needle" ] || { echo 0; return; }; ca
 # An array, not a string: the default is multi-word (`sudo -n <launcher>`), and word-splitting a
 # bare $LAUNCH would also break on a launcher path that contains spaces.
 read -r -a LAUNCH <<< "${HT_LAUNCH:-sudo -n /usr/local/sbin/hermes-agent-launch}"
+# A plan run may not edit the repository. The edit tools are removed outright; Write stays only so the
+# agent can create .hermes/PLAN.md, and the verdict below FAILS the run (plan_violation) if anything
+# in the repository changed anyway (Write, or Bash writing a file). Enforced after the fact by git,
+# not trusted to the prompt.
+DISALLOWED="WebFetch,WebSearch"
+[ "$MODE" = plan ] && DISALLOWED="WebFetch,WebSearch,Edit,MultiEdit,NotebookEdit"
 run_claude() { # $1 = workdir, $2 = prompt file, $3 = transcript, $4 = stderr file
   timeout "$TIMEOUT" "${LAUNCH[@]}" "$1" -- \
     "$CLAUDE_BIN" -p \
     --model "$MODEL" --max-budget-usd "$BUDGET" --max-turns "$TURNS" \
     --setting-sources user --strict-mcp-config \
     --permission-mode acceptEdits --permission-prompts none \
-    --disallowedTools "WebFetch,WebSearch" \
+    --disallowedTools "$DISALLOWED" \
     --output-format stream-json --verbose < "$2" > "$3" 2> "$4"
 }
 
@@ -151,6 +163,7 @@ slug=$(printf '%s' "${TASK:-probe}" | tr 'A-Z' 'a-z' | tr -cs 'a-z0-9' '-' | cut
 rnd=$(od -An -N3 -tx1 /dev/urandom | tr -d ' \n')
 ID=$(date -u +%Y%m%d-%H%M%S)-$rnd-${slug:-task}
 [ "$MODE" = probe ] && ID=probe-$(date -u +%Y%m%d-%H%M%S)-$rnd
+[ "$MODE" = plan ] && ID=plan-$ID
 DIR=$TASKS_DIR/$ID BRANCH=hermes/$ID
 mkdir -p "$TASKS_DIR"
 [ ! -e "$DIR" ] || fail "task directory $DIR already exists"
@@ -171,7 +184,8 @@ mkdir -p .hermes
 printf '.hermes/\n.npm-cache/\n' >> .git/info/exclude
 base_sha=$(git rev-parse --short HEAD)
 
-if [ -f package-lock.json ] && [ "$MODE" != probe ]; then
+# Only a task run installs dependencies: a probe tests the boundary and a plan only reads the code.
+if [ -f package-lock.json ] && [ "$MODE" = task ]; then
   say "installing dependencies"
   # --include=dev: this box runs under NODE_ENV=production (the dispatcher service sets it), which would
   # otherwise make npm ci OMIT devDependencies. The test toolchain (fallow, the test runner deps) lives
@@ -237,6 +251,34 @@ output or error.
 Run steps 12 to 16 exactly as written, including the comments. Finish with one line per step:
 "<n>: allowed" or "<n>: blocked".
 EOF
+elif [ "$MODE" = plan ]; then
+  cat > .hermes/PROMPT.md <<EOF
+You are PLANNING, not implementing. You are working unattended in a fresh clone of the repository at
+the current directory. Nobody can answer questions during this run, so make reasonable assumptions
+and list them.
+
+GOAL:
+$TASK
+
+WHAT TO DO:
+- Read the repository's CLAUDE.md and .claude/rules/ first and follow them.
+- Investigate the code: read files, search, and run read-only commands (ls, grep, git log, git show).
+- Write your plan to .hermes/PLAN.md. That is the ONLY file you may create or change. This run is
+  read-only: any change to the repository itself fails it, and nothing is committed or pushed.
+
+.hermes/PLAN.md must have exactly these sections, in this order:
+## Goal            — the goal in your own words, with concrete acceptance criteria
+## Context         — what exists today, citing file:line
+## Approach        — the change, step by step
+## Files           — each file to create or modify, and why
+## Tests           — how the change will be verified: which suites, which new tests
+## Risks           — what could break, and how to roll back
+## Estimate        — size (S/M/L) and how many coding runs it should take
+## Open questions  — decisions a human should make before building, or "none"
+
+If the goal cannot be planned (unclear, unsafe, or impossible), write .hermes/BLOCKED.md explaining
+why, and stop.
+EOF
 else
   cat > .hermes/PROMPT.md <<EOF
 You are working unattended in a fresh clone of the repository at the current directory, on branch
@@ -273,6 +315,8 @@ RSUB=$(field '"type":"result"' "$T" subtype)
 # --------------------------------------------------------- leak scan (all) ---
 # Values are never printed — only how many times each one appears.
 scan_files=("$T" .hermes/claude-stderr.log)
+# A plan is printed into the run log and stored on the board, so it is scanned like the transcript.
+[ "$MODE" = plan ] && [ -f .hermes/PLAN.md ] && scan_files+=(.hermes/PLAN.md)
 LEAK_TOKEN=$(count_in "$TOKEN" "${scan_files[@]}")
 LEAK_KEY=$(count_in "$AIOS_KEY" "${scan_files[@]}")
 LEAK_PRIV=$(count_in "PRIVATE KEY-----" "${scan_files[@]}")
@@ -387,6 +431,45 @@ JS
   echo "PROBE: $V"
   echo "  transcript: $DIR/$T"
   [ "$V" = PASS ]; exit
+fi
+
+# --------------------------------------------------------------- plan verdict ---
+# A plan run never commits or pushes. Its verdict, most serious first:
+#   unsafe          a credential showed up (the plan is NOT printed)
+#   plan_violation  the repository changed — plan mode is read-only, enforced here by git
+#   blocked         the agent wrote BLOCKED.md
+#   agent_error     Claude Code did not finish cleanly (a plan cut off by a turn limit is not a plan)
+#   no_plan         it finished but wrote no PLAN.md
+#   planned         PLAN.md exists; it is printed between markers for the board to capture
+if [ "$MODE" = plan ]; then
+  while IFS= read -r -d '' f; do [ -s "$f" ] || rm -f "$f"; done < <(git ls-files --others --exclude-standard -z)
+  CHANGED=$(git status --porcelain | wc -l | tr -d ' ')
+  if [ "$SAFE" != yes ]; then STATUS=unsafe
+  elif [ "$CHANGED" != 0 ]; then STATUS=plan_violation; say "FAIL: a plan run changed $CHANGED path(s) in the repository — plan mode is read-only"
+  elif [ -f .hermes/BLOCKED.md ]; then STATUS=blocked
+  elif [ "$CRC" != 0 ]; then STATUS=agent_error
+  elif [ ! -s .hermes/PLAN.md ]; then STATUS=no_plan
+  else STATUS=planned; fi
+  esc() { printf '%s' "$1" | sed 's/\\/\\\\/g; s/"/\\"/g'; }
+  cat > .hermes/result.json <<EOF
+{"id":"$(esc "$ID")","mode":"plan","status":"$STATUS","changed":$CHANGED,"model":"$(esc "$MODEL")","claude_version":"$ver","claude_exit":$CRC,"turns":"${NTURNS:-}","est_cost_usd":"${COST:-}","api_key_source":"$(esc "${SRC:-}")","leaks":{"token":$LEAK_TOKEN,"aios_key":$LEAK_KEY,"private_key":$LEAK_PRIV}}
+EOF
+  echo
+  # RESULT comes BEFORE the plan, so a plan that happens to contain a "RESULT:" line can never be
+  # mistaken for the verdict (the dispatcher also strips the plan block before parsing).
+  echo "RESULT: $STATUS   (mode: plan, changed files: $CHANGED)"
+  if [ "$STATUS" = planned ]; then
+    echo "----- BEGIN PLAN -----"
+    # Indent any line in the plan that looks like a marker, so agent-written text can never end the
+    # block early and smuggle lines (a fake "Open a draft PR:") past the dispatcher's parser.
+    sed 's/^\(----- [A-Z]* PLAN -----\)$/ \1/' .hermes/PLAN.md
+    [ -z "$(tail -c1 .hermes/PLAN.md)" ] || echo
+    echo "----- END PLAN -----"
+    echo "Plan: $DIR/.hermes/PLAN.md"
+  fi
+  [ -f .hermes/BLOCKED.md ] && echo "Blocked: $DIR/.hermes/BLOCKED.md"
+  echo "Workspace kept at $DIR"
+  [ "$STATUS" = planned ]; exit
 fi
 
 # ------------------------------------------------------------ verify + ship ---

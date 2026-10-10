@@ -5900,21 +5900,32 @@ function getCostSummary() {
     successRate: outcomes.length ? Math.round((okCount / outcomes.length) * 1000) / 10 : null,
   };
 
+  // Coding-board runs (the Hermes-Dev dispatcher) record their cost in board.sqlite, not in this
+  // ledger — the dispatcher is a separate process and cannot push into this in-memory array. Without
+  // adding it here, every board run was invisible to the budget and to the hard cap. `board` is
+  // declared later in this file; the try/catch also covers calls made before it is initialised.
+  const boardUsd = (sinceMs) => {
+    try { return board ? board.repo.spendSince(new Date(sinceMs).toISOString()).usd : 0; } catch { return 0; }
+  };
+  const boardSpend = { daily: boardUsd(dayAgo), weekly: boardUsd(weekAgo), monthly: boardUsd(monthAgo) };
+  const periodCost = (entries, p) => sumCost(entries) + num(boardSpend[p]);
+
   // Hard-budget kill-switch status (mirrors the gate in executeAgent)
   const hardEnabled = (settings.security && settings.security.hard_budget === 'true') || process.env.AIOS_HARD_BUDGET === 'true';
   const hardBudget = {
     enabled: hardEnabled,
     tripped: hardEnabled ? Boolean(
-      (costBudget.daily && sumCost(daily) >= costBudget.daily) ||
-      (costBudget.weekly && sumCost(weekly) >= costBudget.weekly) ||
-      (costBudget.monthly && sumCost(monthly) >= costBudget.monthly)
+      (costBudget.daily && periodCost(daily, 'daily') >= costBudget.daily) ||
+      (costBudget.weekly && periodCost(weekly, 'weekly') >= costBudget.weekly) ||
+      (costBudget.monthly && periodCost(monthly, 'monthly') >= costBudget.monthly)
     ) : false,
   };
 
+  const r2 = (n) => Math.round(n * 100) / 100;
   return {
-    daily: { cost: Math.round(sumCost(daily) * 100) / 100, tokens: sumTokens(daily), count: daily.length, budget: costBudget.daily },
-    weekly: { cost: Math.round(sumCost(weekly) * 100) / 100, tokens: sumTokens(weekly), count: weekly.length, budget: costBudget.weekly },
-    monthly: { cost: Math.round(sumCost(monthly) * 100) / 100, tokens: sumTokens(monthly), count: monthly.length, budget: costBudget.monthly },
+    daily: { cost: r2(periodCost(daily, 'daily')), boardCost: r2(boardSpend.daily), tokens: sumTokens(daily), count: daily.length, budget: costBudget.daily },
+    weekly: { cost: r2(periodCost(weekly, 'weekly')), boardCost: r2(boardSpend.weekly), tokens: sumTokens(weekly), count: weekly.length, budget: costBudget.weekly },
+    monthly: { cost: r2(periodCost(monthly, 'monthly')), boardCost: r2(boardSpend.monthly), tokens: sumTokens(monthly), count: monthly.length, budget: costBudget.monthly },
     byModel,
     byAgent,
     byTier,
@@ -12693,7 +12704,7 @@ let board = null;
 try {
   board = require('./lib/board');
   board.openDb(path.join(MAGENT_DIR, 'board.sqlite'));
-  board.registerBoardRoutes(app, { requireAdmin, broadcast });
+  board.registerBoardRoutes(app, { requireAdmin, requireHuman, broadcast });
   const disp = board.startDefaultDispatcher({
     logDir: path.join(MAGENT_DIR, 'board-logs'),   // persist each run's combined output for post-hoc diagnosis
     onLog: (taskId, chunk) => broadcast({ event: 'board_task_log', data: { taskId, chunk } }),
@@ -12702,6 +12713,32 @@ try {
 } catch (e) {
   board = null;
   console.error('[board] init failed:', e.message);
+}
+
+// Publish the budget verdict into board.sqlite for the dispatcher. The dispatcher is a separate
+// process (ai-os-board-dispatcher.service) and cannot call hardBudgetTrippedPeriod() — this app owns
+// budgets and the hard-cap switch — so the app writes the verdict where both processes can see it,
+// every 30s. The dispatcher treats a verdict older than 5 minutes as unknown and stops claiming
+// (fail closed), so a dead app cannot leave coding runs spending blind.
+if (board) {
+  let gateErr = null;
+  const publishBudgetGate = () => {
+    try {
+      const cs = getCostSummary();
+      const pick = (p) => ({ cost: cs[p].cost, budget: cs[p].budget, boardCost: cs[p].boardCost });
+      board.repo.writeBudgetGate({
+        enforced: hardBudgetEnabled(),
+        tripped: hardBudgetTrippedPeriod() || '',
+        detail: { daily: pick('daily'), weekly: pick('weekly'), monthly: pick('monthly') },
+      });
+      gateErr = null;
+    } catch (e) {
+      if (gateErr !== e.message) { gateErr = e.message; console.error('[board] budget gate publish failed:', e.message); }
+    }
+  };
+  publishBudgetGate();
+  const gateTimer = setInterval(publishBudgetGate, 30 * 1000);
+  if (gateTimer.unref) gateTimer.unref();
 }
 
 // Admin analytics: ?site=<webStudioSiteId> scopes to one hosted site, default = the platform
