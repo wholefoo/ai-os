@@ -13,6 +13,7 @@
 // from a measurement. Same principle as every announced-truncation guard in this repo.
 const T = require('../lib/transient-errors');
 const { assert, done, serverSource, readRepoFile } = require('./test-util');
+require('./test-util').requireFinish();
 
 const err = (props) => Object.assign(new Error(props.message || 'boom'), props);
 const noSleep = { sleep: async () => {}, rand: () => 0.5 };

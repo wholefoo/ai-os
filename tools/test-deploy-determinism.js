@@ -12,6 +12,7 @@
 const fs = require('fs');
 const path = require('path');
 const { assert, done, repoRoot: ROOT, readRepoFile: read } = require('./test-util');
+require('./test-util').requireFinish();
 
 // --- the lockfile exists and is committed -------------------------------------------------------------
 assert(fs.existsSync(path.join(ROOT, 'package-lock.json')),

@@ -6,6 +6,7 @@
 // the real server (throwaway state, real rebuilt Truth Counters content in the workspace) and the
 // results are in the commit message.
 const { assert, done, serverSource } = require('./test-util');
+require('./test-util').requireFinish();
 
 const src = serverSource();
 const block = src.slice(src.indexOf('//  Adoption — give an imported static site a plan'),

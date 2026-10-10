@@ -11,6 +11,7 @@ const { assert, done, serverSource } = require('./test-util');
 
 const src = serverSource();
 const between = (a, b) => src.slice(src.indexOf(a), src.indexOf(b, src.indexOf(a)));
+require('./test-util').requireFinish();
 
 // revokeSessionsFor: iterates the RAW map and persists once.
 const rev = between('function revokeSessionsFor(', '\n}\n');

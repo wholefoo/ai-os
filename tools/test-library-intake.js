@@ -9,6 +9,7 @@ const catalog = require('../lib/library/catalog');
 const readers = require('../lib/library/readers');
 const intake = require('../lib/library/intake');
 const { assert, done } = require('./test-util');
+require('./test-util').requireFinish();
 
 const H = (c) => String(c).repeat(64).slice(0, 64);
 const HASH_A = H('a');

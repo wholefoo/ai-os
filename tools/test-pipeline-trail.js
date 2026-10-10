@@ -12,6 +12,7 @@ const os = require('os');
 const path = require('path');
 const trail = require('../lib/pipeline-trail');
 const { assert, cleanupAndFinish, serverSource } = require('./test-util');
+require('./test-util').requireFinish();
 
 const TMP = fs.mkdtempSync(path.join(os.tmpdir(), 'trail-'));
 const src = serverSource();

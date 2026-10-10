@@ -20,6 +20,7 @@ const vm = require('vm');
 const profile = require('../lib/org/profile');
 const persona = require('../lib/business-clone/persona');
 const { assert, done, serverSource } = require('./test-util');
+require('./test-util').requireFinish();
 
 const src = fs.readFileSync(path.join(__dirname, '..', 'dashboard', 'js', 'clones.js'), 'utf8');
 const ctx = {

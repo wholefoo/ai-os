@@ -13,6 +13,7 @@
 const migrate = require('./library-migrate');
 
 const { assert, done } = require('./test-util');
+require('./test-util').requireFinish();
 
 const fact = (title, value) => ({
   id: `fact-${title}`, title, value, source: 'canonical-fact',

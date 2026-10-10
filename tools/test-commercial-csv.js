@@ -5,6 +5,7 @@
 const fs = require('fs');
 const path = require('path');
 const { assert, done } = require('./test-util');
+require('./test-util').requireFinish();
 
 const csvPath = path.join(__dirname, '..', 'commercial', 'lib', 'csv.js');
 if (!fs.existsSync(csvPath)) {

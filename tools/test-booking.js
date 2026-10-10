@@ -2,6 +2,7 @@
 // past/lead-time exclusion, closed days, horizon), cancellation, .ics shape, and the rendered
 // booking section on hosted vs exported sites. Timezone-free by design (see lib/booking.js).
 const { assert, done } = require('./test-util');
+require('./test-util').requireFinish();
 const bk = require('../lib/booking');
 const { renderSection } = require('../lib/web-studio/pipeline');
 

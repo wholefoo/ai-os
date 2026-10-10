@@ -5,6 +5,7 @@ const persona = require('../lib/business-clone/persona');
 const resp = require('../lib/org/responsibility');
 
 const { assert, done } = require('./test-util');
+require('./test-util').requireFinish();
 
 const MAP = resp.normalizeMap({
   ownerEmail: 'dana@whitfield.com',

@@ -9,6 +9,7 @@
 // worth anything.
 const budget = require('../lib/a2a/budget');
 const { assert, done, serverSource } = require('./test-util');
+require('./test-util').requireFinish();
 
 const RATE = { input: 5.00, output: 25.00 };   // Opus 5, per 1M
 const DAY = '2026-08-01';

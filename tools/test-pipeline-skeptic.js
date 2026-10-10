@@ -22,6 +22,8 @@ const assert = require('assert');
 const fs = require('fs');
 const path = require('path');
 const yaml = require('js-yaml');
+const testUtil = require('./test-util');
+testUtil.requireFinish();   // an awaited promise that never settles must FAIL, not exit 0 mid-suite
 const { runPattern, validatePatternStage } = require('./../lib/pipeline-patterns.js');
 
 const DIR = path.join(__dirname, '..', '.claude', 'pipelines');
@@ -130,5 +132,6 @@ const drive = async (stage, verdict) => {
     console.log('ok  : a panel nobody answered BLOCKS — silence is not a pass'); pass++;
   }
 
-  console.log(`\nALL TESTS PASSED\n${pass} assertions`);
+  console.log(`\n${pass} assertions`);
+  testUtil.done();
 })();

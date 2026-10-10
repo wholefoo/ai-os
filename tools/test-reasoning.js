@@ -12,6 +12,7 @@
 // through the REAL engines driven by a mock runAgent. No assertion in this file spends a token.
 
 const { assert, done } = require('./test-util');
+require('./test-util').requireFinish();
 const R = require('../lib/reasoning');
 const { createBudget, guardedCall, MIN_OUTPUT_TOKENS } = require('../lib/reasoning/budget');
 const M = require('../lib/reasoning/models');

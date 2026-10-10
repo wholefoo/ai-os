@@ -4,6 +4,8 @@ const fs = require('fs');
 const path = require('path');
 const os = require('os');
 const vm = require('vm');
+const testUtil = require('./test-util');
+testUtil.requireFinish();   // an awaited promise that never settles must FAIL, not exit 0 mid-suite
 const createInviteQueue = require('../lib/account-invites');
 const { serverSource, readRepoFile } = require('./test-util');
 const source = serverSource();
@@ -147,6 +149,7 @@ function response() { return { statusCode: 200, status(code) { this.statusCode =
     const config = JSON.parse(readRepoFile('.fallowrc.json'));
     assert(config.ignoreUnresolvedImports.includes('../commercial/**'));
     console.log('ok: attribution schedules persistence and public CI handles absent commercial imports');
+    testUtil.done();
   } finally {
     if (queue) queue.close();
     assert.equal(path.dirname(tmp), os.tmpdir());

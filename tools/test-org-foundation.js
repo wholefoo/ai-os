@@ -7,6 +7,7 @@ const profileLib = require('../lib/org/profile');
 const foundation = require('../lib/org/foundation');
 
 const { assert, done } = require('./test-util');
+require('./test-util').requireFinish();
 
 const ORG = 'dana@whitfield.com';
 const EMPLOYEE = 'sam@whitfield.com';

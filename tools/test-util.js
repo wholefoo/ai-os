@@ -2,7 +2,22 @@
 // on any failure, no framework. Keep it tiny — these run standalone via `node tools/test-x.js`.
 const fs = require('fs');
 const assert = (cond, msg) => { if (!cond) { console.error('FAIL:', msg); process.exitCode = 1; } else console.log('ok  :', msg); };
-const done = () => console.log(process.exitCode ? '\nTESTS FAILED' : '\nALL TESTS PASSED');
+let finished = false;
+const done = () => { finished = true; console.log(process.exitCode ? '\nTESTS FAILED' : '\nALL TESTS PASSED'); };
+
+// For ASYNC suites: fail the run if the process exits before done()/cleanupAndFinish() is reached.
+// An awaited promise that never settles does not throw — Node simply runs out of work and exits 0,
+// mid-suite, with every remaining check silently skipped. test-all.js only sees the exit code, so
+// such a suite reads as passing. Found by mutation-testing the mission engine: a mutation that made
+// a test hang was reported GREEN. Opt-in, because a suite that never calls done() would trip it.
+const requireFinish = () => {
+  process.on('exit', (code) => {
+    if (!finished && code === 0) {
+      console.error('FAIL: the suite exited before finishing — an awaited promise never settled, so the remaining checks never ran');
+      process.exitCode = 1;
+    }
+  });
+};
 // For suites that mkdtempSync a scratch dir: remove it, then report. Shared because three suites
 // ended with the identical two-line rmSync+done() pattern.
 const cleanupAndFinish = (dir) => { if (dir) fs.rmSync(dir, { recursive: true, force: true }); done(); };
@@ -91,4 +106,4 @@ const seclintFixture = (prefix) => {
   };
 };
 
-module.exports = { assert, done, cleanupAndFinish, serverSource, repoRoot, readRepoFile, seclintFixture };
+module.exports = { assert, done, requireFinish, cleanupAndFinish, serverSource, repoRoot, readRepoFile, seclintFixture };

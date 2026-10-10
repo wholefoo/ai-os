@@ -2,6 +2,7 @@
 // completed audit record — subject/score, worst-areas selection, quick-win capping, the AEO
 // callout condition, HTML escaping of lead-supplied names, and completeness validation.
 const { assert, done } = require('./test-util');
+require('./test-util').requireFinish();
 const { renderAuditLeadEmail, validateAuditForEmail, worstAreas, scoreWord } = require('../lib/leads/audit-email');
 
 const mkAudit = (over = {}) => ({

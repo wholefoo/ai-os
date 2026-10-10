@@ -4,6 +4,7 @@
 const { execFileSync } = require('child_process');
 const path = require('path');
 const { assert, done } = require('./test-util');
+require('./test-util').requireFinish();
 
 const out = execFileSync(process.execPath, [path.join(__dirname, 'intel-brief-compare.js'), 'report'], { encoding: 'utf8', cwd: path.join(__dirname, '..') });
 assert(/COMPILED\s*:/.test(out) && /BASELINE\s*:/.test(out), 'report prints both ledger groups');

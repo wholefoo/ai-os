@@ -5,6 +5,7 @@ const persona = require('../lib/business-clone/persona');
 const onboarding = require('../lib/business-clone/onboarding');
 
 const { assert, done, serverSource } = require('./test-util');
+require('./test-util').requireFinish();
 
 const usablePersona = persona.normalize({
   identity: { ownerName: 'Dana', role: 'Owner', businessName: 'W', industry: 'D', whatTheyDo: 'Equipment', yearsExperience: 18 },

@@ -4,6 +4,7 @@
 // conflated the two would hide a bug in either module (see the catalog.js header).
 const catalog = require('../lib/library/catalog');
 const { assert, done } = require('./test-util');
+require('./test-util').requireFinish();
 
 const SCHEMA_FIELDS = [
   'id', 'title', 'store', 'path', 'contentHash', 'format', 'bytes',

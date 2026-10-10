@@ -25,6 +25,7 @@ const path = require('path');
 const approval = require('../lib/safety/approval');
 const schema = require('../lib/handbooks/schema');
 const { assert, done, serverSource } = require('./test-util');
+require('./test-util').requireFinish();
 
 const AGENTS_DIR = path.join(__dirname, '..', '.claude', 'agents');
 const src = serverSource();

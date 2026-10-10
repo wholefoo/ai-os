@@ -7,6 +7,7 @@
 // time, in stderr, while the dashboard's activity log recorded "Slack notification sent".
 const slack = require('../lib/notify/slack');
 const { assert, done, serverSource } = require('./test-util');
+require('./test-util').requireFinish();
 
 // --- the placeholder, and everything like it ----------------------------------------------------
 // Note these are NOT matched by a list of known placeholder spellings. They fail because they are

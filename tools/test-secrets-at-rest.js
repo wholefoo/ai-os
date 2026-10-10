@@ -5,6 +5,7 @@
 // a provider 401 nobody can explain), that tampering is detected, and that with no key both
 // directions are exact no-ops so a plaintext file from before loads unchanged.
 const { assert, done, serverSource } = require('./test-util');
+require('./test-util').requireFinish();
 const S = require('../lib/security/secrets-at-rest');
 
 // --- key forms ----------------------------------------------------------------------------------------

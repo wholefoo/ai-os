@@ -6,6 +6,7 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const { assert, cleanupAndFinish } = require('./test-util');
+require('./test-util').requireFinish();
 const omniMedia = require('../lib/omni-media');
 const {
   IMAGE_MODEL, TTS_MODEL, VOICES, DEFAULT_VOICE, IMAGE_FILE_RE, AUDIO_FILE_RE,

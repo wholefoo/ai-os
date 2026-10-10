@@ -12,6 +12,7 @@
 // rather than left to a live cost check that cannot run until the API limit lifts.
 const pc = require('../lib/prompt-cache');
 const { assert, done, serverSource } = require('./test-util');
+require('./test-util').requireFinish();
 
 // --- system blocks: the stable/volatile split ---------------------------------------------------
 const STABLE = 'You are the security-auditor agent. '.repeat(40);

@@ -17,6 +17,7 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const { assert, done } = require('./test-util');
+require('./test-util').requireFinish();
 const C = require('../lib/intel-brief-compiled');
 
 const NOW = Date.parse('2026-09-03T12:00:00Z');

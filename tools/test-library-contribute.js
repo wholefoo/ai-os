@@ -12,6 +12,7 @@ const readers = require('../lib/library/readers');
 const contribute = require('../lib/library/contribute');
 const documents = require('../lib/org/documents');
 const { assert, done } = require('./test-util');
+require('./test-util').requireFinish();
 
 const H = 'a'.repeat(64);
 const base = {

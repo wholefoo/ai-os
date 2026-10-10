@@ -5,6 +5,7 @@
 // which is what a person actually receives: (1) no credential, setup token or session token appears
 // anywhere in it; (2) no OTHER person's data appears in it. Completeness is asserted per store.
 const { assert, done, serverSource } = require('./test-util');
+require('./test-util').requireFinish();
 const X = require('../lib/security/subject-export');
 
 const ME = 'Person@Example.io';       // mixed case on purpose — every store must match case-insensitively

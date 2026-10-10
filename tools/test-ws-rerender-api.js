@@ -13,6 +13,7 @@
 // Repo convention: this reads server.js as text; live behaviour is proven by probes recorded in the
 // commit message.
 const { assert, done, serverSource } = require('./test-util');
+require('./test-util').requireFinish();
 
 const src = serverSource();
 const start = src.indexOf("app.post('/api/web-studio/sites/:id/build'");

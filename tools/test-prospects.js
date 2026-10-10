@@ -3,6 +3,7 @@
 // extraction/ranking from a business's own page, query validation, and the search()/prospect()
 // network entrypoints — all exercised with injected fetchImpl/deps.safeFetch mocks, no network.
 const { assert, done } = require('./test-util');
+require('./test-util').requireFinish();
 const {
   pickProspectProvider, normalizeDataforseo, normalizePlaces,
   scoreProspect, extractEmails, rankEmail, enrichEmail,

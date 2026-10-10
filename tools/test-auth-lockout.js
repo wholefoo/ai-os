@@ -7,6 +7,7 @@
 // the part a code review would miss: the lock check must run before bcrypt, and both 401 branches
 // must count.
 const { assert, done, serverSource } = require('./test-util');
+require('./test-util').requireFinish();
 const { createLockout, LOCKOUT_DEFAULTS: DEFAULTS } = require('../lib/security/login-lockout');
 
 // --- 1. the module, on a fake clock --------------------------------------------------------------

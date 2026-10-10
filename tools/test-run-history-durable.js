@@ -6,6 +6,8 @@ const os = require('os');
 const path = require('path');
 const http = require('http');
 const cp = require('child_process');
+const testUtil = require('./test-util');
+testUtil.requireFinish();   // an awaited promise that never settles must FAIL, not exit 0 mid-suite
 const trail = require('../lib/pipeline-trail');
 const root = path.resolve(__dirname, '..');
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'aios-history-test-'));
@@ -56,6 +58,7 @@ const get = p => new Promise(resolve => {
   }
   assert.equal((await get('/api/pipelines/runs/run-does-not-exist')).status,404);
   console.log('PASS: archived fixture appears in list, every listed run opens, unknown run returns 404');
+  testUtil.done();
 })().catch(error=>{console.error(error);process.exitCode=1;}).finally(async()=>{
   if(child&&child.exitCode===null){child.kill();await new Promise(resolve=>{child.once('exit',resolve);setTimeout(resolve,2000).unref();});}
   assert.equal(path.dirname(tmp),os.tmpdir());

@@ -16,6 +16,7 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 const { assert, done } = require('./test-util');
+require('./test-util').requireFinish();
 
 const modPath = path.join(__dirname, '..', 'commercial', 'lib', 'license-validator.js');
 if (!fs.existsSync(modPath)) {

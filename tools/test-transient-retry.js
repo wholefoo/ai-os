@@ -11,6 +11,7 @@
 //      previous instance of this failure class in this repo was a declaration with no enforcement
 //      behind it (`depends_on`, `required: true`, the handbooks' `tools:` line).
 const { assert, done, serverSource } = require('./test-util');
+require('./test-util').requireFinish();
 const T = require('../lib/transient-errors');
 
 const err = (props) => Object.assign(new Error(props.message || 'boom'), props);

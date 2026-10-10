@@ -5,6 +5,7 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const { assert, cleanupAndFinish } = require('./test-util');
+require('./test-util').requireFinish();
 const omniVideo = require('../lib/omni-video');
 const { VEO_TIERS, VIDEO_FILE_RE, priceFor, submitGeneration, pollOperation, downloadVideo, generateVideo } = omniVideo;
 

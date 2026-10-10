@@ -2,6 +2,7 @@
 const { applyFunnel, expandDynamicPages } = require('../lib/web-studio/pipeline.js');
 const aeoEmit = require('../lib/web-studio/aeo-emit.js');
 const { assert, done } = require('./test-util');
+require('./test-util').requireFinish();
 
 const CHECKOUT = 'https://buy.stripe.com/test_abc123';
 

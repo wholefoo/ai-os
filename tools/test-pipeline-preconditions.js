@@ -22,6 +22,7 @@ const path = require('path');
 const yaml = require('js-yaml');
 const graph = require('../lib/pipeline-graph');
 const { assert, done, serverSource } = require('./test-util');
+require('./test-util').requireFinish();
 
 const ROOT = path.join(__dirname, '..');
 const src = serverSource();

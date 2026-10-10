@@ -47,6 +47,7 @@ const L = [
 fs.writeFileSync(logPath, L.map(stamp).join('\n') + '\n');
 
 const { assert, done } = require('./test-util');
+require('./test-util').requireFinish();
 
 // --- pass 1: full ingest
 let botEvents = 0;

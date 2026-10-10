@@ -9,6 +9,7 @@
 // by re-running. Every claim here has to earn a sample size first.
 const stats = require('../lib/handbooks/criterion-stats');
 const { assert, done, serverSource } = require('./test-util');
+require('./test-util').requireFinish();
 
 const R = (id, status, text, source) => ({ id, status, description: text || `criterion ${id}`, source: source || 'handbook' });
 

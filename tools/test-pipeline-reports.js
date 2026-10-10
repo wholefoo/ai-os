@@ -7,6 +7,7 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const { assert, done } = require('./test-util');
+require('./test-util').requireFinish();
 const pipeline_reports = require('../lib/pipeline-reports');
 const { runToDoc, saveRunDocx, deleteRunReport, listRunReports, reportFileFor, slugify, REPORT_FILE_RE: FILE_RE } = pipeline_reports;
 

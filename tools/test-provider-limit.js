@@ -14,6 +14,7 @@
 //      the obvious way gives you the opposite of the truth.
 const pl = require('../lib/provider-limit');
 const { assert, done, serverSource, readRepoFile } = require('./test-util');
+require('./test-util').requireFinish();
 
 const err = (message, status) => Object.assign(new Error(message), status === null ? {} : { status });
 const REAL = 'You have reached your specified API usage limits. You will regain access on 2026-09-01 at 00:00 UTC.';

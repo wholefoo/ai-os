@@ -10,6 +10,7 @@ const approval = require('../lib/safety/approval');
 const readers = require('../lib/library/readers');
 const catalog = require('../lib/library/catalog');
 const { assert, done } = require('./test-util');
+require('./test-util').requireFinish();
 
 const H = 'a'.repeat(64);
 const DESTRUCTIVE = ['library.delete-record', 'library.retention-dispose'];

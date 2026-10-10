@@ -5,6 +5,7 @@
 // HOLD hosted sites (a gated infra action a job may not perform), and must keep working when the
 // CRM is closed or a cascade throws. All on a fake clock, no server.
 const { assert, done, serverSource, readRepoFile } = require('./test-util');
+require('./test-util').requireFinish();
 const R = require('../lib/security/retention');
 
 const DAY = 86400000;

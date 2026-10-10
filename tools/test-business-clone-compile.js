@@ -4,6 +4,7 @@ const persona = require('../lib/business-clone/persona');
 const compile = require('../lib/business-clone/compile');
 
 const { assert, done } = require('./test-util');
+require('./test-util').requireFinish();
 
 const full = persona.normalize({
   identity: { ownerName: 'Mike', role: 'Founder', businessName: 'AI OS', industry: 'SaaS', whatTheyDo: 'Agentic ops platform for small teams', yearsExperience: 12 },

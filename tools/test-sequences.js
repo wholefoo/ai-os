@@ -2,6 +2,7 @@
 // rendering, and lib/email's provider pick + unsubscribe-token integrity. No network — the
 // sender is mocked; lib/email's transports are exercised only up to payload/provider selection.
 const { assert, done } = require('./test-util');
+require('./test-util').requireFinish();
 const seq = require('../lib/sequences');
 const email = require('../lib/email');
 

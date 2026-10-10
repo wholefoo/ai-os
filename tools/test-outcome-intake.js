@@ -15,6 +15,7 @@ const path = require('path');
 const intake = require('../lib/outcomes/intake');
 const archetype = require('../lib/handbooks/archetype');
 const { assert, done, serverSource } = require('./test-util');
+require('./test-util').requireFinish();
 
 const GOOD = {
   goal: 'A one-page competitor brief a salesperson can open on a call tomorrow morning.',

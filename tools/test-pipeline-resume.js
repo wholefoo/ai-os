@@ -20,6 +20,7 @@ const os = require('os');
 const path = require('path');
 const trail = require('../lib/pipeline-trail');
 const { assert, done, serverSource, readRepoFile } = require('./test-util');
+require('./test-util').requireFinish();
 
 const base = fs.mkdtempSync(path.join(os.tmpdir(), 'resume-'));
 const run = { id: 'run-1786158988267', pipeline: 'security-sweep' };

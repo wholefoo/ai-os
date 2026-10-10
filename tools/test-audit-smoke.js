@@ -2,6 +2,8 @@
 // Never reads the real .env or .magent. Removes only its own checked temporary directory.
 'use strict';
 const fs=require('fs'),path=require('path'),os=require('os'),cp=require('child_process'),http=require('http'),assert=require('assert/strict');
+const testUtil = require('./test-util');
+testUtil.requireFinish();   // an awaited promise that never settles must FAIL, not exit 0 mid-suite
 const root=path.resolve(__dirname,'..');
 const tmp=fs.mkdtempSync(path.join(os.tmpdir(),'aios-audit-smoke-'));
 let child;
@@ -48,6 +50,7 @@ const cp=require('child_process');for(const k of ['exec','execSync','execFile','
   const logout=await request(port,'/api/auth/logout',{body:{},headers:{Cookie:'ai-os-session='+token}});
   assert.equal(logout.status,200);await closed;
   console.log('PASS logout disconnects authenticated WebSocket');
+  testUtil.done();
 
 })().catch(e=>{console.error(e);process.exitCode=1;}).finally(async()=>{
   if(child&&child.exitCode===null){child.kill();await new Promise(r=>{child.once('exit',r);setTimeout(r,2000).unref();});}

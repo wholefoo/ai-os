@@ -8,6 +8,7 @@
 // node's http module and has its own tests.
 const { safeFetch, safeRequest } = require('../lib/net/safe-fetch');
 const { assert, done } = require('./test-util');
+require('./test-util').requireFinish();
 
 const refused = async (url, opts) => {
   try { await safeRequest(url, opts); return null; } catch (e) { return e.message; }

@@ -5,6 +5,7 @@ const compile = require('../lib/business-clone/compile');
 const drafts = require('../lib/business-clone/drafts');
 
 const { assert, done } = require('./test-util');
+require('./test-util').requireFinish();
 
 const p = persona.normalize({
   identity: { ownerName: 'Dana', role: 'Owner', businessName: 'Whitfield Dental Supply', industry: 'Distribution', whatTheyDo: 'Dental equipment for independent practices', yearsExperience: 18 },

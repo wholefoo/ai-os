@@ -12,6 +12,7 @@
 // note in tools/test-vhost-scheme-guard.js).
 
 const { assert, done } = require('./test-util');
+require('./test-util').requireFinish();
 const tot = require('../lib/reasoning/tot');
 const { createBudget } = require('../lib/reasoning/budget');
 

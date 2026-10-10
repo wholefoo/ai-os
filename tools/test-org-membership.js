@@ -4,6 +4,7 @@
 const org = require('../lib/org/membership');
 
 const { assert, done } = require('./test-util');
+require('./test-util').requireFinish();
 
 const owner = { email: 'dana@whitfield.com' };                                   // no ownerEmail = own org
 const emp1 = { email: 'sam@whitfield.com', ownerEmail: 'dana@whitfield.com' };

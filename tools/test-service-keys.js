@@ -6,6 +6,7 @@
 // old key in the same step, and a chain from new key to old. Behaviour is proven live in the
 // commit's isolated-instance run; the shape and the pure decisions are pinned here.
 const { assert, done, serverSource } = require('./test-util');
+require('./test-util').requireFinish();
 const K = require('../lib/security/service-keys');
 
 // --- minting and lookup ----------------------------------------------------------------------------

@@ -6,6 +6,7 @@
 // MEASURING the rendered panel in a browser, and the fix is pinned below so it cannot silently
 // regress; the visual check itself lives in the commit.
 const { assert, done, readRepoFile } = require('./test-util');
+require('./test-util').requireFinish();
 
 const html = readRepoFile('dashboard/app.html');
 const js = readRepoFile('dashboard/js/web-studio.js');

@@ -20,6 +20,7 @@
 const fs = require('fs');
 const path = require('path');
 const { assert, done } = require('./test-util');
+require('./test-util').requireFinish();
 
 const ROOT = path.join(__dirname, '..');
 const ROUTER = path.join(ROOT, '.claude', 'claude.md');

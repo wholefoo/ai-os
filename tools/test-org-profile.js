@@ -9,6 +9,7 @@ const store = require('../lib/business-clone/store');
 const profile = require('../lib/org/profile');
 
 const { assert, done } = require('./test-util');
+require('./test-util').requireFinish();
 
 const ORG = profile.normalizeProfile({
   ownerEmail: 'dana@whitfield.com',

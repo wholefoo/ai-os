@@ -9,6 +9,7 @@ const path = require('path');
 const rubric = require('../lib/handbooks/rubric');
 const schema = require('../lib/handbooks/schema');
 const { assert, done, serverSource } = require('./test-util');
+require('./test-util').requireFinish();
 
 const HB = [
   '---', 'name: fixture', 'description: d', 'rubric: research', '---', '',

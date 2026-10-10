@@ -16,6 +16,7 @@ const os = require('os');
 const path = require('path');
 const { execFileSync } = require('child_process');
 const { assert, done, repoRoot } = require('./test-util');
+require('./test-util').requireFinish();
 const { handbookPrivilegeDiff, privilegeOf } = require('./seclint');
 
 const SECLINT = path.join(__dirname, 'seclint.js');

@@ -9,6 +9,8 @@
 'use strict';
 const assert = require('assert');
 const { createSiteLock } = require('../lib/web-studio/site-lock');
+const testUtil = require('./test-util');
+testUtil.requireFinish();   // an awaited promise that never settles must FAIL, not exit 0 mid-suite
 
 let pass = 0, fail = 0;
 const t = async (name, fn) => {
@@ -74,5 +76,7 @@ async function appendLikeIngest(store, lock, item, delay) {
   });
 
   console.log('  ' + pass + ' passed, ' + fail + ' failed');
-  process.exit(fail ? 1 : 0);
+  if (fail) process.exit(1);
+  testUtil.done();
+  process.exit(0);
 })();

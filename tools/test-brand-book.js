@@ -18,6 +18,7 @@
 const fs = require('fs');
 const path = require('path');
 const { assert, done, repoRoot: ROOT, readRepoFile: read } = require('./test-util');
+require('./test-util').requireFinish();
 
 const BOOK = path.join(ROOT, '.claude', 'design', 'brand-book.html');
 

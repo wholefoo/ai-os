@@ -9,6 +9,7 @@ const readers = require('../lib/library/readers');
 const { FORBIDDEN_KEYS } = require('../lib/org/visibility');
 
 const { assert, done } = require('./test-util');
+require('./test-util').requireFinish();
 
 const AGENT = { kind: 'agent', id: 'chief-librarian' };
 const OPERATOR = { kind: 'operator', id: 'mike@example.com' };

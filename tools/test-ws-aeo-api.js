@@ -2,6 +2,7 @@
 // a live probe against the real server with the REAL rebuilt Truth Counters build in the workspace
 // (21 pages, score 66/B, 15 fixes proposed) and the results are in the commit message.
 const { assert, done, serverSource } = require('./test-util');
+require('./test-util').requireFinish();
 
 const src = serverSource();
 const block = src.slice(src.indexOf('//  AEO / SEO compliance'), src.indexOf('// --- Rebuild from current workspace source'));

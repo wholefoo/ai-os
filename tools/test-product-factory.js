@@ -7,6 +7,7 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const { assert, cleanupAndFinish } = require('./test-util');
+require('./test-util').requireFinish();
 const ExcelJS = require('exceljs');
 const AdmZip = require('adm-zip');
 const productFactory = require('../lib/product-factory');

@@ -4,6 +4,8 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const vm = require('vm');
+const testUtil = require('./test-util');
+testUtil.requireFinish();   // an awaited promise that never settles must FAIL, not exit 0 mid-suite
 const root = path.resolve(__dirname, '..');
 const source = fs.readFileSync(path.join(root, 'server.js'), 'utf8').replace(/\r\n/g, '\n');
 const noop = () => {};
@@ -196,5 +198,6 @@ async function check(label, fn) { if (/^A(13|15|17) /.test(label) && !fs.existsS
     assert.match(fs.readFileSync(path.join(root,'docker-compose.yml'),'utf8'),/HOST=0.0.0.0/);
     assert.match(source,/const HOST = process.env.HOST/);
   });
-  console.log(`ALL TESTS PASSED (${count} audit regression groups; deployment isolation tested separately)`);
+  console.log(`${count} audit regression groups passed; deployment isolation tested separately`);
+  testUtil.done();
 })().catch(e=>{console.error(e);process.exitCode=1;});

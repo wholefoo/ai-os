@@ -22,6 +22,7 @@
 const fs = require('fs');
 const path = require('path');
 const { assert, done, repoRoot: ROOT, readRepoFile: read } = require('./test-util');
+require('./test-util').requireFinish();
 
 // Every file that describes how to work in this repo. Derived, not listed: a rule file added
 // tomorrow is covered without anyone remembering to add it here.

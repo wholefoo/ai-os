@@ -5,6 +5,7 @@ const persona = require('../lib/business-clone/persona');
 const interview = require('../lib/business-clone/interview');
 
 const { assert, done } = require('./test-util');
+require('./test-util').requireFinish();
 
 // --- targeting: least-complete dimension, identity-first on ties
 const blank = persona.emptyPersona();

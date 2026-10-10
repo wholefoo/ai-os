@@ -13,6 +13,7 @@ const path = require('path');
 const brief = require('../lib/skills/brief');
 const schema = require('../lib/handbooks/schema');
 const { assert, done, serverSource } = require('./test-util');
+require('./test-util').requireFinish();
 
 const AGENTS_DIR = path.join(__dirname, '..', '.claude', 'agents');
 const SKILLS_DIR = path.join(__dirname, '..', '.claude', 'skills');

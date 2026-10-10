@@ -10,6 +10,7 @@
 // Like the other tools/test-seclint-*.js suites, this drives the REAL CLI over throwaway fixtures
 // rather than importing the rule: a suite must not be able to pass while the shipped linter fails.
 const { assert, done, cleanupAndFinish, seclintFixture } = require('./test-util');
+require('./test-util').requireFinish();
 
 const F = seclintFixture('seclint-route-auth-');
 const HANDLER = '{ res.json({ ok: true }); });';

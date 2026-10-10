@@ -8,6 +8,7 @@ const okf = require('../lib/okf');
 const aeoEmit = require('../lib/web-studio/aeo-emit');
 
 const { assert, done } = require('./test-util');
+require('./test-util').requireFinish();
 
 // --- serialize → parse roundtrip, incl. characters that force YAML quoting
 const doc = okf.serializeConcept(

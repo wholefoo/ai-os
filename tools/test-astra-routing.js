@@ -10,6 +10,8 @@ const assert = require('assert/strict');
 const vm = require('vm');
 const path = require('path');
 const { serverSource } = require('./test-util');
+const testUtil = require('./test-util');
+testUtil.requireFinish();   // an awaited promise that never settles must FAIL, not exit 0 mid-suite
 
 const src = serverSource();
 const noop = () => {};
@@ -164,5 +166,6 @@ ok('the ledger model string resolves to a priced COST_RATES key');
     'the disclaimer says plainly that Astra\'s "low" is effort, not price');
   ok('the picker offers all four, prices each, and carries the Astra cost disclaimer');
 
-  console.log(`\nALL TESTS PASSED\n${pass} assertions`);
+  console.log(`\n${pass} assertions`);
+  testUtil.done();
 })().catch((e) => { console.error(e); process.exitCode = 1; });

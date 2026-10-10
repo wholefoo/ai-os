@@ -4,6 +4,7 @@
 // future edit cannot quietly reopen one — e.g. a `sameSite: 'none'` for an embed, or an
 // `express.urlencoded()` mounted globally for a form.
 const { assert, done, serverSource } = require('./test-util');
+require('./test-util').requireFinish();
 const { crossSiteCookieMutation } = require('../lib/security/csrf');
 
 // --- 1. the guard's logic, exhaustively on fixtures ---------------------------------------------------

@@ -28,6 +28,7 @@ const path = require('path');
 const http = require('http');
 const { spawn } = require('child_process');
 const { assert, done } = require('./test-util');
+require('./test-util').requireFinish();
 
 const ROOT = path.join(__dirname, '..');
 const SUBDIR = `state-test-caps-${process.pid}`;

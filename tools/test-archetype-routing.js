@@ -13,6 +13,7 @@ const arch = require('../lib/handbooks/archetype');
 const schema = require('../lib/handbooks/schema');
 const brief = require('../lib/skills/brief');
 const { assert, done, serverSource } = require('./test-util');
+require('./test-util').requireFinish();
 
 const AGENTS_DIR = path.join(__dirname, '..', '.claude', 'agents');
 const SKILLS_DIR = path.join(__dirname, '..', '.claude', 'skills');

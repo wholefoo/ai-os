@@ -5,6 +5,7 @@ const profileLib = require('../lib/org/profile');
 const extract = require('../lib/org/extract');
 
 const { assert, done } = require('./test-util');
+require('./test-util').requireFinish();
 
 const EMPTY = profileLib.emptyProfile('dana@whitfield.com');
 const ESTABLISHED = profileLib.normalizeProfile({

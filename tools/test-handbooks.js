@@ -24,6 +24,7 @@ const path = require('path');
 const schema = require('../lib/handbooks/schema');
 const approval = require('../lib/safety/approval');
 const { assert, done } = require('./test-util');
+require('./test-util').requireFinish();
 
 const AGENTS_DIR = path.join(__dirname, '..', '.claude', 'agents');
 const RUBRICS = path.join(__dirname, '..', '.claude', 'rules', 'verification-rubrics.yaml');

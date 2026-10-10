@@ -10,6 +10,7 @@
 const { spawnSync } = require('child_process');
 const path = require('path');
 const { assert, done } = require('./test-util');
+require('./test-util').requireFinish();
 
 const ci = (f) => require('fs').readFileSync(path.join(__dirname, '..', 'deploy', 'coding-instance', f), 'utf8');
 

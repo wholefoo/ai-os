@@ -5,6 +5,7 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const { assert, done } = require('./test-util');
+require('./test-util').requireFinish();
 const { runIntelBrief, saveBriefDocx, deleteBrief, listBriefs, FILE_RE, CONSULTANTS } = require('../lib/intel-brief');
 
 const STATEMENT = [

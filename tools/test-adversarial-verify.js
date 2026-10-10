@@ -8,6 +8,7 @@
 //   3. a reply with no verdict — empty, or truncated before its first line — counted as SOUND
 //      because the test was "does not contain REFUTED".
 const { assert, done, serverSource, readRepoFile } = require('./test-util');
+require('./test-util').requireFinish();
 const k = require('../lib/orchestrator');
 const p = require('../lib/pipeline-patterns');
 

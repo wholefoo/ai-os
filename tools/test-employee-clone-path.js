@@ -20,6 +20,7 @@ const path = require('path');
 const org = require('../lib/org/membership');
 const cloneStore = require('../lib/business-clone/store');
 const { assert, done, serverSource } = require('./test-util');
+require('./test-util').requireFinish();
 
 const src = serverSource();
 const EMPLOYER = 'owner@acme.test';

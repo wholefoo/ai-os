@@ -16,6 +16,7 @@
 
 const http = require('http');
 const { assert, done } = require('./test-util');
+require('./test-util').requireFinish();
 const { mcpListTools, mcpCallTool, maskSecret, probeWebhook } = require('../lib/integrations');
 
 const PROTOCOL_VERSION = '2025-06-18';

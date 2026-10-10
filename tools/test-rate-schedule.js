@@ -38,6 +38,7 @@
 // the boundary-guard-enumeration lesson, applied to prices.
 
 const { assert, done, serverSource } = require('./test-util');
+require('./test-util').requireFinish();
 
 const src = serverSource();
 

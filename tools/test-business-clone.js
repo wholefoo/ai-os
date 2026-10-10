@@ -5,6 +5,7 @@ const persona = require('../lib/business-clone/persona');
 const store = require('../lib/business-clone/store');
 
 const { assert, done } = require('./test-util');
+require('./test-util').requireFinish();
 
 // --- normalisation: unknown fields dropped, caps applied, dedupe
 const dirty = persona.normalize({

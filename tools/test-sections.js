@@ -4,6 +4,7 @@ const { renderSection, renderPage, buildSiteKnowledge } = require('../lib/web-st
 const aeoEmit = require('../lib/web-studio/aeo-emit.js');
 
 const { assert, done } = require('./test-util');
+require('./test-util').requireFinish();
 
 // --- renderers
 const testimonial = renderSection({ type: 'testimonials', heading: 'What clients say', items: [{ quote: 'Best <ever>', name: 'Ann Lee', role: 'CEO, Acme' }] }, {});

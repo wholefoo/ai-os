@@ -13,6 +13,7 @@ const fs = require('fs');
 const path = require('path');
 const kc = require('../lib/knowledge-context');
 const { assert, done, serverSource } = require('./test-util');
+require('./test-util').requireFinish();
 
 const ROOT = path.join(__dirname, '..');
 const src = serverSource();

@@ -3,6 +3,7 @@
 const fs = require('fs');
 const path = require('path');
 const { assert, done, serverSource } = require('./test-util');
+require('./test-util').requireFinish();
 
 const agentsDir = path.join(__dirname, '..', '.claude', 'agents');
 const CONSULTANTS = ['anthropic', 'openai', 'gemini', 'deepseek', 'grok', 'perplexity', 'manus'];

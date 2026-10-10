@@ -7,6 +7,7 @@
 // real files, real signatures.
 const fs = require('fs'), os = require('os'), path = require('path');
 const { assert, done, serverSource, readRepoFile } = require('./test-util');
+require('./test-util').requireFinish();
 const P = require('../lib/provenance');
 
 const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'prov-keys-'));

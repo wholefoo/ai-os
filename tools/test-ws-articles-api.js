@@ -5,6 +5,7 @@
 // results are recorded in the commit message; this suite pins the shape so a later edit cannot
 // quietly drop a guard.
 const { assert, done, serverSource } = require('./test-util');
+require('./test-util').requireFinish();
 
 const src = serverSource();
 // Bounded by the ADOPTION block, not the build route: adoption sits between them and its own

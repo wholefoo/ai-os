@@ -6,6 +6,7 @@ const ExcelJS = require('exceljs');
 const docs = require('../lib/org/documents');
 
 const { assert, done } = require('./test-util');
+require('./test-util').requireFinish();
 
 const buf = (s) => Buffer.from(s, 'utf8');
 

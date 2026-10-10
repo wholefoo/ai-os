@@ -7,6 +7,7 @@
 // silently continuing to leak. This suite reads server.js as text (repo convention — no suite
 // boots the server) and pins the shape; the live probe that proves the behaviour is in the commit.
 const { assert, done, serverSource, readRepoFile } = require('./test-util');
+require('./test-util').requireFinish();
 
 const src = serverSource();
 const verify = src.slice(src.indexOf('function wsCredential('), src.indexOf("cb(false, 401, 'Unauthorized');") + 40);

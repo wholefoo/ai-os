@@ -10,6 +10,7 @@
 // rest of this repo's recurring bugs: an action that appears to succeed, reverts silently, and
 // leaves no evidence that it reverted.
 const { assert, done, serverSource } = require('./test-util');
+require('./test-util').requireFinish();
 
 const src = serverSource();
 

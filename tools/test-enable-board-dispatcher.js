@@ -5,6 +5,7 @@
 // setgid task dirs, which the app unit's NoNewPrivileges/RestrictSUIDSGID block. Shell is read as text
 // (CI has no systemd/root); comments are stripped from the "does X" checks so they can't false-match.
 const { assert, done, readRepoFile } = require('./test-util');
+require('./test-util').requireFinish();
 
 const sh = readRepoFile('deploy/coding-instance/enable-board-dispatcher.sh');
 const code = sh.split('\n').filter((l) => !/^\s*#/.test(l)).join('\n');

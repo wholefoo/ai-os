@@ -20,6 +20,7 @@ const onboarding = require('../lib/business-clone/onboarding');
 const persona = require('../lib/business-clone/persona');
 const profile = require('../lib/org/profile');
 const { assert, done, serverSource } = require('./test-util');
+require('./test-util').requireFinish();
 
 const ORG = profile.normalizeProfile({
   ownerEmail: 'owner@example.com',

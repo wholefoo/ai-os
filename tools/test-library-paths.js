@@ -6,6 +6,7 @@ const path = require('path');
 const { resolveRecordPath, VAULT_FOLDERS } = require('../lib/library/paths');
 
 const { assert, done } = require('./test-util');
+require('./test-util').requireFinish();
 
 const ROOTS = {
   vault: path.resolve('/srv/app/.magent/vault'),

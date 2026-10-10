@@ -2,6 +2,7 @@
 // least-squares linear regression over real daily-bucketed history, out-of-sample backtested
 // accuracy, and the "too little real data → null, never a fabricated forecast" discipline.
 const { assert, done } = require('./test-util');
+require('./test-util').requireFinish();
 const predictive = require('../lib/predictive');
 const { MIN_POINTS, linearRegression, bucketDaily, forecastFromDaily, backtestAccuracy } = predictive;
 

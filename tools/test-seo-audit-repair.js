@@ -11,6 +11,7 @@
 'use strict';
 
 const { assert, done } = require('./test-util');
+require('./test-util').requireFinish();
 const { isFabricatedFailure, repairAudit, repairAll, SCORE_DERIVED_WINS } = require('./seo-audit-repair');
 
 const failedAgent = (over = {}) => ({

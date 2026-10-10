@@ -19,6 +19,8 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const AdmZip = require('adm-zip');
+const testUtil = require('./test-util');
+testUtil.requireFinish();   // an awaited promise that never settles must FAIL, not exit 0 mid-suite
 const { findStaticRoot, importToWorkspace, isUnbuiltAppShell } = require('../lib/web-studio/import');
 const { staticBuild } = require('../lib/web-studio/build');
 
@@ -123,7 +125,8 @@ const viteRepo = (root) => {
       assert.strictEqual(staticBuild(ws).ok, true);
     });
 
-    console.log(`\nALL TESTS PASSED\n${pass} assertions`);
+    console.log(`\n${pass} assertions`);
+    testUtil.done();
   } finally {
     for (const d of tmps) { if (path.dirname(d) === os.tmpdir()) fs.rmSync(d, { recursive: true, force: true }); }
   }

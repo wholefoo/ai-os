@@ -8,6 +8,7 @@ const evolve = require('../lib/business-clone/evolve');
 const vis = require('../lib/org/visibility');
 
 const { assert, done } = require('./test-util');
+require('./test-util').requireFinish();
 
 // A fully-populated clone: every sensitive surface present, so a leak has something to leak.
 const clone = store.createClone({ id: 'c-emp', clientId: 'sam@whitfield.com', name: 'Sam', templateId: 'support' });

@@ -4,6 +4,7 @@
 // 0-100 completeness/review/rank scorer + its findings, and the analyzeLocal() network entrypoint
 // exercised entirely via an injected deps.dfsRequest mock — no network.
 const { assert, done } = require('./test-util');
+require('./test-util').requireFinish();
 const {
   deriveBrand, normalizeMyBusiness, gbpFromProspect, findLocalRank, scoreLocal, analyzeLocal,
 } = require('../lib/leads/local-seo');

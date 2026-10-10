@@ -9,6 +9,7 @@
 // GET anything), sibling routes, another site's id, encoded paths, and ROTATION silently dropping
 // the binding — which would turn a one-site key into an every-site key during routine maintenance.
 const { assert, done, serverSource } = require('./test-util');
+require('./test-util').requireFinish();
 const K = require('../lib/security/service-keys');
 
 const SITE = '9fffb97a-6623-4c14-a2d0-a8601f6e8526';

@@ -27,6 +27,7 @@ const { execFileSync } = require('child_process');
 const fs = require('fs');
 const path = require('path');
 const { assert, done, repoRoot } = require('./test-util');
+require('./test-util').requireFinish();
 
 // Matches a pm2 invocation delegated with -u instead of -iu. The regex SOURCE deliberately contains
 // no literal example of the bad form, so this file does not trip its own scan — the same

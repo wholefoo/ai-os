@@ -14,6 +14,7 @@
 //      indistinguishable from "the upstream report simply ended here".
 const graph = require('../lib/pipeline-graph');
 const { assert, done, serverSource } = require('./test-util');
+require('./test-util').requireFinish();
 
 const src = serverSource();
 const clip = graph.clipStageOutput;

@@ -4,6 +4,7 @@
 const { renderPage, renderSection } = require('../lib/web-studio/pipeline.js');
 
 const { assert, done } = require('./test-util');
+require('./test-util').requireFinish();
 
 const contact = { type: 'contact', heading: 'Talk to us', body: 'We reply fast.', email: 'hi@acme.com' };
 const endpoint = 'https://platform.example/api/public/site-lead/site-123';

@@ -20,6 +20,7 @@ const path = require('path');
 const { createRepoTools, LIMITS, BINARY_EXT, SKIP_DIRS } = require('../lib/repo-tools');
 const planStore = require('../lib/self-improve/plan-store');
 const { assert, done } = require('./test-util');
+require('./test-util').requireFinish();
 
 // --- a synthetic tree big enough to blow an unbounded walk -------------------------------------------
 const root = fs.mkdtempSync(path.join(os.tmpdir(), 'repotools-'));

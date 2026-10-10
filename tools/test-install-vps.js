@@ -6,6 +6,7 @@
 // fragments that CAN run off-box (the .env secret filler, the printed TLS commands, the admin-hash
 // helper) were exercised against fixtures when this suite was written; this pins their shape.
 const { assert, done, readRepoFile } = require('./test-util');
+require('./test-util').requireFinish();
 
 const inst = readRepoFile('deploy/install-vps.sh');
 const tpl = readRepoFile('deploy/nginx.conf');

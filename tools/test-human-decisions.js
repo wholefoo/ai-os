@@ -10,6 +10,7 @@
 // instance in the commit that lands this: token → 403 on every decision route, before any lookup;
 // signed-in admin → allowed, with the from → to audit line.
 const { assert, done, serverSource } = require('./test-util');
+require('./test-util').requireFinish();
 
 const src = serverSource();
 const between = (a, b) => src.slice(src.indexOf(a), src.indexOf(b, src.indexOf(a)));

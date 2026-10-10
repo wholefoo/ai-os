@@ -26,6 +26,7 @@
 
 const vm = require('vm');
 const { assert, done, readRepoFile } = require('./test-util');
+require('./test-util').requireFinish();
 
 const server = readRepoFile('server.js');
 const freeAuditPage = readRepoFile('dashboard/js/free-audit-page.js');

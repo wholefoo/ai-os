@@ -10,6 +10,7 @@ const path = require('path');
 const fs = require('fs');
 const lint = require('../lib/design-lint');
 const { assert, done } = require('./test-util');
+require('./test-util').requireFinish();
 
 const ROOT = path.join(__dirname, '..');
 

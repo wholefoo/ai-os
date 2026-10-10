@@ -25,6 +25,7 @@ const fs = require('fs');
 const path = require('path');
 const vm = require('vm');
 const { assert, done } = require('./test-util');
+require('./test-util').requireFinish();
 
 const src = fs.readFileSync(path.join(__dirname, '..', 'dashboard', 'js', 'clones.js'), 'utf8');
 
