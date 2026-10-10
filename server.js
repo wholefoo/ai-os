@@ -3410,11 +3410,19 @@ async function gateAction({ type, summary, target = null, params = {}, secrets =
     // Telegram/Slack. The operator most likely to be absent got the least notice for the highest
     // risk. sendNotification routes to Telegram + Slack when configured, and 'critical' priority
     // also engages its escalation re-notify timer — an unanswered critical approval now nags.
-    sendNotification(
-      `Approval required (${d.risk}): ${summary}`,
-      `Type: ${type} — waiting in the Inbox. Mode: ${d.mode}.`,
-      d.risk === 'critical' ? 'critical' : 'normal',
-    );
+    //
+    // One exemption, and the invariant still holds for it: a coding-mission plan ALREADY reaches
+    // Telegram through the dev gateway — the plan itself plus Approve/Reject buttons — so this generic
+    // ping would be a second, button-less copy. Only that type, and only while the gateway runs.
+    // (`devTelegram` is declared further down; the try covers a call made before boot reaches it.)
+    const telegramOwnsIt = (() => { try { return type === 'dev.mission-plan' && Boolean(devTelegram); } catch { return false; } })();
+    if (!telegramOwnsIt) {
+      sendNotification(
+        `Approval required (${d.risk}): ${summary}`,
+        `Type: ${type} — waiting in the Inbox. Mode: ${d.mode}.`,
+        d.risk === 'critical' ? 'critical' : 'normal',
+      );
+    }
   } else {
     broadcast({ event: 'notification', data: {
       title: `Approval required: ${summary}`,
@@ -11859,17 +11867,24 @@ app.post('/api/approvals/:id/remediation', requireAdmin, (req, res) => {
   res.json({ ok: true, approval: a });
 });
 
+// The ONE way a pending action approval becomes rejected: the dashboard route, a mission withdrawing
+// its own approval on cancel, and the Telegram gateway all go through here, so the record, the
+// persisted state, the activity log and the broadcast can never disagree about who said no and why.
+function rejectPendingApproval(a, actor, reason) {
+  a.status = 'rejected';
+  a.rejectedBy = actor || 'operator';
+  a.rejectedAt = new Date().toISOString();
+  a.rejectReason = reason || '';
+  saveState('pending_approvals', pendingApprovals);
+  logActivity('approval', `Rejected: ${a.summary}`, { type: a.type, approvalId: a.id, actor: a.rejectedBy });
+  broadcast({ event: 'approval_update', data: a });
+}
+
 app.post('/api/approvals/:id/reject', requireAdmin, (req, res) => {
   const a = pendingApprovals.find(x => x.id === req.params.id && x.kind === 'action');
   if (!a) return res.status(404).json({ error: 'Approval not found' });
   if (a.status !== 'pending') return res.status(409).json({ error: `Already ${a.status}` });
-  a.status = 'rejected';
-  a.rejectedBy = (req.session && (req.session.email || req.session.name)) || 'operator';
-  a.rejectedAt = new Date().toISOString();
-  a.rejectReason = (req.body && req.body.reason) || '';
-  saveState('pending_approvals', pendingApprovals);
-  logActivity('approval', `Rejected: ${a.summary}`, { type: a.type, approvalId: a.id, actor: reqActor(req) });
-  broadcast({ event: 'approval_update', data: a });
+  rejectPendingApproval(a, reqActor(req), (req.body && req.body.reason) || '');
   res.json({ ok: true, approval: a });
 });
 
@@ -12764,6 +12779,7 @@ if (board) {
 //   research  -> executeAgent (hard budget cap + cost ledger + untrusted fencing)
 //   approval  -> gateAction('dev.mission-plan'), which ALWAYS_GATE holds for a human in every mode
 let devEngine = null;
+let devTelegram = null;   // the two-way Telegram gateway (P3); only where HERMES_TELEGRAM_GATEWAY=1
 if (board) {
   try {
     const { createMissionEngine } = require('./lib/dev/engine');
@@ -12803,16 +12819,68 @@ if (board) {
         withdrawApproval: (id, reason) => {
           const a = pendingApprovals.find((x) => x.id === id);
           if (!a || a.status !== 'pending') return;
-          a.status = 'rejected'; a.rejectedBy = 'system'; a.rejectedAt = new Date().toISOString(); a.rejectReason = reason || 'withdrawn';
-          saveState('pending_approvals', pendingApprovals);
-          broadcast({ event: 'approval_update', data: a });
+          rejectPendingApproval(a, 'system', reason || 'withdrawn');
         },
         readTaskFile,
-        onUpdate: (m) => broadcast({ event: 'dev_update', data: { id: m.id, state: m.state, title: m.title } }),
+        onUpdate: (m) => {
+          broadcast({ event: 'dev_update', data: { id: m.id, state: m.state, title: m.title } });
+          if (devTelegram) devTelegram.notifyMission(m).catch(() => {});
+        },
         log: (msg) => appendLog(msg),
       });
       devEngine.start(10000);
       appendLog('[dev] mission engine started');
+
+      // Two-way Telegram (P3). Its OWN bot: Telegram allows one getUpdates poller per bot, so sharing
+      // the production instance's bot would make the two boxes steal each other's messages. Approval
+      // from Telegram is limited to dev.mission-plan here AND in lib/dev/telegram.js.
+      if (String(process.env.HERMES_TELEGRAM_GATEWAY || '') === '1') {
+        try {
+          const { createTelegramGateway, makeTelegramApi } = require('./lib/dev/telegram');
+          const { token } = telegramCreds();
+          if (!token) throw new Error('no bot token (TELEGRAM_BOT_TOKEN)');
+          const findAction = (id) => pendingApprovals.find((x) => x.id === id && x.kind === 'action') || null;
+          const gw = createTelegramGateway({
+            api: makeTelegramApi(token),
+            allowedUserIds: process.env.HERMES_TELEGRAM_ALLOWED_USER_IDS,
+            allowedChatIds: process.env.HERMES_TELEGRAM_ALLOWED_CHAT_IDS,
+            engine: devEngine,
+            boardRepo: board.repo,
+            approvals: {
+              get: findAction,
+              approve: async (id, actor) => {
+                const a = findAction(id);
+                if (!a) return { ok: false, error: 'approval not found' };
+                if (a.type !== 'dev.mission-plan') return { ok: false, error: `Telegram may only approve coding-mission plans, not ${a.type}` };
+                return executeApprovedAction(a, {}, actor);
+              },
+              reject: (id, actor, reason) => {
+                const a = findAction(id);
+                if (a && a.status === 'pending' && a.type === 'dev.mission-plan') rejectPendingApproval(a, actor, reason);
+              },
+            },
+            getBudget: () => {
+              const cs = getCostSummary();
+              const p = (k) => ({ cost: cs[k].cost, budget: cs[k].budget });
+              return { daily: p('daily'), weekly: p('weekly'), monthly: p('monthly'), tripped: hardBudgetTrippedPeriod() || '' };
+            },
+            readRunLog: (taskId) => {
+              if (!/^[\w.-]+$/.test(String(taskId))) return '';
+              try { return fs.readFileSync(path.join(MAGENT_DIR, 'board-logs', `${taskId}.log`), 'utf8').slice(-4000); } catch { return ''; }
+            },
+            loadOffset: () => loadState('telegram_gateway_offset', 0),
+            saveOffset: (n) => saveState('telegram_gateway_offset', n),
+            defaultBudgetUsd: Number(process.env.HERMES_MISSION_BUDGET_USD) || 10,
+            log: (msg) => appendLog(msg),
+          });
+          gw.start();
+          devTelegram = gw;
+          appendLog('[dev] Telegram gateway started');
+        } catch (e) {
+          devTelegram = null;
+          console.error('[dev] Telegram gateway NOT started:', e.message);
+        }
+      }
     }
     registerDevRoutes(app, {
       requireAdmin, requireHuman, broadcast,

@@ -212,6 +212,41 @@ queue, build and test, and ends with a PR link. Every step's cost appears in the
     and no other action type becomes Telegram-approvable.
   - The bot token lives in `.env` (0600) and is never echoed or logged.
 
+*As built (2026-10-10), with the deviations stated:*
+- **In the app, not a separate service.** *Revised.* Approvals live in the app's memory
+  (`pendingApprovals`, `executeApprovedAction`), and the approve route is human-only. A separate
+  process could only approve through a privileged back door. `lib/dev/telegram.js` runs in the app
+  next to the mission engine, opt-in via `HERMES_TELEGRAM_GATEWAY=1`, and approves through the same
+  `executeApprovedAction` as the dashboard.
+- **A dedicated bot for Hermes-Dev.** Telegram allows one `getUpdates` poller per bot, so sharing
+  the production instance's bot would make the two boxes take each other's messages. Setup:
+  `deploy/coding-instance/telegram-whoami.js` prints the user and chat ids to allowlist, and warns
+  if the bot has a webhook.
+- **Buttons.** *Revised:* buttons carry unguessable, single-use, expiring **server-side nonces**,
+  not HMAC tokens. Button data is capped at 64 bytes, and a used nonce is dead even inside its
+  expiry, which a stateless signature can't guarantee. Pressing one button of a pair kills the
+  other. A nonce is also bound to the chat it was sent to and to its mission.
+- **Approve / Reject only.** *Revised:* instead of a "Changes" button, `/revise <id> <feedback>`
+  rejects the waiting plan and starts a new mission carrying the goal, the feedback and the previous
+  plan. A rejected mission stays final, so the P1 state machine is unchanged.
+- **Commands:** `/new [$N]`, `/research [$N]`, `/missions`, `/status`, `/plan`, `/ship`, `/logs`
+  (credentials redacted), `/budget`, `/cancel`, `/retry`, `/revise`, `/help`. Mission ids accept a
+  unique prefix of 4 or more characters. Free text is never turned into a mission on its own: the
+  gateway asks, and only the button press starts it.
+- **Replay safety.** The update offset is saved *before* each update is handled, so a crash loses a
+  command rather than running it twice. A duplicate `update_id` is ignored. A command older than
+  15 minutes (a backlog after downtime) is not acted on.
+- **Allowlist.** Both the user and the chat must be allowlisted. Strangers get silence (each is
+  logged once by id). The gateway refuses to start with an empty allowlist. Only `dev.mission-plan`
+  is approvable from Telegram, enforced in the gateway and again in the server adapter.
+- **Notifications.** Plan ready (the plan plus buttons, with its own nonces per chat), building,
+  retrying, done (a short PR link), failed (the reason plus `/retry`), rejected, cancelled, and
+  budget alerts at 75% and 100% (each once per period per day). The generic "approval required"
+  ping is skipped for `dev.mission-plan` while the gateway runs, because the gateway's message
+  replaces it. Every other high or critical approval still goes through `sendNotification`.
+- **One reject path.** `rejectPendingApproval()` is now shared by the dashboard route, the
+  mission-cancel withdrawal and Telegram.
+
 ### P4 — Proactive mode (later, behind approval)
 
 - Standing **production goals** plus a **credit budget per period**. A scheduler proposes the next
