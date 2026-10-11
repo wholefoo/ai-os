@@ -17,7 +17,7 @@ const suites = fs.readdirSync(dir).filter((f) => /^test-.*\.js$/.test(f) && f !=
 //     catch that themselves via test-util's requireFinish().
 //   - something keeps the event loop alive (an open server, socket or timer): the process never
 //     exits. Without this timeout CI waits out its job limit (hours) and never names the suite.
-// The slowest suite (test-hermes-task.js, a real bash harness) takes ~55s, so 10 minutes is
+// The slowest suites take about a minute, so 10 minutes is
 // generous. TEST_SUITE_TIMEOUT_MS overrides it.
 const SUITE_TIMEOUT_MS = Number(process.env.TEST_SUITE_TIMEOUT_MS) || 10 * 60 * 1000;
 const failedSuites = [];

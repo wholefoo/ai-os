@@ -3084,15 +3084,6 @@ const ACTION_EXECUTORS = {
     if (!proposal || typeof proposal !== 'object') throw new Error('payload.proposal required');
     return applyProposal(proposal);
   },
-  // A human approved a dev-platform mission plan (lib/dev). Moves the mission to `building`; the
-  // engine then files the build task. Throws (so the approval shows FAILED, not silently approved)
-  // when the engine is not running here or the mission is no longer waiting on this plan.
-  // `devEngine` is assigned at boot further down; this only runs at approve time, long after.
-  'dev.mission-plan': async ({ missionId }) => {
-    if (!missionId) throw new Error('payload.missionId required');
-    if (!devEngine) throw new Error('the mission engine is not running on this instance (HERMES_DEV_MISSIONS=1)');
-    return devEngine.approvePlan(missionId);
-  },
   // An EVENT starting a whole pipeline. Registered here rather than dispatching directly from the
   // event hook, because `test-infra-gate.js` enforces that every id in ACTION_RISK has an executor
   // — and that invariant is right: an action classified but unexecutable through the gate is one
@@ -3349,12 +3340,9 @@ const ACTION_EXECUTORS = {
 // patching are not survivable as an 'auto'-mode surprise. Design doc §9 item 10. Its executor refuses
 // outright today — see ACTION_EXECUTORS — so this is the band and the mode-independence being fixed
 // in place BEFORE any capability lands, not a live action being restrained.
-// 'dev.mission-plan' (dev-platform P1): approving a mission plan is the operator's ONE gate before
-// Hermes-Dev writes code and pushes unattended, so it must hold in 'auto' mode too.
-const ALWAYS_GATE = new Set(['self-improve.apply-plan', 'self-improve.distribution-pr', 'infra.destructive-op', 'dev.mission-plan']);
+const ALWAYS_GATE = new Set(['self-improve.apply-plan', 'self-improve.distribution-pr', 'infra.destructive-op']);
 const ALWAYS_GATE_REASON = {
   'infra.destructive-op': 'destructive infrastructure operation',
-  'dev.mission-plan': 'a coding mission plan — the one human gate before unattended build',
 };
 
 async function gateAction({ type, summary, target = null, params = {}, secrets = [], req }) {
@@ -3410,19 +3398,11 @@ async function gateAction({ type, summary, target = null, params = {}, secrets =
     // Telegram/Slack. The operator most likely to be absent got the least notice for the highest
     // risk. sendNotification routes to Telegram + Slack when configured, and 'critical' priority
     // also engages its escalation re-notify timer — an unanswered critical approval now nags.
-    //
-    // One exemption, and the invariant still holds for it: a coding-mission plan ALREADY reaches
-    // Telegram through the dev gateway — the plan itself plus Approve/Reject buttons — so this generic
-    // ping would be a second, button-less copy. Only that type, and only while the gateway runs.
-    // (`devTelegram` is declared further down; the try covers a call made before boot reaches it.)
-    const telegramOwnsIt = (() => { try { return type === 'dev.mission-plan' && Boolean(devTelegram); } catch { return false; } })();
-    if (!telegramOwnsIt) {
-      sendNotification(
-        `Approval required (${d.risk}): ${summary}`,
-        `Type: ${type} — waiting in the Inbox. Mode: ${d.mode}.`,
-        d.risk === 'critical' ? 'critical' : 'normal',
-      );
-    }
+    sendNotification(
+      `Approval required (${d.risk}): ${summary}`,
+      `Type: ${type} — waiting in the Inbox. Mode: ${d.mode}.`,
+      d.risk === 'critical' ? 'critical' : 'normal',
+    );
   } else {
     broadcast({ event: 'notification', data: {
       title: `Approval required: ${summary}`,
@@ -5923,32 +5903,22 @@ function getCostSummary() {
     successRate: outcomes.length ? Math.round((okCount / outcomes.length) * 1000) / 10 : null,
   };
 
-  // Coding-board runs (the Hermes-Dev dispatcher) record their cost in board.sqlite, not in this
-  // ledger — the dispatcher is a separate process and cannot push into this in-memory array. Without
-  // adding it here, every board run was invisible to the budget and to the hard cap. `board` is
-  // declared later in this file; the try/catch also covers calls made before it is initialised.
-  const boardUsd = (sinceMs) => {
-    try { return board ? board.repo.spendSince(new Date(sinceMs).toISOString()).usd : 0; } catch { return 0; }
-  };
-  const boardSpend = { daily: boardUsd(dayAgo), weekly: boardUsd(weekAgo), monthly: boardUsd(monthAgo) };
-  const periodCost = (entries, p) => sumCost(entries) + num(boardSpend[p]);
-
   // Hard-budget kill-switch status (mirrors the gate in executeAgent)
   const hardEnabled = (settings.security && settings.security.hard_budget === 'true') || process.env.AIOS_HARD_BUDGET === 'true';
   const hardBudget = {
     enabled: hardEnabled,
     tripped: hardEnabled ? Boolean(
-      (costBudget.daily && periodCost(daily, 'daily') >= costBudget.daily) ||
-      (costBudget.weekly && periodCost(weekly, 'weekly') >= costBudget.weekly) ||
-      (costBudget.monthly && periodCost(monthly, 'monthly') >= costBudget.monthly)
+      (costBudget.daily && sumCost(daily) >= costBudget.daily) ||
+      (costBudget.weekly && sumCost(weekly) >= costBudget.weekly) ||
+      (costBudget.monthly && sumCost(monthly) >= costBudget.monthly)
     ) : false,
   };
 
   const r2 = (n) => Math.round(n * 100) / 100;
   return {
-    daily: { cost: r2(periodCost(daily, 'daily')), boardCost: r2(boardSpend.daily), tokens: sumTokens(daily), count: daily.length, budget: costBudget.daily },
-    weekly: { cost: r2(periodCost(weekly, 'weekly')), boardCost: r2(boardSpend.weekly), tokens: sumTokens(weekly), count: weekly.length, budget: costBudget.weekly },
-    monthly: { cost: r2(periodCost(monthly, 'monthly')), boardCost: r2(boardSpend.monthly), tokens: sumTokens(monthly), count: monthly.length, budget: costBudget.monthly },
+    daily: { cost: r2(sumCost(daily)), tokens: sumTokens(daily), count: daily.length, budget: costBudget.daily },
+    weekly: { cost: r2(sumCost(weekly)), tokens: sumTokens(weekly), count: weekly.length, budget: costBudget.weekly },
+    monthly: { cost: r2(sumCost(monthly)), tokens: sumTokens(monthly), count: monthly.length, budget: costBudget.monthly },
     byModel,
     byAgent,
     byTier,
@@ -12724,166 +12694,6 @@ try {
 } catch (e) {
   analyticsDb = null;
   console.error('[analytics] init failed:', e.message);
-}
-
-// --- Coding board: the durable Kanban queue behind the Hermes-Dev coding platform (phase 2). The
-// board always records/serves; the DISPATCHER (which runs real coding jobs via the hermes-task
-// runner) is opt-in via HERMES_BOARD_DISPATCH=1 + HERMES_RUNNER_CMD, so it only ever runs where the
-// operator has wired the runner (the Hermes-Dev box) — never on the production instance by accident.
-let board = null;
-try {
-  board = require('./lib/board');
-  board.openDb(path.join(MAGENT_DIR, 'board.sqlite'));
-  board.registerBoardRoutes(app, { requireAdmin, requireHuman, broadcast });
-  const disp = board.startDefaultDispatcher({
-    logDir: path.join(MAGENT_DIR, 'board-logs'),   // persist each run's combined output for post-hoc diagnosis
-    onLog: (taskId, chunk) => broadcast({ event: 'board_task_log', data: { taskId, chunk } }),
-  });
-  appendLog(`[board] opened${disp ? ` + dispatcher on (${disp.id})` : ' (dispatcher off — set HERMES_BOARD_DISPATCH=1 to enable)'}`);
-} catch (e) {
-  board = null;
-  console.error('[board] init failed:', e.message);
-}
-
-// Publish the budget verdict into board.sqlite for the dispatcher. The dispatcher is a separate
-// process (ai-os-board-dispatcher.service) and cannot call hardBudgetTrippedPeriod() — this app owns
-// budgets and the hard-cap switch — so the app writes the verdict where both processes can see it,
-// every 30s. The dispatcher treats a verdict older than 5 minutes as unknown and stops claiming
-// (fail closed), so a dead app cannot leave coding runs spending blind.
-if (board) {
-  let gateErr = null;
-  const publishBudgetGate = () => {
-    try {
-      const cs = getCostSummary();
-      const pick = (p) => ({ cost: cs[p].cost, budget: cs[p].budget, boardCost: cs[p].boardCost });
-      board.repo.writeBudgetGate({
-        enforced: hardBudgetEnabled(),
-        tripped: hardBudgetTrippedPeriod() || '',
-        detail: { daily: pick('daily'), weekly: pick('weekly'), monthly: pick('monthly') },
-      });
-      gateErr = null;
-    } catch (e) {
-      if (gateErr !== e.message) { gateErr = e.message; console.error('[board] budget gate publish failed:', e.message); }
-    }
-  };
-  publishBudgetGate();
-  const gateTimer = setInterval(publishBudgetGate, 30 * 1000);
-  if (gateTimer.unref) gateTimer.unref();
-}
-
-// --- Dev-platform MISSIONS (P1, docs/dev-platform-design.md): research -> plan -> human approval ->
-// build -> ship, on top of the board. The routes are always mounted (reads work anywhere); the
-// ENGINE only runs where HERMES_DEV_MISSIONS=1, because missions create board tasks that only the
-// coding box's dispatcher + runner can execute. Every side effect the engine has outside
-// board.sqlite is wired here, through the platform's existing gates:
-//   research  -> executeAgent (hard budget cap + cost ledger + untrusted fencing)
-//   approval  -> gateAction('dev.mission-plan'), which ALWAYS_GATE holds for a human in every mode
-let devEngine = null;
-let devTelegram = null;   // the two-way Telegram gateway (P3); only where HERMES_TELEGRAM_GATEWAY=1
-if (board) {
-  try {
-    const { createMissionEngine } = require('./lib/dev/engine');
-    const { registerDevRoutes } = require('./lib/dev/routes');
-    const { createResearcher } = require('./lib/dev/research');
-    const TASKS_DIR = process.env.HERMES_TASKS_DIR || '/srv/hermes-tasks';
-    // Only these runner outputs, only from a well-formed workspace name, only the tail of large logs,
-    // and never through a link: the agent can write the tasks tree (lib/dev/task-files.js).
-    const { createTaskFileReader } = require('./lib/dev/task-files');
-    const readTaskFile = createTaskFileReader({
-      tasksDir: TASKS_DIR,
-      names: ['SUMMARY.md', 'BLOCKED.md', 'runner-tests.log', 'changed-files.txt'],
-    });
-    if (String(process.env.HERMES_DEV_MISSIONS || '') === '1') {
-      devEngine = createMissionEngine({
-        research: createResearcher({ executeAgent, safeFetch }),
-        requestApproval: async (m) => {
-          const gate = await gateAction({
-            type: 'dev.mission-plan',
-            summary: `Approve coding plan — ${m.title}`,
-            target: m.id,
-            params: { missionId: m.id, planPreview: String(m.plan_md || '').slice(0, 1500) },
-            req: { session: { name: 'dev-missions' } },
-          });
-          // ALWAYS_GATE makes this impossible; refuse loudly if it ever is not, rather than build unapproved.
-          if (!gate.pending) throw new Error('dev.mission-plan was not held for approval — refusing to build without one');
-          return gate.approval.id;
-        },
-        approvalStatus: (id) => (pendingApprovals.find((a) => a.id === id) || {}).status,
-        withdrawApproval: (id, reason) => {
-          const a = pendingApprovals.find((x) => x.id === id);
-          if (!a || a.status !== 'pending') return;
-          rejectPendingApproval(a, 'system', reason || 'withdrawn');
-        },
-        readTaskFile,
-        onUpdate: (m) => {
-          broadcast({ event: 'dev_update', data: { id: m.id, state: m.state, title: m.title } });
-          if (devTelegram) devTelegram.notifyMission(m).catch(() => {});
-        },
-        log: (msg) => appendLog(msg),
-      });
-      devEngine.start(10000);
-      appendLog('[dev] mission engine started');
-
-      // Two-way Telegram (P3). Its OWN bot: Telegram allows one getUpdates poller per bot, so sharing
-      // the production instance's bot would make the two boxes steal each other's messages. Approval
-      // from Telegram is limited to dev.mission-plan here AND in lib/dev/telegram.js.
-      if (String(process.env.HERMES_TELEGRAM_GATEWAY || '') === '1') {
-        try {
-          const { createTelegramGateway, makeTelegramApi } = require('./lib/dev/telegram');
-          const { token } = telegramCreds();
-          if (!token) throw new Error('no bot token (TELEGRAM_BOT_TOKEN)');
-          const findAction = (id) => pendingApprovals.find((x) => x.id === id && x.kind === 'action') || null;
-          const gw = createTelegramGateway({
-            api: makeTelegramApi(token),
-            allowedUserIds: process.env.HERMES_TELEGRAM_ALLOWED_USER_IDS,
-            allowedChatIds: process.env.HERMES_TELEGRAM_ALLOWED_CHAT_IDS,
-            engine: devEngine,
-            boardRepo: board.repo,
-            approvals: {
-              get: findAction,
-              approve: async (id, actor) => {
-                const a = findAction(id);
-                if (!a) return { ok: false, error: 'approval not found' };
-                if (a.type !== 'dev.mission-plan') return { ok: false, error: `Telegram may only approve coding-mission plans, not ${a.type}` };
-                return executeApprovedAction(a, {}, actor);
-              },
-              reject: (id, actor, reason) => {
-                const a = findAction(id);
-                if (a && a.status === 'pending' && a.type === 'dev.mission-plan') rejectPendingApproval(a, actor, reason);
-              },
-            },
-            getBudget: () => {
-              const cs = getCostSummary();
-              const p = (k) => ({ cost: cs[k].cost, budget: cs[k].budget });
-              return { daily: p('daily'), weekly: p('weekly'), monthly: p('monthly'), tripped: hardBudgetTrippedPeriod() || '' };
-            },
-            readRunLog: (taskId) => {
-              if (!/^[\w.-]+$/.test(String(taskId))) return '';
-              try { return fs.readFileSync(path.join(MAGENT_DIR, 'board-logs', `${taskId}.log`), 'utf8').slice(-4000); } catch { return ''; }
-            },
-            loadOffset: () => loadState('telegram_gateway_offset', 0),
-            saveOffset: (n) => saveState('telegram_gateway_offset', n),
-            defaultBudgetUsd: Number(process.env.HERMES_MISSION_BUDGET_USD) || 10,
-            log: (msg) => appendLog(msg),
-          });
-          gw.start();
-          devTelegram = gw;
-          appendLog('[dev] Telegram gateway started');
-        } catch (e) {
-          devTelegram = null;
-          console.error('[dev] Telegram gateway NOT started:', e.message);
-        }
-      }
-    }
-    registerDevRoutes(app, {
-      requireAdmin, requireHuman, broadcast,
-      getEngine: () => devEngine,
-      defaultBudgetUsd: Number(process.env.HERMES_MISSION_BUDGET_USD) || 10,
-    });
-  } catch (e) {
-    devEngine = null;
-    console.error('[dev] missions init failed:', e.message);
-  }
 }
 
 // Admin analytics: ?site=<webStudioSiteId> scopes to one hosted site, default = the platform

@@ -314,8 +314,6 @@ The installer obtains the Let's Encrypt certificate itself when the domain point
 
 Copying a script from Windows rather than cloning? Strip carriage returns first (`sed -i 's/\r$//' script.sh`) or bash fails with `bad interpreter`. A git checkout is safe: `.gitattributes` pins scripts to LF. Symptoms and fixes for everything that has gone wrong on real installs are in the [deployment docs' troubleshooting table](https://aiosorchestrationlab.com/docs/deployment#troubleshooting).
 
-**Unattended coding instance.** To let an agent code overnight, run it on a **separate** box, never on the one hosting production. `deploy/coding-instance/` has a provisioner, a systemd unit, an HTTPS add-on and a verifier. Its README covers the GitHub branch protection that makes this safe.
-
 ### Push Updates
 
 ```bash

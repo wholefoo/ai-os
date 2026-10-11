@@ -8,7 +8,6 @@
     "tools/test-astra-routing.js",
     "tools/verify-build-worker.js",
     "tools/update-nginx-microphone.js",
-    "deploy/coding-instance/telegram-whoami.js",
     "agent-worker/agent.js",
     "tools/generate-maps.js",
     "tools/test-analytics.js",
@@ -163,14 +162,7 @@
     "tools/test-hub-ingest.js",
     "tools/test-site-lock.js",
     "tools/test-hub-newsletter.js",
-    "tools/test-install-vps.js",
-    "tools/test-hermes-task.js",
-    "tools/test-board.js",
-    "tools/test-dev-missions.js",
-    "tools/test-dev-telegram.js",
-    "tools/test-task-files.js",
-    "tools/test-enable-board-dispatcher.js",
-    "lib/board/run-dispatcher.js"
+    "tools/test-install-vps.js"
   ],
   "ignorePatterns": [
     "docs-export/**",

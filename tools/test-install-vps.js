@@ -126,25 +126,4 @@ assert(!/Node\.js 20/.test(hosting) && /Node\.js 24/.test(hosting), 'HOSTING.md 
 assert(!/`sudo certbot --nginx/.test(hosting), 'HOSTING.md checklist does not prescribe certbot --nginx');
 assert(/Debian 12 \/ 13/.test(hosting), 'HOSTING.md lists Debian 12/13 alongside Ubuntu');
 
-// ---------- 10. deploy/coding-instance ------------------------------------------------------------------------------
-const ci = (f) => readRepoFile('deploy/coding-instance/' + f);
-const prov = ci('provision.sh'), ver = ci('verify.sh'), https = ci('add-https.sh'), unit = ci('ai-os-hermes.service');
-const all = [prov, ver, https, unit, ci('README.md')].join('\n');
-assert(!/aimarketaudit|45\.76\.|Web Admin Files/.test(all), 'no single operator\'s hostname, IP or local path is published');
-assert(/DOMAIN=\$\{DOMAIN:\?/.test(https), 'add-https.sh requires DOMAIN instead of defaulting to someone else\'s host');
-assert(/NODE_MAJOR=\$\{NODE_MAJOR:-24\}/.test(prov), 'the coding instance installs Node 24 (engines requires >= 24)');
-assert(/nvm which default/.test(prov) && !/bash -lc 'node/.test(prov),
-  'the node path is resolved inside the nvm session, never via a non-interactive login shell');
-assert(/systemd-analyze verify \/etc\/systemd\/system\/ai-os-hermes\.service/.test(prov) &&
-  /systemd-analyze verify \$UNIT/.test(ver), 'systemd-analyze gets an ABSOLUTE path (a bare name searches the CWD first)');
-assert(/set \+e/.test(prov) && /set \+e/.test(ver), 'both verify blocks run with set -e off');
-assert(!/^[^#]*\/etc\/ssh/m.test(prov), 'the provisioner never edits /etc/ssh (no lockout path)');
-assert(/AIOS_HARD_BUDGET=true/.test(prov) && /AIOS_AUTOMATION_MODE=supervised/.test(prov),
-  'the unattended .env template turns the cost kill-switch ON and keeps the approval gate');
-assert(/Journal matches|backend\s*=\s*systemd/.test(prov), 'its fail2ban jail reads the journal');
-assert(/Auth: enabled/.test(https) && /No admin seeded/.test(https),
-  'add-https.sh refuses to publish until the RUNNING app logged auth on and an admin seeded');
-assert(/location = \/api\/auth\/login/.test(https),
-  'the strict login rate limit is an EXACT match — a prefix would throttle /api/auth/me on every page load');
-
 done();
