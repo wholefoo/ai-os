@@ -19,9 +19,20 @@ jobs:
         with:
           node-version: '24'
           cache: 'npm'
+          cache-dependency-path: |
+            package-lock.json
+            agent-worker/package-lock.json
 
       - name: Install dependencies
         run: npm ci
+
+      # The voice agent-worker is its own package (own lockfile). It was never installed here, so its
+      # agent.js sat on the pre-1.0 @livekit/agents API against a 1.6.3 lockfile — every voice session
+      # failed at runtime and CI stayed green. tools/test-agent-worker.js (run by the regression step)
+      # builds the real pipeline from this install, and FAILS under CI if the install is missing.
+      - name: Install agent-worker dependencies
+        working-directory: agent-worker
+        run: npm ci --no-audit --no-fund
 
       - name: Check for syntax errors
         run: node --check server.js
