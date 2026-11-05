@@ -141,6 +141,17 @@ jobs:
       - name: Audit dependencies
         run: npm audit --audit-level=high
 
+      # The voice agent-worker is its own package with its own lockfile, and runs on prod (pm2
+      # `agent-worker`). The step above never saw it: when this gate was added it held 10 HIGH advisories
+      # (sharp, adm-zip, brace-expansion, zod) while every build stayed green. Same bar as the core.
+      # `npm audit` reads the lockfile, so no install is needed here.
+      # adm-zip is pinned to ^0.6.1 for onnxruntime-node by an `overrides` entry in agent-worker/package.json
+      # (it is used only by onnxruntime-node's install script, when it downloads binaries): drop that
+      # override once @livekit/agents-plugin-silero ships an onnxruntime-node that requires adm-zip >= 0.6.1.
+      - name: Audit agent-worker dependencies
+        working-directory: agent-worker
+        run: npm audit --audit-level=high
+
       - name: Check for secrets in code
         run: |
           # Fail if real API keys are committed (not placeholders).
