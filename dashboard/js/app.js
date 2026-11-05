@@ -7812,7 +7812,10 @@ async function startHeyGenSession() {
     btn.style.display = 'none';
     stopBtn.style.display = 'inline-block';
 
-    addAvatarBotMessage(`Video avatar connected! I'm ${AVATAR_PROFILES[avatarState.employee]?.title || 'Atlas'}. Speak naturally or type below.`);
+    // The greeting is spoken BY the face (lip-synced) when it can be; otherwise by TTS as before.
+    const greeting = `Video avatar connected! I'm ${AVATAR_PROFILES[avatarState.employee]?.title || 'Atlas'}. Speak naturally or type below.`;
+    if (await sendToHeyGen(greeting)) addAvatarBotMessageNoSpeak(greeting);
+    else addAvatarBotMessage(greeting);
 
   } catch (e) {
     console.error('[LiveAvatar] Session failed:', e);
@@ -7848,12 +7851,32 @@ async function stopHeyGenSession() {
   addAvatarBotMessage('Video session ended. Click Start to reconnect, or keep using text chat.');
 }
 
-// Make the streaming avatar speak the given text in its own voice (lip-synced over WebRTC).
-// LiveAvatarSession.repeat() speaks literal text and returns a task id synchronously.
-function sendToHeyGen(text) {
+// Make the streaming avatar speak `text`, lip-synced over WebRTC. Resolves true only when the avatar
+// was actually given something to say; false means the caller should voice the reply itself (TTS).
+//
+// LITE sessions (the default: server.js liveavatar_session_mode) do NO text-to-speech — repeat(text)
+// throws "Not permitted in LITE mode" — and lip-sync only to audio WE send: raw 24 kHz 16-bit mono
+// PCM, base64 (docs.liveavatar.com, lite-mode). So for LITE we ask /api/tts for `format: 'pcm'` in the
+// employee's own voice and hand it to repeatAudio(), which chunks it and ends the utterance itself.
+// FULL sessions do their own TTS, so repeat(text) still works there.
+// (Before 2026-11-05 this always called repeat(), which threw in LITE; the catch fell back to TTS, so
+// the reply was heard while the face never moved.)
+async function sendToHeyGen(text) {
   if (!heygenAvatar || !heygenSessionActive) return false;
   try {
-    heygenAvatar.repeat(text);
+    if (heygenAvatar.mode !== 'LITE') {
+      heygenAvatar.repeat(text);
+      return true;
+    }
+    const data = await requestTts(text, 'pcm');
+    // Only real PCM may reach the avatar: an older server (or a TTS failure) returns mp3 / no audio.
+    if (!data.ok || data.format !== 'pcm' || !data.audioContent) {
+      console.warn('[LiveAvatar] No PCM speech for the avatar:', data.error || data.format || 'no audio');
+      return false;
+    }
+    // The session may have ended while the audio was being generated.
+    if (!heygenAvatar || !heygenSessionActive) return false;
+    heygenAvatar.repeatAudio(data.audioContent);
     return true;
   } catch (e) {
     console.error('[LiveAvatar] Speak failed:', e);
@@ -8555,6 +8578,20 @@ function stopLipSync() {
   if (statusEl) statusEl.textContent = avatarState.continuousMode ? 'Listening...' : 'Idle';
 }
 
+// POST /api/tts in the current employee's voice + persona. `format` 'mp3' (default, played here) or
+// 'pcm' (raw 24 kHz 16-bit mono, for a LiveAvatar LITE session — see sendToHeyGen). Resolves the JSON.
+async function requestTts(text, format = 'mp3') {
+  const token = localStorage.getItem('ai-os-token');
+  const profile = AVATAR_PROFILES[avatarState.employee] || {};
+  const res = await fetch('/api/tts', {
+    method: 'POST',
+    credentials: 'same-origin',
+    headers: { 'Content-Type': 'application/json', ...(token ? { 'Authorization': `Bearer ${token}` } : {}) },
+    body: JSON.stringify({ text: text.substring(0, 2000), voice: profile.voice || 'onyx', instructions: profile.persona || '', format }),
+  });
+  return res.json();
+}
+
 async function speakText(text) {
   if (!avatarState.ttsEnabled) return;
 
@@ -8563,15 +8600,7 @@ async function speakText(text) {
 
   // Try OpenAI TTS with Web Audio API lip-sync
   try {
-    const token = localStorage.getItem('ai-os-token');
-    const profile = AVATAR_PROFILES[avatarState.employee] || {};
-    const res = await fetch('/api/tts', {
-      method: 'POST',
-      credentials: 'same-origin',
-      headers: { 'Content-Type': 'application/json', ...(token ? { 'Authorization': `Bearer ${token}` } : {}) },
-      body: JSON.stringify({ text: text.substring(0, 2000), voice: profile.voice || 'onyx', instructions: profile.persona || '' }),
-    });
-    const data = await res.json();
+    const data = await requestTts(text);
 
     if (data.ok && data.audioContent) {
       const ctx = getAudioContext();
@@ -8907,7 +8936,7 @@ async function sendAvatarMessage() {
 
     // Priority: D-ID talking video > LiveAvatar streaming > OpenAI TTS > browser TTS
     const didTriggered = await triggerDIDTalk(reply);
-    const videoSpoke = !didTriggered && heygenSessionActive && sendToHeyGen(reply);
+    const videoSpoke = !didTriggered && heygenSessionActive && await sendToHeyGen(reply);
 
     // If D-ID or the LiveAvatar stream is voicing the reply, skip TTS to avoid double audio.
     if (didTriggered || videoSpoke) {

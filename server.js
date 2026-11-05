@@ -1387,24 +1387,19 @@ app.get('/api/livekit/status', requireAdmin, (req, res) => {
 // gets a distinct DELIVERY on top of a distinct base voice). 11 base voices are available and each
 // avatar is assigned a unique one (see AVATAR_PROFILES in app.js) — no more shared voices.
 // Voices (all verified on gpt-4o-mini-tts): alloy, ash, ballad, coral, echo, fable, onyx, nova, sage, shimmer, verse.
-const TTS_VOICES = new Set(['alloy', 'ash', 'ballad', 'coral', 'echo', 'fable', 'onyx', 'nova', 'sage', 'shimmer', 'verse']);
+// The request body (voice/format allow-lists) is built in lib/tts-request.js. `format: 'pcm'` returns
+// raw 24 kHz 16-bit mono PCM — what a LiveAvatar LITE session lip-syncs to (see that file).
+const { buildTtsBody } = require('./lib/tts-request');
 app.post('/api/tts', requireAdmin, async (req, res) => {
-  const { text, voice, instructions } = req.body;
+  const { text, voice, instructions, format } = req.body;
   if (!text) return res.status(400).json({ error: 'Text is required' });
-  const useVoice = TTS_VOICES.has(voice) ? voice : 'onyx'; // reject unknown ids rather than 400 at OpenAI
 
   const apiKey = settings.ai.openai_api_key;
   if (!apiKey) return res.json({ ok: false, error: 'OpenAI API key not configured', fallback: true });
 
   try {
-    const body = {
-      model: 'gpt-4o-mini-tts',
-      input: text.substring(0, 4096),
-      voice: useVoice,
-      response_format: 'mp3',
-    };
-    // Per-agent character steering — only sent when provided (kept short + safe).
-    if (instructions && typeof instructions === 'string') body.instructions = instructions.slice(0, 500);
+    const body = buildTtsBody({ text, voice, instructions, format });
+    const useVoice = body.voice;
     const ttsRes = await fetch('https://api.openai.com/v1/audio/speech', {
       method: 'POST',
       headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
@@ -1419,7 +1414,8 @@ app.post('/api/tts', requireAdmin, async (req, res) => {
     // OpenAI returns raw audio bytes, convert to base64
     const buffer = await ttsRes.arrayBuffer();
     const base64 = Buffer.from(buffer).toString('base64');
-    res.json({ ok: true, audioContent: base64, voice: useVoice });
+    // `format` tells the caller what the bytes ARE, so a LiveAvatar client never sends mp3 as PCM.
+    res.json({ ok: true, audioContent: base64, voice: useVoice, format: body.response_format });
   } catch (e) {
     res.json({ ok: false, error: e.message, fallback: true });
   }
