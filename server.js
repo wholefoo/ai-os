@@ -140,7 +140,11 @@ app.use(helmet({
       // (45 identical GA-init snippets -> /js/ga-init.js, plus 7 page scripts), so `'self'` covers
       // them. Keep it that way: adding one inline <script> anywhere under dashboard/ will be blocked
       // by this policy and the page will break loudly — which is the intended failure direction.
-      // (The 123 ld+json / importmap blocks are DATA, not executed, and were never in scope.)
+      // ld+json blocks are DATA and need nothing. IMPORT MAPS are not: browsers enforce script-src on
+      // an inline <script type="importmap">, so each one's sha256 is allowed below — computed from the
+      // dashboard files at startup (lib/csp-inline-hashes.js), never pasted. Missing it broke the
+      // video avatar from 2026-08-12 to 2026-11-04 (app.html's import map, which the LiveAvatar SDK's
+      // bare `events` import needs, was blocked; the SDK never loaded).
       // `static.cloudflareinsights.com` serves the Cloudflare Web Analytics beacon, which Cloudflare
       // INJECTS at the edge — it is not in any file in this repo, so it cannot be moved to /js/ the
       // way the 52 blocks above were. Without this entry the beacon is blocked on every page and
@@ -152,7 +156,8 @@ app.use(helmet({
       // CSP that admits it is `'unsafe-inline'`, which is exactly what AS-02 bought back. It stays
       // blocked. Turn JavaScript Detections off in the Cloudflare dashboard if the console noise
       // matters; do not buy it back here.
-      scriptSrc: ["'self'", "https://www.googletagmanager.com", "https://www.google-analytics.com", "https://cdn.jsdelivr.net", "https://static.cloudflareinsights.com"],
+      scriptSrc: ["'self'", "https://www.googletagmanager.com", "https://www.google-analytics.com", "https://cdn.jsdelivr.net", "https://static.cloudflareinsights.com",
+        ...require('./lib/csp-inline-hashes').importMapHashesInDir(path.join(BASE, 'dashboard'))],
       // STILL 'unsafe-inline', and honestly so: ~325 inline handlers (157 in HTML, 168 generated
       // from JS template literals) depend on it. Removing it means event delegation across the whole
       // dashboard — a large, regression-prone refactor, tracked as the remaining half of AS-02.

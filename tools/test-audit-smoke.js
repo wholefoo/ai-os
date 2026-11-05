@@ -44,6 +44,15 @@ const cp=require('child_process');for(const k of ['exec','execSync','execFile','
   assert.equal(login.status,200);const token=JSON.parse(login.text).token;
   const app=await request(port,'/app',{headers:{Cookie:'ai-os-session='+token}});assert.equal(app.status,200);assert.match(app.text,/<!doctype html/i);
   console.log('PASS synthetic admin login and dashboard HTML response');
+  // Every inline import map in the SERVED page must be allowed by the SERVED CSP: browsers enforce
+  // script-src on import maps, and a blocked one silently broke the video avatar (2026-08-12..11-04).
+  // Hashed here independently of lib/csp-inline-hashes.js, from the exact bytes the browser gets.
+  const maps=[...app.text.matchAll(/<script\b[^>]*\btype\s*=\s*["']importmap["'][^>]*>([\s\S]*?)<\/script>/gi)].map(m=>m[1]);
+  assert.ok(maps.length>=1,'the served /app page has an inline import map (else this check is vacuous)');
+  const scriptSrc=(String(app.headers['content-security-policy']||'').split(';').map(s=>s.trim()).find(s=>s.startsWith('script-src '))||'');
+  assert.ok(!/'unsafe-inline'/.test(scriptSrc),'script-src stays without unsafe-inline (AS-02)');
+  for(const m of maps){const h=`'sha256-${require('crypto').createHash('sha256').update(m,'utf8').digest('base64')}'`;assert.ok(scriptSrc.split(/\s+/).includes(h),`served CSP script-src allows the served import map ${h}`);}
+  console.log('PASS every inline import map on /app is allowed by the served CSP');
   const ws=new WebSocket(`ws://127.0.0.1:${port}/ws`,{headers:{Cookie:'ai-os-session='+token}});
   await new Promise((resolve,reject)=>{ws.once('open',resolve);ws.once('error',reject);});
   const closed=new Promise((resolve,reject)=>{const timer=setTimeout(()=>reject(Error('revoked socket stayed open')),3000);ws.once('close',()=>{clearTimeout(timer);resolve();});});
