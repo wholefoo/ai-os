@@ -2661,6 +2661,7 @@ app.put('/api/bookings/:id/cancel', requireAdmin, (req, res) => {
 const prospectsLib = require('./lib/leads/prospects');
 const { safeFetch, safeRequest } = require('./lib/net/safe-fetch');
 const slackNotify = require('./lib/notify/slack');
+const telegramNotify = require('./lib/notify/telegram');
 const handbookRubric = require('./lib/handbooks/rubric');
 const handbookArchetype = require('./lib/handbooks/archetype');
 const handbookSchema = require('./lib/handbooks/schema');
@@ -9847,15 +9848,17 @@ app.delete('/api/pipelines/reports/:file', requireAdmin, (req, res) => {
 // --- Notification System ---
 
 const notifications = loadState('notifications', []);
+// Channels are ON whenever they are configured; the CREDENTIALS live in Settings → Notifications
+// (telegramCreds(), settings.notifications.slack_webhook_url) — never a boot-time env snapshot here.
+// `enabled` exists only so PUT /api/notifications/config can switch a channel OFF (in memory, until the
+// next restart). It used to start FALSE with nothing in the dashboard turning it on, so no alert sent
+// through sendNotification ever reached Telegram or Slack (lib/notify/telegram.js has the story).
 const notificationConfig = {
   telegram: {
-    enabled: false,
-    botToken: process.env.TELEGRAM_BOT_TOKEN || '',
-    chatId: process.env.TELEGRAM_CHAT_ID || '',
+    enabled: true,
   },
   slack: {
-    enabled: false,
-    webhookUrl: process.env.SLACK_WEBHOOK_URL || '',
+    enabled: true,
   },
   dashboard: {
     enabled: true, // always on
@@ -9884,23 +9887,18 @@ function sendNotification(title, message, priority = 'normal') {
     data: notification,
   });
 
-  // Telegram — real HTTP call to Telegram Bot API
-  if (notificationConfig.telegram.enabled && notificationConfig.telegram.botToken) {
-    const emoji = priority === 'critical' ? '\u{1F6A8}' : priority === 'normal' ? '\u{1F4CB}' : '\u{2139}\u{FE0F}';
-    const text = `${emoji} *${title}*\n${message}${priority === 'critical' ? '\n\n_Requires attention_' : ''}`;
-    fetch(`https://api.telegram.org/bot${notificationConfig.telegram.botToken}/sendMessage`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        chat_id: notificationConfig.telegram.chatId,
-        text,
-        parse_mode: 'Markdown',
-      }),
-    }).then(r => r.json()).then(r => {
-      if (!r.ok) console.error('[TELEGRAM] Send failed:', r.description);
-    }).catch(e => console.error('[TELEGRAM] Error:', e.message));
+  // Telegram — whenever Settings → Notifications has a token and chat id (telegramCreds()), unless a
+  // PUT /api/notifications/config switched it off. PLAIN text: an underscore in an email or a Stripe id
+  // used to break parse_mode Markdown and Telegram dropped the alert. Delivery is logged only after
+  // Telegram says ok (it used to be logged at dispatch, so a dropped alert still read "sent").
+  const tg = telegramCreds();
+  if (notificationConfig.telegram.enabled !== false && telegramNotify.telegramReady(tg)) {
     notification.channels.push('telegram');
-    logActivity('notification', `Telegram notification sent: ${title}`);
+    telegramNotify.sendMessage({ token: tg.token, chatId: tg.chatId, text: telegramNotify.notificationText({ title, message, priority }) })
+      .then((r) => {
+        if (r.ok) logActivity('notification', `Telegram notification sent: ${title}`);
+        else console.error('[TELEGRAM] Send failed:', r.error);
+      });
   }
 
   // Slack — real HTTP call to Incoming Webhook.
@@ -9913,8 +9911,9 @@ function sendNotification(title, message, priority = 'normal') {
   // "Slack notification sent" the moment the request was DISPATCHED, so a channel that had never
   // delivered anything reported success in the dashboard while failing in stderr — the worst
   // possible arrangement for something whose job is to tell you when things go wrong.
-  if (notificationConfig.slack.enabled && slackNotify.webhookReady(notificationConfig.slack.webhookUrl)) {
-    const { url } = slackNotify.resolveWebhook(notificationConfig.slack.webhookUrl);
+  const slackUrl = settings.notifications?.slack_webhook_url || '';
+  if (notificationConfig.slack.enabled !== false && slackNotify.webhookReady(slackUrl)) {
+    const { url } = slackNotify.resolveWebhook(slackUrl);
     notification.channels.push('slack');
     safeRequest(url, {
       method: 'POST',
@@ -9957,12 +9956,12 @@ app.get('/api/notifications/config', (req, res) => {
   // Return config without secrets
   res.json({
     telegram: {
-      enabled: notificationConfig.telegram.enabled,
-      configured: !!notificationConfig.telegram.botToken,
+      enabled: notificationConfig.telegram.enabled !== false,
+      configured: telegramNotify.telegramReady(telegramCreds()),
     },
     slack: {
-      enabled: notificationConfig.slack.enabled,
-      configured: !!notificationConfig.slack.webhookUrl,
+      enabled: notificationConfig.slack.enabled !== false,
+      configured: slackNotify.webhookReady(settings.notifications?.slack_webhook_url || ''),
     },
     dashboard: notificationConfig.dashboard,
     escalation: notificationConfig.escalation,
@@ -9971,15 +9970,10 @@ app.get('/api/notifications/config', (req, res) => {
 
 app.put('/api/notifications/config', requireAdmin, (req, res) => {
   const { telegram, slack, escalation } = req.body;
-  if (telegram) {
-    if (telegram.enabled !== undefined) notificationConfig.telegram.enabled = telegram.enabled;
-    if (telegram.botToken) notificationConfig.telegram.botToken = telegram.botToken;
-    if (telegram.chatId) notificationConfig.telegram.chatId = telegram.chatId;
-  }
-  if (slack) {
-    if (slack.enabled !== undefined) notificationConfig.slack.enabled = slack.enabled;
-    if (slack.webhookUrl) notificationConfig.slack.webhookUrl = slack.webhookUrl;
-  }
+  // Only the on/off switches live here. Credentials are set in Settings → Notifications (persisted);
+  // a token or webhook sent to this route used to land in a copy nothing else read, so it is ignored.
+  if (telegram && telegram.enabled !== undefined) notificationConfig.telegram.enabled = telegram.enabled !== false;
+  if (slack && slack.enabled !== undefined) notificationConfig.slack.enabled = slack.enabled !== false;
   if (escalation) {
     if (escalation.timeout !== undefined) notificationConfig.escalation.timeout = escalation.timeout;
     if (escalation.action) notificationConfig.escalation.action = escalation.action;
@@ -11264,16 +11258,9 @@ app.post('/api/settings/test/:service', requireAdmin, async (req, res) => {
       res.json({ ok: false, message: `Connection failed: ${e.message}` });
     }
   } else if (service === 'telegram') {
-    const telegramToken = telegramCreds().token;
-    if (!telegramToken) return res.json({ ok: false, message: 'No bot token configured' });
-    try {
-      const url = `https://api.telegram.org/bot${telegramToken}/getMe`;
-      const r = await fetch(url);
-      const data = await r.json();
-      res.json({ ok: data.ok, message: data.ok ? `Bot: @${data.result.username}` : (data.description || 'Invalid token') });
-    } catch (e) {
-      res.json({ ok: false, message: `Connection failed: ${e.message}` });
-    }
+    // Checks the token AND actually sends a test message to the configured chat: a valid token with a
+    // wrong chat id used to pass this button while every alert went nowhere.
+    res.json(await telegramNotify.testDelivery(telegramCreds()));
   } else if (service === 'slack') {
     if (!settings.notifications.slack_webhook_url) return res.json({ ok: false, message: 'No webhook URL configured' });
     try {
@@ -12155,19 +12142,13 @@ function telegramCreds() {
   };
 }
 
+// Callers build their own HTML, so this keeps parse_mode HTML — but it now reads Telegram's answer: a
+// rejected message (bad markup, wrong chat id) used to fail with nothing logged at all.
 async function sendTelegramMessage(text) {
   const { token, chatId } = telegramCreds();
   if (!token || !chatId) return;
-
-  try {
-    await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ chat_id: chatId, text, parse_mode: 'HTML' }),
-    });
-  } catch (e) {
-    console.error('[TELEGRAM] Send failed:', e.message);
-  }
+  const r = await telegramNotify.sendMessage({ token, chatId, text, parseMode: 'HTML' });
+  if (!r.ok) console.error('[TELEGRAM] Send failed:', r.error);
 }
 
 async function sendTelegramApproval(proposal) {

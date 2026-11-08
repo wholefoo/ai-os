@@ -85,8 +85,9 @@ assert(/Untitled/.test(slack.approvalPayload({}).text), 'with an honest placehol
 // --- the send sites actually use the guard --------------------------------------------------------
 // The module can be perfect while a caller keeps its own `if (url)`. That gap is the whole defect.
 const src = serverSource();
-assert(/slackNotify\.webhookReady\(notificationConfig\.slack\.webhookUrl\)/.test(src),
-  'sendNotification guards on webhookReady, not on truthiness');
+// The URL now comes from Settings (settings.notifications.slack_webhook_url), not a boot-time env copy.
+assert(/const slackUrl = settings\.notifications\?\.slack_webhook_url \|\| '';\s*\n\s*if \(notificationConfig\.slack\.enabled !== false && slackNotify\.webhookReady\(slackUrl\)\)/.test(src),
+  'sendNotification guards on webhookReady (not truthiness), on the URL saved in Settings');
 assert(/slackNotify\.resolveWebhook\(settings\.notifications\?\.slack_webhook_url\)/.test(src),
   'the shared POST helper resolves through the same module');
 // Scoped to the Slack code, deliberately. An earlier version of this assertion searched the whole
