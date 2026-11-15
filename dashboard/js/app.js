@@ -423,8 +423,8 @@ async function loadDashboard() {
   ]);
 
   state.health = health;
-  state.skills = skills;
-  state.activity = activity;
+  state.skills = asArray(skills, state.skills);
+  state.activity = asArray(activity, state.activity);
 
   // Store tier info globally for feature gating in UI
   window.aiosTier = hqStats?.tier || 'community';
@@ -721,7 +721,7 @@ function renderContextHealth() {
 async function loadInbox(filter) {
   filter = filter || document.querySelector('.filter-btn.active')?.dataset?.filter || 'all';
   try {
-    state.inbox = await fetchJSON('/api/approvals');
+    state.inbox = asArray(await fetchJSON('/api/approvals'), state.inbox);
   } catch (e) {
     state.inbox = [];
   }
@@ -950,7 +950,8 @@ async function processCommand(text) {
   if (lower.includes('run ') || lower.includes('execute ') || lower.includes('launch ')) {
     // Actually launch (no longer canned). Pipelines first (multi-stage), then skills.
     let pipelines = state.pipelines;
-    if (!Array.isArray(pipelines)) { try { pipelines = await fetchJSON('/api/pipelines'); state.pipelines = pipelines; } catch { pipelines = []; } }
+    // Cache only a real list: an auth-error object must not be cached (or .find()-ed) as the pipelines.
+    if (!Array.isArray(pipelines)) { try { const got = await fetchJSON('/api/pipelines'); pipelines = asArray(got); if (Array.isArray(got)) state.pipelines = got; } catch { pipelines = []; } }
     const pMatch = (pipelines || []).find((p) => {
       const n = (p.name || '').toLowerCase(); if (!n) return false;
       if (lower.includes(n) || lower.includes(n.replace(/-/g, ' '))) return true;
@@ -1077,7 +1078,7 @@ async function processCommand(text) {
 
 // --- Agents ---
 async function loadAgents() {
-  state.agents = await fetchJSON('/api/agents');
+  state.agents = asArray(await fetchJSON('/api/agents'), state.agents);
   const container = document.getElementById('agentsGrid');
   container.innerHTML = state.agents.map(a => {
     const tools = a.meta?.tools || [];
@@ -1105,7 +1106,7 @@ async function loadAgents() {
 
 // --- Skills — One-Click Launchpad ---
 async function loadSkills() {
-  state.skills = await fetchJSON('/api/skills');
+  state.skills = asArray(await fetchJSON('/api/skills'), state.skills);
   const filter = document.getElementById('skillCategoryFilter')?.value || 'all';
   const search = document.getElementById('skillSearch')?.value?.toLowerCase() || '';
 
@@ -1606,7 +1607,7 @@ function renderOutcomeRun(run) {
 
 // --- Workflows ---
 async function loadWorkflows() {
-  state.workflows = await fetchJSON('/api/workflows');
+  state.workflows = asArray(await fetchJSON('/api/workflows'), state.workflows);
   const container = document.getElementById('workflowsList');
   if (!state.workflows.length) {
     container.innerHTML = '<div class="empty-state">No workflows executed yet. Use Skills to launch one.</div>';
@@ -1726,6 +1727,15 @@ function closeModal() {
 }
 
 // --- Utilities ---
+// List-typed state (state.inbox, .agents, .skills, ...) must only ever hold an array. fetchJSON hands
+// back whatever JSON the server sent, so a 401 `{error:'Not authenticated'}` used to be assigned
+// unchecked and the next `.filter`/`.map` threw ("state.inbox.filter is not a function"). A non-array
+// keeps the previous list (stale beats crashed), or [] when there is none.
+function asArray(value, fallback) {
+  if (Array.isArray(value)) return value;
+  return Array.isArray(fallback) ? fallback : [];
+}
+
 async function fetchJSON(url, opts = {}) {
   try {
     const headers = { 'Content-Type': 'application/json' };
@@ -1996,7 +2006,7 @@ async function loadRadar() {
   if (latestRes.exists) {
     state.radarReport = latestRes.report;
   }
-  state.proposals = proposalsRes;
+  state.proposals = asArray(proposalsRes, state.proposals);
 
   renderRadarStats();
   renderFindings('all');
