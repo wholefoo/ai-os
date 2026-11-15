@@ -6280,8 +6280,48 @@ async function loadSettings() {
       }
     }
   }
+  renderConfigWarnings(data.config_warnings);
   loadApprovals();
   loadA2AKeys();
+}
+
+// settings.json values that are template placeholders, malformed, or that override a usable .env value
+// (lib/settings-audit.js). Errors and warnings get the banner; "differs from .env" is informational and
+// listed underneath, collapsed. Built with textContent only — no server text reaches innerHTML.
+function renderConfigWarnings(findings) {
+  const box = document.getElementById('settings-config-warnings');
+  if (!box) return;
+  box.replaceChildren();
+  const list = Array.isArray(findings) ? findings : [];
+  const serious = list.filter((f) => f.severity === 'error' || f.severity === 'warn');
+  const info = list.filter((f) => f.severity === 'info');
+  if (!serious.length && !info.length) { box.hidden = true; return; }
+  box.hidden = false;
+  box.classList.toggle('has-errors', serious.some((f) => f.severity === 'error'));
+  box.classList.toggle('info-only', !serious.length);
+  const title = document.createElement('strong');
+  title.textContent = serious.length
+    ? `${serious.length} saved setting${serious.length === 1 ? '' : 's'} need${serious.length === 1 ? 's' : ''} attention`
+    : 'Some saved settings differ from .env';
+  box.appendChild(title);
+  const addList = (items, parent) => {
+    const ul = document.createElement('ul');
+    for (const f of items) {
+      const li = document.createElement('li');
+      li.textContent = f.message;
+      ul.appendChild(li);
+    }
+    parent.appendChild(ul);
+  };
+  if (serious.length) addList(serious, box);
+  if (info.length) {
+    const det = document.createElement('details');
+    const sum = document.createElement('summary');
+    sum.textContent = `${info.length} saved value${info.length === 1 ? '' : 's'} differ${info.length === 1 ? 's' : ''} from .env (the saved value is used)`;
+    det.appendChild(sum);
+    addList(info, det);
+    box.appendChild(det);
+  }
 }
 
 // ---------- Auto-Mode approvals inbox ----------

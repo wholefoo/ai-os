@@ -2662,6 +2662,7 @@ const prospectsLib = require('./lib/leads/prospects');
 const { safeFetch, safeRequest } = require('./lib/net/safe-fetch');
 const slackNotify = require('./lib/notify/slack');
 const telegramNotify = require('./lib/notify/telegram');
+const settingsAudit = require('./lib/settings-audit'); // placeholders / shadowed .env values in settings.json
 const handbookRubric = require('./lib/handbooks/rubric');
 const handbookArchetype = require('./lib/handbooks/archetype');
 const handbookSchema = require('./lib/handbooks/schema');
@@ -11163,6 +11164,9 @@ app.get('/api/settings', requireAdmin, (req, res) => {
       unreadable: secretsAtRestStatus.unreadable,
       note: secretsAtRestStatus.enabled ? 'Secret fields are AES-256-GCM sealed on disk under AIOS_SECRETS_KEY.' : 'Secret fields are plaintext on disk. Set AIOS_SECRETS_KEY (32 bytes hex/base64, or a 16+ char passphrase) and restart to seal them on the next save.',
     },
+    // Placeholder / malformed / .env-shadowing values (paths and env names only — never values).
+    // Recomputed per request so the Settings banner clears as soon as a bad value is re-saved.
+    config_warnings: settingsAudit.auditSettings(settings),
   };
   res.json(masked);
 });
@@ -15815,6 +15819,11 @@ server.listen(PORT, HOST, () => {
   console.log(`Environment: ${process.env.NODE_ENV || 'development'} | Demo mode: ${DEMO_MODE} | Auth: ${API_TOKEN ? 'enabled' : 'disabled'} | Service keys: ${serviceKeyList.filter((k) => !k.revoked).length} active`);
   if (API_TOKEN) console.log('[AUTH] The static API_TOKEN is a master credential. Prefer scoped service keys for automations: POST /api/admin/service-keys (signed-in admin).');
   console.log(`[SECRETS] at-rest encryption: ${secretsAtRestStatus.enabled ? `ON (AES-256-GCM, key form ${secretsAtRestStatus.form})` : `OFF — ${secretsAtRestStatus.reason}`}${secretsAtRestStatus.unreadable.length ? ` | ${secretsAtRestStatus.unreadable.length} UNREADABLE sealed value(s)` : ''}`);
+  {
+    const findings = settingsAudit.auditSettings(settings);
+    const line = settingsAudit.summaryLine(findings);
+    (findings.some((f) => f.severity !== 'info') ? console.warn : console.log)(line);
+  }
   console.log(`Schedules active: ${[...schedules.values()].filter(s => s.enabled).length}`);
   console.log(`Pipelines available: ${loadPipelines().length}`);
   console.log(`Identity files: ${fs.existsSync(IDENTITY_DIR) ? fs.readdirSync(IDENTITY_DIR).filter(f => f.endsWith('.md')).length : 0}`);

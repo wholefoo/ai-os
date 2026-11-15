@@ -169,7 +169,8 @@
     "tools/test-site-lock.js",
     "tools/test-hub-newsletter.js",
     "tools/test-install-vps.js",
-    "tools/test-stripe-webhook.js"
+    "tools/test-stripe-webhook.js",
+    "tools/test-settings-audit.js"
   ],
   "ignorePatterns": [
     "docs-export/**",

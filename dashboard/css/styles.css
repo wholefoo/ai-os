@@ -5606,6 +5606,24 @@ body {
   background: rgba(107,114,128,0.12);
   color: var(--text-muted);
 }
+/* Saved-settings audit banner (lib/settings-audit.js via GET /api/settings → config_warnings) */
+.settings-config-warnings {
+  margin: 0 0 16px;
+  padding: 12px 16px;
+  border: 1px solid var(--warning);
+  border-left-width: 4px;
+  border-radius: 6px;
+  background: rgba(245,158,11,0.08);
+  color: var(--text-primary, inherit);
+  font-size: 13px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+.settings-config-warnings.has-errors { border-color: var(--danger); background: rgba(239,68,68,0.08); }
+.settings-config-warnings.info-only { border-color: var(--text-muted); background: rgba(107,114,128,0.08); }
+.settings-config-warnings ul { margin: 6px 0 0; padding-left: 18px; }
+.settings-config-warnings details { margin-top: 6px; }
+.settings-config-warnings summary { cursor: pointer; color: var(--text-muted); }
 .settings-save {
   width: 100%;
   margin-top: 4px;
