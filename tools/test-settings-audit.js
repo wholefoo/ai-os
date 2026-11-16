@@ -67,7 +67,8 @@ const realShaped = {
   'notifications.telegram_bot_token': REAL_TG,
   'notifications.telegram_chat_id': '-1001234567890',
   'notifications.slack_webhook_url': 'https://hooks.slack.com/services/T04ABCDEF/B05GHIJKL/q1w2e3r4t5y6u7i8o9p0',
-  'stripe.secret_key': 'sk_live_51Q1w2E3r4T5y6U7i8O9p0',
+  // sk_TEST_, not sk_live_: CI's secret scan (rightly) fails on any key-shaped sk_live_ string, fake or not.
+  'stripe.secret_key': 'sk_test_51Q1w2E3r4T5y6U7i8O9p0',
   'stripe.webhook_secret': 'whsec_Q1w2E3r4T5y6U7i8O9p0',
   'stripe.business_price_id': 'price_1Q1w2E3r4T5y6U7i',
   'automation.n8n_webhook_base': 'http://127.0.0.1:5678/webhook',
