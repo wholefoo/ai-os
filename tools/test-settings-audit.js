@@ -3,7 +3,7 @@
 // settings.json for telegram_bot_token and tavily_api_key beat the REAL keys in .env, so AI OS Telegram
 // alerts were never delivered. That exact shape must come out as severity 'error'.
 const { assert, done, serverSource, readRepoFile } = require('./test-util');
-const { auditSettings, summaryLine, classify, SETTINGS_ENV, NOT_AUDITED } = require('../lib/settings-audit');
+const { auditSettings, summaryLine, classify, SETTINGS_ENV, ENV_READ, NOT_AUDITED } = require('../lib/settings-audit');
 
 // Fake-but-correctly-shaped values (none of these are real credentials).
 const REAL_TG = '7123456789:AAH4mZq9vR2kLp8sT0wXyB6nC3dE5fG7hJk';
@@ -33,7 +33,8 @@ const REAL_TAVILY = 'tvly-dev-9fK2mQ7pL4xR8sT1vW3yZ6bC';
 
 // --- 2. Nothing to fall back to: warn, not error ------------------------------------------------------
 {
-  const f = auditSettings({ ai: { apify_api_token: 'your_apify_token_here' }, automation: { team_webhook_url: 'https://example.com/webhook' } }, {});
+  const f = auditSettings({ ai: { apify_api_token: 'your_apify_token_here' }, notifications: { slack_webhook_url: 'your-slack-webhook-url' } }, {});
+  // (Not Slack's docs sample URL: GitHub push protection blocks any hooks.slack.com/services/... string.)
   assert(f.length === 2 && f.every((x) => x.severity === 'warn'), 'a placeholder with no usable .env value is a WARN (feature not configured)');
 }
 {
@@ -120,14 +121,58 @@ for (const v of ['your_api_key_here', 'YOUR-KEY', '<token>', '{{TELEGRAM_BOT_TOK
     if (k && section) parsed[`${section}.${k[1]}`] = k[2];
   }
   assert(Object.keys(parsed).length >= 30, `parsed the credential defaults (got ${Object.keys(parsed).length}) — a broken parser must not pass vacuously`);
-  const known = { ...SETTINGS_ENV, ...NOT_AUDITED };
+  const known = { ...SETTINGS_ENV, ...ENV_READ, ...NOT_AUDITED };
   const missing = Object.keys(parsed).filter((p) => known[p] !== parsed[p]);
   const extra = Object.keys(known).filter((p) => !(p in parsed));
-  assert(!Object.keys(NOT_AUDITED).some((p) => p in SETTINGS_ENV), 'no field is both audited and excluded');
-  assert(auditSettings({ general: { api_token: 'your_token_here' } }, { API_TOKEN: 'a'.repeat(40) }).length === 0,
-    'general.api_token is not reported (auth reads .env directly; the persisted copy is display-only)');
-  assert(missing.length === 0, `every env-seeded settings field is audited with the right env var${missing.length ? ` (missing/wrong: ${missing.join(', ')})` : ''}`);
-  assert(extra.length === 0, `SETTINGS_ENV has no stale entries${extra.length ? ` (${extra.join(', ')})` : ''}`);
+  const groups = [SETTINGS_ENV, ENV_READ, NOT_AUDITED].map(Object.keys);
+  const total = groups.reduce((n, g) => n + g.length, 0);
+  assert(new Set(groups.flat()).size === total, 'no field is in more than one of SETTINGS_ENV / ENV_READ / NOT_AUDITED');
+  assert(missing.length === 0, `every env-seeded settings field is classified with the right env var${missing.length ? ` (missing/wrong: ${missing.join(', ')})` : ''}`);
+  assert(extra.length === 0, `no stale entries${extra.length ? ` (${extra.join(', ')})` : ''}`);
+}
+
+// --- 6b. Each field's group must match WHO READS IT in server.js -----------------------------------
+// The messages promise something about which value is in use; a field that changes reader would make
+// them false. Outside the GET /api/settings masking handler (which only DISPLAYS values):
+//   SETTINGS_ENV — the saved value is read (field ref, or the whole section handed to a library)
+//   ENV_READ / NOT_AUDITED — the saved value is never read
+// Scope: core server.js only (the commercial module is not in CI; checked by hand 2026-11-15).
+{
+  const src = serverSource();
+  const gStart = src.indexOf("app.get('/api/settings', requireAdmin");
+  const gEnd = src.indexOf('\n});', gStart);
+  assert(gStart > 0 && gEnd > gStart, 'found the GET /api/settings display handler');
+  const outside = src.slice(0, gStart) + src.slice(gEnd);
+  const esc = (x) => x.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const fieldRead = (p) => { const [s, k] = p.split('.'); return new RegExp(`settings\\.${esc(s)}\\??\\.${esc(k)}\\b`).test(outside); };
+  const sectionPassed = (p) => new RegExp(`settings\\.${esc(p.split('.')[0])}(?![.?\\w])`).test(outside);
+  const unread = Object.keys(SETTINGS_ENV).filter((p) => !fieldRead(p) && !sectionPassed(p));
+  assert(unread.length === 0, `every SETTINGS_ENV field's saved value is actually read${unread.length ? ` (display-only or unused: ${unread.join(', ')})` : ''}`);
+  const read = [...Object.keys(ENV_READ), ...Object.keys(NOT_AUDITED)].filter(fieldRead);
+  assert(read.length === 0, `ENV_READ / NOT_AUDITED saved values are never read${read.length ? ` (now read: ${read.join(', ')} — move to SETTINGS_ENV)` : ''}`);
+  for (const [p, envName] of Object.entries(ENV_READ)) {
+    assert(new RegExp(`process\\.env\\.${esc(envName)}\\b`).test(outside.replace(/^ {4}[a-z0-9_]+: process\.env\.[A-Z0-9_]+ \|\| '',.*$/gm, '')),
+      `ENV_READ ${p}: server.js really runs on process.env.${envName} (beyond the settings default)`);
+  }
+}
+
+// --- 6c. Display-only copies (prod, 2026-11-15: stripe.secret_key's saved copy differed from .env) ---
+{
+  const f = auditSettings({ stripe: { secret_key: 'sk_test_SavedCopy0001' } }, { STRIPE_SECRET_KEY: 'sk_test_EnvValue0002' });
+  assert(f.length === 1 && f[0].severity === 'info' && f[0].problem === 'display-only',
+    'a saved Stripe key that differs from .env is INFO / display-only');
+  assert(/server uses the \.env value/.test(f[0].message) && !/settings\.json value is the one used/.test(f[0].message),
+    'and the message says the .env value is the one in use (the first version said the opposite)');
+  const g = auditSettings({ stripe: { secret_key: 'sk_test_SavedCopy0001' } }, {});
+  assert(g.length === 1 && g[0].severity === 'warn' && /NOT active/.test(g[0].message),
+    'a saved Stripe key with NO .env value is a WARN: Settings says configured, the server has nothing');
+  assert(auditSettings({ stripe: { secret_key: 'sk_test_Same0003' } }, { STRIPE_SECRET_KEY: 'sk_test_Same0003' }).length === 0,
+    'a saved copy equal to .env produces no finding');
+  const h = auditSettings({ general: { api_token: 'your_token_here' } }, { API_TOKEN: 'a'.repeat(40) });
+  assert(h.length === 1 && h[0].severity === 'info' && h[0].problem === 'display-only',
+    'general.api_token is display-only too (auth reads .env): never an error, whatever the saved copy holds');
+  assert(auditSettings({ automation: { team_webhook_url: 'https://example.com/webhook' } }, {}).length === 0,
+    'NOT_AUDITED fields (nothing reads them) produce no findings');
 }
 
 // --- 7. Wired where an operator will see it -----------------------------------------------------------

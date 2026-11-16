@@ -6317,7 +6317,7 @@ function renderConfigWarnings(findings) {
   if (info.length) {
     const det = document.createElement('details');
     const sum = document.createElement('summary');
-    sum.textContent = `${info.length} saved value${info.length === 1 ? '' : 's'} differ${info.length === 1 ? 's' : ''} from .env (the saved value is used)`;
+    sum.textContent = `${info.length} saved value${info.length === 1 ? '' : 's'} differ${info.length === 1 ? 's' : ''} from .env (each line says which one is in use)`;
     det.appendChild(sum);
     addList(info, det);
     box.appendChild(det);
