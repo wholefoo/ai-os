@@ -47,6 +47,6 @@
     "node": ">=24.0.0"
   },
   "devDependencies": {
-    "fallow": "3.42.0"
+    "fallow": "3.45.0"
   }
 }
